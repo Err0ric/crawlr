@@ -1308,6 +1308,7 @@
       switchMode('recon');
       updateReconChip();
       showToast(`${label} detected — switching to RECON mode`);
+      setTimeout(() => runRecon(), 100);
       return;
     }
 
