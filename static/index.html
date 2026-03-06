@@ -1880,6 +1880,21 @@
       .text(statItems.join('  ·  '));
   }
 
+  // Cloudflare IP detection (matching backend CIDR ranges)
+  const _CF_RANGES = [
+    [0xADF53000, 0xFFFFF000], [0x6715F400, 0xFFFFFC00], [0x6716C800, 0xFFFFFC00],
+    [0x671F0400, 0xFFFFFC00], [0x8D654000, 0xFFFFC000], [0x6CA2C000, 0xFFFFC000],
+    [0xBE5DF000, 0xFFFFF000], [0xBC726000, 0xFFFFF000], [0xC5EAF000, 0xFFFFFC00],
+    [0xC6298000, 0xFFFE0000], [0xA29E0000, 0xFFFE0000], [0x68100000, 0xFFF80000],
+    [0x68180000, 0xFFFC0000], [0xAC400000, 0xFFF80000], [0x83004800, 0xFFFFFC00],
+  ];
+  function _isCfIp(ipStr) {
+    const parts = ipStr.split('.');
+    if (parts.length !== 4) return false;
+    const num = ((+parts[0]) << 24 | (+parts[1]) << 16 | (+parts[2]) << 8 | (+parts[3])) >>> 0;
+    return _CF_RANGES.some(([net, mask]) => (num & mask) === net);
+  }
+
   function renderReconGraph() {
     const container = document.getElementById('reconGraph');
     container.innerHTML = '';
@@ -1891,7 +1906,7 @@
 
     if (isASN(target) && d.asn_detail) { renderAsnGraph(container, d.asn_detail, target); return; }
 
-    const colorMap = { domain: '#a855f7', a: '#a855f7', mx: '#d97706', ns: '#14b8a6', subdomain: '#7c3aed', ip: '#6b7280', asn: '#4b5563', cname: '#8b5cf6' };
+    const colorMap = { domain: '#a855f7', a: '#a855f7', mx: '#d97706', ns: '#14b8a6', subdomain: '#7c3aed', ip: '#6b7280', asn: '#4b5563', cname: '#8b5cf6', cf_ip: '#f59e0b' };
     const asnInfo = d.asn || {};
 
     // Build hierarchical tree data
@@ -2034,6 +2049,7 @@
       { label: 'A Record', color: colorMap.a }, { label: 'MX', color: colorMap.mx },
       { label: 'NS', color: colorMap.ns }, { label: 'Subdomain', color: colorMap.subdomain },
       { label: 'IP', color: colorMap.ip }, { label: 'ASN', color: colorMap.asn },
+      { label: 'CF Proxy', color: colorMap.cf_ip },
     ];
     legendItems.forEach((item, i) => {
       const lg = legend.append('g').attr('transform', `translate(${i * 100}, 0)`);
@@ -2081,27 +2097,45 @@
       const pos = positions[n.id];
       if (!pos) continue;
       const isSub = n.type === 'subdomain';
+      const isIpNode = n.type === 'ip' && /^\d+\.\d+\.\d+\.\d+$/.test(n.label);
+      const isCf = isIpNode && _isCfIp(n.label);
       const bw = isSub ? subBoxW : (boxWidths[n.lane] || 150);
       const bh = isSub ? subBoxH : boxH;
-      const col = colorMap[n.type] || colorMap.ip;
+      const col = isCf ? colorMap.cf_ip : (colorMap[n.type] || colorMap.ip);
       const ng = g.append('g').attr('transform', `translate(${pos.x}, ${pos.y})`);
 
       // Box
+      const fillColor = n.type === 'domain' ? 'rgba(124,58,237,0.15)'
+        : isCf ? 'rgba(245,158,11,0.08)'
+        : isSub ? 'rgba(124,58,237,0.08)' : 'rgba(15,14,28,0.9)';
       ng.append('rect')
         .attr('width', bw).attr('height', bh).attr('rx', 3)
-        .attr('fill', n.type === 'domain' ? 'rgba(124,58,237,0.15)' : (isSub ? 'rgba(124,58,237,0.08)' : 'rgba(15,14,28,0.9)'))
+        .attr('fill', fillColor)
         .attr('stroke', col).attr('stroke-width', n.type === 'domain' ? 2 : 1)
-        .attr('stroke-opacity', n.type === 'domain' ? 0.8 : 0.4);
+        .attr('stroke-opacity', n.type === 'domain' ? 0.8 : (isCf ? 0.6 : 0.4));
+
+      // CF badge
+      if (isCf) {
+        ng.append('rect')
+          .attr('x', bw - 24).attr('y', 2).attr('width', 22).attr('height', 12).attr('rx', 2)
+          .attr('fill', 'rgba(245,158,11,0.25)').attr('stroke', '#f59e0b').attr('stroke-width', 0.5);
+        ng.append('text')
+          .attr('x', bw - 13).attr('y', 11).attr('text-anchor', 'middle')
+          .attr('fill', '#f59e0b').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '7px').attr('font-weight', 'bold')
+          .text('CF');
+      }
 
       // Label
       const fontSize = n.type === 'domain' ? '11px' : (isSub ? '10px' : (n.type === 'asn' ? '8px' : '9px'));
       const charW = isSub ? 6.5 : 7;
-      const maxChars = Math.floor(bw / charW);
+      const labelMaxW = isCf ? bw - 28 : bw;
+      const maxChars = Math.floor(labelMaxW / charW);
       const label = n.label.length > maxChars ? n.label.slice(0, maxChars - 1) + '…' : n.label;
+      const labelX = isCf ? (bw - 26) / 2 : bw / 2;
       ng.append('text')
-        .attr('x', bw / 2).attr('y', bh / 2 + 4)
+        .attr('x', labelX).attr('y', bh / 2 + 4)
         .attr('text-anchor', 'middle')
-        .attr('fill', n.type === 'domain' ? '#e8e0f8' : (isSub ? '#a78bfa' : (n.type === 'asn' ? '#4b5563' : '#b0a8cc')))
+        .attr('fill', isCf ? '#f59e0b' : (n.type === 'domain' ? '#e8e0f8' : (isSub ? '#a78bfa' : (n.type === 'asn' ? '#4b5563' : '#b0a8cc'))))
         .attr('font-family', 'Share Tech Mono, monospace')
         .attr('font-size', fontSize)
         .text(label);
@@ -2109,7 +2143,11 @@
       // Hover tooltip
       ng.on('mouseover', (e) => {
         let info = n.label;
-        if (n.type === 'ip' && asnInfo.asn) info += ` — ${asnInfo.asn} (${asnInfo.org || ''})`;
+        if (isCf) {
+          info += ' — Cloudflare Proxy - real origin hidden';
+        } else if (n.type === 'ip' && asnInfo.asn) {
+          info += ` — ${asnInfo.asn} (${asnInfo.org || ''})`;
+        }
         tooltip.style('display', 'block').text(info);
       })
       .on('mousemove', (e) => {
@@ -2148,7 +2186,14 @@
     const cfBadge = data.cloudflare_proxied ? '<div class="badge" style="background:rgba(217,119,6,0.15);color:#f59e0b;border:1px solid rgba(217,119,6,0.3);margin-left:6px;">CLOUDFLARE PROXIED</div>' : '';
     let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">DNS Records</div><div class="badge ${total > 0 ? 'b-hit' : 'b-none'}">${total} RECORDS</div>${cfBadge}</div><div class="rcard-body">`;
     if (data.cloudflare_proxied) {
-      html += `<div class="ritem" style="background:rgba(217,119,6,0.06);border:1px solid rgba(217,119,6,0.15);border-radius:3px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#d97706;"><div class="dot" style="background:#d97706"></div>A record IPs are Cloudflare edge servers — origin IP is hidden behind proxy</div>`;
+      // Check if subdomains have any non-CF IPs (partial proxy)
+      const subIps = (reconCollected.subdomains?.subdomains || []).flatMap(s => s.ips || []);
+      const hasRealIps = subIps.some(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip) && !_isCfIp(ip));
+      if (hasRealIps) {
+        html += `<div class="ritem" style="background:rgba(217,119,6,0.06);border:1px solid rgba(217,119,6,0.15);border-radius:3px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#d97706;"><div class="dot" style="background:#d97706"></div>Partial Cloudflare proxy detected — some subdomains expose real origin IPs</div>`;
+      } else {
+        html += `<div class="ritem" style="background:rgba(217,119,6,0.06);border:1px solid rgba(217,119,6,0.15);border-radius:3px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#d97706;"><div class="dot" style="background:#d97706"></div>A record IPs are Cloudflare edge servers — origin IP is hidden behind proxy</div>`;
+      }
     }
     if (total === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No DNS records found</div>`;
