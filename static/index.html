@@ -644,8 +644,68 @@
     return html;
   }
 
+  /* ── Holehe results renderer ── */
+  function renderHoleheCard(data) {
+    const count = data.total || 0;
+    const items = data.results || [];
+    const visible = items.slice(0, 6);
+    const remaining = items.length - visible.length;
+
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Holehe · Email Accounts</div>
+        <div class="badge ${count > 0 ? 'b-hit' : 'b-none'}">${count} HIT${count !== 1 ? 'S' : ''}</div>
+      </div>
+      <div class="rcard-body">`;
+
+    if (count === 0) {
+      html += `<div class="ritem"><div class="dot dd"></div>No accounts found</div>`;
+    } else {
+      for (const r of visible) {
+        html += `<div class="ritem"><div class="dot dg"></div>${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
+      }
+      if (remaining > 0) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
+        for (const r of items.slice(6)) {
+          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot dg"></div>${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
+        }
+      }
+    }
+
+    html += `</div></div>`;
+    return html;
+  }
+
   /* ── Main scan ── */
   let scanning = false;
+
+  function isEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
+
+  async function runModule(logEl, cardsEl, t0, label, url, body, renderFn) {
+    const row = addLogRow(logEl, `Running ${label}...`, 'run');
+    const timer = setInterval(() => setLogTime(row, (performance.now() - t0) / 1000), 200);
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      clearInterval(timer);
+      setLogTime(row, (performance.now() - t0) / 1000);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
+        updateLogRow(row, `${label} error: ${err.detail || resp.statusText}`, 'wait');
+      } else {
+        const data = await resp.json();
+        updateLogRow(row, `${label} complete — ${data.total} result${data.total !== 1 ? 's' : ''} found`, 'done');
+        cardsEl.innerHTML += renderFn(data);
+      }
+    } catch (e) {
+      clearInterval(timer);
+      setLogTime(row, (performance.now() - t0) / 1000);
+      updateLogRow(row, `${label} error: ${e.message}`, 'wait');
+    }
+  }
 
   async function runScan() {
     if (scanning) return;
@@ -660,38 +720,30 @@
     document.getElementById('emptyState').style.display = 'none';
     const res = document.getElementById('results');
     res.style.display = 'block';
-    res.innerHTML = '<div class="agent-log" id="log"></div><div id="resultCards"></div>';
+    res.innerHTML = '<div class="agent-log" id="log"></div><div class="result-grid" id="resultCards"></div>';
     const logEl = document.getElementById('log');
     const cardsEl = document.getElementById('resultCards');
 
     const t0 = performance.now();
+    const email = isEmail(target);
 
-    // Step 1: Sherlock
-    const sherlockRow = addLogRow(logEl, `Running Sherlock scan on "${target}"...`, 'run');
-    const timer = setInterval(() => setLogTime(sherlockRow, (performance.now() - t0) / 1000), 200);
+    // Sherlock — always run (use local part of email as username if email)
+    const username = email ? target.split('@')[0] : target;
+    await runModule(logEl, cardsEl, t0,
+      `Sherlock scan on "${username}"`,
+      '/api/recon/sherlock',
+      { username },
+      renderSherlockCard
+    );
 
-    try {
-      const resp = await fetch('/api/recon/sherlock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: target }),
-      });
-
-      clearInterval(timer);
-      setLogTime(sherlockRow, (performance.now() - t0) / 1000);
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
-        updateLogRow(sherlockRow, `Sherlock error: ${err.detail || resp.statusText}`, 'wait');
-      } else {
-        const data = await resp.json();
-        updateLogRow(sherlockRow, `Sherlock complete — ${data.total} profile${data.total !== 1 ? 's' : ''} found`, 'done');
-        cardsEl.innerHTML += `<div class="result-grid">${renderSherlockCard(data)}</div>`;
-      }
-    } catch (e) {
-      clearInterval(timer);
-      setLogTime(sherlockRow, (performance.now() - t0) / 1000);
-      updateLogRow(sherlockRow, `Sherlock error: ${e.message}`, 'wait');
+    // Holehe — only when target is an email
+    if (email) {
+      await runModule(logEl, cardsEl, t0,
+        `Holehe email check on "${target}"`,
+        '/api/recon/holehe',
+        { email: target },
+        renderHoleheCard
+      );
     }
 
     const doneRow = addLogRow(logEl, 'Investigation complete.', 'done');
