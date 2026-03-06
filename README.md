@@ -1,32 +1,31 @@
-# Crawlr
+# CRAWLR - Open Source OSINT Investigation Platform
 
-AI-powered OSINT investigation platform for security researchers, investigators, and the infosec community. Built with FastAPI and Claude AI.
-
-Crawlr combines automated reconnaissance modules with AI-driven analysis to surface identity connections, infrastructure weaknesses, and attack surface insights through a single dark-themed web interface.
+Dual-mode OSINT platform for identity investigation and network reconnaissance. Built with FastAPI and Claude AI.
 
 ## Modes
 
 ### INVESTIGATE
+People/identity OSINT: username enumeration, email breach detection, social platform mapping, AI-powered identity inference.
 
-Lookup targets by username, email, full name, or phone number. Modules run automatically based on input type.
-
-- **Sherlock** — username enumeration across 400+ social platforms
+- **Sherlock** — username enumeration across 400+ social platforms with false positive filtering
 - **Holehe** — email-to-account detection (which services an email is registered on)
 - **theHarvester** — email and subdomain discovery from public sources
 - **GitHub API** — profile, repos, activity, and email scraping
 - **HIBP** — Have I Been Pwned breach database lookup
 - **Gravatar** — avatar and profile data from email hash
-- **Profile Enricher** — scrapes bios, followers, and metadata from Reddit, TikTok, YouTube, Twitch, OnlyFans, Patreon, CashApp
-- **Platform Check** — HTTP existence checks for Facebook, Instagram, Twitter/X, LinkedIn, Threads, OnlyFans
+- **Hunter.io** — domain email discovery and pattern detection
+- **Shodan** — exposed services, ports, CVEs, and host intelligence
+- **Profile Enricher** — scrapes bios, followers, and metadata from Reddit, TikTok, YouTube, Twitch, Patreon, CashApp
+- **Platform Check** — HTTP existence checks for Facebook, Instagram, Twitter/X, LinkedIn, Threads
 - **Name Search** — generates people-search engine links for full name targets
 - **AI Analysis** — Claude-powered identity analysis with probable name inference, cross-platform correlation, and investigative leads
+- **Deep Dive** — intelligence dossier mode: subject profile, confidence matrix, platform correlation, OPSEC assessment, and ready-to-use search queries
 
 ### RECON
+Infrastructure OSINT: DNS records, WHOIS, SSL, HTTP headers, subdomain enumeration (DNS + certificate transparency logs), ASN/BGP, port scanning, attack surface analysis.
 
-Infrastructure analysis for domains, IP addresses, and ASN numbers. Auto-detects target type.
-
-- **DNS Records** — A, AAAA, MX, NS, TXT, CNAME, SOA lookups
-- **WHOIS** — registrar, registration dates, nameservers, org, country
+- **DNS Records** — A, AAAA, MX, NS, TXT, CNAME, SOA lookups with Cloudflare proxy detection
+- **WHOIS** — registrar, registration dates, nameservers, org, country, privacy detection
 - **SSL Certificate** — issuer, common name, SANs, expiry, chain details
 - **HTTP Headers** — server identification and security header grading (A/B/C/F)
 - **Subdomains** — DNS enumeration of 60+ common prefixes + certificate transparency log search via crt.sh
@@ -37,64 +36,53 @@ Infrastructure analysis for domains, IP addresses, and ASN numbers. Auto-detects
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| BYOK | Bring Your Own Key — users provide their Anthropic API key, nothing stored server-side |
-| AI Identity Analysis | Probable name inference, cross-platform correlation, investigative leads |
-| AI Attack Surface | Misconfiguration detection, exposure assessment, red team recommendations |
-| D3.js Topology Graph | Interactive hierarchical visualization for DNS records and ASN prefix maps |
-| Active Techniques | Toggle (off by default) for techniques that may notify targets |
-| Certificate Transparency | crt.sh log search reveals dev, staging, and internal subdomains |
-| Auto-Routing | Domains/IPs/ASNs entered in INVESTIGATE auto-redirect to RECON mode |
-| Markdown Export | Full report export for both INVESTIGATE and RECON results |
-| Case Notes | Scratchpad for investigator notes, persisted in browser storage |
-| Terms of Service | Acceptable use policy modal on first visit |
+- **BYOK (Bring Your Own Key)** — Claude API key stored locally in browser, never sent to server
+- **AI Analysis** — standard bullet-point analysis and Deep Dive intelligence dossier mode
+- **Cross-target correlation** — bulk search with comma-separated targets, AI correlates identities across all results
+- **D3.js topology graphs** — interactive hierarchical visualization for DNS records and ASN prefix maps
+- **Certificate transparency** — crt.sh log integration reveals dev, staging, and internal subdomains
+- **Cloudflare proxy detection** — identifies proxied IPs with amber CF badges in DNS topology
+- **Active Techniques** — toggle for live profile scraping that may alert targets
+- **5 themes** — Dark Purple (default), Midnight, Blood, Ghost, Flashbang (light)
+- **Export to Markdown** — full report export for both INVESTIGATE and RECON results
+- **History tab** — saved investigations with one-click reload
+- **Settings tab** — API key management for Claude, Hunter.io, Shodan, HIBP, and module toggles
+- **Terms of Service** — acceptable use policy gate on first launch
 
 ## Modules
 
-| Module | Mode | Type | Description |
-|--------|------|------|-------------|
-| Sherlock | INVESTIGATE | Free | Username search across 400+ platforms |
-| Holehe | INVESTIGATE | Free | Email-to-account detection |
-| theHarvester | INVESTIGATE | Free | Email and subdomain discovery |
-| GitHub API | INVESTIGATE | Free | Profile, repos, and activity data |
-| HIBP | INVESTIGATE | Free | Breach database lookup |
-| Gravatar | INVESTIGATE | Free | Avatar and profile from email |
-| Profile Enricher | INVESTIGATE | Free | Bio/follower scraping (7 platforms) |
-| Platform Check | INVESTIGATE | Free | Social platform existence checks |
-| Name Search | INVESTIGATE | Free | People-search engine links |
-| DNS Records | RECON | Free | A, MX, NS, TXT, CNAME, SOA |
-| WHOIS | RECON | Free | Registration and ownership data |
-| SSL Certificate | RECON | Free | Certificate details and expiry |
-| HTTP Headers | RECON | Free | Server ID and security grading |
-| Subdomains | RECON | Free | DNS enumeration + CT log search |
-| ASN / BGP | RECON | Free | IP-to-ASN and network info |
-| ASN Detail | RECON | Free | RDAP + prefix + peering analysis |
-| Port Scan | RECON | Free | Top 20 TCP port scan |
-| AI Analysis | Both | Key | Claude-powered analysis and recommendations |
+| Module | Type | Requires |
+|--------|------|----------|
+| Sherlock | Username enumeration | Free |
+| Holehe | Email account detection | Free |
+| theHarvester | Domain/subdomain recon | Free |
+| GitHub API | Profile and repo data | Free |
+| Gravatar | Email profile lookup | Free |
+| Platform Check | Social media existence | Free |
+| Profile Enricher | Bio/metadata scraping | Free |
+| Name Search | People-search links | Free |
+| HIBP | Breach database | Free |
+| Hunter.io | Email discovery | API Key |
+| Shodan | Exposed services/CVEs | API Key |
+| AI Analysis | Claude-powered inference | Claude API Key |
+| Deep Dive | Intelligence dossier | Claude API Key |
+| Correlation | Cross-target analysis | Claude API Key |
 
 ## Setup
 
 ```bash
-git clone https://github.com/Err0ric/crawlr.git
+git clone https://github.com/Err0ric/crawlr
 cd crawlr
-python3 -m venv venv
-source venv/bin/activate
-pip install fastapi uvicorn anthropic httpx dnspython python-whois beautifulsoup4 sherlock-project holehe
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
 
-## Run
+Open http://localhost:8000 and add your Claude API key in Settings.
 
-```bash
-uvicorn main:app --reload
-```
+## Legal
 
-Open [http://localhost:8000](http://localhost:8000) in your browser.
+For authorized security research, penetration testing, investigative journalism, and missing persons investigations only. Users must agree to Terms of Service on first launch.
 
-## API Key
+## Author
 
-The app uses a Claude API key for AI-powered analysis. Enter your Anthropic API key in the browser — it is stored in browser session memory only and sent directly to the Anthropic API. The Crawlr server never stores or logs API keys.
-
-## Disclaimer
-
-Crawlr is intended for authorized security research, penetration testing, investigative journalism, and educational purposes only. Users are responsible for ensuring they have proper authorization before scanning any target. See the in-app Terms of Service for the full acceptable use policy.
+Eric Henderson | [github.com/Err0ric](https://github.com/Err0ric) | DC253 / BSides Seattle
