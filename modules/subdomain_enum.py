@@ -21,8 +21,10 @@ COMMON_SUBDOMAINS = [
 ]
 
 
-async def _query_crtsh(domain: str) -> list[str]:
-    """Query crt.sh certificate transparency logs for subdomains."""
+async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
+    """Query crt.sh certificate transparency logs.
+    Returns (unique_subdomains, raw_ct_entries)."""
+    raw_entries = []
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             resp = await client.get(
@@ -30,22 +32,55 @@ async def _query_crtsh(domain: str) -> list[str]:
                 headers={"User-Agent": "Mozilla/5.0"},
             )
             if resp.status_code != 200:
-                return []
+                return [], []
             entries = resp.json()
     except Exception:
-        return []
+        return [], []
 
     subs = set()
+    seen_certs = set()
+    domain_lower = domain.lower()
+
     for entry in entries:
+        # Extract subdomains from both fields
         for field in ("common_name", "name_value"):
             val = entry.get(field, "")
             for name in val.split("\n"):
-                name = name.strip().lower().lstrip("*.")
-                if name.endswith(f".{domain}") or name == domain:
+                name = name.strip().lower()
+                while name.startswith("*."):
+                    name = name[2:]
+                if not name:
+                    continue
+                if (name.endswith(f".{domain_lower}") or name == domain_lower):
                     if re.match(r'^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$', name):
                         subs.add(name)
-    subs.discard(domain)
-    return sorted(subs)
+
+        # Build raw CT entry for the card (dedupe by cert serial)
+        serial = entry.get("serial_number", "")
+        name_value = entry.get("name_value", "").strip()
+        # Clean name_value: take first line, strip wildcards
+        first_name = name_value.split("\n")[0].strip().lower()
+        while first_name.startswith("*."):
+            first_name = first_name[2:]
+
+        dedup_key = f"{serial}_{first_name}"
+        if dedup_key not in seen_certs and first_name:
+            seen_certs.add(dedup_key)
+            issuer = entry.get("issuer_name", "")
+            # Extract CN from issuer
+            cn_match = re.search(r'CN=([^,]+)', issuer)
+            issuer_short = cn_match.group(1).strip() if cn_match else issuer[:40]
+            not_before = entry.get("not_before", "")[:10]
+            raw_entries.append({
+                "subdomain": first_name,
+                "issuer": issuer_short,
+                "date": not_before,
+            })
+
+    subs.discard(domain_lower)
+    # Sort raw entries by date descending
+    raw_entries.sort(key=lambda x: x["date"], reverse=True)
+    return sorted(subs), raw_entries
 
 
 async def run_subdomains(domain: str) -> dict:
@@ -66,10 +101,14 @@ async def run_subdomains(domain: str) -> dict:
             pass
 
     # Certificate transparency
-    ct_subs = await _query_crtsh(domain)
+    ct_subs, ct_entries = await _query_crtsh(domain)
     ct_count = 0
     for fqdn in ct_subs:
         if fqdn in seen_fqdns:
+            # Tag existing DNS entry as also found in CT
+            for item in found:
+                if item["subdomain"] == fqdn and item["source"] == "DNS":
+                    item["source"] = "DNS+CT"
             continue
         ips = []
         try:
@@ -86,5 +125,6 @@ async def run_subdomains(domain: str) -> dict:
         "total": len(found),
         "checked": len(COMMON_SUBDOMAINS),
         "ct_found": ct_count,
+        "ct_entries": ct_entries,
         "subdomains": found,
     }

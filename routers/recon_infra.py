@@ -147,11 +147,16 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
             prompt_parts.append(f"Security headers MISSING: {', '.join(missing)}")
 
     if req.subdomains and req.subdomains.get("subdomains"):
-        subs = [s["subdomain"] for s in req.subdomains["subdomains"]]
+        subs = req.subdomains["subdomains"]
+        dns_subs = [s["subdomain"] for s in subs if s.get("source") in ("DNS", "DNS+CT")]
+        ct_subs = [s["subdomain"] for s in subs if s.get("source") in ("CT", "DNS+CT")]
+        all_names = [s["subdomain"] for s in subs]
         prompt_parts.append(
-            f"Subdomains found ({len(subs)}): {', '.join(subs[:20])}"
-            + (f" (and {len(subs)-20} more)" if len(subs) > 20 else "")
+            f"Subdomains found ({len(all_names)}): {', '.join(all_names[:20])}"
+            + (f" (and {len(all_names)-20} more)" if len(all_names) > 20 else "")
         )
+        if ct_subs:
+            prompt_parts.append(f"CT log subdomains ({len(ct_subs)}): {', '.join(ct_subs[:15])}")
 
     if req.asn and req.asn.get("found"):
         a = req.asn

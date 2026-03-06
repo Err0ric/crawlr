@@ -2159,17 +2159,21 @@
   function renderSubdomainsCard(data) {
     const subs = data.subdomains || [];
     const ctCount = data.ct_found || 0;
-    const badgeText = ctCount > 0 ? `${subs.length} FOUND (${ctCount} CT)` : `${subs.length}/${data.checked || 0} FOUND`;
+    const ctEntries = data.ct_entries || [];
+    const ctTotal = subs.filter(s => s.source === 'CT' || s.source === 'DNS+CT').length;
+    const badgeText = ctTotal > 0 ? `${subs.length} FOUND (${ctTotal} via CT)` : `${subs.length}/${data.checked || 0} FOUND`;
     let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Subdomains</div><div class="badge ${subs.length > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div></div><div class="rcard-body">`;
     if (subs.length === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No subdomains found</div>`;
     } else {
+      function srcBadge(source) {
+        if (source === 'CT') return '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(20,184,166,0.15);color:#14b8a6;border:1px solid rgba(20,184,166,0.3);margin-left:6px;font-family:Share Tech Mono,monospace;">CT</span>';
+        if (source === 'DNS+CT') return '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(124,58,237,0.12);color:#7c3aed;border:1px solid rgba(124,58,237,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">DNS</span><span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(20,184,166,0.15);color:#14b8a6;border:1px solid rgba(20,184,166,0.3);margin-left:3px;font-family:Share Tech Mono,monospace;">CT</span>';
+        return '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(124,58,237,0.12);color:#7c3aed;border:1px solid rgba(124,58,237,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">DNS</span>';
+      }
       function subRow(s) {
-        const srcBadge = s.source === 'CT'
-          ? '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(20,184,166,0.15);color:#14b8a6;border:1px solid rgba(20,184,166,0.3);margin-left:6px;font-family:Share Tech Mono,monospace;">CT</span>'
-          : '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(124,58,237,0.12);color:#7c3aed;border:1px solid rgba(124,58,237,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">DNS</span>';
         const ipText = s.ips && s.ips.length ? s.ips.join(', ') : '<span style="color:var(--text-dim);font-style:italic">no A record</span>';
-        return `<div class="dot dg"></div>${s.subdomain}${srcBadge}<span style="color:var(--text-dim);margin-left:auto">${ipText}</span>`;
+        return `<div class="dot dg"></div>${s.subdomain}${srcBadge(s.source || 'DNS')}<span style="color:var(--text-dim);margin-left:auto">${ipText}</span>`;
       }
       const visible = subs.slice(0, 8);
       for (const s of visible) {
@@ -2183,6 +2187,24 @@
       }
     }
     html += `</div></div>`;
+
+    // CT Logs card
+    if (ctEntries.length > 0) {
+      html += `<div class="rcard"><div class="rcard-head"><div class="rcard-title">CT Logs</div><div class="badge b-hit">${ctEntries.length} CERTS</div></div><div class="rcard-body">`;
+      html += `<div class="ritem" style="color:var(--text-dim);font-size:10px;padding-bottom:4px;border-bottom:1px solid var(--border)"><div style="min-width:90px">Date</div><div style="flex:1">Subdomain</div><div style="min-width:80px;text-align:right">Issuer</div></div>`;
+      const visibleCt = ctEntries.slice(0, 10);
+      for (const e of visibleCt) {
+        html += `<div class="ritem"><div style="min-width:90px;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:10px">${e.date}</div><div style="flex:1;color:#14b8a6">${e.subdomain}</div><div style="min-width:80px;text-align:right;color:var(--text-dim);font-size:10px">${e.issuer}</div></div>`;
+      }
+      if (ctEntries.length > 10) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${ctEntries.length - 10} more certs →</div>`;
+        for (const e of ctEntries.slice(10)) {
+          html += `<div class="ritem ritem-extra" style="display:none"><div style="min-width:90px;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:10px">${e.date}</div><div style="flex:1;color:#14b8a6">${e.subdomain}</div><div style="min-width:80px;text-align:right;color:var(--text-dim);font-size:10px">${e.issuer}</div></div>`;
+        }
+      }
+      html += `</div></div>`;
+    }
+
     return html;
   }
 
@@ -2432,8 +2454,15 @@
     }
     if (d.subdomains && d.subdomains.subdomains && d.subdomains.subdomains.length) {
       md += `## Subdomains — ${d.subdomains.total} found\n\n`;
-      for (const s of d.subdomains.subdomains) md += `- ${s.subdomain} (${s.ips.join(', ')})\n`;
+      for (const s of d.subdomains.subdomains) md += `- \`[${s.source || 'DNS'}]\` ${s.subdomain} (${s.ips.join(', ') || 'no A record'})\n`;
       md += '\n';
+      const ct = d.subdomains.ct_entries || [];
+      if (ct.length) {
+        md += `### Certificate Transparency Log — ${ct.length} entries\n\n`;
+        md += `| Date | Subdomain | Issuer |\n|------|-----------|--------|\n`;
+        for (const e of ct) md += `| ${e.date} | ${e.subdomain} | ${e.issuer} |\n`;
+        md += '\n';
+      }
     }
     if (d.asn && d.asn.found) {
       md += `## ASN / BGP\n\n- **IP:** ${d.asn.ip}\n`;
