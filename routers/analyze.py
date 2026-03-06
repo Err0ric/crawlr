@@ -108,12 +108,17 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
                 prompt_parts.append(f"{p.get('platform', 'Unknown')} profile — {', '.join(parts)}")
 
     if req.platform_check and req.platform_check.get("results"):
-        found = [r["platform"] for r in req.platform_check["results"] if r.get("found")]
+        found = [r for r in req.platform_check["results"] if r.get("found")]
         not_found = [r["platform"] for r in req.platform_check["results"] if not r.get("found")]
         if found:
-            prompt_parts.append(f"Platform check confirmed profiles on: {', '.join(found)}")
+            found_details = [f"{r['platform']} ({r.get('url', '')})" for r in found]
+            prompt_parts.append(
+                f"Platform existence check confirmed {len(found)} profiles: {', '.join(found_details)}"
+            )
         if not_found:
-            prompt_parts.append(f"Platform check found no profile on: {', '.join(not_found)}")
+            prompt_parts.append(
+                f"Platform existence check found no profile on: {', '.join(not_found)}"
+            )
 
     if req.name_search and req.name_search.get("name"):
         prompt_parts.append(
