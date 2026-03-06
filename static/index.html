@@ -2157,18 +2157,27 @@
 
   function renderSubdomainsCard(data) {
     const subs = data.subdomains || [];
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Subdomains</div><div class="badge ${subs.length > 0 ? 'b-hit' : 'b-none'}">${subs.length}/${data.checked || 0} FOUND</div></div><div class="rcard-body">`;
+    const ctCount = data.ct_found || 0;
+    const badgeText = ctCount > 0 ? `${subs.length} FOUND (${ctCount} CT)` : `${subs.length}/${data.checked || 0} FOUND`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Subdomains</div><div class="badge ${subs.length > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div></div><div class="rcard-body">`;
     if (subs.length === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No subdomains found</div>`;
     } else {
+      function subRow(s) {
+        const srcBadge = s.source === 'CT'
+          ? '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(20,184,166,0.15);color:#14b8a6;border:1px solid rgba(20,184,166,0.3);margin-left:6px;font-family:Share Tech Mono,monospace;">CT</span>'
+          : '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(124,58,237,0.12);color:#7c3aed;border:1px solid rgba(124,58,237,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">DNS</span>';
+        const ipText = s.ips && s.ips.length ? s.ips.join(', ') : '<span style="color:var(--text-dim);font-style:italic">no A record</span>';
+        return `<div class="dot dg"></div>${s.subdomain}${srcBadge}<span style="color:var(--text-dim);margin-left:auto">${ipText}</span>`;
+      }
       const visible = subs.slice(0, 8);
       for (const s of visible) {
-        html += `<div class="ritem"><div class="dot dg"></div>${s.subdomain} <span style="color:var(--text-dim);margin-left:auto">${s.ips.join(', ')}</span></div>`;
+        html += `<div class="ritem">${subRow(s)}</div>`;
       }
       if (subs.length > 8) {
         html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${subs.length - 8} more →</div>`;
         for (const s of subs.slice(8)) {
-          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot dg"></div>${s.subdomain} <span style="color:var(--text-dim);margin-left:auto">${s.ips.join(', ')}</span></div>`;
+          html += `<div class="ritem ritem-extra" style="display:none">${subRow(s)}</div>`;
         }
       }
     }
