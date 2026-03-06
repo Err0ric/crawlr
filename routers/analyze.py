@@ -421,3 +421,153 @@ async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...)):
         "tokens": tokens,
         "elapsed": elapsed,
     }
+
+
+class CorrelateRequest(BaseModel):
+    targets: dict  # { "target_name": { sherlock: ..., github: ..., ... }, ... }
+
+
+def _summarize_target_data(target: str, data: dict) -> str:
+    """Build a concise text summary of one target's scan results."""
+    parts = [f"\n[TARGET: {target}]"]
+
+    if data.get("sherlock") and data["sherlock"].get("results"):
+        results = data["sherlock"]["results"]
+        confirmed = [r["site"] for r in results if r.get("confidence") != "false_positive"]
+        if confirmed:
+            parts.append(f"  Sherlock ({len(confirmed)} profiles): {', '.join(confirmed[:25])}")
+
+    if data.get("holehe") and data["holehe"].get("results"):
+        accounts = [r["site"] for r in data["holehe"]["results"]]
+        parts.append(f"  Holehe ({len(accounts)} services): {', '.join(accounts)}")
+
+    if data.get("github") and data["github"].get("found"):
+        gh = data["github"]
+        info = []
+        for k in ("name", "bio", "location", "company", "email", "blog"):
+            if gh.get(k):
+                info.append(f"{k}: {gh[k]}")
+        info.append(f"{gh.get('public_repos', 0)} repos, {gh.get('followers', 0)} followers")
+        parts.append(f"  GitHub: {', '.join(info)}")
+
+    if data.get("gravatar") and data["gravatar"].get("found"):
+        g = data["gravatar"]
+        info = []
+        for k in ("name", "display_name", "location"):
+            if g.get(k):
+                info.append(f"{k}: {g[k]}")
+        if info:
+            parts.append(f"  Gravatar: {', '.join(info)}")
+
+    if data.get("hibp") and data["hibp"].get("breaches"):
+        parts.append(f"  Breaches: {', '.join(data['hibp']['breaches'][:15])}")
+
+    if data.get("enricher") and data["enricher"].get("profiles"):
+        for p in data["enricher"]["profiles"]:
+            info = []
+            if p.get("display_name"):
+                info.append(f"name: {p['display_name']}")
+            if p.get("bio"):
+                info.append(f"bio: {p['bio'][:150]}")
+            if info:
+                parts.append(f"  {p.get('platform', '?')}: {', '.join(info)}")
+
+    if data.get("platformCheck") and data["platformCheck"].get("results"):
+        found = [r["platform"] for r in data["platformCheck"]["results"] if r.get("found")]
+        if found:
+            parts.append(f"  Platform check confirmed: {', '.join(found)}")
+
+    if data.get("hunter") and data["hunter"].get("emails"):
+        emails = [e["email"] for e in data["hunter"]["emails"][:10]]
+        parts.append(f"  Hunter.io: {', '.join(emails)}")
+
+    if data.get("shodan") and data["shodan"].get("found"):
+        s = data["shodan"]
+        info = []
+        for k in ("org", "os", "country", "city"):
+            if s.get(k):
+                info.append(f"{k}: {s[k]}")
+        if info:
+            parts.append(f"  Shodan: {', '.join(info)}")
+
+    return "\n".join(parts)
+
+
+@router.post("/correlate")
+async def correlate(req: CorrelateRequest, x_api_key: str = Header(...)):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API key is required")
+
+    if len(req.targets) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 targets to correlate")
+
+    target_summaries = []
+    for target_name, data in req.targets.items():
+        target_summaries.append(_summarize_target_data(target_name, data))
+
+    combined_data = "\n".join(target_summaries)
+    target_list = ", ".join(req.targets.keys())
+
+    client = anthropic.Anthropic(api_key=x_api_key)
+    t0 = time.time()
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2048,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "You are a senior OSINT analyst performing CROSS-TARGET CORRELATION. "
+                    f"You have scan results for {len(req.targets)} separate targets: {target_list}. "
+                    "Your job is to find connections, overlaps, and identity relationships BETWEEN these targets.\n\n"
+                    "Produce EXACTLY these sections with ** bold headers:\n\n"
+                    "**IDENTITY CORRELATION**\n"
+                    "Are any of these targets the same person? Analyze shared platforms, matching usernames, "
+                    "consistent display names, overlapping bios, matching locations, or linked accounts. "
+                    "For each pair of targets, state whether they appear to be: SAME PERSON (high confidence), "
+                    "LIKELY SAME PERSON, POSSIBLY RELATED, or NO CONNECTION FOUND. Explain your reasoning "
+                    "with specific evidence (e.g. 'both have GitHub profiles with matching company field').\n\n"
+                    "**CROSS-TARGET CONNECTIONS**\n"
+                    "List every concrete data point that connects any two targets:\n"
+                    "→ Shared platforms where both have accounts\n"
+                    "→ Email addresses that appear in multiple targets' results\n"
+                    "→ Matching or similar display names, bios, or locations across targets\n"
+                    "→ One target's email matching another target's GitHub commit author\n"
+                    "→ Linked URLs on one profile pointing to another target's accounts\n"
+                    "Use → prefix for each connection found.\n\n"
+                    "**UNIFIED PROFILE**\n"
+                    "If targets appear to be the same person or closely related, combine all findings "
+                    "into a single consolidated identity profile. Write 2-3 paragraphs synthesizing: "
+                    "probable real name, location, occupation, technical interests, online behavior patterns. "
+                    "If targets are unrelated, briefly profile each separately.\n\n"
+                    "**CONTRADICTIONS**\n"
+                    "Flag any inconsistencies between targets: different names on what should be the same person, "
+                    "conflicting locations, different employers, accounts that don't cross-reference when expected. "
+                    "Use → prefix for each contradiction. If none found, state 'No contradictions detected.'\n\n"
+                    "**CONSOLIDATED OPSEC**\n"
+                    "Rate the combined OPSEC posture across all targets as POOR, FAIR, MODERATE, or STRONG. "
+                    "What is the worst privacy leak across all targets? What identity correlation is possible "
+                    "because the same person used multiple handles? What could they do better? Write in prose.\n\n"
+                    "FORMATTING RULES:\n"
+                    "- Use **bold** for headers and key terms\n"
+                    "- Use → prefix for connection items and contradictions\n"
+                    "- Do NOT use # markdown headers\n"
+                    "- Write UNIFIED PROFILE and CONSOLIDATED OPSEC as flowing prose\n"
+                    "- Keep total length 500-800 words\n\n"
+                    f"Scan data for all targets:\n{combined_data}"
+                ),
+            }
+        ],
+    )
+
+    elapsed = round(time.time() - t0, 1)
+    text = message.content[0].text
+    tokens = message.usage.input_tokens + message.usage.output_tokens
+
+    return {
+        "summary": text,
+        "model": message.model,
+        "tokens": tokens,
+        "elapsed": elapsed,
+    }

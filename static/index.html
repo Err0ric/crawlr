@@ -1729,6 +1729,40 @@
     return html;
   }
 
+  function renderCorrelationBlock(data) {
+    const lines = data.summary.split('\n');
+    let html = `<div class="ai-block" style="border-color:rgba(245,158,11,0.4);background:linear-gradient(180deg,rgba(245,158,11,0.03) 0%,transparent 60px);">
+      <div class="ai-head" style="border-color:rgba(245,158,11,0.25);">
+        <div class="ai-tag" style="color:#f59e0b;font-size:12px;">// CROSS-TARGET CORRELATION</div>
+        <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
+      </div>
+      <div class="ai-body" style="font-size:12px;line-height:1.7;">`;
+
+    let inLeads = false;
+    let leadCnt = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) { if (inLeads) { html += '</div>'; inLeads = false; } continue; }
+
+      if (isSectionHeading(line)) {
+        if (inLeads) { html += '</div>'; inLeads = false; }
+        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
+        html += `<div class="ai-section" onclick="toggleSection(this)" style="color:#f59e0b;border-color:rgba(245,158,11,0.15);"><span class="sec-arrow">▼</span> // ${label}</div>`;
+      } else if (/^[→•]\s*/.test(line)) {
+        const bulletText = line.replace(/^[→•]\s*/, '');
+        if (!inLeads) { html += '<div class="leads">'; inLeads = true; }
+        const id = 'corr_' + (leadCnt++);
+        html += `<div class="lead chk-item ${chkItemClass(id)}">${chkHtml(id)}<span class="lead-arr" style="color:#f59e0b;">→</span><span class="lead-text">${mdInline(bulletText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy" style="color:#f59e0b;">⧉</span></div>`;
+      } else {
+        if (inLeads) { html += '</div>'; inLeads = false; }
+        html += `<div style="margin-bottom:6px;color:var(--text-mid);">${mdInline(line)}</div>`;
+      }
+    }
+    if (inLeads) html += '</div>';
+    html += `</div></div>`;
+    return html;
+  }
+
   // Run all modules for a single target, appending to provided DOM elements
   async function _runSingleTarget(target, logEl, cardsEl, aiEl, t0) {
     const inputType = getInputType(target);
@@ -2013,6 +2047,48 @@
       const lastTarget = targets[targets.length - 1];
       lastCollected = allCollected[lastTarget] || {};
       currentTarget = lastTarget;
+
+      // Cross-Target Correlation — runs automatically with API key
+      const apiKey = getApiKey();
+      if (apiKey && Object.keys(allCollected).length >= 2) {
+        // Estimate tokens
+        let estTokens = 600;
+        for (const tgt of Object.keys(allCollected)) {
+          const c = allCollected[tgt];
+          if (c.sherlock) estTokens += (c.sherlock.results || []).length * 12;
+          if (c.holehe) estTokens += (c.holehe.results || []).length * 8;
+          if (c.github && c.github.found) estTokens += 100;
+          if (c.enricher) estTokens += (c.enricher.profiles || []).length * 40;
+          if (c.platformCheck) estTokens += (c.platformCheck.results || []).filter(r => r.found).length * 10;
+        }
+        estTokens = Math.round(estTokens / 100) * 100;
+
+        // Insert correlation section at the TOP
+        const corrSection = document.createElement('div');
+        corrSection.id = 'correlationSection';
+        corrSection.style.cssText = 'margin-bottom:12px;';
+        corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#f59e0b;padding:10px 14px;border:1px solid rgba(245,158,11,0.3);border-radius:4px;background:rgba(245,158,11,0.04);">⏳ Running cross-target correlation analysis (~${estTokens} tokens)...</div>`;
+        res.insertBefore(corrSection, res.firstChild);
+
+        runBtn.textContent = '⏳ CORRELATING...';
+
+        try {
+          const corrResp = await fetch('/api/analyze/correlate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+            body: JSON.stringify({ targets: allCollected }),
+          });
+          if (!corrResp.ok) {
+            const err = await corrResp.json().catch(() => ({ detail: 'Request failed' }));
+            corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${err.detail || corrResp.statusText}</div>`;
+          } else {
+            const corrData = await corrResp.json();
+            corrSection.innerHTML = renderCorrelationBlock(corrData);
+          }
+        } catch (e) {
+          corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${e.message}</div>`;
+        }
+      }
 
       showToast(`Bulk scan complete — ${targets.length} targets processed`);
     }
