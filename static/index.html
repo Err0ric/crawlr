@@ -408,6 +408,12 @@
   .empty-sub { font-size: 12px; color: var(--text-dim); text-align: center; max-width: 280px; line-height: 1.7; }
 
   .agent-log { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 18px; }
+  .log-summary { display: flex; align-items: center; gap: 12px; padding: 9px 14px; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--success); cursor: pointer; transition: background 0.1s; }
+  .log-summary:hover { background: var(--bg3); }
+  .log-summary .log-icon { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; background: var(--success); color: #fff; }
+  .log-summary .log-expand { margin-left: auto; font-size: 9px; color: var(--text-dim); transition: transform 0.2s; }
+  .log-summary .log-expand.open { transform: rotate(180deg); }
+  .agent-log.collapsed .log-row { display: none; }
 
   .log-row {
     display: flex;
@@ -863,6 +869,22 @@
 
   function setLogTime(row, seconds) {
     row.querySelector('.log-time').textContent = seconds.toFixed(1) + 's';
+  }
+
+  function collapseLog(logEl, totalTime, tokensUsed) {
+    const rows = logEl.querySelectorAll('.log-row');
+    const moduleCount = rows.length;
+    let summaryText = `${moduleCount} modules complete · ${totalTime.toFixed(1)}s`;
+    if (tokensUsed) summaryText += ` · ${tokensUsed} tokens`;
+    logEl.classList.add('collapsed');
+    const summary = document.createElement('div');
+    summary.className = 'log-summary';
+    summary.innerHTML = `<div class="log-icon">✓</div><span>${summaryText}</span><span class="log-expand">▼</span>`;
+    summary.onclick = () => {
+      logEl.classList.toggle('collapsed');
+      summary.querySelector('.log-expand').classList.toggle('open');
+    };
+    logEl.insertBefore(summary, logEl.firstChild);
   }
 
   /* ── Sherlock results renderer ── */
@@ -1335,6 +1357,7 @@
     }
 
     // AI Analysis — only if we have an API key and at least some results
+    let scanTokens = 0;
     const apiKey = getApiKey();
     const hasResults = Object.values(collected).some(v => v);
     if (apiKey && hasResults) {
@@ -1368,6 +1391,7 @@
           updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
         } else {
           const data = await resp.json();
+          scanTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           lastAISummary = data.summary;
           aiEl.innerHTML = renderAIBlock(data);
@@ -1382,8 +1406,7 @@
       addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
     }
 
-    const doneRow = addLogRow(logEl, 'Investigation complete.', 'done');
-    setLogTime(doneRow, (performance.now() - t0) / 1000);
+    collapseLog(logEl, (performance.now() - t0) / 1000, scanTokens);
 
     runBtn.textContent = '▶ Run Investigation';
     runBtn.style.pointerEvents = '';
@@ -1554,7 +1577,7 @@
       tabs[1].classList.add('on');
       document.getElementById('reconContent').style.display = 'none';
       document.getElementById('reconGraphPanel').style.display = '';
-      renderReconGraph();
+      requestAnimationFrame(() => requestAnimationFrame(() => renderReconGraph()));
     } else {
       tabs[0].classList.add('on');
       document.getElementById('reconContent').style.display = '';
@@ -1565,9 +1588,10 @@
   function renderReconGraph() {
     const container = document.getElementById('reconGraph');
     container.innerHTML = '';
+    if (typeof d3 === 'undefined') { container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:11px;">D3.js failed to load</div>'; return; }
     const d = reconCollected;
     const target = document.getElementById('reconTargetInput').value.trim();
-    if (!target) { container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:11px;">Run a recon scan first</div>'; return; }
+    if (!target || !d || Object.keys(d).length === 0) { container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:11px;">Run a recon scan first</div>'; return; }
 
     const nodes = [];
     const links = [];
@@ -1633,8 +1657,9 @@
       return;
     }
 
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+    const rect = container.getBoundingClientRect();
+    const width = rect.width || 800;
+    const height = rect.height || 500;
 
     const colorMap = {
       domain: '#a855f7', ip: '#6b7280', mx: '#d97706', ns: '#14b8a6',
@@ -1914,6 +1939,7 @@
       `Port scan on "${target}"`, '/api/infra/portscan', { domain: target }, renderPortscanCard);
 
     // AI Analysis
+    let reconTokens = 0;
     const apiKey = getApiKey();
     if (apiKey) {
       const aiRow = addLogRow(logEl, 'Sending recon data to Claude for analysis...', 'run');
@@ -1941,6 +1967,7 @@
         } else {
           const data = await resp.json();
           reconAISummary = data.summary;
+          reconTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           aiEl.innerHTML = renderAIBlock(data);
         }
@@ -1953,8 +1980,7 @@
       addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
     }
 
-    const doneRow = addLogRow(logEl, 'Recon complete.', 'done');
-    setLogTime(doneRow, (performance.now() - t0) / 1000);
+    collapseLog(logEl, (performance.now() - t0) / 1000, reconTokens);
     runBtn.textContent = '▶ Run Recon';
     runBtn.style.pointerEvents = '';
     reconScanning = false;
