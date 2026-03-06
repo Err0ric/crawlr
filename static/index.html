@@ -800,8 +800,8 @@
   </div>
 </div>
 
-<div class="workspace" id="historyWorkspace" style="display:none;">
-  <div class="main" style="max-width:800px;margin:0 auto;padding:30px 20px;">
+<div class="workspace" id="historyWorkspace" style="display:none;grid-template-columns:1fr;">
+  <div class="main" style="max-width:800px;margin:0 auto;padding:30px 20px;overflow-y:auto;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
       <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;">// Scan History</div>
       <button class="action-btn" onclick="clearHistory()" id="historyClearBtn" style="display:none;">Clear All</button>
@@ -2672,12 +2672,9 @@
     const entries = getHistory();
     const list = document.getElementById('historyList');
     const clearBtn = document.getElementById('historyClearBtn');
-    const empty = document.getElementById('historyEmpty');
 
     if (!entries.length) {
-      list.innerHTML = '';
-      list.appendChild(empty);
-      empty.style.display = '';
+      list.innerHTML = `<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No Scans Yet</div><div class="empty-sub">Run INVESTIGATE or RECON to get started.</div></div>`;
       clearBtn.style.display = 'none';
       return;
     }
