@@ -667,6 +667,29 @@
   </div>
 </div>
 
+<div class="overlay" id="deepDiveOverlay" style="z-index:250;">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-eye">// Deep Dive Analysis</div>
+    <div class="modal-title">Confirm Deep Dive</div>
+    <div class="modal-sub" style="line-height:1.8;margin-bottom:12px;">
+      This will <strong style="color:#f59e0b">actively visit</strong> discovered profile URLs to scrape display names, bios, emails, and linked accounts, then send all data to Claude for cross-platform identity correlation.
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border-mid);border-radius:3px;padding:12px 14px;margin-bottom:14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);line-height:1.8;">
+      <div style="color:#f59e0b;margin-bottom:4px;letter-spacing:1px;">⚠ ACTIVE TECHNIQUE</div>
+      → Profile pages will be fetched with a browser user-agent<br>
+      → Target may see visits in analytics or access logs<br>
+      <div style="margin-top:8px;color:var(--text-dim);">
+        Model: <strong id="ddModel" style="color:var(--text-bright)">claude-sonnet-4-20250514</strong><br>
+        Est. tokens: <strong id="ddTokens" style="color:var(--text-bright)">—</strong>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-primary" style="background:rgba(245,158,11,0.1);border-color:#f59e0b;color:#f59e0b;" onclick="confirmDeepDive()">⚡ Run Deep Dive</button>
+      <button class="modal-secondary" onclick="closeDeepDive()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="termsOverlay" style="z-index:300;">
   <div class="modal" style="max-width:480px;">
     <div class="modal-eye">// Terms of Use · v1</div>
@@ -797,6 +820,10 @@
           <div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div>
         </div>
       </div>
+      <div id="deepDiveBtn" style="display:none;padding:12px 16px;">
+        <button onclick="showDeepDiveModal()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">⚡ Run Deep Dive Analysis</button>
+      </div>
+      <div id="deepDiveResults" style="display:none;padding:0 16px 16px;"></div>
     </div>
 
     <div class="statusbar">
@@ -1488,6 +1515,173 @@
     return html;
   }
 
+  /* ── Deep Dive functions ── */
+  let deepDiveResolve = null;
+
+  function _collectProfileUrls() {
+    const urls = [];
+    const c = lastCollected || {};
+    if (c.sherlock && c.sherlock.results) {
+      for (const r of c.sherlock.results) {
+        if (r.confidence !== 'false_positive' && r.url) urls.push({ site: r.site, url: r.url });
+      }
+    }
+    if (c.platformCheck && c.platformCheck.results) {
+      for (const r of c.platformCheck.results) {
+        if (r.found && r.url && !urls.some(p => p.url === r.url)) urls.push({ site: r.platform, url: r.url });
+      }
+    }
+    return urls;
+  }
+
+  function _estimateDeepDiveTokens() {
+    const c = lastCollected || {};
+    // Base AI tokens from existing data
+    let est = 800;
+    if (c.sherlock) est += (c.sherlock.results || []).length * 15;
+    if (c.holehe) est += (c.holehe.results || []).length * 10;
+    if (c.harvester) est += 200;
+    if (c.github && c.github.found) est += 150;
+    // Profile scrape adds ~200 tokens per profile
+    const profileCount = Math.min(_collectProfileUrls().length, 20);
+    est += profileCount * 200;
+    return Math.round(est / 100) * 100;
+  }
+
+  function showDeepDiveModal() {
+    const activeOn = document.getElementById('activeTechToggle').classList.contains('on');
+    if (!activeOn) {
+      showToast('Enable Active Techniques toggle first');
+      return;
+    }
+    const urls = _collectProfileUrls();
+    if (urls.length === 0) {
+      showToast('No profile URLs to scrape — run a scan first');
+      return;
+    }
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      showToast('Set your Claude API key in Settings first');
+      return;
+    }
+    document.getElementById('ddTokens').textContent = `~${_estimateDeepDiveTokens()} (${Math.min(urls.length, 20)} profiles)`;
+    document.getElementById('deepDiveOverlay').classList.add('open');
+  }
+
+  function closeDeepDive() {
+    document.getElementById('deepDiveOverlay').classList.remove('open');
+  }
+
+  async function confirmDeepDive() {
+    closeDeepDive();
+    const apiKey = getApiKey();
+    const target = currentTarget;
+    const urls = _collectProfileUrls().slice(0, 20);
+    const c = lastCollected || {};
+    const ddBtn = document.getElementById('deepDiveBtn');
+    const ddResults = document.getElementById('deepDiveResults');
+
+    // Disable button, show progress
+    ddBtn.querySelector('button').textContent = '⏳ Scraping profiles...';
+    ddBtn.querySelector('button').style.pointerEvents = 'none';
+    ddResults.style.display = '';
+    ddResults.innerHTML = '<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">⏳ Visiting ' + urls.length + ' profile pages...</div>';
+
+    try {
+      // Step 1: Scrape profiles
+      const scrapeResp = await fetch('/api/recon/scrape-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls }),
+      });
+      if (!scrapeResp.ok) throw new Error('Profile scraping failed');
+      const scrapeData = await scrapeResp.json();
+      c.profileScrape = scrapeData;
+
+      // Show scrape card
+      ddResults.innerHTML = renderProfileScrapeCard(scrapeData);
+
+      // Step 2: Run Deep Dive AI analysis
+      ddResults.innerHTML += '<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">⏳ Sending to Claude for deep correlation...</div>';
+
+      const aiResp = await fetch('/api/analyze/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+        body: JSON.stringify({
+          target,
+          sherlock: c.sherlock,
+          holehe: c.holehe,
+          harvester: c.harvester,
+          hibp: c.hibp,
+          gravatar: c.gravatar,
+          github: c.github,
+          enricher: c.enricher,
+          platform_check: c.platformCheck || null,
+          hunter: c.hunter || null,
+          shodan: c.shodan || null,
+          name_search: c.nameSearch || null,
+          profile_scrape: scrapeData,
+          active_techniques: true,
+        }),
+      });
+      if (!aiResp.ok) throw new Error('AI analysis failed');
+      const aiData = await aiResp.json();
+
+      // Remove the loading text, keep scrape card, add AI block
+      const loadingEls = ddResults.querySelectorAll('div[style*="text-dim"]');
+      loadingEls.forEach(el => el.remove());
+
+      // Render Deep Dive AI block
+      const ddBlock = document.createElement('div');
+      ddBlock.innerHTML = renderDeepDiveBlock(aiData);
+      ddResults.appendChild(ddBlock);
+
+      ddBtn.querySelector('button').textContent = '✓ Deep Dive Complete';
+      ddBtn.querySelector('button').style.color = 'var(--green)';
+      ddBtn.querySelector('button').style.borderColor = 'var(--green)';
+      ddBtn.querySelector('button').style.background = 'rgba(16,185,129,0.08)';
+      ddBtn.querySelector('button').style.pointerEvents = 'none';
+    } catch (e) {
+      ddResults.innerHTML += `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:8px 0;">Error: ${e.message}</div>`;
+      ddBtn.querySelector('button').textContent = '⚡ Run Deep Dive Analysis';
+      ddBtn.querySelector('button').style.pointerEvents = '';
+    }
+  }
+
+  function renderDeepDiveBlock(data) {
+    aiLeadCounter = 0;
+    const lines = data.summary.split('\n');
+    let html = `<div class="ai-block" style="margin-top:12px;border-color:rgba(245,158,11,0.3);">
+      <div class="ai-head" style="border-color:rgba(245,158,11,0.2);">
+        <div class="ai-tag" style="color:#f59e0b;">// DEEP DIVE</div>
+        <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
+      </div>
+      <div class="ai-body">`;
+
+    let inLeads = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) { if (inLeads) { html += '</div>'; inLeads = false; } continue; }
+      const isBullet = /^[→•\-]\s*/.test(line);
+      const bulletText = line.replace(/^[→•\-]\s*/, '');
+      if (isSectionHeading(line)) {
+        if (inLeads) { html += '</div>'; inLeads = false; }
+        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
+        html += `<div class="ai-section" onclick="toggleSection(this)"><span class="sec-arrow">▼</span> // ${label}</div>`;
+      } else if (isBullet) {
+        if (!inLeads) { html += '<div class="leads">'; inLeads = true; }
+        const id = 'dd_' + (aiLeadCounter++);
+        html += `<div class="lead chk-item ${chkItemClass(id)}">${chkHtml(id)}<span class="lead-arr">→</span><span class="lead-text">${mdInline(bulletText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy">⧉</span></div>`;
+      } else {
+        if (inLeads) { html += '</div>'; inLeads = false; }
+        html += `<div style="margin-bottom:4px">${mdInline(line)}</div>`;
+      }
+    }
+    if (inLeads) html += '</div>';
+    html += `</div></div>`;
+    return html;
+  }
+
   async function runScan() {
     if (scanning) return;
     const target = document.getElementById('targetInput').value.trim();
@@ -1515,6 +1709,9 @@
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('aiReportTab').style.display = 'none';
     document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
+    document.getElementById('deepDiveBtn').style.display = 'none';
+    document.getElementById('deepDiveResults').style.display = 'none';
+    document.getElementById('deepDiveResults').innerHTML = '';
     // Switch back to Results tab if on AI Report
     const activeTab = document.querySelector('#investigateWorkspace .tab.on');
     if (activeTab && activeTab.id === 'aiReportTab') {
@@ -1656,41 +1853,6 @@
       );
     }
 
-    // Deep Dive: scrape profile pages when Active Techniques is ON
-    const activeOn = document.getElementById('activeTechToggle').classList.contains('on');
-    if (activeOn && !nameSearch) {
-      const profileUrls = [];
-      // Gather URLs from Sherlock results (skip false positives)
-      if (collected.sherlock && collected.sherlock.results) {
-        for (const r of collected.sherlock.results) {
-          if (r.confidence !== 'false_positive' && r.url) {
-            profileUrls.push({ site: r.site, url: r.url });
-          }
-        }
-      }
-      // Gather URLs from platform check results
-      if (collected.platformCheck && collected.platformCheck.results) {
-        for (const r of collected.platformCheck.results) {
-          if (r.found && r.url && !profileUrls.some(p => p.url === r.url)) {
-            profileUrls.push({ site: r.platform, url: r.url });
-          }
-        }
-      }
-      if (profileUrls.length > 0) {
-        collected.profileScrape = await runModule(logEl, cardsEl, t0,
-          `Deep Dive scraping ${Math.min(profileUrls.length, 20)} profiles`,
-          '/api/recon/scrape-profiles',
-          { urls: profileUrls.slice(0, 20) },
-          renderProfileScrapeCard
-        );
-      }
-    } else if (!activeOn && !nameSearch) {
-      cardsEl.innerHTML += `<div class="rcard">
-        <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-none">OFF</div></div>
-        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>Enable Active Techniques for live profile correlation</div></div>
-      </div>`;
-    }
-
     // AI Analysis — only if we have an API key and at least some results
     let scanTokens = 0;
     const apiKey = getApiKey();
@@ -1718,7 +1880,6 @@
             hunter: collected.hunter || null,
             shodan: collected.shodan || null,
             name_search: collected.nameSearch || null,
-            profile_scrape: collected.profileScrape || null,
             active_techniques: document.getElementById('activeTechToggle').classList.contains('on'),
           }),
         });
@@ -1736,6 +1897,21 @@
           updateAIProgress();
           document.getElementById('aiReportTab').style.display = '';
           document.getElementById('aiReportContent').innerHTML = renderAIBlock(data);
+          // Show Deep Dive button if profiles are available
+          const ddBtn = document.getElementById('deepDiveBtn');
+          const ddResults = document.getElementById('deepDiveResults');
+          ddResults.style.display = 'none';
+          ddResults.innerHTML = '';
+          if (_collectProfileUrls().length > 0) {
+            ddBtn.style.display = '';
+            ddBtn.querySelector('button').textContent = '⚡ Run Deep Dive Analysis';
+            ddBtn.querySelector('button').style.pointerEvents = '';
+            ddBtn.querySelector('button').style.color = '#f59e0b';
+            ddBtn.querySelector('button').style.borderColor = 'rgba(245,158,11,0.4)';
+            ddBtn.querySelector('button').style.background = 'rgba(245,158,11,0.08)';
+          } else {
+            ddBtn.style.display = 'none';
+          }
         }
       } catch (e) {
         clearInterval(aiTimer);
@@ -3007,12 +3183,29 @@
       if (d.shodan) cardsEl.innerHTML += renderShodanCard(d.shodan);
       if (d.profileScrape) cardsEl.innerHTML += renderProfileScrapeCard(d.profileScrape);
       if (d.nameSearch) cardsEl.innerHTML += renderNameSearchCard(d.nameSearch);
+      lastCollected = d;
+      currentTarget = entry.target;
       if (entry.aiSummary) {
         const aiBlock = document.createElement('div');
         aiBlock.innerHTML = renderAIBlock({ summary: entry.aiSummary });
         res.insertBefore(aiBlock, cardsEl);
         document.getElementById('aiReportTab').style.display = '';
         document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: entry.aiSummary });
+        // Show Deep Dive button if profiles available
+        const ddBtn = document.getElementById('deepDiveBtn');
+        const ddResults = document.getElementById('deepDiveResults');
+        ddResults.style.display = 'none';
+        ddResults.innerHTML = '';
+        if (_collectProfileUrls().length > 0) {
+          ddBtn.style.display = '';
+          ddBtn.querySelector('button').textContent = '⚡ Run Deep Dive Analysis';
+          ddBtn.querySelector('button').style.pointerEvents = '';
+          ddBtn.querySelector('button').style.color = '#f59e0b';
+          ddBtn.querySelector('button').style.borderColor = 'rgba(245,158,11,0.4)';
+          ddBtn.querySelector('button').style.background = 'rgba(245,158,11,0.08)';
+        } else {
+          ddBtn.style.display = 'none';
+        }
       }
     } else {
       switchMode('recon');
