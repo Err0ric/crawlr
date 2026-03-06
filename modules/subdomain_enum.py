@@ -45,7 +45,7 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
     for entry in entries:
         # Extract subdomains from both fields
         for field in ("common_name", "name_value"):
-            val = entry.get(field, "")
+            val = entry.get(field) or ""
             for name in val.split("\n"):
                 name = name.strip().lower()
                 while name.startswith("*."):
@@ -57,8 +57,8 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
                         subs.add(name)
 
         # Build raw CT entry for the card (dedupe by cert serial)
-        serial = entry.get("serial_number", "")
-        name_value = entry.get("name_value", "").strip()
+        serial = entry.get("serial_number") or ""
+        name_value = (entry.get("name_value") or "").strip()
         # Clean name_value: take first line, strip wildcards
         first_name = name_value.split("\n")[0].strip().lower()
         while first_name.startswith("*."):
