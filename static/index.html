@@ -590,107 +590,116 @@
     el.classList.add('on');
   }
 
-  const steps = [
-    { text: 'Detecting input type...', dur: 700 },
-    { text: 'Initializing Sherlock username scan...', dur: 1000 },
-    { text: 'Running Holehe email account check...', dur: 900 },
-    { text: 'Running theHarvester domain recon...', dur: 1100 },
-    { text: 'Sending results to Claude for analysis...', dur: 1200 },
-    { text: 'Investigation complete.', dur: 0 },
-  ];
+  /* ── Log helpers ── */
+  function addLogRow(logEl, text, status) {
+    const row = document.createElement('div');
+    row.className = `log-row s-${status}`;
+    const icons = { run: '⟳', done: '✓', wait: '…' };
+    row.innerHTML = `<div class="log-icon">${icons[status] || '…'}</div><span>${text}</span><span class="log-time"></span>`;
+    logEl.appendChild(row);
+    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return row;
+  }
 
-  function runScan() {
-    const target = document.getElementById('targetInput').value || 'target@example.com';
+  function updateLogRow(row, text, status) {
+    row.className = `log-row s-${status}`;
+    const icons = { run: '⟳', done: '✓', wait: '…' };
+    row.querySelector('.log-icon').textContent = icons[status] || '…';
+    if (text) row.querySelector('span:nth-child(2)').textContent = text;
+  }
+
+  function setLogTime(row, seconds) {
+    row.querySelector('.log-time').textContent = seconds.toFixed(1) + 's';
+  }
+
+  /* ── Sherlock results renderer ── */
+  function renderSherlockCard(data) {
+    const count = data.total || 0;
+    const items = data.results || [];
+    const visible = items.slice(0, 6);
+    const remaining = items.length - visible.length;
+
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Sherlock · Profiles</div>
+        <div class="badge ${count > 0 ? 'b-hit' : 'b-none'}">${count} HIT${count !== 1 ? 'S' : ''}</div>
+      </div>
+      <div class="rcard-body">`;
+
+    if (count === 0) {
+      html += `<div class="ritem"><div class="dot dd"></div>No profiles found</div>`;
+    } else {
+      for (const r of visible) {
+        html += `<div class="ritem"><div class="dot dg"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
+      }
+      if (remaining > 0) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
+        for (const r of items.slice(6)) {
+          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot dg"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
+        }
+      }
+    }
+
+    html += `</div></div>`;
+    return html;
+  }
+
+  /* ── Main scan ── */
+  let scanning = false;
+
+  async function runScan() {
+    if (scanning) return;
+    const target = document.getElementById('targetInput').value.trim();
+    if (!target) { document.getElementById('targetInput').focus(); return; }
+
+    scanning = true;
+    const runBtn = document.querySelector('.run-btn');
+    runBtn.textContent = '⏳ SCANNING...';
+    runBtn.style.pointerEvents = 'none';
+
     document.getElementById('emptyState').style.display = 'none';
     const res = document.getElementById('results');
     res.style.display = 'block';
-    res.innerHTML = '<div class="agent-log" id="log"></div>';
+    res.innerHTML = '<div class="agent-log" id="log"></div><div id="resultCards"></div>';
+    const logEl = document.getElementById('log');
+    const cardsEl = document.getElementById('resultCards');
 
-    let i = 0;
-    function step() {
-      const log = document.getElementById('log');
-      if (i > 0) {
-        const prev = log.querySelector(`[data-i="${i-1}"]`);
-        if (prev) { prev.className = 'log-row s-done'; prev.querySelector('.log-icon').textContent = '✓'; }
+    const t0 = performance.now();
+
+    // Step 1: Sherlock
+    const sherlockRow = addLogRow(logEl, `Running Sherlock scan on "${target}"...`, 'run');
+    const timer = setInterval(() => setLogTime(sherlockRow, (performance.now() - t0) / 1000), 200);
+
+    try {
+      const resp = await fetch('/api/recon/sherlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: target }),
+      });
+
+      clearInterval(timer);
+      setLogTime(sherlockRow, (performance.now() - t0) / 1000);
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
+        updateLogRow(sherlockRow, `Sherlock error: ${err.detail || resp.statusText}`, 'wait');
+      } else {
+        const data = await resp.json();
+        updateLogRow(sherlockRow, `Sherlock complete — ${data.total} profile${data.total !== 1 ? 's' : ''} found`, 'done');
+        cardsEl.innerHTML += `<div class="result-grid">${renderSherlockCard(data)}</div>`;
       }
-      if (i >= steps.length) { renderResults(target); return; }
-      const row = document.createElement('div');
-      row.className = 'log-row s-run';
-      row.dataset.i = i;
-      row.innerHTML = `<div class="log-icon">⟳</div><span>${steps[i].text}</span><span class="log-time">${(i*0.9+0.1).toFixed(1)}s</span>`;
-      log.appendChild(row);
-      row.scrollIntoView({behavior:'smooth', block:'nearest'});
-      i++;
-      if (steps[i-1].dur > 0) setTimeout(step, steps[i-1].dur);
+    } catch (e) {
+      clearInterval(timer);
+      setLogTime(sherlockRow, (performance.now() - t0) / 1000);
+      updateLogRow(sherlockRow, `Sherlock error: ${e.message}`, 'wait');
     }
-    step();
-  }
 
-  function renderResults(target) {
-    const domain = target.includes('@') ? target.split('@')[1] : target;
-    document.getElementById('results').innerHTML += `
-      <div class="ai-block">
-        <div class="ai-head">
-          <div class="ai-tag">// AI Analysis</div>
-          <div class="ai-meta">claude-sonnet · 912 tokens · 5.2s</div>
-        </div>
-        <div class="ai-body">
-          Target <strong>${target}</strong> has a significant digital footprint.
-          Username matches found on <strong>14 platforms</strong> including GitHub, LinkedIn, and Reddit.
-          Associated email appears in <strong>2 breach datasets</strong> (LinkedIn 2021, RockYou2024).
-          Domain recon revealed <strong>3 subdomains</strong>, one exposing an unauthenticated admin panel.
-          <div class="leads">
-            <div class="lead"><span class="lead-arr">→</span>Investigate exposed panel at staging.${domain} — no auth detected on port 8080</div>
-            <div class="lead"><span class="lead-arr">→</span>Cross-reference GitHub activity with known breach credential patterns</div>
-            <div class="lead"><span class="lead-arr">→</span>LinkedIn profile reveals current employer — enumerate corporate email format</div>
-          </div>
-        </div>
-      </div>
-      <div class="result-grid">
-        <div class="rcard">
-          <div class="rcard-head"><div class="rcard-title">Sherlock · Profiles</div><div class="badge b-hit">14 HITS</div></div>
-          <div class="rcard-body">
-            <div class="ritem"><div class="dot dg"></div>github.com/target</div>
-            <div class="ritem"><div class="dot dg"></div>twitter.com/target</div>
-            <div class="ritem"><div class="dot dg"></div>reddit.com/u/target</div>
-            <div class="ritem"><div class="dot dg"></div>linkedin.com/in/target</div>
-            <div class="rmore">+ 10 more →</div>
-          </div>
-        </div>
-        <div class="rcard">
-          <div class="rcard-head"><div class="rcard-title">Holehe · Email Accounts</div><div class="badge b-hit">8 HITS</div></div>
-          <div class="rcard-body">
-            <div class="ritem"><div class="dot dg"></div>spotify.com</div>
-            <div class="ritem"><div class="dot dg"></div>adobe.com</div>
-            <div class="ritem"><div class="dot dg"></div>dropbox.com</div>
-            <div class="ritem"><div class="dot dg"></div>slack.com</div>
-            <div class="rmore">+ 4 more →</div>
-          </div>
-        </div>
-        <div class="rcard">
-          <div class="rcard-head"><div class="rcard-title">theHarvester · Domain</div><div class="badge b-warn">REVIEW</div></div>
-          <div class="rcard-body">
-            <div class="ritem"><div class="dot da"></div>staging.${domain}</div>
-            <div class="ritem"><div class="dot dg"></div>mail.${domain}</div>
-            <div class="ritem"><div class="dot dg"></div>vpn.${domain}</div>
-            <div class="ritem"><div class="dot dd"></div>admin@${domain}</div>
-          </div>
-        </div>
-        <div class="rcard">
-          <div class="rcard-head"><div class="rcard-title">HIBP · Breaches</div><div class="badge b-warn">2 FOUND</div></div>
-          <div class="rcard-body">
-            <div class="ritem"><div class="dot da"></div>LinkedIn (2021)</div>
-            <div class="ritem"><div class="dot da"></div>RockYou2024</div>
-            <div class="ritem"><div class="dot dd"></div>No paste exposure</div>
-          </div>
-        </div>
-      </div>
-      <div class="export-row">
-        <button class="exp-btn">Export PDF</button>
-        <button class="exp-btn">Export Markdown</button>
-        <button class="exp-btn">Export JSON</button>
-      </div>
-    `;
+    const doneRow = addLogRow(logEl, 'Investigation complete.', 'done');
+    setLogTime(doneRow, (performance.now() - t0) / 1000);
+
+    runBtn.textContent = '▶ Run Investigation';
+    runBtn.style.pointerEvents = '';
+    scanning = false;
   }
 
   window.onload = () => {
