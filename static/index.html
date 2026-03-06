@@ -561,6 +561,35 @@
   </div>
 </div>
 
+<div class="overlay" id="termsOverlay" style="z-index:300;">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-eye">// Terms of Use · v1</div>
+    <div class="modal-title">Acceptable Use Policy</div>
+    <div class="modal-sub" style="line-height:1.8;margin-bottom:12px;">
+      Crawlr is designed for <strong style="color:var(--text-bright)">authorized OSINT research</strong>, security professionals, penetration testers, and investigative journalists operating within legal boundaries.
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border-mid);border-radius:3px;padding:12px 14px;margin-bottom:14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);line-height:1.8;">
+      <div style="color:var(--red);margin-bottom:6px;letter-spacing:1px;">PROHIBITED USES:</div>
+      → Stalking, harassment, or intimidation of individuals<br>
+      → Doxxing or publishing private information without consent<br>
+      → Unauthorized employment or tenant screening<br>
+      → Targeting individuals based on protected characteristics<br>
+      → Any activity that violates applicable laws or regulations<br>
+      → Gathering data for spam, scam, or social engineering attacks
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:16px;">
+      By using this tool you accept full responsibility for your actions. All data gathered is from publicly available sources. You must comply with all applicable local, state, and federal laws.
+    </div>
+    <label id="termsCheckLabel" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);">
+      <input type="checkbox" id="termsCheck" style="accent-color:var(--red);cursor:pointer;" onchange="document.getElementById('termsAcceptBtn').disabled=!this.checked" />
+      I confirm I will use Crawlr only for authorized, lawful purposes
+    </label>
+    <div class="modal-actions">
+      <button class="modal-primary" id="termsAcceptBtn" disabled onclick="acceptTerms()">Accept &amp; Continue</button>
+    </div>
+  </div>
+</div>
+
 <header>
   <div class="logo">
     <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
@@ -660,6 +689,7 @@
       <div class="sbi"><div class="sbd" style="background:var(--success)"></div><span>READY</span></div>
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>7 MODULES</span></div>
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0-dev</span></div>
+      <div class="sbi"><span style="cursor:pointer;text-decoration:underline;color:var(--text-dim)" onclick="showTerms()">Terms</span></div>
       <div class="sbi" style="margin-left:auto"><span id="clock"></span></div>
     </div>
   </div>
@@ -808,7 +838,7 @@
   function closeModal() { document.getElementById('overlay').classList.remove('open'); }
 
   function getApiKey() {
-    return localStorage.getItem('cs_key') || getApiKey();
+    return localStorage.getItem('cs_key') || sessionStorage.getItem('cs_key');
   }
 
   function saveKey() {
@@ -945,13 +975,13 @@
     } else {
       for (const r of visible) {
         const id = 'ho_' + r.site;
-        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
+        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<a href="https://${r.domain}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site}</a> <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
       }
       if (remaining > 0) {
         html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
         for (const r of items.slice(6)) {
           const id = 'ho_' + r.site;
-          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
+          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}<a href="https://${r.domain}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site}</a> <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
         }
       }
     }
@@ -1015,13 +1045,13 @@
     } else {
       for (const b of visible) {
         const id = 'bp_' + b;
-        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}${b}</div>`;
+        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<a href="https://haveibeenpwned.com/PwnedWebsites#${encodeURIComponent(b)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${b}</a></div>`;
       }
       if (remaining > 0) {
         html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
         for (const b of breaches.slice(6)) {
           const id = 'bp_' + b;
-          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}${b}</div>`;
+          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}<a href="https://haveibeenpwned.com/PwnedWebsites#${encodeURIComponent(b)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${b}</a></div>`;
         }
       }
     }
@@ -1087,7 +1117,7 @@
       html += `<div class="ritem" style="flex-direction:column;align-items:flex-start;gap:2px;">
         <div style="display:flex;align-items:center;gap:8px;width:100%">
           <div class="dot dg"></div>
-          <strong style="color:var(--text-bright)">${p.platform}</strong>
+          <a href="${p.url}" target="_blank" rel="noopener" style="color:var(--text-bright);text-decoration:none;font-weight:600;">${p.platform}</a>
           ${p.display_name ? `<span style="color:var(--text-mid)">— ${p.display_name}</span>` : ''}
         </div>
         ${p.bio ? `<div style="padding-left:12px;color:var(--text-dim);font-size:10px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;">${p.bio.slice(0, 150)}${p.bio.length > 150 ? '...' : ''}</div>` : ''}
@@ -2121,12 +2151,33 @@
     URL.revokeObjectURL(a.href);
   }
 
+  function showTerms() {
+    document.getElementById('termsCheck').checked = false;
+    document.getElementById('termsAcceptBtn').disabled = true;
+    document.getElementById('termsOverlay').classList.add('open');
+  }
+
+  function acceptTerms() {
+    localStorage.setItem('crawlr_terms_v1', Date.now().toString());
+    document.getElementById('termsOverlay').classList.remove('open');
+    // Show API key modal if no key set
+    if (!getApiKey()) setTimeout(openModal, 300);
+  }
+
   window.onload = () => {
-    if (getApiKey()) {
+    // Terms check first
+    if (!localStorage.getItem('crawlr_terms_v1')) {
+      showTerms();
+    } else if (getApiKey()) {
       document.getElementById('keyDot').classList.add('set');
       document.getElementById('keyLabel').textContent = 'KEY SET ✓';
     } else {
       setTimeout(openModal, 500);
+    }
+
+    if (getApiKey()) {
+      document.getElementById('keyDot').classList.add('set');
+      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
     }
   };
 </script>
