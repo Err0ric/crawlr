@@ -1481,7 +1481,7 @@
       <div class="ai-head">
         <div class="ai-tag">// AI Analysis</div>
         <span class="ai-progress" id="aiProgress"></span>
-        <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
+        <div class="ai-meta">${data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history'}</div>
       </div>
       <div class="ai-body">`;
 
@@ -1849,6 +1849,7 @@
     // AI Analysis
     let scanTokens = 0;
     let aiSummary = '';
+    let aiData = null;
     const apiKey = getApiKey();
     const hasResults = Object.values(collected).some(v => v);
     if (apiKey && hasResults) {
@@ -1884,6 +1885,7 @@
           scanTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           aiSummary = data.summary;
+          aiData = data;
           if (aiEl) aiEl.innerHTML = renderAIBlock(data);
         }
       } catch (e) {
@@ -1895,7 +1897,7 @@
       addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
     }
 
-    return { collected, aiSummary, scanTokens };
+    return { collected, aiSummary, aiData, scanTokens };
   }
 
   async function runScan() {
@@ -1961,10 +1963,10 @@
       lastCollected = result.collected;
       lastAISummary = result.aiSummary;
 
-      if (result.aiSummary) {
+      if (result.aiData) {
         updateAIProgress();
         document.getElementById('aiReportTab').style.display = '';
-        document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: result.aiSummary });
+        document.getElementById('aiReportContent').innerHTML = renderAIBlock(result.aiData);
         const ddBtn = document.getElementById('deepDiveBtn');
         const ddResults = document.getElementById('deepDiveResults');
         ddResults.style.display = 'none';
@@ -2050,7 +2052,10 @@
 
       // Cross-Target Correlation — runs automatically with API key
       const apiKey = getApiKey();
-      if (apiKey && Object.keys(allCollected).length >= 2) {
+      const hasMultipleResults = Object.keys(allCollected).length >= 2
+        && Object.values(allCollected).some(c => Object.values(c).some(v => v));
+
+      if (apiKey && hasMultipleResults) {
         // Estimate tokens
         let estTokens = 600;
         for (const tgt of Object.keys(allCollected)) {
@@ -2063,11 +2068,11 @@
         }
         estTokens = Math.round(estTokens / 100) * 100;
 
-        // Insert correlation section at the TOP
+        // Insert correlation section at the TOP of results
         const corrSection = document.createElement('div');
         corrSection.id = 'correlationSection';
         corrSection.style.cssText = 'margin-bottom:12px;';
-        corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#f59e0b;padding:10px 14px;border:1px solid rgba(245,158,11,0.3);border-radius:4px;background:rgba(245,158,11,0.04);">⏳ Running cross-target correlation analysis (~${estTokens} tokens)...</div>`;
+        corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#f59e0b;padding:10px 14px;border:1px solid rgba(245,158,11,0.3);border-radius:4px;background:rgba(245,158,11,0.04);">⏳ Running cross-target correlation analysis (~${estTokens} tokens across ${targets.length} targets)...</div>`;
         res.insertBefore(corrSection, res.firstChild);
 
         runBtn.textContent = '⏳ CORRELATING...';
@@ -2084,10 +2089,19 @@
           } else {
             const corrData = await corrResp.json();
             corrSection.innerHTML = renderCorrelationBlock(corrData);
+            // Also populate AI Report tab with correlation results
+            document.getElementById('aiReportTab').style.display = '';
+            document.getElementById('aiReportContent').innerHTML = renderCorrelationBlock(corrData);
           }
         } catch (e) {
           corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${e.message}</div>`;
         }
+      } else if (!apiKey) {
+        // No API key — show note in results
+        const noKeyNote = document.createElement('div');
+        noKeyNote.style.cssText = 'font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:10px 14px;border:1px solid var(--border-mid);border-radius:4px;margin-bottom:12px;';
+        noKeyNote.textContent = 'Cross-target correlation skipped — set Claude API key in Settings';
+        res.insertBefore(noKeyNote, res.firstChild);
       }
 
       showToast(`Bulk scan complete — ${targets.length} targets processed`);
