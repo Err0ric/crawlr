@@ -789,6 +789,79 @@
     return html;
   }
 
+  /* ── HIBP results renderer ── */
+  function renderHibpCard(data) {
+    const breaches = data.breaches || [];
+    const count = breaches.length;
+    const visible = breaches.slice(0, 6);
+    const remaining = breaches.length - visible.length;
+
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Breaches · XposedOrNot</div>
+        <div class="badge ${count > 0 ? 'b-warn' : 'b-none'}">${count} BREACH${count !== 1 ? 'ES' : ''}</div>
+      </div>
+      <div class="rcard-body">`;
+
+    if (count === 0) {
+      html += `<div class="ritem"><div class="dot dd"></div>No breaches found</div>`;
+    } else {
+      for (const b of visible) {
+        html += `<div class="ritem"><div class="dot da"></div>${b}</div>`;
+      }
+      if (remaining > 0) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
+        for (const b of breaches.slice(6)) {
+          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot da"></div>${b}</div>`;
+        }
+      }
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  /* ── Gravatar results renderer ── */
+  function renderGravatarCard(data) {
+    if (!data.found) {
+      return `<div class="rcard">
+        <div class="rcard-head"><div class="rcard-title">Gravatar · Profile</div><div class="badge b-none">NOT FOUND</div></div>
+        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No Gravatar profile</div></div>
+      </div>`;
+    }
+    let html = `<div class="rcard">
+      <div class="rcard-head"><div class="rcard-title">Gravatar · Profile</div><div class="badge b-hit">FOUND</div></div>
+      <div class="rcard-body">`;
+    if (data.name) html += `<div class="ritem"><div class="dot dg"></div><strong>Name:</strong>&nbsp;${data.name}</div>`;
+    if (data.display_name) html += `<div class="ritem"><div class="dot dg"></div><strong>Display:</strong>&nbsp;${data.display_name}</div>`;
+    if (data.location) html += `<div class="ritem"><div class="dot dg"></div><strong>Location:</strong>&nbsp;${data.location}</div>`;
+    if (data.profile_url) html += `<div class="ritem"><div class="dot dg"></div><a href="${data.profile_url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${data.profile_url}</a></div>`;
+    html += `</div></div>`;
+    return html;
+  }
+
+  /* ── GitHub results renderer ── */
+  function renderGithubCard(data) {
+    if (!data.found) {
+      return `<div class="rcard">
+        <div class="rcard-head"><div class="rcard-title">GitHub · Profile</div><div class="badge b-none">NOT FOUND</div></div>
+        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No GitHub profile</div></div>
+      </div>`;
+    }
+    let html = `<div class="rcard">
+      <div class="rcard-head"><div class="rcard-title">GitHub · Profile</div><div class="badge b-hit">FOUND</div></div>
+      <div class="rcard-body">`;
+    if (data.name) html += `<div class="ritem"><div class="dot dg"></div><strong>Name:</strong>&nbsp;${data.name}</div>`;
+    if (data.bio) html += `<div class="ritem"><div class="dot dg"></div><strong>Bio:</strong>&nbsp;${data.bio}</div>`;
+    if (data.company) html += `<div class="ritem"><div class="dot dg"></div><strong>Company:</strong>&nbsp;${data.company}</div>`;
+    if (data.location) html += `<div class="ritem"><div class="dot dg"></div><strong>Location:</strong>&nbsp;${data.location}</div>`;
+    if (data.email) html += `<div class="ritem"><div class="dot dg"></div><strong>Email:</strong>&nbsp;${data.email}</div>`;
+    if (data.blog) html += `<div class="ritem"><div class="dot dg"></div><strong>Blog:</strong>&nbsp;<a href="${data.blog}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${data.blog}</a></div>`;
+    html += `<div class="ritem"><div class="dot dd"></div>${data.public_repos} repos · ${data.followers} followers · joined ${data.created_at?.slice(0,10) || '?'}</div>`;
+    if (data.profile_url) html += `<div class="ritem"><div class="dot dg"></div><a href="${data.profile_url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${data.profile_url}</a></div>`;
+    html += `</div></div>`;
+    return html;
+  }
+
   /* ── Main scan ── */
   let scanning = false;
 
@@ -812,8 +885,14 @@
         return null;
       } else {
         const data = await resp.json();
-        const count = data.total ?? (data.total_hosts + data.total_emails) ?? 0;
-        updateLogRow(row, `${label} complete — ${count} result${count !== 1 ? 's' : ''} found`, 'done');
+        let summary;
+        if (data.found !== undefined) {
+          summary = data.found ? 'profile found' : 'not found';
+        } else {
+          const count = data.total ?? ((data.total_hosts || 0) + (data.total_emails || 0));
+          summary = `${count} result${count !== 1 ? 's' : ''} found`;
+        }
+        updateLogRow(row, `${label} complete — ${summary}`, 'done');
         cardsEl.innerHTML += renderFn(data);
         return data;
       }
@@ -907,14 +986,25 @@
 
     const collected = {};
 
+    const username = email ? target.split('@')[0] : target;
+
     // Sherlock — run for usernames and emails (use local part as username)
     if (!domain) {
-      const username = email ? target.split('@')[0] : target;
       collected.sherlock = await runModule(logEl, cardsEl, t0,
         `Sherlock scan on "${username}"`,
         '/api/recon/sherlock',
         { username },
         renderSherlockCard
+      );
+    }
+
+    // GitHub — run for usernames (not emails, not domains)
+    if (!domain && !email) {
+      collected.github = await runModule(logEl, cardsEl, t0,
+        `GitHub profile lookup "${username}"`,
+        '/api/recon/github',
+        { username },
+        renderGithubCard
       );
     }
 
@@ -925,6 +1015,26 @@
         '/api/recon/holehe',
         { email: target },
         renderHoleheCard
+      );
+    }
+
+    // HIBP / Breach check — only when target is an email
+    if (email) {
+      collected.hibp = await runModule(logEl, cardsEl, t0,
+        `Breach check on "${target}"`,
+        '/api/recon/hibp',
+        { email: target },
+        renderHibpCard
+      );
+    }
+
+    // Gravatar — only when target is an email
+    if (email) {
+      collected.gravatar = await runModule(logEl, cardsEl, t0,
+        `Gravatar lookup for "${target}"`,
+        '/api/recon/gravatar',
+        { email: target },
+        renderGravatarCard
       );
     }
 
@@ -957,6 +1067,9 @@
             sherlock: collected.sherlock,
             holehe: collected.holehe,
             harvester: collected.harvester,
+            hibp: collected.hibp,
+            gravatar: collected.gravatar,
+            github: collected.github,
           }),
         });
         clearInterval(aiTimer);

@@ -12,6 +12,9 @@ class AnalyzeRequest(BaseModel):
     sherlock: Optional[dict] = None
     holehe: Optional[dict] = None
     harvester: Optional[dict] = None
+    hibp: Optional[dict] = None
+    gravatar: Optional[dict] = None
+    github: Optional[dict] = None
 
 
 @router.get("/ping")
@@ -51,6 +54,44 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
             prompt_parts.append(
                 f"theHarvester found {len(emails)} emails: {', '.join(emails[:10])}"
             )
+
+    if req.hibp and req.hibp.get("breaches"):
+        breaches = req.hibp["breaches"]
+        prompt_parts.append(
+            f"Breach check found {len(breaches)} breaches: {', '.join(breaches[:20])}"
+            + (f" (and {len(breaches)-20} more)" if len(breaches) > 20 else "")
+        )
+
+    if req.gravatar and req.gravatar.get("found"):
+        g = req.gravatar
+        parts = []
+        if g.get("name"):
+            parts.append(f"real name: {g['name']}")
+        if g.get("display_name"):
+            parts.append(f"display name: {g['display_name']}")
+        if g.get("location"):
+            parts.append(f"location: {g['location']}")
+        if g.get("profile_url"):
+            parts.append(f"profile: {g['profile_url']}")
+        prompt_parts.append(f"Gravatar profile found — {', '.join(parts)}")
+
+    if req.github and req.github.get("found"):
+        gh = req.github
+        parts = []
+        if gh.get("name"):
+            parts.append(f"name: {gh['name']}")
+        if gh.get("bio"):
+            parts.append(f"bio: {gh['bio']}")
+        if gh.get("location"):
+            parts.append(f"location: {gh['location']}")
+        if gh.get("company"):
+            parts.append(f"company: {gh['company']}")
+        if gh.get("email"):
+            parts.append(f"email: {gh['email']}")
+        if gh.get("blog"):
+            parts.append(f"blog: {gh['blog']}")
+        parts.append(f"{gh.get('public_repos', 0)} repos, {gh.get('followers', 0)} followers")
+        prompt_parts.append(f"GitHub profile found — {', '.join(parts)}")
 
     recon_data = "\n".join(prompt_parts)
 
