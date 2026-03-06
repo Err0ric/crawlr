@@ -7,6 +7,7 @@ from modules.ssl_check import run_ssl
 from modules.headers_check import run_headers
 from modules.subdomain_enum import run_subdomains
 from modules.asn_lookup import run_asn
+from modules.asn_detail import run_asn_detail
 from modules.port_scan import run_portscan
 import anthropic
 import time
@@ -18,6 +19,10 @@ class DomainRequest(BaseModel):
     domain: str
 
 
+class AsnRequest(BaseModel):
+    asn_number: int
+
+
 class ReconAnalyzeRequest(BaseModel):
     target: str
     dns: Optional[dict] = None
@@ -27,6 +32,7 @@ class ReconAnalyzeRequest(BaseModel):
     subdomains: Optional[dict] = None
     asn: Optional[dict] = None
     portscan: Optional[dict] = None
+    asn_detail: Optional[dict] = None
 
 
 @router.post("/dns")
@@ -83,6 +89,13 @@ async def portscan_scan(req: DomainRequest):
     if not domain:
         raise HTTPException(status_code=400, detail="Domain is required")
     return await run_portscan(domain)
+
+
+@router.post("/asn-detail")
+async def asn_detail_scan(req: AsnRequest):
+    if req.asn_number < 1:
+        raise HTTPException(status_code=400, detail="Invalid ASN number")
+    return await run_asn_detail(req.asn_number)
 
 
 @router.post("/summarize")
@@ -157,6 +170,28 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
             prompt_parts.append(f"Open ports: {', '.join(open_ports)}")
         else:
             prompt_parts.append("Port scan: no open ports found in top 20")
+
+    if req.asn_detail and req.asn_detail.get("found"):
+        ad = req.asn_detail
+        parts = [f"ASN: {ad.get('asn', '')}"]
+        if ad.get("org"):
+            parts.append(f"org: {ad['org']}")
+        if ad.get("name"):
+            parts.append(f"name: {ad['name']}")
+        if ad.get("country"):
+            parts.append(f"country: {ad['country']}")
+        if ad.get("rir"):
+            parts.append(f"RIR: {ad['rir']}")
+        if ad.get("date_registered"):
+            parts.append(f"registered: {ad['date_registered']}")
+        prompt_parts.append(f"ASN Detail: {', '.join(parts)}")
+        if ad.get("prefixes_v4"):
+            prompt_parts.append(f"IPv4 Prefixes ({len(ad['prefixes_v4'])}): {', '.join(ad['prefixes_v4'][:10])}")
+        if ad.get("prefixes_v6"):
+            prompt_parts.append(f"IPv6 Prefixes ({len(ad['prefixes_v6'])}): {', '.join(ad['prefixes_v6'][:10])}")
+        if ad.get("peers"):
+            peer_strs = [f"{p['asn']} ({p['name']})" for p in ad['peers'][:10]]
+            prompt_parts.append(f"Peers ({ad.get('total_peers', len(ad['peers']))}): {', '.join(peer_strs)}")
 
     recon_data = "\n".join(prompt_parts)
 

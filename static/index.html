@@ -407,6 +407,15 @@
   .empty-title { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); }
   .empty-sub { font-size: 12px; color: var(--text-dim); text-align: center; max-width: 280px; line-height: 1.7; }
 
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px); opacity: 0;
+    background: var(--bg3); border: 1px solid var(--border-hi); color: var(--text-bright);
+    font-family: 'Share Tech Mono', monospace; font-size: 12px; padding: 10px 20px;
+    border-radius: 6px; z-index: 9999; pointer-events: none; white-space: nowrap;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5); transition: all 0.3s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   .agent-log { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 18px; }
   .log-summary { display: flex; align-items: center; gap: 12px; padding: 9px 14px; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--success); cursor: pointer; transition: background 0.1s; }
   .log-summary:hover { background: var(--bg3); }
@@ -626,7 +635,7 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="targetInput" type="text" placeholder="email, username, domain, ip..." onkeydown="if(event.key==='Enter')runScan()" />
+      <input class="target-input" id="targetInput" type="text" placeholder="username, email, or full name..." onkeydown="if(event.key==='Enter')runScan()" />
       <div class="chips">
         <div class="chip on"  onclick="pickChip(this)">Auto</div>
         <div class="chip"     onclick="pickChip(this)">Email</div>
@@ -707,7 +716,8 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="reconTargetInput" type="text" placeholder="domain or IP address..." onkeydown="if(event.key==='Enter')runRecon()" />
+      <input class="target-input" id="reconTargetInput" type="text" placeholder="domain, IP, or ASN (e.g. AS15169)..." onkeydown="if(event.key==='Enter')runRecon()" oninput="updateReconChip()" />
+      <div id="reconTypeChip" style="display:none;margin-top:6px;font-size:11px;padding:3px 8px;border-radius:3px;background:var(--red-glow);color:var(--red-bright);border:1px solid var(--border-hi);display:inline-block;font-family:'Share Tech Mono',monospace;"></div>
     </div>
 
     <div class="pane" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
@@ -715,7 +725,7 @@
         <div class="pane-label">// <span>Modules</span></div>
         <div class="pane-rule"></div>
       </div>
-      <div class="mod-scroll">
+      <div class="mod-scroll" id="reconDomainModules">
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">DNS Records</div><div class="mod-sub">A · MX · NS · TXT · CNAME</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">WHOIS</div><div class="mod-sub">registrar · dates · nameservers</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">SSL Certificate</div><div class="mod-sub">issuer · expiry · SANs</div></div><div class="mod-tag free">FREE</div></div>
@@ -724,6 +734,12 @@
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">ASN / BGP</div><div class="mod-sub">IP ranges · network info</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Port Scan</div><div class="mod-sub">top 20 common ports</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · attack surface summary</div></div><div class="mod-tag">KEY</div></div>
+      </div>
+      <div class="mod-scroll" id="reconAsnModules" style="display:none;">
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">ASN Detail</div><div class="mod-sub">org · handle · RIR · registration</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">IP Prefixes</div><div class="mod-sub">IPv4 · IPv6 announced routes</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Peering</div><div class="mod-sub">upstream · downstream peers</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · network analysis</div></div><div class="mod-tag">KEY</div></div>
       </div>
     </div>
 
@@ -744,7 +760,7 @@
       <div class="empty" id="reconEmptyState">
         <div class="empty-glyph">[&lt;/&gt;]</div>
         <div class="empty-title">Infrastructure Recon</div>
-        <div class="empty-sub">Enter a domain or IP to scan DNS, WHOIS, SSL, headers, subdomains, ASN, and open ports.</div>
+        <div class="empty-sub">Enter a domain, IP, or ASN (e.g. AS15169) to scan infrastructure.</div>
       </div>
       <div id="reconResults" style="display:none;"></div>
     </div>
@@ -762,7 +778,16 @@
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
+  function showToast(msg, duration = 2500) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), duration);
+  }
+
   setInterval(() => {
     const t = new Date().toLocaleTimeString('en-US', {hour12:false});
     document.getElementById('clock').textContent = t;
@@ -1152,6 +1177,9 @@
   function isEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
   function isDomain(s) { return /^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$/.test(s); }
   function isName(s) { return /^[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(s.trim()) && !isEmail(s) && !isDomain(s); }
+  function isIP(s) { return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s.trim()); }
+  function isASN(s) { return /^AS\d+$/i.test(s.trim()); }
+  function parseASN(s) { return parseInt(s.trim().replace(/^AS/i, ''), 10); }
 
   function getInputType(target) {
     const active = document.querySelector('.chip.on');
@@ -1270,6 +1298,18 @@
     if (scanning) return;
     const target = document.getElementById('targetInput').value.trim();
     if (!target) { document.getElementById('targetInput').focus(); return; }
+
+    // Auto-route recon targets (domain, IP, ASN) to RECON mode
+    const chip = document.querySelector('.chip.on');
+    const chipMode = chip ? chip.textContent.trim().toLowerCase() : 'auto';
+    if (chipMode === 'auto' && (isDomain(target) || isIP(target) || isASN(target))) {
+      const label = isASN(target) ? 'ASN' : isIP(target) ? 'IP address' : 'Domain';
+      document.getElementById('reconTargetInput').value = target;
+      switchMode('recon');
+      updateReconChip();
+      showToast(`${label} detected — switching to RECON mode`);
+      return;
+    }
 
     scanning = true;
     currentTarget = target;
@@ -1991,6 +2031,77 @@
     return html;
   }
 
+  function updateReconChip() {
+    const val = document.getElementById('reconTargetInput').value.trim();
+    const chip = document.getElementById('reconTypeChip');
+    const domMods = document.getElementById('reconDomainModules');
+    const asnMods = document.getElementById('reconAsnModules');
+    if (isASN(val)) {
+      chip.textContent = 'ASN';
+      chip.style.display = 'inline-block';
+      domMods.style.display = 'none';
+      asnMods.style.display = '';
+    } else {
+      domMods.style.display = '';
+      asnMods.style.display = 'none';
+      if (isDomain(val) || /^\d+\.\d+\.\d+\.\d+$/.test(val)) {
+        chip.textContent = isDomain(val) ? 'DOMAIN' : 'IP';
+        chip.style.display = 'inline-block';
+      } else {
+        chip.style.display = 'none';
+      }
+    }
+  }
+
+  function renderAsnInfoCard(data) {
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN Info</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No data returned</div></div></div>`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN Info</div><div class="badge b-hit">${data.asn}</div></div><div class="rcard-body">`;
+    const fields = [
+      ['ASN', data.asn], ['Name', data.name], ['Org', data.org],
+      ['Handle', data.handle], ['Country', data.country], ['RIR', data.rir],
+      ['Registered', data.date_registered],
+      ['Total Prefixes', data.total_prefixes], ['Total Peers', data.total_peers],
+    ];
+    for (const [label, val] of fields) {
+      if (val) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:80px;display:inline-block">${label}</strong> ${val}</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderPrefixesCard(data) {
+    if (!data.found) return '';
+    const v4 = data.prefixes_v4 || [];
+    const v6 = data.prefixes_v6 || [];
+    if (!v4.length && !v6.length) return '';
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">IP Prefixes</div><div class="badge b-hit">${v4.length + v6.length} TOTAL</div></div><div class="rcard-body">`;
+    if (v4.length) {
+      html += `<div class="ritem" style="color:var(--text-bright);font-weight:600"><div class="dot dg"></div>IPv4 (${v4.length})</div>`;
+      for (const p of v4.slice(0, 20)) html += `<div class="ritem" style="padding-left:20px"><div class="dot dg"></div>${p}</div>`;
+      if (v4.length > 20) html += `<div class="ritem" style="padding-left:20px;color:var(--text-mid)"><div class="dot dd"></div>... and ${v4.length - 20} more</div>`;
+    }
+    if (v6.length) {
+      html += `<div class="ritem" style="color:var(--text-bright);font-weight:600"><div class="dot dg"></div>IPv6 (${v6.length})</div>`;
+      for (const p of v6.slice(0, 10)) html += `<div class="ritem" style="padding-left:20px"><div class="dot dg"></div>${p}</div>`;
+      if (v6.length > 10) html += `<div class="ritem" style="padding-left:20px;color:var(--text-mid)"><div class="dot dd"></div>... and ${v6.length - 10} more</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderPeeringCard(data) {
+    if (!data.found) return '';
+    const peers = data.peers || [];
+    if (!peers.length) return '';
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Peering</div><div class="badge b-hit">${data.total_peers} PEERS</div></div><div class="rcard-body">`;
+    for (const p of peers.slice(0, 25)) {
+      html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--red-bright)">${p.asn}</strong> <span style="margin-left:6px">${p.name}</span></div>`;
+    }
+    if (peers.length > 25) html += `<div class="ritem" style="color:var(--text-mid)"><div class="dot dd"></div>... and ${peers.length - 25} more</div>`;
+    html += `</div></div>`;
+    return html;
+  }
+
   async function runRecon() {
     if (reconScanning) return;
     const target = document.getElementById('reconTargetInput').value.trim();
@@ -2012,26 +2123,39 @@
     const aiEl = document.getElementById('reconAiBlock');
     const t0 = performance.now();
 
-    reconCollected.dns = await runModule(logEl, cardsEl, t0,
-      `DNS lookup on "${target}"`, '/api/infra/dns', { domain: target }, renderDnsCard);
+    const isAsnTarget = isASN(target);
 
-    reconCollected.whois = await runModule(logEl, cardsEl, t0,
-      `WHOIS lookup on "${target}"`, '/api/infra/whois', { domain: target }, renderWhoisCard);
+    if (isAsnTarget) {
+      const asnNum = parseASN(target);
+      reconCollected.asn_detail = await runModule(logEl, cardsEl, t0,
+        `ASN detail lookup on AS${asnNum}`, '/api/infra/asn-detail', { asn_number: asnNum }, renderAsnInfoCard);
 
-    reconCollected.ssl = await runModule(logEl, cardsEl, t0,
-      `SSL certificate check on "${target}"`, '/api/infra/ssl', { domain: target }, renderSslCard);
+      if (reconCollected.asn_detail && reconCollected.asn_detail.found) {
+        cardsEl.insertAdjacentHTML('beforeend', renderPrefixesCard(reconCollected.asn_detail));
+        cardsEl.insertAdjacentHTML('beforeend', renderPeeringCard(reconCollected.asn_detail));
+      }
+    } else {
+      reconCollected.dns = await runModule(logEl, cardsEl, t0,
+        `DNS lookup on "${target}"`, '/api/infra/dns', { domain: target }, renderDnsCard);
 
-    reconCollected.headers = await runModule(logEl, cardsEl, t0,
-      `HTTP headers scan on "${target}"`, '/api/infra/headers', { domain: target }, renderHeadersCard);
+      reconCollected.whois = await runModule(logEl, cardsEl, t0,
+        `WHOIS lookup on "${target}"`, '/api/infra/whois', { domain: target }, renderWhoisCard);
 
-    reconCollected.subdomains = await runModule(logEl, cardsEl, t0,
-      `Subdomain enumeration on "${target}"`, '/api/infra/subdomains', { domain: target }, renderSubdomainsCard);
+      reconCollected.ssl = await runModule(logEl, cardsEl, t0,
+        `SSL certificate check on "${target}"`, '/api/infra/ssl', { domain: target }, renderSslCard);
 
-    reconCollected.asn = await runModule(logEl, cardsEl, t0,
-      `ASN/BGP lookup on "${target}"`, '/api/infra/asn', { domain: target }, renderAsnCard);
+      reconCollected.headers = await runModule(logEl, cardsEl, t0,
+        `HTTP headers scan on "${target}"`, '/api/infra/headers', { domain: target }, renderHeadersCard);
 
-    reconCollected.portscan = await runModule(logEl, cardsEl, t0,
-      `Port scan on "${target}"`, '/api/infra/portscan', { domain: target }, renderPortscanCard);
+      reconCollected.subdomains = await runModule(logEl, cardsEl, t0,
+        `Subdomain enumeration on "${target}"`, '/api/infra/subdomains', { domain: target }, renderSubdomainsCard);
+
+      reconCollected.asn = await runModule(logEl, cardsEl, t0,
+        `ASN/BGP lookup on "${target}"`, '/api/infra/asn', { domain: target }, renderAsnCard);
+
+      reconCollected.portscan = await runModule(logEl, cardsEl, t0,
+        `Port scan on "${target}"`, '/api/infra/portscan', { domain: target }, renderPortscanCard);
+    }
 
     // AI Analysis
     let reconTokens = 0;
@@ -2052,6 +2176,7 @@
             subdomains: reconCollected.subdomains,
             asn: reconCollected.asn,
             portscan: reconCollected.portscan,
+            asn_detail: reconCollected.asn_detail,
           }),
         });
         clearInterval(aiTimer);
@@ -2132,6 +2257,29 @@
       if (d.asn.asn) md += `- **ASN:** ${d.asn.asn}\n`;
       if (d.asn.org) md += `- **Org:** ${d.asn.org}\n`;
       if (d.asn.prefixes) md += `- **Prefixes:** ${d.asn.prefixes.join(', ')}\n`;
+      md += '\n';
+    }
+    if (d.asn_detail && d.asn_detail.found) {
+      const ad = d.asn_detail;
+      md += `## ASN Detail — ${ad.asn}\n\n`;
+      if (ad.org) md += `- **Org:** ${ad.org}\n`;
+      if (ad.name) md += `- **Name:** ${ad.name}\n`;
+      if (ad.handle) md += `- **Handle:** ${ad.handle}\n`;
+      if (ad.country) md += `- **Country:** ${ad.country}\n`;
+      if (ad.rir) md += `- **RIR:** ${ad.rir}\n`;
+      if (ad.date_registered) md += `- **Registered:** ${ad.date_registered}\n`;
+      if (ad.prefixes_v4 && ad.prefixes_v4.length) {
+        md += `\n### IPv4 Prefixes (${ad.prefixes_v4.length})\n\n`;
+        for (const p of ad.prefixes_v4) md += `- ${p}\n`;
+      }
+      if (ad.prefixes_v6 && ad.prefixes_v6.length) {
+        md += `\n### IPv6 Prefixes (${ad.prefixes_v6.length})\n\n`;
+        for (const p of ad.prefixes_v6) md += `- ${p}\n`;
+      }
+      if (ad.peers && ad.peers.length) {
+        md += `\n### Peers (${ad.total_peers})\n\n`;
+        for (const p of ad.peers) md += `- **${p.asn}** ${p.name}\n`;
+      }
       md += '\n';
     }
     if (d.portscan && d.portscan.results) {
