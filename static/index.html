@@ -2050,13 +2050,12 @@
       lastCollected = allCollected[lastTarget] || {};
       currentTarget = lastTarget;
 
-      // Cross-Target Correlation — runs automatically with API key
+      // Cross-Target Correlation — show button if API key + multiple targets
       const apiKey = getApiKey();
       const hasMultipleResults = Object.keys(allCollected).length >= 2
         && Object.values(allCollected).some(c => Object.values(c).some(v => v));
 
       if (apiKey && hasMultipleResults) {
-        // Estimate tokens
         let estTokens = 600;
         for (const tgt of Object.keys(allCollected)) {
           const c = allCollected[tgt];
@@ -2068,39 +2067,49 @@
         }
         estTokens = Math.round(estTokens / 100) * 100;
 
-        // Insert correlation section at the TOP of results
-        const corrSection = document.createElement('div');
-        corrSection.id = 'correlationSection';
-        corrSection.style.cssText = 'margin-bottom:12px;';
-        corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#f59e0b;padding:10px 14px;border:1px solid rgba(245,158,11,0.3);border-radius:4px;background:rgba(245,158,11,0.04);">⏳ Running cross-target correlation analysis (~${estTokens} tokens across ${targets.length} targets)...</div>`;
-        res.insertBefore(corrSection, res.firstChild);
+        const corrWrapper = document.createElement('div');
+        corrWrapper.id = 'correlationSection';
+        corrWrapper.style.cssText = 'margin-bottom:12px;';
+        corrWrapper.innerHTML = `<button id="corrBtn" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">\u26a1 Run Correlation Analysis (~${estTokens} tokens across ${targets.length} targets)</button><div id="corrResults" style="display:none;"></div>`;
+        res.insertBefore(corrWrapper, res.firstChild);
 
-        runBtn.textContent = '⏳ CORRELATING...';
+        // Store allCollected for the click handler
+        window._bulkCorrelationData = allCollected;
+        document.getElementById('corrBtn').onclick = async function() {
+          const btn = this;
+          const resultsDiv = document.getElementById('corrResults');
+          btn.textContent = '\u23f3 Running correlation analysis...';
+          btn.style.pointerEvents = 'none';
+          btn.style.opacity = '0.6';
+          resultsDiv.style.display = '';
+          resultsDiv.innerHTML = '';
 
-        try {
-          const corrResp = await fetch('/api/analyze/correlate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
-            body: JSON.stringify({ targets: allCollected }),
-          });
-          if (!corrResp.ok) {
-            const err = await corrResp.json().catch(() => ({ detail: 'Request failed' }));
-            corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${err.detail || corrResp.statusText}</div>`;
-          } else {
-            const corrData = await corrResp.json();
-            corrSection.innerHTML = renderCorrelationBlock(corrData);
-            // Also populate AI Report tab with correlation results
-            document.getElementById('aiReportTab').style.display = '';
-            document.getElementById('aiReportContent').innerHTML = renderCorrelationBlock(corrData);
+          try {
+            const corrResp = await fetch('/api/analyze/correlate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+              body: JSON.stringify({ targets: window._bulkCorrelationData }),
+            });
+            if (!corrResp.ok) {
+              const err = await corrResp.json().catch(() => ({ detail: 'Request failed' }));
+              btn.style.display = 'none';
+              resultsDiv.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${err.detail || corrResp.statusText}</div>`;
+            } else {
+              const corrData = await corrResp.json();
+              btn.style.display = 'none';
+              resultsDiv.innerHTML = renderCorrelationBlock(corrData);
+              document.getElementById('aiReportTab').style.display = '';
+              document.getElementById('aiReportContent').innerHTML = renderCorrelationBlock(corrData);
+            }
+          } catch (e) {
+            btn.style.display = 'none';
+            resultsDiv.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${e.message}</div>`;
           }
-        } catch (e) {
-          corrSection.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${e.message}</div>`;
-        }
-      } else if (!apiKey) {
-        // No API key — show note in results
+        };
+      } else if (!apiKey && hasMultipleResults) {
         const noKeyNote = document.createElement('div');
         noKeyNote.style.cssText = 'font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:10px 14px;border:1px solid var(--border-mid);border-radius:4px;margin-bottom:12px;';
-        noKeyNote.textContent = 'Cross-target correlation skipped — set Claude API key in Settings';
+        noKeyNote.textContent = 'Cross-target correlation available — set Claude API key in Settings';
         res.insertBefore(noKeyNote, res.firstChild);
       }
 
