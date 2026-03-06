@@ -551,6 +551,8 @@
   .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 
   .rcard { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; transition: border-color 0.15s; }
+  .rcard-compact { display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:4px; opacity:0.5; }
+  .rcard-compact .rcard-compact-label { font-size:10px; font-family:'Share Tech Mono',monospace; color:var(--text-dim); letter-spacing:0.5px; }
   .rcard:hover { border-color: var(--border-mid); }
 
   .rcard-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg3); }
@@ -1118,19 +1120,33 @@
     if (count === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No profiles found</div>`;
     } else {
+      const confirmedItems = items.filter(r => r.confidence !== 'false_positive');
+      const fpItems = items.filter(r => r.confidence === 'false_positive');
+
       function sherlockRow(r) {
         const id = 'sh_' + r.site;
-        const isFP = r.confidence === 'false_positive';
-        const dimStyle = isFP ? 'opacity:0.5;' : '';
-        const fpBadge = isFP ? '<span style="font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">⚠ unverified</span>' : '';
-        return `<div class="ritem ${chkItemClass(id)}" style="${dimStyle}">${chkHtml(id)}<a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site}${fpBadge}</a></div>`;
+        return `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<span>${r.site}</span> <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
       }
-      for (const r of visible) html += sherlockRow(r);
-      if (remaining > 0) {
-        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
-        for (const r of items.slice(6)) {
-          html += sherlockRow(r).replace('class="ritem', 'class="ritem ritem-extra').replace(/style="/, 'style="display:none;');
+
+      const visibleConfirmed = confirmedItems.slice(0, 6);
+      const remainingConfirmed = confirmedItems.length - visibleConfirmed.length;
+      for (const r of visibleConfirmed) html += sherlockRow(r);
+      if (remainingConfirmed > 0) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra-conf').forEach(e=>e.style.display='flex');this.remove()">+ ${remainingConfirmed} more →</div>`;
+        for (const r of confirmedItems.slice(6)) {
+          html += sherlockRow(r).replace('class="ritem', 'class="ritem ritem-extra-conf').replace(/style="/, 'style="display:none;');
         }
+      }
+
+      if (fpItems.length > 0) {
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          <div class="rmore" style="opacity:0.5;font-size:9px;" onclick="const s=this.nextElementSibling;s.style.display=s.style.display==='none'?'block':'none';this.textContent=s.style.display==='none'?'▸ ${fpItems.length} unverified (likely false positives)':'▾ ${fpItems.length} unverified (likely false positives)'">▸ ${fpItems.length} unverified (likely false positives)</div>
+          <div style="display:none;">`;
+        for (const r of fpItems) {
+          const id = 'sh_' + r.site;
+          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.4;">${chkHtml(id)}<span>${r.site}</span> <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
+        }
+        html += `</div></div>`;
       }
     }
 
@@ -1142,19 +1158,20 @@
   function renderHoleheCard(data) {
     const count = data.total || 0;
     const items = data.results || [];
+    if (count === 0) {
+      return `<div class="rcard-compact"><span class="rcard-compact-label">Holehe · Email Accounts</span><span class="badge b-none" style="font-size:8px;">NO HITS</span></div>`;
+    }
     const visible = items.slice(0, 6);
     const remaining = items.length - visible.length;
 
     let html = `<div class="rcard">
       <div class="rcard-head">
         <div class="rcard-title">Holehe · Email Accounts</div>
-        <div class="badge ${count > 0 ? 'b-hit' : 'b-none'}">${count} HIT${count !== 1 ? 'S' : ''}</div>
+        <div class="badge b-hit">${count} HIT${count !== 1 ? 'S' : ''}</div>
       </div>
       <div class="rcard-body">`;
 
-    if (count === 0) {
-      html += `<div class="ritem"><div class="dot dd"></div>No accounts found</div>`;
-    } else {
+    {
       for (const r of visible) {
         const id = 'ho_' + r.site;
         html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<a href="https://${r.domain}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site}</a> <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
@@ -1212,19 +1229,20 @@
   function renderHibpCard(data) {
     const breaches = data.breaches || [];
     const count = breaches.length;
+    if (count === 0) {
+      return `<div class="rcard-compact"><span class="rcard-compact-label">Breaches · XposedOrNot</span><span class="badge b-none" style="font-size:8px;">CLEAN</span></div>`;
+    }
     const visible = breaches.slice(0, 6);
     const remaining = breaches.length - visible.length;
 
     let html = `<div class="rcard">
       <div class="rcard-head">
         <div class="rcard-title">Breaches · XposedOrNot</div>
-        <div class="badge ${count > 0 ? 'b-warn' : 'b-none'}">${count} BREACH${count !== 1 ? 'ES' : ''}</div>
+        <div class="badge b-warn">${count} BREACH${count !== 1 ? 'ES' : ''}</div>
       </div>
       <div class="rcard-body">`;
 
-    if (count === 0) {
-      html += `<div class="ritem"><div class="dot dd"></div>No breaches found</div>`;
-    } else {
+    {
       for (const b of visible) {
         const id = 'bp_' + b;
         html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<a href="https://haveibeenpwned.com/PwnedWebsites#${encodeURIComponent(b)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${b}</a></div>`;
@@ -1244,10 +1262,7 @@
   /* ── Gravatar results renderer ── */
   function renderGravatarCard(data) {
     if (!data.found) {
-      return `<div class="rcard">
-        <div class="rcard-head"><div class="rcard-title">Gravatar · Profile</div><div class="badge b-none">NOT FOUND</div></div>
-        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No Gravatar profile</div></div>
-      </div>`;
+      return `<div class="rcard-compact"><span class="rcard-compact-label">Gravatar</span><span class="badge b-none" style="font-size:8px;">NOT FOUND</span></div>`;
     }
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">Gravatar · Profile</div><div class="badge b-hit">FOUND</div></div>
@@ -1263,10 +1278,7 @@
   /* ── GitHub results renderer ── */
   function renderGithubCard(data) {
     if (!data.found) {
-      return `<div class="rcard">
-        <div class="rcard-head"><div class="rcard-title">GitHub · Profile</div><div class="badge b-none">NOT FOUND</div></div>
-        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No GitHub profile</div></div>
-      </div>`;
+      return `<div class="rcard-compact"><span class="rcard-compact-label">GitHub</span><span class="badge b-none" style="font-size:8px;">NOT FOUND</span></div>`;
     }
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">GitHub · Profile</div><div class="badge b-hit">FOUND</div></div>
@@ -1287,10 +1299,7 @@
   function renderEnricherCard(data) {
     const profiles = data.profiles || [];
     if (profiles.length === 0) {
-      return `<div class="rcard">
-        <div class="rcard-head"><div class="rcard-title">Profile Scraper</div><div class="badge b-none">NO DATA</div></div>
-        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No scrapeable profiles found</div></div>
-      </div>`;
+      return `<div class="rcard-compact"><span class="rcard-compact-label">Profile Scraper</span><span class="badge b-none" style="font-size:8px;">NO DATA</span></div>`;
     }
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">Profile Scraper</div><div class="badge b-hit">${profiles.length} PROFILE${profiles.length !== 1 ? 'S' : ''}</div></div>

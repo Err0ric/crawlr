@@ -8,7 +8,8 @@ import os
 FALSE_POSITIVE_SITES = {
     "roblox", "chess", "chess.com", "nitrotype", "runescape",
     "scratch", "wikipedia", "geocaching", "periscope",
-    "livejournal", "hudsonrock",
+    "livejournal", "hudsonrock", "envato", "freelancer",
+    "disqus", "trakt", "vsco", "minds",
 }
 
 HIGH_CONFIDENCE_SITES = {
@@ -16,6 +17,8 @@ HIGH_CONFIDENCE_SITES = {
     "x", "instagram", "facebook", "youtube", "twitch", "pinterest",
     "snapchat", "telegram", "discord", "spotify", "soundcloud",
     "medium", "deviantart", "flickr", "vimeo", "tumblr",
+    "substack", "patreon", "cashapp", "venmo", "paypal",
+    "keybase", "mastodon",
 }
 
 
