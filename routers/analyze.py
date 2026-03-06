@@ -17,6 +17,8 @@ class AnalyzeRequest(BaseModel):
     github: Optional[dict] = None
     enricher: Optional[dict] = None
     platform_check: Optional[dict] = None
+    hunter: Optional[dict] = None
+    shodan: Optional[dict] = None
     name_search: Optional[dict] = None
     active_techniques: bool = False
 
@@ -134,6 +136,30 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
             prompt_parts.append(
                 f"Platform existence check found no profile on: {', '.join(not_found)}"
             )
+
+    if req.hunter and req.hunter.get("emails"):
+        emails = [e["email"] for e in req.hunter["emails"][:15]]
+        prompt_parts.append(
+            f"Hunter.io found {req.hunter['total']} email addresses: {', '.join(emails)}"
+        )
+        if req.hunter.get("pattern"):
+            prompt_parts.append(f"Email pattern: {req.hunter['pattern']}")
+
+    if req.shodan and req.shodan.get("found"):
+        s = req.shodan
+        parts = []
+        if s.get("org"):
+            parts.append(f"org: {s['org']}")
+        if s.get("os"):
+            parts.append(f"OS: {s['os']}")
+        if s.get("ports"):
+            parts.append(f"ports: {', '.join(str(p) for p in s['ports'][:20])}")
+        prompt_parts.append(f"Shodan host data: {', '.join(parts)}")
+        if s.get("vulns"):
+            prompt_parts.append(f"Shodan CVEs found: {', '.join(s['vulns'][:15])}")
+        if s.get("services"):
+            svc = [f"{sv['port']}/{sv['transport']} {sv.get('product','')}".strip() for sv in s['services'][:10]]
+            prompt_parts.append(f"Services: {', '.join(svc)}")
 
     if req.name_search and req.name_search.get("name"):
         prompt_parts.append(

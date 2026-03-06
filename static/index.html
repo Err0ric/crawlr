@@ -29,6 +29,28 @@
     --success:     #16a34a;
   }
 
+  [data-theme="midnight"] {
+    --bg: #0a0e1a; --bg2: #0e1322; --bg3: #121828; --bg4: #161d30;
+    --border: #1c2540; --border-mid: #263050; --border-hi: #3a4a70;
+    --red: #3b82f6; --red-dim: #2563eb; --red-bright: #60a5fa;
+    --red-glow: rgba(59,130,246,0.12); --red-glow-hi: rgba(59,130,246,0.22);
+    --text: #94a3b8; --text-dim: #334155; --text-mid: #64748b; --text-bright: #e2e8f0;
+  }
+  [data-theme="blood"] {
+    --bg: #0f0808; --bg2: #150c0c; --bg3: #1a1010; --bg4: #201414;
+    --border: #2d1a1a; --border-mid: #3d2222; --border-hi: #5c3333;
+    --red: #dc2626; --red-dim: #b91c1c; --red-bright: #ef4444;
+    --red-glow: rgba(220,38,38,0.12); --red-glow-hi: rgba(220,38,38,0.22);
+    --text: #c4a8a8; --text-dim: #4a2d2d; --text-mid: #7a5555; --text-bright: #f0dada;
+  }
+  [data-theme="ghost"] {
+    --bg: #101014; --bg2: #16161c; --bg3: #1c1c24; --bg4: #22222c;
+    --border: #2a2a36; --border-mid: #36364a; --border-hi: #4a4a66;
+    --red: #6b7280; --red-dim: #4b5563; --red-bright: #9ca3af;
+    --red-glow: rgba(107,114,128,0.12); --red-glow-hi: rgba(107,114,128,0.22);
+    --text: #9ca3af; --text-dim: #374151; --text-mid: #6b7280; --text-bright: #d1d5db;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
 
@@ -634,8 +656,7 @@
     <div class="hnav active" onclick="switchMode('investigate')">Investigate</div>
     <div class="hnav" onclick="switchMode('recon')">Recon</div>
     <div class="hnav" onclick="switchMode('history')">History</div>
-    <div class="hnav">Reports</div>
-    <div class="hnav">Settings</div>
+    <div class="hnav" onclick="switchMode('settings')">Settings</div>
   </div>
   <div class="header-right">
     <div class="key-pill" onclick="openModal()">
@@ -678,9 +699,9 @@
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Sherlock</div><div class="mod-sub">username · social enumeration</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Holehe</div><div class="mod-sub">email · account detection</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">theHarvester</div><div class="mod-sub">domain · subdomain recon</div></div><div class="mod-tag free">FREE</div></div>
-        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HIBP</div><div class="mod-sub">email · breach database</div></div><div class="mod-tag">API</div></div>
-        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
-        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Shodan</div><div class="mod-sub">ip/domain · exposed services</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HIBP</div><div class="mod-sub">email · breach database</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Hunter.io','hunter')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Shodan','shodan')"></div><div class="mod-info"><div class="mod-name">Shodan</div><div class="mod-sub">ip/domain · exposed services</div></div><div class="mod-tag">API</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · interpret &amp; suggest leads</div></div><div class="mod-tag">KEY</div></div>
         <div class="mod mod-active"><div class="mod-toggle" id="activeTechToggle" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">⚠ Active Techniques</div><div class="mod-sub">account recovery · may notify target</div></div><div class="mod-tag warn">⚠</div></div>
       </div>
@@ -816,6 +837,27 @@
   </div>
 </div>
 
+<div class="workspace" id="settingsWorkspace" style="display:none;grid-template-columns:1fr;">
+  <div class="main" style="max-width:700px;margin:0 auto;padding:30px 20px;overflow-y:auto;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin-bottom:24px;">// Settings</div>
+
+    <div class="rcard" style="margin-bottom:16px;">
+      <div class="rcard-head"><div class="rcard-title">API Keys</div><div class="badge b-hit" style="font-size:8px;">STORED LOCALLY</div></div>
+      <div class="rcard-body" style="padding:12px 16px;">
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:14px;">Keys are stored in your browser only. Never sent to or stored on this server.</div>
+        <div id="settingsKeyList"></div>
+      </div>
+    </div>
+
+    <div class="rcard">
+      <div class="rcard-head"><div class="rcard-title">Theme</div></div>
+      <div class="rcard-body" style="padding:12px 16px;">
+        <div id="themeList" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -900,26 +942,7 @@
   }
   function closeModal() { document.getElementById('overlay').classList.remove('open'); }
 
-  function getApiKey() {
-    return localStorage.getItem('cs_key') || sessionStorage.getItem('cs_key');
-  }
-
-  function saveKey() {
-    const k = document.getElementById('keyInput').value;
-    if (k) {
-      const remember = document.getElementById('rememberKey').checked;
-      if (remember) {
-        localStorage.setItem('cs_key', k);
-        sessionStorage.removeItem('cs_key');
-      } else {
-        sessionStorage.setItem('cs_key', k);
-        localStorage.removeItem('cs_key');
-      }
-      document.getElementById('keyDot').classList.add('set');
-      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
-    }
-    closeModal();
-  }
+  // getApiKey() and saveKey() defined in Settings section below
 
   function pickChip(el) {
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
@@ -1276,6 +1299,40 @@
     }
   }
 
+  // Like runModule but with extra headers (for API key-authenticated endpoints)
+  async function runModuleWithKey(logEl, cardsEl, t0, label, url, body, extraHeaders, renderFn) {
+    const row = addLogRow(logEl, `Running ${label}...`, 'run');
+    const timer = setInterval(() => setLogTime(row, (performance.now() - t0) / 1000), 200);
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...extraHeaders },
+        body: JSON.stringify(body),
+      });
+      clearInterval(timer);
+      setLogTime(row, (performance.now() - t0) / 1000);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
+        updateLogRow(row, `${label} error: ${err.detail || resp.statusText}`, 'wait');
+        return null;
+      } else {
+        const data = await resp.json();
+        const count = data.total ?? 0;
+        const summary = data.found !== undefined
+          ? (data.found ? 'data found' : 'not found')
+          : `${count} result${count !== 1 ? 's' : ''} found`;
+        updateLogRow(row, `${label} complete — ${summary}`, 'done');
+        cardsEl.innerHTML += renderFn(data);
+        return data;
+      }
+    } catch (e) {
+      clearInterval(timer);
+      setLogTime(row, (performance.now() - t0) / 1000);
+      updateLogRow(row, `${label} error: ${e.message}`, 'wait');
+      return null;
+    }
+  }
+
   /* ── AI Analysis renderer ── */
   function mdInline(text) {
     return text
@@ -1395,7 +1452,7 @@
     }
 
     // Sherlock — run for usernames and emails (use local part as username)
-    if (!domain && !nameSearch) {
+    if (!domain && !nameSearch && isModOn('Sherlock')) {
       collected.sherlock = await runModule(logEl, cardsEl, t0,
         `Sherlock scan on "${username}"`,
         '/api/recon/sherlock',
@@ -1437,7 +1494,7 @@
     }
 
     // Holehe — only when target is an email
-    if (email) {
+    if (email && isModOn('Holehe')) {
       collected.holehe = await runModule(logEl, cardsEl, t0,
         `Holehe email check on "${target}"`,
         '/api/recon/holehe',
@@ -1446,8 +1503,8 @@
       );
     }
 
-    // HIBP / Breach check — only when target is an email
-    if (email) {
+    // HIBP / Breach check — only when target is an email and toggled on
+    if (email && isModOn('HIBP')) {
       collected.hibp = await runModule(logEl, cardsEl, t0,
         `Breach check on "${target}"`,
         '/api/recon/hibp',
@@ -1467,13 +1524,36 @@
     }
 
     // theHarvester — when target is a domain, or extract domain from email
-    if (domain || email) {
+    if ((domain || email) && isModOn('theHarvester')) {
       const d = email ? target.split('@')[1] : target;
       collected.harvester = await runModule(logEl, cardsEl, t0,
         `theHarvester domain recon on "${d}"`,
         '/api/recon/harvester',
         { domain: d },
         renderHarvesterCard
+      );
+    }
+
+    // Hunter.io — when target is a domain or email, toggled on with API key
+    if ((domain || email) && isModOn('Hunter.io') && getKey('hunter')) {
+      const d = email ? target.split('@')[1] : target;
+      collected.hunter = await runModuleWithKey(logEl, cardsEl, t0,
+        `Hunter.io email discovery on "${d}"`,
+        '/api/recon/hunter',
+        { domain: d },
+        { 'X-Hunter-Key': getKey('hunter') },
+        renderHunterCard
+      );
+    }
+
+    // Shodan — when target is a domain or IP, toggled on with API key
+    if (!email && !nameSearch && isModOn('Shodan') && getKey('shodan')) {
+      collected.shodan = await runModuleWithKey(logEl, cardsEl, t0,
+        `Shodan host lookup on "${target}"`,
+        '/api/recon/shodan',
+        { target },
+        { 'X-Shodan-Key': getKey('shodan') },
+        renderShodanCard
       );
     }
 
@@ -1501,6 +1581,8 @@
             github: collected.github,
             enricher: collected.enricher,
             platform_check: collected.platformCheck || null,
+            hunter: collected.hunter || null,
+            shodan: collected.shodan || null,
             name_search: collected.nameSearch || null,
             active_techniques: document.getElementById('activeTechToggle').classList.contains('on'),
           }),
@@ -2169,6 +2251,7 @@
     document.getElementById('investigateWorkspace').style.display = 'none';
     document.getElementById('reconWorkspace').style.display = 'none';
     document.getElementById('historyWorkspace').style.display = 'none';
+    document.getElementById('settingsWorkspace').style.display = 'none';
     if (mode === 'recon') {
       document.querySelectorAll('.hnav')[1].classList.add('active');
       document.getElementById('reconWorkspace').style.display = 'grid';
@@ -2176,6 +2259,10 @@
       document.querySelectorAll('.hnav')[2].classList.add('active');
       document.getElementById('historyWorkspace').style.display = 'grid';
       renderHistory();
+    } else if (mode === 'settings') {
+      document.querySelectorAll('.hnav')[3].classList.add('active');
+      document.getElementById('settingsWorkspace').style.display = 'grid';
+      renderSettings();
     } else {
       document.querySelectorAll('.hnav')[0].classList.add('active');
       document.getElementById('investigateWorkspace').style.display = 'grid';
@@ -2217,7 +2304,11 @@
 
   function renderWhoisCard(data) {
     if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No WHOIS data'}</div></div></div>`;
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-hit">FOUND</div></div><div class="rcard-body">`;
+    const privBadge = data.privacy_protected ? '<div class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);margin-left:6px;">PRIVACY PROTECTED</div>' : '';
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-hit">FOUND</div>${privBadge}</div><div class="rcard-body">`;
+    if (data.privacy_protected) {
+      html += `<div class="ritem" style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:3px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#d97706;"><div class="dot" style="background:#d97706"></div>Registrant data is redacted by a WHOIS privacy service</div>`;
+    }
     const fields = [
       ['Registrar', data.registrar], ['Created', data.creation_date], ['Expires', data.expiration_date],
       ['Updated', data.updated_date], ['Org', data.org], ['Country', data.country],
@@ -2772,6 +2863,8 @@
       if (d.github) cardsEl.innerHTML += renderGithubCard(d.github);
       if (d.enricher) cardsEl.innerHTML += renderEnricherCard(d.enricher);
       if (d.platformCheck) cardsEl.innerHTML += renderPlatformCheckCard(d.platformCheck);
+      if (d.hunter) cardsEl.innerHTML += renderHunterCard(d.hunter);
+      if (d.shodan) cardsEl.innerHTML += renderShodanCard(d.shodan);
       if (d.nameSearch) cardsEl.innerHTML += renderNameSearchCard(d.nameSearch);
       if (entry.aiSummary) {
         const aiBlock = document.createElement('div');
@@ -2810,7 +2903,218 @@
     showToast('Loaded scan from history');
   }
 
+  // ── API Key Management ──
+  const API_KEYS = [
+    { id: 'claude', label: 'Claude (Anthropic)', storageKey: 'cs_key', placeholder: 'sk-ant-api03-...', hint: 'console.anthropic.com' },
+    { id: 'hibp', label: 'HIBP (Have I Been Pwned)', storageKey: 'cs_hibp_key', placeholder: 'hibp-api-key...', hint: 'haveibeenpwned.com/API/Key' },
+    { id: 'hunter', label: 'Hunter.io', storageKey: 'cs_hunter_key', placeholder: 'hunter-api-key...', hint: 'hunter.io/api-keys' },
+    { id: 'shodan', label: 'Shodan', storageKey: 'cs_shodan_key', placeholder: 'shodan-api-key...', hint: 'account.shodan.io' },
+    { id: 'github', label: 'GitHub', storageKey: 'cs_github_key', placeholder: 'ghp_...', hint: 'github.com/settings/tokens' },
+  ];
+
+  function getKey(id) {
+    const cfg = API_KEYS.find(k => k.id === id);
+    if (!cfg) return '';
+    return localStorage.getItem(cfg.storageKey) || '';
+  }
+  function setKey(id, value) {
+    const cfg = API_KEYS.find(k => k.id === id);
+    if (!cfg) return;
+    if (value) localStorage.setItem(cfg.storageKey, value);
+    else localStorage.removeItem(cfg.storageKey);
+  }
+  // Keep getApiKey() working for Claude key
+  function getApiKey() { return getKey('claude'); }
+
+  function saveKey() {
+    const k = document.getElementById('keyInput').value;
+    if (k) {
+      const remember = document.getElementById('rememberKey').checked;
+      if (remember) {
+        localStorage.setItem('cs_key', k);
+        sessionStorage.removeItem('cs_key');
+      } else {
+        sessionStorage.setItem('cs_key', k);
+        localStorage.removeItem('cs_key');
+      }
+      document.getElementById('keyDot').classList.add('set');
+      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
+    }
+    closeModal();
+  }
+
+  // ── Settings Renderers ──
+  const THEMES = [
+    { id: 'purple', label: 'Dark Purple', preview: '#7c3aed' },
+    { id: 'midnight', label: 'Midnight', preview: '#3b82f6' },
+    { id: 'blood', label: 'Blood', preview: '#dc2626' },
+    { id: 'ghost', label: 'Ghost', preview: '#6b7280' },
+  ];
+
+  function renderSettings() {
+    // API Keys
+    const keyList = document.getElementById('settingsKeyList');
+    let khtml = '';
+    for (const cfg of API_KEYS) {
+      const hasKey = !!getKey(cfg.id);
+      khtml += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div class="dot ${hasKey ? 'dg' : 'dd'}"></div>
+        <div style="flex:1;">
+          <div style="font-size:11px;color:var(--text-bright);">${cfg.label}</div>
+          <div style="font-size:9px;color:var(--text-dim);">${hasKey ? 'Key set ✓' : 'Not configured'}</div>
+        </div>
+        <input type="password" id="settings_key_${cfg.id}" placeholder="${cfg.placeholder}" value="${hasKey ? '••••••••' : ''}"
+          style="width:200px;padding:4px 8px;background:var(--bg);border:1px solid var(--border-mid);border-radius:3px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:10px;"
+          onfocus="if(this.value==='••••••••')this.value=''"
+          onblur="settingsKeySave('${cfg.id}',this)" />
+        ${hasKey ? `<button onclick="settingsKeyClear('${cfg.id}')" style="padding:3px 8px;background:transparent;border:1px solid var(--border-mid);border-radius:3px;color:var(--text-dim);font-size:9px;cursor:pointer;font-family:'Share Tech Mono',monospace;">Clear</button>` : ''}
+      </div>`;
+    }
+    keyList.innerHTML = khtml;
+
+    // Themes
+    const themeList = document.getElementById('themeList');
+    const current = localStorage.getItem('crawlr_theme') || 'purple';
+    let thtml = '';
+    for (const t of THEMES) {
+      const active = t.id === current;
+      thtml += `<div onclick="setTheme('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${active ? 'var(--red-glow)' : 'var(--bg)'};border:1px solid ${active ? 'var(--red-dim)' : 'var(--border)'};border-radius:4px;cursor:pointer;">
+        <div style="width:16px;height:16px;border-radius:50%;background:${t.preview};border:2px solid ${active ? 'var(--text-bright)' : 'var(--border-mid)'};"></div>
+        <span style="font-size:11px;color:${active ? 'var(--text-bright)' : 'var(--text)'};font-family:'Share Tech Mono',monospace;">${t.label}</span>
+        ${active ? '<span style="margin-left:auto;font-size:9px;color:var(--red-bright);">ACTIVE</span>' : ''}
+      </div>`;
+    }
+    themeList.innerHTML = thtml;
+  }
+
+  function settingsKeySave(id, input) {
+    const val = input.value.trim();
+    if (!val || val === '••••••••') {
+      if (getKey(id)) input.value = '••••••••';
+      return;
+    }
+    setKey(id, val);
+    input.value = '••••••••';
+    if (id === 'claude') {
+      document.getElementById('keyDot').classList.add('set');
+      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
+    }
+    showToast(`${API_KEYS.find(k=>k.id===id).label} key saved`);
+    renderSettings();
+  }
+
+  function settingsKeyClear(id) {
+    setKey(id, '');
+    if (id === 'claude') {
+      localStorage.removeItem('cs_key');
+      sessionStorage.removeItem('cs_key');
+      document.getElementById('keyDot').classList.remove('set');
+      document.getElementById('keyLabel').textContent = 'NO KEY';
+    }
+    showToast(`${API_KEYS.find(k=>k.id===id).label} key cleared`);
+    renderSettings();
+  }
+
+  function setTheme(id) {
+    if (id === 'purple') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', id);
+    localStorage.setItem('crawlr_theme', id);
+    renderSettings();
+  }
+
+  // ── Module Toggle Helpers ──
+  function isModOn(name) {
+    const mods = document.querySelectorAll('.mod');
+    for (const m of mods) {
+      const label = m.querySelector('.mod-name');
+      if (label && label.textContent.trim() === name) {
+        return m.querySelector('.mod-toggle')?.classList.contains('on') || false;
+      }
+    }
+    return false;
+  }
+
+  function promptKeyForModule(modName, keyId) {
+    const cfg = API_KEYS.find(k => k.id === keyId);
+    if (!cfg) return false;
+    if (getKey(keyId)) return true;
+    const key = prompt(`${modName} requires an API key.\nEnter your ${cfg.label} key (or set it in Settings):`);
+    if (key && key.trim()) {
+      setKey(keyId, key.trim());
+      showToast(`${cfg.label} key saved`);
+      return true;
+    }
+    // Turn off the toggle since no key was provided
+    const mods = document.querySelectorAll('.mod');
+    for (const m of mods) {
+      const label = m.querySelector('.mod-name');
+      if (label && label.textContent.trim() === modName) {
+        m.querySelector('.mod-toggle')?.classList.remove('on');
+      }
+    }
+    showToast(`${modName} disabled — no API key`);
+    return false;
+  }
+
+  // ── Hunter.io Card Renderer ──
+  function renderHunterCard(data) {
+    const emails = data.emails || [];
+    const count = emails.length;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Hunter.io · Emails</div><div class="badge ${count > 0 ? 'b-hit' : 'b-none'}">${count} EMAIL${count !== 1 ? 'S' : ''}</div></div><div class="rcard-body">`;
+    if (data.error) {
+      html += `<div class="ritem"><div class="dot dd"></div>${data.error}</div>`;
+    } else if (count === 0) {
+      html += `<div class="ritem"><div class="dot dd"></div>No emails found</div>`;
+    } else {
+      if (data.pattern) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Pattern:</strong> ${data.pattern}</div>`;
+      const visible = emails.slice(0, 8);
+      for (const e of visible) {
+        const name = [e.first_name, e.last_name].filter(Boolean).join(' ');
+        const conf = e.confidence ? `<span style="color:var(--text-dim);font-size:9px;margin-left:6px;">${e.confidence}%</span>` : '';
+        html += `<div class="ritem"><div class="dot dg"></div>${e.email}${conf}${name ? ` <span style="color:var(--text-dim);font-size:10px;">— ${name}</span>` : ''}${e.position ? ` <span style="color:var(--text-dim);font-size:9px;">(${e.position})</span>` : ''}</div>`;
+      }
+      if (emails.length > 8) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${emails.length - 8} more →</div>`;
+        for (const e of emails.slice(8)) {
+          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot dg"></div>${e.email}</div>`;
+        }
+      }
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  // ── Shodan Card Renderer ──
+  function renderShodanCard(data) {
+    if (!data.found) {
+      const err = data.error || 'No Shodan data';
+      return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Shodan · Host</div><div class="badge b-none">${data.error ? 'ERROR' : 'NOT FOUND'}</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${err}</div></div></div>`;
+    }
+    const ports = data.ports || [];
+    const vulns = data.vulns || [];
+    const services = data.services || [];
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Shodan · Host</div><div class="badge b-hit">${ports.length} PORT${ports.length !== 1 ? 'S' : ''}</div>${vulns.length ? `<div class="badge b-warn" style="margin-left:4px;">${vulns.length} CVE${vulns.length !== 1 ? 'S' : ''}</div>` : ''}</div><div class="rcard-body">`;
+    if (data.org) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Org:</strong> ${data.org}</div>`;
+    if (data.isp) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">ISP:</strong> ${data.isp}</div>`;
+    if (data.os) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">OS:</strong> ${data.os}</div>`;
+    if (data.country) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Location:</strong> ${[data.city, data.country].filter(Boolean).join(', ')}</div>`;
+    if (ports.length) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Ports:</strong> ${ports.join(', ')}</div>`;
+    if (vulns.length) {
+      html += `<div class="ritem" style="color:var(--amber);"><div class="dot" style="background:var(--amber)"></div><strong>CVEs:</strong> ${vulns.slice(0, 10).join(', ')}${vulns.length > 10 ? ` (+${vulns.length - 10} more)` : ''}</div>`;
+    }
+    for (const s of services.slice(0, 6)) {
+      const label = [s.product, s.version].filter(Boolean).join(' ') || s.transport;
+      html += `<div class="ritem"><div class="dot dg"></div><span style="color:var(--red-bright);min-width:50px;display:inline-block;">${s.port}/${s.transport}</span> ${label}</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
   window.onload = () => {
+    // Apply saved theme
+    const savedTheme = localStorage.getItem('crawlr_theme');
+    if (savedTheme && savedTheme !== 'purple') document.documentElement.setAttribute('data-theme', savedTheme);
+
     // Terms check first
     if (!localStorage.getItem('crawlr_terms_v1')) {
       showTerms();

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
+from typing import Optional
 from modules.sherlock import run_sherlock
 from modules.holehe import run_holehe
 from modules.harvester import run_harvester
@@ -8,6 +9,8 @@ from modules.gravatar import run_gravatar
 from modules.github import run_github
 from modules.enricher import run_enricher
 from modules.platform_check import run_platform_check
+from modules.hunter import run_hunter
+from modules.shodan_lookup import run_shodan
 
 router = APIRouter()
 
@@ -101,3 +104,27 @@ async def platform_check(req: PlatformCheckRequest):
     if not username:
         raise HTTPException(status_code=400, detail="Username is required")
     return await run_platform_check(username, req.sherlock_sites)
+
+
+@router.post("/hunter")
+async def hunter_scan(req: HarvesterRequest, x_hunter_key: str = Header(...)):
+    domain = req.domain.strip()
+    if not domain:
+        raise HTTPException(status_code=400, detail="Domain is required")
+    if not x_hunter_key:
+        raise HTTPException(status_code=401, detail="Hunter.io API key is required")
+    return await run_hunter(domain, x_hunter_key)
+
+
+class ShodanRequest(BaseModel):
+    target: str
+
+
+@router.post("/shodan")
+async def shodan_scan(req: ShodanRequest, x_shodan_key: str = Header(...)):
+    target = req.target.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Target is required")
+    if not x_shodan_key:
+        raise HTTPException(status_code=401, detail="Shodan API key is required")
+    return await run_shodan(target, x_shodan_key)
