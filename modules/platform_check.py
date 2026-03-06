@@ -11,9 +11,13 @@ PLATFORMS = [
     {"name": "Instagram", "url": "https://www.instagram.com/{username}/", "sherlock": "Instagram"},
     {"name": "Twitter", "url": "https://twitter.com/{username}", "sherlock": "Twitter"},
     {"name": "X", "url": "https://x.com/{username}", "sherlock": "X"},
-    {"name": "OnlyFans", "url": "https://onlyfans.com/{username}", "sherlock": "OnlyFans"},
     {"name": "LinkedIn", "url": "https://www.linkedin.com/in/{username}", "sherlock": "LinkedIn"},
     {"name": "Threads", "url": "https://www.threads.net/@{username}", "sherlock": "Threads"},
+]
+
+# Platforms that can't be reliably checked programmatically — manual link only
+MANUAL_PLATFORMS = [
+    {"name": "OnlyFans", "url": "https://onlyfans.com/{username}"},
 ]
 
 
@@ -47,10 +51,20 @@ async def run_platform_check(
                 "found": found,
             })
 
-    found_count = sum(1 for r in results if r["found"])
+    # Append manual-check-only platforms
+    for plat in MANUAL_PLATFORMS:
+        url = plat["url"].format(username=username)
+        results.append({
+            "platform": plat["name"],
+            "url": url,
+            "found": None,  # None = manual check required
+            "manual": True,
+        })
+
+    found_count = sum(1 for r in results if r["found"] is True)
     return {
         "username": username,
         "total": found_count,
-        "checked": len(results),
+        "checked": len([r for r in results if not r.get("manual")]),
         "results": results,
     }

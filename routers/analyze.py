@@ -34,10 +34,25 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
     prompt_parts = [f"Target: {req.target}\n"]
 
     if req.sherlock and req.sherlock.get("results"):
-        sites = [r["site"] for r in req.sherlock["results"]]
+        results = req.sherlock["results"]
+        confirmed = [r["site"] for r in results if r.get("confidence") != "false_positive"]
+        unverified = [r["site"] for r in results if r.get("confidence") == "false_positive"]
+        high_conf = [r["site"] for r in results if r.get("confidence") == "high_confidence"]
+        if confirmed:
+            prompt_parts.append(
+                f"Sherlock confirmed {len(confirmed)} profiles: {', '.join(confirmed[:30])}"
+            )
+        if high_conf:
+            prompt_parts.append(
+                f"HIGH-CONFIDENCE platforms (weight these heavily): {', '.join(high_conf)}"
+            )
+        if unverified:
+            prompt_parts.append(
+                f"Sherlock UNVERIFIED (known false positives, ignore or deprioritize): {', '.join(unverified)}"
+            )
         prompt_parts.append(
-            f"Sherlock found {req.sherlock['total']} username matches on: {', '.join(sites[:30])}"
-            + (f" (and {len(sites)-30} more)" if len(sites) > 30 else "")
+            "NOTE: Sherlock results may include false positives from sites that return 200 for any username. "
+            "Focus analysis on high-confidence platforms like GitHub, Reddit, Steam, TikTok, LinkedIn."
         )
 
     if req.holehe and req.holehe.get("results"):

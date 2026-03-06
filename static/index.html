@@ -988,29 +988,34 @@
   /* ── Sherlock results renderer ── */
   function renderSherlockCard(data) {
     const count = data.total || 0;
+    const confirmed = data.confirmed ?? count;
     const items = data.results || [];
     const visible = items.slice(0, 6);
     const remaining = items.length - visible.length;
 
+    const badgeText = confirmed < count ? `${confirmed} CONFIRMED · ${count - confirmed} UNVERIFIED` : `${count} HIT${count !== 1 ? 'S' : ''}`;
     let html = `<div class="rcard">
       <div class="rcard-head">
         <div class="rcard-title">Sherlock · Profiles</div>
-        <div class="badge ${count > 0 ? 'b-hit' : 'b-none'}">${count} HIT${count !== 1 ? 'S' : ''}</div>
+        <div class="badge ${confirmed > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div>
       </div>
       <div class="rcard-body">`;
 
     if (count === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No profiles found</div>`;
     } else {
-      for (const r of visible) {
+      function sherlockRow(r) {
         const id = 'sh_' + r.site;
-        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
+        const isFP = r.confidence === 'false_positive';
+        const dimStyle = isFP ? 'opacity:0.5;' : '';
+        const fpBadge = isFP ? '<span style="font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">⚠ unverified</span>' : '';
+        return `<div class="ritem ${chkItemClass(id)}" style="${dimStyle}">${chkHtml(id)}<a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site}${fpBadge}</a></div>`;
       }
+      for (const r of visible) html += sherlockRow(r);
       if (remaining > 0) {
         html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
         for (const r of items.slice(6)) {
-          const id = 'sh_' + r.site;
-          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}<a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
+          html += sherlockRow(r).replace('class="ritem', 'class="ritem ritem-extra').replace(/style="/, 'style="display:none;');
         }
       }
     }
@@ -1198,7 +1203,9 @@
       <div class="rcard-head"><div class="rcard-title">Platform Check</div><div class="badge ${found > 0 ? 'b-hit' : 'b-none'}">${found}/${results.length} FOUND</div></div>
       <div class="rcard-body">`;
     for (const r of results) {
-      if (r.found) {
+      if (r.manual) {
+        html += `<div class="ritem"><div class="dot" style="background:#f59e0b"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.platform} — manual check</a> <span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">⚠ manual</span></div>`;
+      } else if (r.found) {
         html += `<div class="ritem"><div class="dot dg"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.platform} ✓</a></div>`;
       } else {
         html += `<div class="ritem"><div class="dot dd"></div><span style="color:var(--text-dim)">${r.platform} —</span></div>`;
