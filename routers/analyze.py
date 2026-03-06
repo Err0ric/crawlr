@@ -252,3 +252,172 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
         "tokens": tokens,
         "elapsed": elapsed,
     }
+
+
+@router.post("/deep-dive")
+async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...)):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API key is required")
+
+    # Build recon context (same data assembly as summarize)
+    prompt_parts = [f"Target: {req.target}\n"]
+
+    if req.sherlock and req.sherlock.get("results"):
+        results = req.sherlock["results"]
+        confirmed = [r["site"] for r in results if r.get("confidence") != "false_positive"]
+        high_conf = [r["site"] for r in results if r.get("confidence") == "high_confidence"]
+        if confirmed:
+            prompt_parts.append(f"Sherlock confirmed {len(confirmed)} profiles: {', '.join(confirmed[:30])}")
+        if high_conf:
+            prompt_parts.append(f"HIGH-CONFIDENCE platforms: {', '.join(high_conf)}")
+
+    if req.holehe and req.holehe.get("results"):
+        accounts = [r["site"] for r in req.holehe["results"]]
+        prompt_parts.append(f"Holehe: email registered on {req.holehe['total']} services: {', '.join(accounts)}")
+
+    if req.hibp and req.hibp.get("breaches"):
+        prompt_parts.append(f"Breaches ({len(req.hibp['breaches'])}): {', '.join(req.hibp['breaches'][:20])}")
+
+    if req.gravatar and req.gravatar.get("found"):
+        g = req.gravatar
+        parts = []
+        for k in ("name", "display_name", "location", "profile_url"):
+            if g.get(k):
+                parts.append(f"{k}: {g[k]}")
+        if parts:
+            prompt_parts.append(f"Gravatar: {', '.join(parts)}")
+
+    if req.github and req.github.get("found"):
+        gh = req.github
+        parts = []
+        for k in ("name", "bio", "location", "company", "email", "blog"):
+            if gh.get(k):
+                parts.append(f"{k}: {gh[k]}")
+        parts.append(f"{gh.get('public_repos', 0)} repos, {gh.get('followers', 0)} followers")
+        prompt_parts.append(f"GitHub: {', '.join(parts)}")
+
+    if req.enricher and req.enricher.get("profiles"):
+        for p in req.enricher["profiles"]:
+            parts = []
+            if p.get("display_name"):
+                parts.append(f"display name: {p['display_name']}")
+            if p.get("bio"):
+                parts.append(f"bio: {p['bio'][:200]}")
+            if parts:
+                prompt_parts.append(f"{p.get('platform', 'Unknown')}: {', '.join(parts)}")
+
+    if req.platform_check and req.platform_check.get("results"):
+        found = [r for r in req.platform_check["results"] if r.get("found")]
+        if found:
+            prompt_parts.append(f"Platform check confirmed: {', '.join(r['platform'] for r in found)}")
+
+    if req.hunter and req.hunter.get("emails"):
+        emails = [e["email"] for e in req.hunter["emails"][:15]]
+        prompt_parts.append(f"Hunter.io emails: {', '.join(emails)}")
+        if req.hunter.get("pattern"):
+            prompt_parts.append(f"Email pattern: {req.hunter['pattern']}")
+
+    if req.shodan and req.shodan.get("found"):
+        s = req.shodan
+        parts = []
+        for k in ("org", "os", "isp", "country", "city"):
+            if s.get(k):
+                parts.append(f"{k}: {s[k]}")
+        if s.get("ports"):
+            parts.append(f"ports: {', '.join(str(p) for p in s['ports'][:20])}")
+        prompt_parts.append(f"Shodan: {', '.join(parts)}")
+
+    # Profile scrape data — the key differentiator for Deep Dive
+    scrape_section = ""
+    if req.profile_scrape and req.profile_scrape.get("results"):
+        scrape_parts = ["\n== SCRAPED PROFILE DATA (live page visits) =="]
+        for p in req.profile_scrape["results"]:
+            if p.get("error"):
+                continue
+            lines = [f"\n[{p.get('site', '?')}] {p.get('url', '')}"]
+            if p.get("display_name"):
+                lines.append(f"  Display Name: {p['display_name']}")
+            if p.get("bio"):
+                lines.append(f"  Bio: {p['bio'][:400]}")
+            if p.get("emails"):
+                lines.append(f"  Emails found: {', '.join(p['emails'])}")
+            if p.get("location"):
+                lines.append(f"  Location: {p['location']}")
+            if p.get("links"):
+                lines.append(f"  Linked URLs: {', '.join(p['links'][:8])}")
+            scrape_parts.append("\n".join(lines))
+        scrape_section = "\n".join(scrape_parts)
+
+    recon_data = "\n".join(prompt_parts)
+    if scrape_section:
+        recon_data += "\n" + scrape_section
+
+    client = anthropic.Anthropic(api_key=x_api_key)
+    t0 = time.time()
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2048,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "You are a senior OSINT intelligence analyst writing a classified-style dossier. "
+                    "You have access to OSINT recon data AND live-scraped profile page content below. "
+                    "Write a deep analytical report — NOT bullet points, but a proper intelligence dossier.\n\n"
+                    "Produce EXACTLY these five sections with these EXACT headers (use ** bold for headers):\n\n"
+                    "**SUBJECT PROFILE**\n"
+                    "Write 2-3 flowing paragraphs describing this person's digital identity. "
+                    "Synthesize ALL available data into a narrative: who they likely are, what they do online, "
+                    "their technical sophistication, geographic indicators, professional profile, interests, "
+                    "and behavioral patterns. Cross-reference display names, bios, and linked accounts "
+                    "from the scraped profile data to build a coherent picture. "
+                    "Do NOT use bullet points — write in analytical prose.\n\n"
+                    "**CONFIDENCE MATRIX**\n"
+                    "Present a table of identity inferences. Each row should be:\n"
+                    "| Inference | Confidence | Evidence |\n"
+                    "Include rows for: Probable Real Name, Location, Occupation/Industry, Age Range, "
+                    "Primary Email, Technical Skill Level, and any other strong inferences. "
+                    "Confidence must be HIGH, MEDIUM, or LOW. Evidence column must cite specific data points.\n\n"
+                    "**PLATFORM CORRELATION**\n"
+                    "Analyze which platforms corroborate each other. For each cluster of corroborating platforms, "
+                    "explain WHAT matches (same display name? same bio text? same linked URL? same avatar?) "
+                    "and what intelligence that yields. Identify any contradictions between platforms. "
+                    "If scraped profile data is available, use the actual display names and bios to correlate.\n\n"
+                    "**OPSEC ASSESSMENT**\n"
+                    "Evaluate the target's operational security. What personal information have they leaked? "
+                    "What are they doing well (separate identities, no real name, etc.)? "
+                    "Rate their overall OPSEC as POOR, FAIR, MODERATE, or STRONG with justification. "
+                    "Note specific mistakes: real name in username, same handle everywhere, "
+                    "location in bio, employer visible, email exposed in breaches, etc.\n\n"
+                    "**READY-TO-USE QUERIES**\n"
+                    "Provide 5-8 copy-paste-ready search queries for manual follow-up. "
+                    "Each on its own line prefixed with →. Include:\n"
+                    "- Google dorks: site:, inurl:, intitle:, \"exact match\" operators\n"
+                    "- Platform-specific searches\n"
+                    "- Reverse email/username lookups\n"
+                    "Make these SPECIFIC to the target — use their actual username, email, "
+                    "inferred name, and discovered platforms. No generic templates.\n\n"
+                    "IMPORTANT FORMATTING RULES:\n"
+                    "- Use **bold** for section headers and key terms\n"
+                    "- Do NOT use # markdown headers\n"
+                    "- Do NOT use → bullets except in READY-TO-USE QUERIES\n"
+                    "- Write SUBJECT PROFILE and OPSEC ASSESSMENT as flowing prose paragraphs\n"
+                    "- Use | pipe-delimited table rows for CONFIDENCE MATRIX\n"
+                    "- Keep total length 600-900 words\n\n"
+                    f"Recon data:\n{recon_data}"
+                ),
+            }
+        ],
+    )
+
+    elapsed = round(time.time() - t0, 1)
+    text = message.content[0].text
+    tokens = message.usage.input_tokens + message.usage.output_tokens
+
+    return {
+        "summary": text,
+        "model": message.model,
+        "tokens": tokens,
+        "elapsed": elapsed,
+    }

@@ -1604,7 +1604,7 @@
       // Step 2: Run Deep Dive AI analysis
       ddResults.innerHTML += '<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">⏳ Sending to Claude for deep correlation...</div>';
 
-      const aiResp = await fetch('/api/analyze/summarize', {
+      const aiResp = await fetch('/api/analyze/deep-dive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
         body: JSON.stringify({
@@ -1649,35 +1649,81 @@
   }
 
   function renderDeepDiveBlock(data) {
-    aiLeadCounter = 0;
     const lines = data.summary.split('\n');
     let html = `<div class="ai-block" style="margin-top:12px;border-color:rgba(245,158,11,0.3);">
       <div class="ai-head" style="border-color:rgba(245,158,11,0.2);">
-        <div class="ai-tag" style="color:#f59e0b;">// DEEP DIVE</div>
+        <div class="ai-tag" style="color:#f59e0b;">// DEEP DIVE — Intelligence Dossier</div>
         <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
       </div>
-      <div class="ai-body">`;
+      <div class="ai-body" style="font-size:12px;line-height:1.7;">`;
 
-    let inLeads = false;
+    let inTable = false;
+    let inQueries = false;
+    let queryCounter = 0;
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      if (!line) { if (inLeads) { html += '</div>'; inLeads = false; } continue; }
-      const isBullet = /^[→•\-]\s*/.test(line);
-      const bulletText = line.replace(/^[→•\-]\s*/, '');
-      if (isSectionHeading(line)) {
-        if (inLeads) { html += '</div>'; inLeads = false; }
-        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
-        html += `<div class="ai-section" onclick="toggleSection(this)"><span class="sec-arrow">▼</span> // ${label}</div>`;
-      } else if (isBullet) {
-        if (!inLeads) { html += '<div class="leads">'; inLeads = true; }
-        const id = 'dd_' + (aiLeadCounter++);
-        html += `<div class="lead chk-item ${chkItemClass(id)}">${chkHtml(id)}<span class="lead-arr">→</span><span class="lead-text">${mdInline(bulletText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy">⧉</span></div>`;
-      } else {
-        if (inLeads) { html += '</div>'; inLeads = false; }
-        html += `<div style="margin-bottom:4px">${mdInline(line)}</div>`;
+      if (!line) {
+        if (inTable) { html += '</table></div>'; inTable = false; }
+        if (inQueries) { html += '</div>'; inQueries = false; }
+        continue;
       }
+
+      // Section headers
+      if (isSectionHeading(line)) {
+        if (inTable) { html += '</table></div>'; inTable = false; }
+        if (inQueries) { html += '</div>'; inQueries = false; }
+        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
+        const isQuerySection = /READY.TO.USE|QUERIES/i.test(label);
+        if (isQuerySection) inQueries = false; // will start on next bullet
+        html += `<div class="ai-section" onclick="toggleSection(this)" style="color:#f59e0b;border-color:rgba(245,158,11,0.15);"><span class="sec-arrow">▼</span> // ${label}</div>`;
+        continue;
+      }
+
+      // Table rows (pipe-delimited)
+      if (line.startsWith('|') && line.endsWith('|')) {
+        const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
+        if (cells.every(c => /^[-:]+$/.test(c))) continue; // skip separator row
+        if (!inTable) {
+          html += '<div style="overflow-x:auto;margin:6px 0 10px;"><table style="width:100%;border-collapse:collapse;font-family:Share Tech Mono,monospace;font-size:10px;">';
+          // Check if this is the header row
+          const isHeader = cells.some(c => /Inference|Confidence|Evidence/i.test(c));
+          const tag = isHeader ? 'th' : 'td';
+          const style = isHeader
+            ? 'padding:6px 10px;text-align:left;color:#f59e0b;border-bottom:1px solid rgba(245,158,11,0.3);font-weight:600;letter-spacing:1px;text-transform:uppercase;font-size:9px;'
+            : 'padding:5px 10px;border-bottom:1px solid var(--border-lo);color:var(--text-mid);';
+          html += '<tr>' + cells.map(c => `<${tag} style="${style}">${mdInline(c)}</${tag}>`).join('') + '</tr>';
+          inTable = true;
+        } else {
+          const confCell = cells.find(c => /^(HIGH|MEDIUM|LOW)$/i.test(c));
+          html += '<tr>' + cells.map(c => {
+            let cs = 'padding:5px 10px;border-bottom:1px solid var(--border-lo);color:var(--text-mid);';
+            if (/^HIGH$/i.test(c)) cs += 'color:var(--green);font-weight:600;';
+            else if (/^MEDIUM$/i.test(c)) cs += 'color:#f59e0b;font-weight:600;';
+            else if (/^LOW$/i.test(c)) cs += 'color:var(--red-bright);font-weight:600;';
+            return `<td style="${cs}">${mdInline(c)}</td>`;
+          }).join('') + '</tr>';
+        }
+        continue;
+      }
+      if (inTable) { html += '</table></div>'; inTable = false; }
+
+      // Query lines (→ prefixed) — render as copyable
+      if (/^[→•]\s*/.test(line)) {
+        const queryText = line.replace(/^[→•]\s*/, '');
+        const qid = 'ddq_' + (queryCounter++);
+        if (!inQueries) { html += '<div class="leads">'; inQueries = true; }
+        html += `<div class="lead" style="align-items:flex-start;"><span class="lead-arr" style="color:#f59e0b;">→</span><span class="lead-text" style="font-family:Share Tech Mono,monospace;font-size:10px;word-break:break-all;">${mdInline(queryText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy" style="color:#f59e0b;">⧉</span></div>`;
+        continue;
+      }
+      if (inQueries) { html += '</div>'; inQueries = false; }
+
+      // Prose paragraphs
+      html += `<div style="margin-bottom:6px;color:var(--text-mid);">${mdInline(line)}</div>`;
     }
-    if (inLeads) html += '</div>';
+
+    if (inTable) html += '</table></div>';
+    if (inQueries) html += '</div>';
     html += `</div></div>`;
     return html;
   }
