@@ -732,17 +732,49 @@
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
         updateLogRow(row, `${label} error: ${err.detail || resp.statusText}`, 'wait');
+        return null;
       } else {
         const data = await resp.json();
         const count = data.total ?? (data.total_hosts + data.total_emails) ?? 0;
         updateLogRow(row, `${label} complete — ${count} result${count !== 1 ? 's' : ''} found`, 'done');
         cardsEl.innerHTML += renderFn(data);
+        return data;
       }
     } catch (e) {
       clearInterval(timer);
       setLogTime(row, (performance.now() - t0) / 1000);
       updateLogRow(row, `${label} error: ${e.message}`, 'wait');
+      return null;
     }
+  }
+
+  /* ── AI Analysis renderer ── */
+  function renderAIBlock(data) {
+    const lines = data.summary.split('\n').filter(l => l.trim());
+    const leads = [];
+    const body = [];
+    for (const line of lines) {
+      if (line.trim().startsWith('→')) {
+        leads.push(line.trim().substring(1).trim());
+      } else {
+        body.push(line);
+      }
+    }
+    let html = `<div class="ai-block">
+      <div class="ai-head">
+        <div class="ai-tag">// AI Analysis</div>
+        <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
+      </div>
+      <div class="ai-body">${body.join('<br>')}`
+    if (leads.length) {
+      html += `<div class="leads">`;
+      for (const l of leads) {
+        html += `<div class="lead"><span class="lead-arr">→</span>${l}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+    return html;
   }
 
   async function runScan() {
@@ -758,18 +790,21 @@
     document.getElementById('emptyState').style.display = 'none';
     const res = document.getElementById('results');
     res.style.display = 'block';
-    res.innerHTML = '<div class="agent-log" id="log"></div><div class="result-grid" id="resultCards"></div>';
+    res.innerHTML = '<div class="agent-log" id="log"></div><div id="aiBlock"></div><div class="result-grid" id="resultCards"></div>';
     const logEl = document.getElementById('log');
     const cardsEl = document.getElementById('resultCards');
+    const aiEl = document.getElementById('aiBlock');
 
     const t0 = performance.now();
     const email = isEmail(target);
     const domain = isDomain(target);
 
+    const collected = {};
+
     // Sherlock — run for usernames and emails (use local part as username)
     if (!domain) {
       const username = email ? target.split('@')[0] : target;
-      await runModule(logEl, cardsEl, t0,
+      collected.sherlock = await runModule(logEl, cardsEl, t0,
         `Sherlock scan on "${username}"`,
         '/api/recon/sherlock',
         { username },
@@ -779,7 +814,7 @@
 
     // Holehe — only when target is an email
     if (email) {
-      await runModule(logEl, cardsEl, t0,
+      collected.holehe = await runModule(logEl, cardsEl, t0,
         `Holehe email check on "${target}"`,
         '/api/recon/holehe',
         { email: target },
@@ -790,12 +825,51 @@
     // theHarvester — when target is a domain, or extract domain from email
     if (domain || email) {
       const d = email ? target.split('@')[1] : target;
-      await runModule(logEl, cardsEl, t0,
+      collected.harvester = await runModule(logEl, cardsEl, t0,
         `theHarvester domain recon on "${d}"`,
         '/api/recon/harvester',
         { domain: d },
         renderHarvesterCard
       );
+    }
+
+    // AI Analysis — only if we have an API key and at least some results
+    const apiKey = sessionStorage.getItem('cs_key');
+    const hasResults = Object.values(collected).some(v => v);
+    if (apiKey && hasResults) {
+      const aiRow = addLogRow(logEl, 'Sending results to Claude for analysis...', 'run');
+      const aiTimer = setInterval(() => setLogTime(aiRow, (performance.now() - t0) / 1000), 200);
+      try {
+        const resp = await fetch('/api/analyze/summarize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Api-Key': apiKey,
+          },
+          body: JSON.stringify({
+            target,
+            sherlock: collected.sherlock,
+            holehe: collected.holehe,
+            harvester: collected.harvester,
+          }),
+        });
+        clearInterval(aiTimer);
+        setLogTime(aiRow, (performance.now() - t0) / 1000);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
+          updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
+        } else {
+          const data = await resp.json();
+          updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
+          aiEl.innerHTML = renderAIBlock(data);
+        }
+      } catch (e) {
+        clearInterval(aiTimer);
+        setLogTime(aiRow, (performance.now() - t0) / 1000);
+        updateLogRow(aiRow, `AI Analysis error: ${e.message}`, 'wait');
+      }
+    } else if (!apiKey) {
+      addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
     }
 
     const doneRow = addLogRow(logEl, 'Investigation complete.', 'done');
