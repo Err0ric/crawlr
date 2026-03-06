@@ -438,6 +438,14 @@
   .rmore { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); padding: 5px 0 2px; cursor: pointer; transition: color 0.12s; }
   .rmore:hover { color: var(--red); }
 
+  .chk { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--border-mid); flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 8px; color: transparent; transition: all 0.15s; background: transparent; }
+  .chk:hover { border-color: var(--red-dim); }
+  .chk.on { border-color: var(--red); color: var(--red); background: var(--red-glow); }
+  .chk-item.done { opacity: 0.4; }
+  .chk-item.done > *:not(.chk) { text-decoration: line-through; }
+
+  .ai-progress { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-dim); margin-left: 8px; }
+
   .ai-block { background: var(--bg2); border: 1px solid var(--border-mid); border-left: 2px solid var(--red-dim); border-radius: 4px; overflow: hidden; margin-bottom: 14px; }
 
   .ai-head { display: flex; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg3); gap: 10px; }
@@ -614,6 +622,45 @@
     document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', {hour12:false});
   }, 1000);
 
+  /* ── Check state manager ── */
+  let currentTarget = '';
+  function getChecked() {
+    try { return JSON.parse(localStorage.getItem('crawlr_checked_' + currentTarget) || '{}'); } catch { return {}; }
+  }
+  function setChecked(id, val) {
+    const s = getChecked();
+    if (val) s[id] = true; else delete s[id];
+    localStorage.setItem('crawlr_checked_' + currentTarget, JSON.stringify(s));
+  }
+  function isChecked(id) { return !!getChecked()[id]; }
+
+  function toggleCheck(el, id) {
+    const item = el.closest('.chk-item');
+    const on = !el.classList.contains('on');
+    el.classList.toggle('on', on);
+    el.textContent = on ? '✓' : '';
+    item.classList.toggle('done', on);
+    setChecked(id, on);
+    updateAIProgress();
+  }
+
+  function chkHtml(id) {
+    const on = isChecked(id);
+    return `<div class="chk ${on ? 'on' : ''}" onclick="toggleCheck(this,'${id}')">${on ? '✓' : ''}</div>`;
+  }
+
+  function chkItemClass(id) {
+    return `chk-item${isChecked(id) ? ' done' : ''}`;
+  }
+
+  function updateAIProgress() {
+    const counter = document.getElementById('aiProgress');
+    if (!counter) return;
+    const leads = document.querySelectorAll('#aiBlock .lead.chk-item');
+    const checked = document.querySelectorAll('#aiBlock .lead.chk-item.done');
+    counter.textContent = `${checked.length} / ${leads.length} reviewed`;
+  }
+
   function openModal() {
     document.getElementById('overlay').classList.add('open');
     document.getElementById('rememberKey').checked = !!localStorage.getItem('cs_key');
@@ -707,12 +754,14 @@
       html += `<div class="ritem"><div class="dot dd"></div>No profiles found</div>`;
     } else {
       for (const r of visible) {
-        html += `<div class="ritem"><div class="dot dg"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
+        const id = 'sh_' + r.site;
+        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
       }
       if (remaining > 0) {
         html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
         for (const r of items.slice(6)) {
-          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot dg"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
+          const id = 'sh_' + r.site;
+          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}<a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.site} — ${r.url}</a></div>`;
         }
       }
     }
@@ -739,12 +788,14 @@
       html += `<div class="ritem"><div class="dot dd"></div>No accounts found</div>`;
     } else {
       for (const r of visible) {
-        html += `<div class="ritem"><div class="dot dg"></div>${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
+        const id = 'ho_' + r.site;
+        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
       }
       if (remaining > 0) {
         html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
         for (const r of items.slice(6)) {
-          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot dg"></div>${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
+          const id = 'ho_' + r.site;
+          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}${r.site} <span style="color:var(--text-dim);margin-left:4px">(${r.domain})</span></div>`;
         }
       }
     }
@@ -807,12 +858,14 @@
       html += `<div class="ritem"><div class="dot dd"></div>No breaches found</div>`;
     } else {
       for (const b of visible) {
-        html += `<div class="ritem"><div class="dot da"></div>${b}</div>`;
+        const id = 'bp_' + b;
+        html += `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}${b}</div>`;
       }
       if (remaining > 0) {
         html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${remaining} more →</div>`;
         for (const b of breaches.slice(6)) {
-          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot da"></div>${b}</div>`;
+          const id = 'bp_' + b;
+          html += `<div class="ritem ritem-extra ${chkItemClass(id)}" style="display:none">${chkHtml(id)}${b}</div>`;
         }
       }
     }
@@ -949,11 +1002,15 @@
     return sectionHeadings.some(h => clean === h || clean.startsWith(h));
   }
 
+  let aiLeadCounter = 0;
+
   function renderAIBlock(data) {
+    aiLeadCounter = 0;
     const lines = data.summary.split('\n');
     let html = `<div class="ai-block">
       <div class="ai-head">
         <div class="ai-tag">// AI Analysis</div>
+        <span class="ai-progress" id="aiProgress"></span>
         <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
       </div>
       <div class="ai-body">`;
@@ -976,7 +1033,8 @@
         html += `<div class="ai-section">// ${label}</div>`;
       } else if (isBullet) {
         if (!inLeads) { html += '<div class="leads">'; inLeads = true; }
-        html += `<div class="lead"><span class="lead-arr">→</span>${mdInline(bulletText)}</div>`;
+        const id = 'ai_' + (aiLeadCounter++);
+        html += `<div class="lead chk-item ${chkItemClass(id)}">${chkHtml(id)}<span class="lead-arr">→</span><span>${mdInline(bulletText)}</span></div>`;
       } else {
         if (inLeads) { html += '</div>'; inLeads = false; }
         html += `<div style="margin-bottom:4px">${mdInline(line)}</div>`;
@@ -994,6 +1052,7 @@
     if (!target) { document.getElementById('targetInput').focus(); return; }
 
     scanning = true;
+    currentTarget = target;
     const runBtn = document.querySelector('.run-btn');
     runBtn.textContent = '⏳ SCANNING...';
     runBtn.style.pointerEvents = 'none';
@@ -1119,6 +1178,7 @@
           const data = await resp.json();
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           aiEl.innerHTML = renderAIBlock(data);
+          updateAIProgress();
         }
       } catch (e) {
         clearInterval(aiTimer);
