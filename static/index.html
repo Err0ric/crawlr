@@ -250,6 +250,10 @@
   }
 
   .mod-tag.free { border-color: #1a301a; color: #2d5a2d; }
+  .mod-tag.warn { border-color: rgba(217,119,6,0.3); color: var(--amber); }
+  .mod-active { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+  .mod-active .mod-name { color: var(--amber-bright); }
+  .mod-active .mod-sub { color: var(--amber); opacity: 0.7; }
 
   .run-wrap { padding: 13px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
 
@@ -575,6 +579,7 @@
         <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
         <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Shodan</div><div class="mod-sub">ip/domain · exposed services</div></div><div class="mod-tag">API</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · interpret &amp; suggest leads</div></div><div class="mod-tag">KEY</div></div>
+        <div class="mod mod-active"><div class="mod-toggle" id="activeTechToggle" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">⚠ Active Techniques</div><div class="mod-sub">account recovery · may notify target</div></div><div class="mod-tag warn">⚠</div></div>
       </div>
     </div>
 
@@ -1167,6 +1172,7 @@
             gravatar: collected.gravatar,
             github: collected.github,
             enricher: collected.enricher,
+            active_techniques: document.getElementById('activeTechToggle').classList.contains('on'),
           }),
         });
         clearInterval(aiTimer);

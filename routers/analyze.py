@@ -16,6 +16,7 @@ class AnalyzeRequest(BaseModel):
     gravatar: Optional[dict] = None
     github: Optional[dict] = None
     enricher: Optional[dict] = None
+    active_techniques: bool = False
 
 
 @router.get("/ping")
@@ -130,10 +131,19 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
                     "linkedin.com/in/[username], about.me/[username] bio, gravatar profile, etc.\n\n"
                     "**Phone Lookup Strategies** (public data only)\n"
                     "→ Suggest specific sites: Truecaller, Spokeo, WhitePages, BeenVerified, Pipl, NumLookup\n"
-                    "→ Suggest trying account recovery flows on detected services (e.g. Google, Apple, Microsoft) "
-                    "which may reveal partial phone numbers\n"
                     "→ Suggest searching the email/username on Telegram, WhatsApp, Signal user lookups\n"
                     "→ If a probable name was inferred, suggest combining name + location for reverse phone lookup\n\n"
+                    + (
+                        "**⚠ Active Techniques** (may alert the target — use with caution)\n"
+                        "→ ⚠ ACTIVE: Try account recovery flows on detected services (e.g. Google, Apple, Microsoft) "
+                        "which may reveal partial phone numbers or email addresses\n"
+                        "→ ⚠ ACTIVE: Password reset enumeration on detected platforms to confirm account existence "
+                        "and discover linked emails/phones\n"
+                        "→ ⚠ ACTIVE: Send a connection request or follow on social platforms to access restricted profiles\n"
+                        "→ ⚠ ACTIVE: Use email verification endpoints on services to confirm email registration\n"
+                        "→ ⚠ ACTIVE: Try forgot-password on detected services to reveal masked recovery info\n\n"
+                        if req.active_techniques else ""
+                    ) +
                     "Use **bold** for emphasis. Use → prefix for all action items and leads. "
                     "Do not use markdown headers (no # symbols). Keep it concise and actionable.\n\n"
                     f"Recon data:\n{recon_data}"
