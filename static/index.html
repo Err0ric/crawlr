@@ -1937,7 +1937,8 @@
     // Layout params
     const laneX = [60, 220, 440, 680];
     const boxH = 28, gapY = 8, startY = 70;
-    const domainBoxW = 150, typeBoxW = 50, valBoxW = 180, asnBoxW = 200;
+    const subBoxH = 24, subGapY = 4;
+    const domainBoxW = 150, typeBoxW = 50, valBoxW = 180, asnBoxW = 200, subBoxW = 160;
     const boxWidths = [domainBoxW, typeBoxW, valBoxW, asnBoxW];
 
     // Assign positions
@@ -1963,16 +1964,16 @@
     // Subdomain section
     const subStartY = startY + Math.max(lane1Order.length, lane2Order.length, lane3Order.length) * (boxH + gapY) + 40;
     subNodes.forEach((s, i) => {
-      positions[s.id] = { x: laneX[1], y: subStartY + i * (boxH + gapY) };
+      positions[s.id] = { x: laneX[1], y: subStartY + i * (subBoxH + subGapY) };
       s.ips.forEach((ip, j) => {
         const ipId = 'subip_' + s.id + '_' + ip;
-        positions[ipId] = { x: laneX[2], y: subStartY + i * (boxH + gapY) };
+        positions[ipId] = { x: laneX[1] + subBoxW + 20, y: subStartY + i * (subBoxH + subGapY) };
         if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: 'ip', lane: 2, row: 0 }); }
         addL(s.id, ipId, 'sub');
         if (asnInfo.asn) {
           const aId = 'subasn_' + ipId;
           if (!idSet[aId]) { idSet[aId] = true; treeNodes.push({ id: aId, label: `${asnInfo.asn} ${(asnInfo.org || '').slice(0, 30)}`, type: 'asn', lane: 3, row: 0 }); }
-          positions[aId] = { x: laneX[3], y: subStartY + i * (boxH + gapY) };
+          positions[aId] = { x: laneX[3], y: subStartY + i * (subBoxH + subGapY) };
           addL(ipId, aId, 'asn');
         }
       });
@@ -1982,8 +1983,8 @@
       if (!treeNodes.find(n => n.id === s.id)) treeNodes.push({ id: s.id, label: s.label, type: s.type, lane: 1, row: 0 });
     }
 
-    const totalH = Math.max(subStartY + subNodes.length * (boxH + gapY) + 60, rect.height || 500);
-    const svgW = Math.max(W, 920);
+    const totalH = Math.max(subStartY + subNodes.length * (subBoxH + subGapY) + 60, rect.height || 500);
+    const svgW = Math.max(W, laneX[3] + asnBoxW + 40, 920);
 
     const svg = d3.select(container).append('svg')
       .attr('width', svgW).attr('height', totalH)
@@ -2023,9 +2024,15 @@
       const sp = positions[link.source];
       const tp = positions[link.target];
       if (!sp || !tp) continue;
-      const srcW = boxWidths[treeNodes.find(n => n.id === link.source)?.lane] || 100;
-      const x1 = sp.x + srcW, y1 = sp.y + boxH / 2;
-      const x2 = tp.x, y2 = tp.y + boxH / 2;
+      const srcNode = treeNodes.find(n => n.id === link.source);
+      const tgtNode = treeNodes.find(n => n.id === link.target);
+      const srcIsSub = srcNode?.type === 'subdomain';
+      const tgtIsSub = tgtNode?.type === 'subdomain';
+      const srcW = srcIsSub ? subBoxW : (boxWidths[srcNode?.lane] || 100);
+      const srcH = srcIsSub ? subBoxH : boxH;
+      const tgtH = tgtIsSub ? subBoxH : boxH;
+      const x1 = sp.x + srcW, y1 = sp.y + srcH / 2;
+      const x2 = tp.x, y2 = tp.y + tgtH / 2;
       const mx = (x1 + x2) / 2;
       const col = colorMap[link.type] || colorMap.a;
       g.append('path')
@@ -2039,26 +2046,30 @@
     for (const n of treeNodes) {
       const pos = positions[n.id];
       if (!pos) continue;
-      const bw = boxWidths[n.lane] || 150;
+      const isSub = n.type === 'subdomain';
+      const bw = isSub ? subBoxW : (boxWidths[n.lane] || 150);
+      const bh = isSub ? subBoxH : boxH;
       const col = colorMap[n.type] || colorMap.ip;
       const ng = g.append('g').attr('transform', `translate(${pos.x}, ${pos.y})`);
 
       // Box
       ng.append('rect')
-        .attr('width', bw).attr('height', boxH).attr('rx', 3)
-        .attr('fill', n.type === 'domain' ? 'rgba(124,58,237,0.15)' : 'rgba(15,14,28,0.9)')
+        .attr('width', bw).attr('height', bh).attr('rx', 3)
+        .attr('fill', n.type === 'domain' ? 'rgba(124,58,237,0.15)' : (isSub ? 'rgba(124,58,237,0.08)' : 'rgba(15,14,28,0.9)'))
         .attr('stroke', col).attr('stroke-width', n.type === 'domain' ? 2 : 1)
         .attr('stroke-opacity', n.type === 'domain' ? 0.8 : 0.4);
 
       // Label
-      const maxChars = Math.floor(bw / 7);
+      const fontSize = n.type === 'domain' ? '11px' : (isSub ? '10px' : (n.type === 'asn' ? '8px' : '9px'));
+      const charW = isSub ? 6.5 : 7;
+      const maxChars = Math.floor(bw / charW);
       const label = n.label.length > maxChars ? n.label.slice(0, maxChars - 1) + '…' : n.label;
       ng.append('text')
-        .attr('x', bw / 2).attr('y', boxH / 2 + 4)
+        .attr('x', bw / 2).attr('y', bh / 2 + 4)
         .attr('text-anchor', 'middle')
-        .attr('fill', n.type === 'domain' ? '#e8e0f8' : (n.type === 'asn' ? '#4b5563' : '#b0a8cc'))
+        .attr('fill', n.type === 'domain' ? '#e8e0f8' : (isSub ? '#a78bfa' : (n.type === 'asn' ? '#4b5563' : '#b0a8cc')))
         .attr('font-family', 'Share Tech Mono, monospace')
-        .attr('font-size', n.type === 'domain' ? '11px' : (n.type === 'asn' ? '8px' : '9px'))
+        .attr('font-size', fontSize)
         .text(label);
 
       // Hover tooltip
