@@ -459,11 +459,15 @@
   <div class="modal">
     <div class="modal-eye">// Authentication</div>
     <div class="modal-title">Set API Key</div>
-    <div class="modal-sub">Your key is stored in browser session memory only. It is never transmitted to or stored on this server.</div>
+    <div class="modal-sub">Your key is stored locally in your browser only. It is never transmitted to or stored on this server.</div>
     <input class="modal-input" type="password" id="keyInput" placeholder="sk-ant-api03-..." />
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);">
+      <input type="checkbox" id="rememberKey" style="accent-color:var(--red);cursor:pointer;" />
+      Remember my API key on this device
+    </label>
     <div class="modal-note">
       No key? Get one at <a href="#">console.anthropic.com →</a><br>
-      Session clears automatically when you close your browser.
+      Uncheck remember to clear key when you close your browser.
     </div>
     <div class="modal-actions">
       <button class="modal-primary" onclick="saveKey()">Authenticate</button>
@@ -567,13 +571,27 @@
     document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', {hour12:false});
   }, 1000);
 
-  function openModal()  { document.getElementById('overlay').classList.add('open'); }
+  function openModal() {
+    document.getElementById('overlay').classList.add('open');
+    document.getElementById('rememberKey').checked = !!localStorage.getItem('cs_key');
+  }
   function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+
+  function getApiKey() {
+    return localStorage.getItem('cs_key') || getApiKey();
+  }
 
   function saveKey() {
     const k = document.getElementById('keyInput').value;
     if (k) {
-      sessionStorage.setItem('cs_key', k);
+      const remember = document.getElementById('rememberKey').checked;
+      if (remember) {
+        localStorage.setItem('cs_key', k);
+        sessionStorage.removeItem('cs_key');
+      } else {
+        sessionStorage.setItem('cs_key', k);
+        localStorage.removeItem('cs_key');
+      }
       document.getElementById('keyDot').classList.add('set');
       document.getElementById('keyLabel').textContent = 'KEY SET ✓';
     }
@@ -834,7 +852,7 @@
     }
 
     // AI Analysis — only if we have an API key and at least some results
-    const apiKey = sessionStorage.getItem('cs_key');
+    const apiKey = getApiKey();
     const hasResults = Object.values(collected).some(v => v);
     if (apiKey && hasResults) {
       const aiRow = addLogRow(logEl, 'Sending results to Claude for analysis...', 'run');
@@ -881,7 +899,12 @@
   }
 
   window.onload = () => {
-    if (!sessionStorage.getItem('cs_key')) setTimeout(openModal, 500);
+    if (getApiKey()) {
+      document.getElementById('keyDot').classList.add('set');
+      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
+    } else {
+      setTimeout(openModal, 500);
+    }
   };
 </script>
 </body>
