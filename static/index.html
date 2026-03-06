@@ -3035,8 +3035,11 @@
     let thtml = '';
     for (const t of THEMES) {
       const active = t.id === current;
+      const dotStyle = t.id === 'flashbang'
+        ? `width:16px;height:16px;border-radius:50%;background:#ffffff;border:2px solid #111111;`
+        : `width:16px;height:16px;border-radius:50%;background:${t.preview};border:2px solid ${active ? 'var(--text-bright)' : 'var(--border-mid)'};`;
       thtml += `<div onclick="setTheme('${t.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${active ? 'var(--red-glow)' : 'var(--bg)'};border:1px solid ${active ? 'var(--red-dim)' : 'var(--border)'};border-radius:4px;cursor:pointer;">
-        <div style="width:16px;height:16px;border-radius:50%;background:${t.preview};border:2px solid ${active ? 'var(--text-bright)' : 'var(--border-mid)'};"></div>
+        <div style="${dotStyle}"></div>
         <span style="font-size:11px;color:${active ? 'var(--text-bright)' : 'var(--text)'};font-family:'Share Tech Mono',monospace;">${t.label}</span>
         ${active ? '<span style="margin-left:auto;font-size:9px;color:var(--red-bright);">ACTIVE</span>' : ''}
       </div>`;
