@@ -108,6 +108,15 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
     if req.dns and req.dns.get("records"):
         for rtype, records in req.dns["records"].items():
             prompt_parts.append(f"DNS {rtype} records: {', '.join(records[:10])}")
+        if req.dns.get("cloudflare_proxied"):
+            prompt_parts.append(
+                "CLOUDFLARE PROXY DETECTED: The domain's A records resolve to Cloudflare IPs. "
+                "The true origin server IP is hidden behind Cloudflare's reverse proxy. "
+                "HTTP headers and open ports reflect Cloudflare's edge, not the origin. "
+                "Consider origin IP discovery techniques: historical DNS records (SecurityTrails, ViewDNS), "
+                "MX/mail server IPs, Shodan/Censys searches for the domain's SSL cert, "
+                "unproxied subdomain enumeration, and DNS misconfigurations."
+            )
 
     if req.whois and req.whois.get("found"):
         w = req.whois

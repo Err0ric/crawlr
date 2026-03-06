@@ -2145,7 +2145,11 @@
   function renderDnsCard(data) {
     const recs = data.records || {};
     const total = data.total || 0;
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">DNS Records</div><div class="badge ${total > 0 ? 'b-hit' : 'b-none'}">${total} RECORDS</div></div><div class="rcard-body">`;
+    const cfBadge = data.cloudflare_proxied ? '<div class="badge" style="background:rgba(217,119,6,0.15);color:#f59e0b;border:1px solid rgba(217,119,6,0.3);margin-left:6px;">CLOUDFLARE PROXIED</div>' : '';
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">DNS Records</div><div class="badge ${total > 0 ? 'b-hit' : 'b-none'}">${total} RECORDS</div>${cfBadge}</div><div class="rcard-body">`;
+    if (data.cloudflare_proxied) {
+      html += `<div class="ritem" style="background:rgba(217,119,6,0.06);border:1px solid rgba(217,119,6,0.15);border-radius:3px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#d97706;"><div class="dot" style="background:#d97706"></div>A record IPs are Cloudflare edge servers — origin IP is hidden behind proxy</div>`;
+    }
     if (total === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No DNS records found</div>`;
     } else {
@@ -2196,6 +2200,9 @@
     const gradeColors = { A: 'b-hit', B: 'b-hit', C: 'b-warn', F: 'b-none' };
     let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">HTTP Headers</div><div class="badge ${gradeColors[data.grade] || 'b-none'}">GRADE ${data.grade} (${data.present}/${data.total})</div></div><div class="rcard-body">`;
     if (data.server) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Server:</strong> ${data.server}</div>`;
+    if (reconCollected.dns && reconCollected.dns.cloudflare_proxied) {
+      html += `<div class="ritem" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:4px;padding:6px 10px;margin-bottom:4px"><div class="dot" style="background:#f59e0b"></div><span style="color:#f59e0b;font-size:11px">These headers reflect <strong>Cloudflare's edge server</strong>, not the origin. Server identity, caching headers, and security headers may be injected or modified by Cloudflare.</span></div>`;
+    }
     const sec = data.security_headers || {};
     for (const [label, info] of Object.entries(sec)) {
       const dot = info.present ? 'dg' : 'dd';
