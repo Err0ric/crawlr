@@ -1204,7 +1204,9 @@
       <div class="rcard-body">`;
     for (const r of results) {
       if (r.manual) {
-        html += `<div class="ritem"><div class="dot" style="background:#f59e0b"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.platform} — manual check</a> <span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);margin-left:6px;font-family:Share Tech Mono,monospace;">⚠ manual</span></div>`;
+        const u = encodeURIComponent(data.username || '');
+        const linkStyle = 'font-size:9px;padding:2px 6px;border-radius:2px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);font-family:Share Tech Mono,monospace;text-decoration:none;margin-right:4px;';
+        html += `<div class="ritem" style="color:#f59e0b"><div class="dot" style="background:#f59e0b"></div>${r.platform} · check manually: <a href="https://onlyfans.com/${u}" target="_blank" rel="noopener" style="${linkStyle}">OnlyFans ↗</a><a href="https://onlyfinder.com/?query=${u}" target="_blank" rel="noopener" style="${linkStyle}">OnlyFinder ↗</a><a href="https://www.google.com/search?q=site:onlyfans.com+%22${u}%22" target="_blank" rel="noopener" style="${linkStyle}">Google ↗</a></div>`;
       } else if (r.found) {
         html += `<div class="ritem"><div class="dot dg"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.platform} ✓</a></div>`;
       } else {
