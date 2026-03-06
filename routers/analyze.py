@@ -16,6 +16,7 @@ class AnalyzeRequest(BaseModel):
     gravatar: Optional[dict] = None
     github: Optional[dict] = None
     enricher: Optional[dict] = None
+    platform_check: Optional[dict] = None
     name_search: Optional[dict] = None
     active_techniques: bool = False
 
@@ -105,6 +106,14 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
                 parts.append(f"bio: {p['bio'][:200]}")
             if parts:
                 prompt_parts.append(f"{p.get('platform', 'Unknown')} profile — {', '.join(parts)}")
+
+    if req.platform_check and req.platform_check.get("results"):
+        found = [r["platform"] for r in req.platform_check["results"] if r.get("found")]
+        not_found = [r["platform"] for r in req.platform_check["results"] if not r.get("found")]
+        if found:
+            prompt_parts.append(f"Platform check confirmed profiles on: {', '.join(found)}")
+        if not_found:
+            prompt_parts.append(f"Platform check found no profile on: {', '.join(not_found)}")
 
     if req.name_search and req.name_search.get("name"):
         prompt_parts.append(

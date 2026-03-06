@@ -1001,6 +1001,25 @@
     return html;
   }
 
+  /* ── Platform Check renderer ── */
+  function renderPlatformCheckCard(data) {
+    const results = data.results || [];
+    const found = results.filter(r => r.found).length;
+    let html = `<div class="rcard">
+      <div class="rcard-head"><div class="rcard-title">Platform Check</div><div class="badge ${found > 0 ? 'b-hit' : 'b-none'}">${found}/${results.length} FOUND</div></div>
+      <div class="rcard-body">`;
+    for (const r of results) {
+      if (r.found) {
+        html += `<div class="ritem"><div class="dot dg"></div><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${r.platform} ✓</a></div>`;
+      } else {
+        html += `<div class="ritem"><div class="dot dd"></div><span style="color:var(--text-dim)">${r.platform} —</span></div>`;
+      }
+    }
+    html += `<div style="padding:6px 0 2px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);opacity:0.6;">results may vary due to platform bot protection</div>`;
+    html += `</div></div>`;
+    return html;
+  }
+
   /* ── Main scan ── */
   let scanning = false;
 
@@ -1194,6 +1213,17 @@
       );
     }
 
+    // Platform Check — check major platforms Sherlock misses
+    if (!domain && !nameSearch) {
+      const sherlockSites = collected.sherlock ? (collected.sherlock.results || []).map(r => r.site) : [];
+      collected.platformCheck = await runModule(logEl, cardsEl, t0,
+        `Platform existence check for "${username}"`,
+        '/api/recon/platform-check',
+        { username, sherlock_sites: sherlockSites },
+        renderPlatformCheckCard
+      );
+    }
+
     // Holehe — only when target is an email
     if (email) {
       collected.holehe = await runModule(logEl, cardsEl, t0,
@@ -1257,6 +1287,7 @@
             gravatar: collected.gravatar,
             github: collected.github,
             enricher: collected.enricher,
+            platform_check: collected.platformCheck || null,
             name_search: collected.nameSearch || null,
             active_techniques: document.getElementById('activeTechToggle').classList.contains('on'),
           }),
@@ -1375,6 +1406,16 @@
         if (p.url) md += `- **URL:** ${p.url}\n`;
         md += '\n';
       }
+    }
+
+    // Platform Check
+    if (d.platformCheck && d.platformCheck.results && d.platformCheck.results.length) {
+      const found = d.platformCheck.results.filter(r => r.found);
+      md += `## Platform Check — ${found.length}/${d.platformCheck.checked} found\n\n`;
+      for (const r of d.platformCheck.results) {
+        md += r.found ? `- [${r.platform}](${r.url}) ✓\n` : `- ${r.platform} — not found\n`;
+      }
+      md += '\n';
     }
 
     // Holehe

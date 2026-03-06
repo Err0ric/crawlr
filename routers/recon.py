@@ -7,6 +7,7 @@ from modules.hibp import run_hibp
 from modules.gravatar import run_gravatar
 from modules.github import run_github
 from modules.enricher import run_enricher
+from modules.platform_check import run_platform_check
 
 router = APIRouter()
 
@@ -24,6 +25,11 @@ class HarvesterRequest(BaseModel):
 
 
 class EnricherRequest(BaseModel):
+    username: str
+    sherlock_sites: list[str] | None = None
+
+
+class PlatformCheckRequest(BaseModel):
     username: str
     sherlock_sites: list[str] | None = None
 
@@ -87,3 +93,11 @@ async def enrich_profiles(req: EnricherRequest):
     if not username:
         raise HTTPException(status_code=400, detail="Username is required")
     return await run_enricher(username, req.sherlock_sites)
+
+
+@router.post("/platform-check")
+async def platform_check(req: PlatformCheckRequest):
+    username = req.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+    return await run_platform_check(username, req.sherlock_sites)
