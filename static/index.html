@@ -512,6 +512,19 @@
     box-shadow: 0 4px 20px rgba(0,0,0,0.5); transition: all 0.3s ease;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.toast-prominent {
+    top: 20px; bottom: auto; font-size: 14px; padding: 14px 32px;
+    background: var(--bg2); border: 1px solid rgba(20,184,166,0.5); color: #14b8a6;
+    box-shadow: 0 6px 30px rgba(0,0,0,0.6), 0 0 15px rgba(20,184,166,0.15);
+    transform: translateX(-50%) translateY(-40px);
+  }
+  .toast.toast-prominent.show { transform: translateX(-50%) translateY(0); }
+  @keyframes tab-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(20,184,166,0.5); }
+    50% { box-shadow: 0 0 12px 4px rgba(20,184,166,0.3); }
+    100% { box-shadow: 0 0 0 0 rgba(20,184,166,0); }
+  }
+  .hnav.tab-pulse { animation: tab-pulse 0.5s ease-out 2; color: #14b8a6 !important; }
 
   .agent-log { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 18px; }
   .log-summary { display: flex; align-items: center; gap: 12px; padding: 9px 14px; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--success); cursor: pointer; transition: background 0.1s; }
@@ -852,7 +865,7 @@
         <div class="pane-rule"></div>
       </div>
       <input class="target-input" id="reconTargetInput" type="text" placeholder="domain, IP, or ASN (e.g. AS15169)..." onkeydown="if(event.key==='Enter')runRecon()" oninput="updateReconChip()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-      <div id="reconTypeChip" style="display:none;margin-top:6px;font-size:11px;padding:3px 8px;border-radius:3px;background:var(--red-glow);color:var(--red-bright);border:1px solid var(--border-hi);display:inline-block;font-family:'Share Tech Mono',monospace;"></div>
+      <div id="reconTypeChip" style="display:none;margin-top:6px;font-size:11px;padding:3px 8px;border-radius:3px;background:rgba(20,184,166,0.08);color:#14b8a6;border:1px solid rgba(20,184,166,0.25);font-family:'Share Tech Mono',monospace;letter-spacing:1px;"></div>
     </div>
 
     <div class="pane" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
@@ -953,11 +966,12 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  function showToast(msg, duration = 2500) {
+  function showToast(msg, duration = 2500, prominent = false) {
     const el = document.getElementById('toast');
     el.textContent = msg;
+    el.classList.toggle('toast-prominent', prominent);
     el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), duration);
+    setTimeout(() => { el.classList.remove('show'); el.classList.remove('toast-prominent'); }, duration);
   }
 
   setInterval(() => {
@@ -1928,7 +1942,11 @@
         document.getElementById('reconTargetInput').value = target;
         switchMode('recon');
         updateReconChip();
-        showToast(`${label} detected — switching to RECON mode`);
+        showToast(`${label} detected → switched to RECON mode`, 3000, true);
+        // Pulse the RECON tab
+        const reconTab = document.querySelectorAll('.hnav')[1];
+        reconTab.classList.add('tab-pulse');
+        setTimeout(() => reconTab.classList.remove('tab-pulse'), 1200);
         setTimeout(() => runRecon(), 100);
         return;
       }
@@ -3010,7 +3028,7 @@
     const domMods = document.getElementById('reconDomainModules');
     const asnMods = document.getElementById('reconAsnModules');
     if (isASN(val)) {
-      chip.textContent = 'ASN';
+      chip.innerHTML = '<span style="color:#14b8a6;">●</span> ASN';
       chip.style.display = 'inline-block';
       domMods.style.display = 'none';
       asnMods.style.display = '';
@@ -3018,7 +3036,8 @@
       domMods.style.display = '';
       asnMods.style.display = 'none';
       if (isDomain(val) || /^\d+\.\d+\.\d+\.\d+$/.test(val)) {
-        chip.textContent = isDomain(val) ? 'DOMAIN' : 'IP';
+        const typeLabel = isDomain(val) ? 'DOMAIN' : 'IP';
+        chip.innerHTML = `<span style="color:#14b8a6;">●</span> ${typeLabel}`;
         chip.style.display = 'inline-block';
       } else {
         chip.style.display = 'none';
