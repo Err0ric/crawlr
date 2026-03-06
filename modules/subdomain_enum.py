@@ -26,7 +26,7 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
     Returns (unique_subdomains, raw_ct_entries)."""
     raw_entries = []
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             resp = await client.get(
                 f"https://crt.sh/?q=%.{domain}&output=json",
                 headers={"User-Agent": "Mozilla/5.0"},
@@ -34,7 +34,8 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
             if resp.status_code != 200:
                 return [], []
             entries = resp.json()
-    except Exception:
+    except Exception as e:
+        print(f"[crt.sh] Error querying CT logs for {domain}: {type(e).__name__}: {e}")
         return [], []
 
     subs = set()

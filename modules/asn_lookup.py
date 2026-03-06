@@ -1,11 +1,11 @@
 import httpx
-import socket
 import re
+from modules.resolver import resolve_domain
 
 
 async def run_asn(domain: str, timeout: int = 10) -> dict:
     try:
-        ip = socket.gethostbyname(domain)
+        ip = resolve_domain(domain)
     except Exception as e:
         return {"domain": domain, "found": False, "error": f"Could not resolve: {e}"}
 
