@@ -448,7 +448,10 @@
   .ai-body { padding: 14px 16px; font-size: 13px; line-height: 1.75; color: var(--text); }
   .ai-body strong { color: var(--amber-bright); font-weight: 600; }
 
-  .leads { margin-top: 12px; display: flex; flex-direction: column; gap: 5px; }
+  .ai-section { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--red); margin: 16px 0 8px; }
+  .ai-section:first-child { margin-top: 0; }
+
+  .leads { margin-top: 4px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px; }
 
   .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-mid); line-height: 1.5; }
   .lead-arr { color: var(--red-dim); flex-shrink: 0; }
@@ -830,39 +833,52 @@
       .replace(/`(.+?)`/g, '<code style="background:var(--bg3);padding:1px 5px;border-radius:2px;font-size:11px;">$1</code>');
   }
 
+  const sectionHeadings = [
+    'digital footprint', 'notable findings', 'next steps', 'identity leads',
+    'phone lookup strategies', 'phone lookup', 'investigative steps',
+    'overview', 'findings', 'patterns',
+  ];
+
+  function isSectionHeading(line) {
+    const clean = line.replace(/\*\*/g, '').replace(/[:(]/g, '').trim().toLowerCase();
+    return sectionHeadings.some(h => clean === h || clean.startsWith(h));
+  }
+
   function renderAIBlock(data) {
     const lines = data.summary.split('\n');
-    const leads = [];
-    const bodyParts = [];
-
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) { bodyParts.push('<br>'); continue; }
-      if (/^→\s*/.test(line)) {
-        leads.push(mdInline(line.replace(/^→\s*/, '')));
-      } else if (/^[-•]\s+/.test(line)) {
-        leads.push(mdInline(line.replace(/^[-•]\s+/, '')));
-      } else {
-        bodyParts.push(mdInline(line));
-      }
-    }
-
-    // Collapse multiple consecutive <br> into one
-    const bodyHtml = bodyParts.join('<br>').replace(/(<br>){3,}/g, '<br><br>');
-
     let html = `<div class="ai-block">
       <div class="ai-head">
         <div class="ai-tag">// AI Analysis</div>
         <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
       </div>
-      <div class="ai-body">${bodyHtml}`;
-    if (leads.length) {
-      html += `<div class="leads">`;
-      for (const l of leads) {
-        html += `<div class="lead"><span class="lead-arr">→</span>${l}</div>`;
+      <div class="ai-body">`;
+
+    let inLeads = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) {
+        if (inLeads) { html += '</div>'; inLeads = false; }
+        continue;
       }
-      html += `</div>`;
+
+      const isBullet = /^[→•\-]\s*/.test(line);
+      const bulletText = line.replace(/^[→•\-]\s*/, '');
+
+      if (isSectionHeading(line)) {
+        if (inLeads) { html += '</div>'; inLeads = false; }
+        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
+        html += `<div class="ai-section">// ${label}</div>`;
+      } else if (isBullet) {
+        if (!inLeads) { html += '<div class="leads">'; inLeads = true; }
+        html += `<div class="lead"><span class="lead-arr">→</span>${mdInline(bulletText)}</div>`;
+      } else {
+        if (inLeads) { html += '</div>'; inLeads = false; }
+        html += `<div style="margin-bottom:4px">${mdInline(line)}</div>`;
+      }
     }
+
+    if (inLeads) html += '</div>';
     html += `</div></div>`;
     return html;
   }
