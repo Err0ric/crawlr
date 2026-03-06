@@ -657,7 +657,7 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="targetInput" type="text" placeholder="username, email, or full name..." onkeydown="if(event.key==='Enter')runScan()" />
+      <input class="target-input" id="targetInput" type="text" placeholder="username, email, or full name..." onkeydown="if(event.key==='Enter')runScan()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
       <div class="chips">
         <div class="chip on"  onclick="pickChip(this)">Auto</div>
         <div class="chip"     onclick="pickChip(this)">Email</div>
@@ -738,7 +738,7 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="reconTargetInput" type="text" placeholder="domain, IP, or ASN (e.g. AS15169)..." onkeydown="if(event.key==='Enter')runRecon()" oninput="updateReconChip()" />
+      <input class="target-input" id="reconTargetInput" type="text" placeholder="domain, IP, or ASN (e.g. AS15169)..." onkeydown="if(event.key==='Enter')runRecon()" oninput="updateReconChip()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
       <div id="reconTypeChip" style="display:none;margin-top:6px;font-size:11px;padding:3px 8px;border-radius:3px;background:var(--red-glow);color:var(--red-bright);border:1px solid var(--border-hi);display:inline-block;font-family:'Share Tech Mono',monospace;"></div>
     </div>
 
@@ -2010,12 +2010,6 @@
         positions[ipId] = { x: laneX[1] + subBoxW + 20, y: subStartY + i * (subBoxH + subGapY) };
         if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: 'ip', lane: 2, row: 0 }); }
         addL(s.id, ipId, 'sub');
-        if (asnInfo.asn) {
-          const aId = 'subasn_' + ipId;
-          if (!idSet[aId]) { idSet[aId] = true; treeNodes.push({ id: aId, label: `${asnInfo.asn} ${(asnInfo.org || '').slice(0, 30)}`, type: 'asn', lane: 3, row: 0 }); }
-          positions[aId] = { x: laneX[3], y: subStartY + i * (subBoxH + subGapY) };
-          addL(ipId, aId, 'asn');
-        }
       });
     });
     // Add subdomain nodes to treeNodes
@@ -2132,14 +2126,14 @@
     document.getElementById('historyWorkspace').style.display = 'none';
     if (mode === 'recon') {
       document.querySelectorAll('.hnav')[1].classList.add('active');
-      document.getElementById('reconWorkspace').style.display = '';
+      document.getElementById('reconWorkspace').style.display = 'grid';
     } else if (mode === 'history') {
       document.querySelectorAll('.hnav')[2].classList.add('active');
-      document.getElementById('historyWorkspace').style.display = '';
+      document.getElementById('historyWorkspace').style.display = 'grid';
       renderHistory();
     } else {
       document.querySelectorAll('.hnav')[0].classList.add('active');
-      document.getElementById('investigateWorkspace').style.display = '';
+      document.getElementById('investigateWorkspace').style.display = 'grid';
     }
   }
 
