@@ -1668,6 +1668,177 @@
     document.getElementById('reconSbMiniTarget').textContent = document.getElementById('reconTargetInput').value.trim() || '—';
   }
 
+  function renderAsnGraph(container, data, target) {
+    const colorASN = '#a855f7', colorV4 = '#d97706', colorV6 = '#14b8a6';
+    const v4 = (data.prefixes_v4 || []).slice(0, 40);
+    const v6 = (data.prefixes_v6 || []).slice(0, 20);
+    const orgLabel = data.org ? `${data.asn} — ${data.org}` : data.asn;
+
+    function prefixSize(cidr) {
+      const m = cidr.match(/\/(\d+)$/);
+      if (!m) return 1;
+      const bits = parseInt(m[1], 10);
+      const isV6 = cidr.includes(':');
+      if (isV6) return Math.max(Math.min((128 - bits) / 48, 1), 0.3);
+      return Math.max(Math.min((32 - bits) / 16, 1), 0.3);
+    }
+    function ipCount(cidr) {
+      const m = cidr.match(/\/(\d+)$/);
+      if (!m) return '';
+      const bits = parseInt(m[1], 10);
+      const isV6 = cidr.includes(':');
+      if (isV6) { const n = 128 - bits; return n > 64 ? `2^${n}` : (n > 32 ? `2^${n}` : Math.pow(2, n).toLocaleString()); }
+      return Math.pow(2, 32 - bits).toLocaleString();
+    }
+
+    const rect = container.getBoundingClientRect();
+    const W = Math.max(rect.width || 900, 920);
+
+    // Layout: lane 0 = ASN center, lane 1 = IPv4, lane 2 = IPv6
+    const laneX = [60, 320, 320];
+    const boxH = 30, gapY = 6, startY = 80;
+    const centerW = 240, prefixW = 220;
+    const minBoxW = 120, maxBoxW = 220;
+
+    const totalRows = Math.max(v4.length, v6.length, 1);
+    const v6StartY = startY + v4.length * (boxH + gapY) + (v4.length > 0 && v6.length > 0 ? 50 : 0);
+    const totalH = Math.max(v6StartY + v6.length * (boxH + gapY) + 80, rect.height || 500);
+
+    // Center node Y = midpoint of all content
+    const contentBottom = v6.length > 0 ? v6StartY + v6.length * (boxH + gapY) : startY + v4.length * (boxH + gapY);
+    const centerY = startY + (contentBottom - startY) / 2 - boxH / 2;
+
+    const svg = d3.select(container).append('svg')
+      .attr('width', W).attr('height', totalH)
+      .style('background', '#07060f');
+    const g = svg.append('g');
+    svg.call(d3.zoom().scaleExtent([0.3, 4]).on('zoom', (e) => g.attr('transform', e.transform)));
+
+    // Legend
+    const legend = g.append('g').attr('transform', 'translate(60, 20)');
+    const legendItems = [
+      { label: 'ASN', color: colorASN }, { label: 'IPv4 Prefix', color: colorV4 }, { label: 'IPv6 Prefix', color: colorV6 },
+    ];
+    legendItems.forEach((item, i) => {
+      const lg = legend.append('g').attr('transform', `translate(${i * 120}, 0)`);
+      lg.append('rect').attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', item.color).attr('opacity', 0.8);
+      lg.append('text').attr('x', 14).attr('y', 9).text(item.label)
+        .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px');
+    });
+
+    // Draw center ASN node
+    const cg = g.append('g').attr('transform', `translate(${laneX[0]}, ${centerY})`);
+    cg.append('rect').attr('width', centerW).attr('height', 44).attr('rx', 4)
+      .attr('fill', 'rgba(124,58,237,0.18)').attr('stroke', colorASN).attr('stroke-width', 2).attr('stroke-opacity', 0.9);
+    const asnLabel = data.asn || target;
+    cg.append('text').attr('x', centerW / 2).attr('y', 18).attr('text-anchor', 'middle')
+      .attr('fill', '#e8e0f8').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '13px').attr('font-weight', '600')
+      .text(asnLabel);
+    if (data.org) {
+      const orgTrunc = data.org.length > 28 ? data.org.slice(0, 27) + '…' : data.org;
+      cg.append('text').attr('x', centerW / 2).attr('y', 34).attr('text-anchor', 'middle')
+        .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px')
+        .text(orgTrunc);
+    }
+
+    const tooltip = d3.select(container).append('div').attr('class', 'graph-tooltip').style('display', 'none');
+    const centerRight = laneX[0] + centerW;
+    const centerMidY = centerY + 22;
+
+    // IPv4 section label
+    if (v4.length > 0) {
+      g.append('text').attr('x', laneX[1]).attr('y', startY - 12)
+        .text(`// IPv4 PREFIXES (${data.prefixes_v4.length})`)
+        .attr('fill', colorV4).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px').attr('letter-spacing', '1px').attr('opacity', 0.7);
+    }
+
+    // Draw IPv4 nodes
+    v4.forEach((prefix, i) => {
+      const y = startY + i * (boxH + gapY);
+      const scale = prefixSize(prefix);
+      const bw = minBoxW + (maxBoxW - minBoxW) * scale;
+      const count = ipCount(prefix);
+
+      // Bezier link
+      const x1 = centerRight, y1 = centerMidY;
+      const x2 = laneX[1], y2 = y + boxH / 2;
+      const mx = (x1 + x2) / 2;
+      g.append('path')
+        .attr('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`)
+        .attr('fill', 'none').attr('stroke', colorV4).attr('stroke-opacity', 0.3).attr('stroke-width', 1 + scale);
+
+      const ng = g.append('g').attr('transform', `translate(${laneX[1]}, ${y})`);
+      ng.append('rect').attr('width', bw).attr('height', boxH).attr('rx', 3)
+        .attr('fill', 'rgba(217,119,6,0.08)').attr('stroke', colorV4).attr('stroke-width', 1).attr('stroke-opacity', 0.5);
+      ng.append('text').attr('x', 8).attr('y', boxH / 2 + 4)
+        .attr('fill', '#f59e0b').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '10px')
+        .text(prefix);
+      if (count) {
+        ng.append('text').attr('x', bw - 6).attr('y', boxH / 2 + 3).attr('text-anchor', 'end')
+          .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '8px')
+          .text(count + ' IPs');
+      }
+      ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} — ${count} IPs`))
+        .on('mousemove', (e) => tooltip.style('left', (e.offsetX + 14) + 'px').style('top', (e.offsetY - 10) + 'px'))
+        .on('mouseout', () => tooltip.style('display', 'none'));
+    });
+
+    // IPv6 separator and label
+    if (v6.length > 0) {
+      if (v4.length > 0) {
+        g.append('line').attr('x1', laneX[1] - 20).attr('x2', laneX[1] + maxBoxW + 20)
+          .attr('y1', v6StartY - 28).attr('y2', v6StartY - 28)
+          .attr('stroke', '#1a1830').attr('stroke-dasharray', '4,4');
+      }
+      g.append('text').attr('x', laneX[1]).attr('y', v6StartY - 12)
+        .text(`// IPv6 PREFIXES (${data.prefixes_v6.length})`)
+        .attr('fill', colorV6).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px').attr('letter-spacing', '1px').attr('opacity', 0.7);
+    }
+
+    // Draw IPv6 nodes
+    v6.forEach((prefix, i) => {
+      const y = v6StartY + i * (boxH + gapY);
+      const scale = prefixSize(prefix);
+      const bw = minBoxW + (maxBoxW - minBoxW) * scale;
+      const count = ipCount(prefix);
+
+      const x1 = centerRight, y1 = centerMidY;
+      const x2 = laneX[2], y2 = y + boxH / 2;
+      const mx = (x1 + x2) / 2;
+      g.append('path')
+        .attr('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`)
+        .attr('fill', 'none').attr('stroke', colorV6).attr('stroke-opacity', 0.3).attr('stroke-width', 1 + scale);
+
+      const ng = g.append('g').attr('transform', `translate(${laneX[2]}, ${y})`);
+      ng.append('rect').attr('width', bw).attr('height', boxH).attr('rx', 3)
+        .attr('fill', 'rgba(20,184,166,0.08)').attr('stroke', colorV6).attr('stroke-width', 1).attr('stroke-opacity', 0.5);
+      ng.append('text').attr('x', 8).attr('y', boxH / 2 + 4)
+        .attr('fill', '#14b8a6').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px')
+        .text(prefix.length > 26 ? prefix.slice(0, 25) + '…' : prefix);
+      if (count) {
+        ng.append('text').attr('x', bw - 6).attr('y', boxH / 2 + 3).attr('text-anchor', 'end')
+          .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '8px')
+          .text(count + ' IPs');
+      }
+      ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} — ${count} IPs`))
+        .on('mousemove', (e) => tooltip.style('left', (e.offsetX + 14) + 'px').style('top', (e.offsetY - 10) + 'px'))
+        .on('mouseout', () => tooltip.style('display', 'none'));
+    });
+
+    // Stats summary at bottom
+    const statsY = totalH - 40;
+    const stats = g.append('g').attr('transform', `translate(60, ${statsY})`);
+    const statItems = [];
+    if (data.rir) statItems.push(`RIR: ${data.rir}`);
+    if (data.country) statItems.push(`Country: ${data.country}`);
+    if (data.date_registered) statItems.push(`Registered: ${data.date_registered}`);
+    statItems.push(`${(data.prefixes_v4 || []).length} IPv4 + ${(data.prefixes_v6 || []).length} IPv6 prefixes`);
+    if (data.total_peers) statItems.push(`${data.total_peers} peers`);
+    stats.append('text').attr('y', 0)
+      .attr('fill', '#3d3460').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px')
+      .text(statItems.join('  ·  '));
+  }
+
   function renderReconGraph() {
     const container = document.getElementById('reconGraph');
     container.innerHTML = '';
@@ -1676,6 +1847,8 @@
     const d = reconCollected;
     const target = document.getElementById('reconTargetInput').value.trim();
     if (!target || !d || Object.keys(d).length === 0) { emptyMsg('Run a recon scan first'); return; }
+
+    if (isASN(target) && d.asn_detail) { renderAsnGraph(container, d.asn_detail, target); return; }
 
     const colorMap = { domain: '#a855f7', a: '#a855f7', mx: '#d97706', ns: '#14b8a6', subdomain: '#7c3aed', ip: '#6b7280', asn: '#4b5563', cname: '#8b5cf6' };
     const asnInfo = d.asn || {};
