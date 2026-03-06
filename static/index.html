@@ -407,6 +407,28 @@
   .empty-title { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); }
   .empty-sub { font-size: 12px; color: var(--text-dim); text-align: center; max-width: 280px; line-height: 1.7; }
 
+  .hist-entry {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 14px 16px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .hist-entry:hover { border-color: var(--border-hi); background: var(--bg3); }
+  .hist-target { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text-bright); flex-shrink: 0; }
+  .hist-badge {
+    font-family: 'Share Tech Mono', monospace; font-size: 9px; padding: 2px 7px;
+    border-radius: 3px; letter-spacing: 1px; flex-shrink: 0;
+  }
+  .hist-badge.inv { background: rgba(124,58,237,0.15); color: #a855f7; border: 1px solid rgba(124,58,237,0.3); }
+  .hist-badge.rec { background: rgba(20,184,166,0.15); color: #14b8a6; border: 1px solid rgba(20,184,166,0.3); }
+  .hist-summary { font-size: 11px; color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-time { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+  .hist-del {
+    width: 24px; height: 24px; border: none; background: none; color: var(--text-dim);
+    cursor: pointer; font-size: 13px; border-radius: 3px; flex-shrink: 0; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hist-del:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
+
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px); opacity: 0;
     background: var(--bg3); border: 1px solid var(--border-hi); color: var(--text-bright);
@@ -611,7 +633,7 @@
   <div class="header-nav">
     <div class="hnav active" onclick="switchMode('investigate')">Investigate</div>
     <div class="hnav" onclick="switchMode('recon')">Recon</div>
-    <div class="hnav">History</div>
+    <div class="hnav" onclick="switchMode('history')">History</div>
     <div class="hnav">Reports</div>
     <div class="hnav">Settings</div>
   </div>
@@ -774,6 +796,22 @@
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>8 MODULES</span></div>
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0-dev</span></div>
       <div class="sbi" style="margin-left:auto"><span id="reconClock"></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="workspace" id="historyWorkspace" style="display:none;">
+  <div class="main" style="max-width:800px;margin:0 auto;padding:30px 20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;">// Scan History</div>
+      <button class="action-btn" onclick="clearHistory()" id="historyClearBtn" style="display:none;">Clear All</button>
+    </div>
+    <div id="historyList">
+      <div class="empty" id="historyEmpty">
+        <div class="empty-glyph">[~]</div>
+        <div class="empty-title">No Scans Yet</div>
+        <div class="empty-sub">Run INVESTIGATE or RECON to get started.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -1484,6 +1522,8 @@
 
     collapseLog(logEl, (performance.now() - t0) / 1000, scanTokens);
 
+    addHistoryEntry(target, 'INVESTIGATE', collected, lastAISummary);
+
     runBtn.textContent = '▶ Run Investigation';
     runBtn.style.pointerEvents = '';
     scanning = false;
@@ -2087,14 +2127,19 @@
 
   function switchMode(mode) {
     document.querySelectorAll('.hnav').forEach(n => n.classList.remove('active'));
+    document.getElementById('investigateWorkspace').style.display = 'none';
+    document.getElementById('reconWorkspace').style.display = 'none';
+    document.getElementById('historyWorkspace').style.display = 'none';
     if (mode === 'recon') {
       document.querySelectorAll('.hnav')[1].classList.add('active');
-      document.getElementById('investigateWorkspace').style.display = 'none';
       document.getElementById('reconWorkspace').style.display = '';
+    } else if (mode === 'history') {
+      document.querySelectorAll('.hnav')[2].classList.add('active');
+      document.getElementById('historyWorkspace').style.display = '';
+      renderHistory();
     } else {
       document.querySelectorAll('.hnav')[0].classList.add('active');
       document.getElementById('investigateWorkspace').style.display = '';
-      document.getElementById('reconWorkspace').style.display = 'none';
     }
   }
 
@@ -2417,6 +2462,9 @@
     }
 
     collapseLog(logEl, (performance.now() - t0) / 1000, reconTokens);
+
+    addHistoryEntry(target, 'RECON', reconCollected, reconAISummary);
+
     runBtn.textContent = '▶ Run Recon';
     runBtn.style.pointerEvents = '';
     reconScanning = false;
@@ -2533,6 +2581,183 @@
     document.getElementById('termsOverlay').classList.remove('open');
     // Show API key modal if no key set
     if (!getApiKey()) setTimeout(openModal, 300);
+  }
+
+  // ── History ──
+  const HISTORY_KEY = 'crawlr_history';
+  const HISTORY_MAX = 50;
+
+  function getHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveHistory(entries) {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, HISTORY_MAX)));
+  }
+
+  function addHistoryEntry(target, type, results, aiSummary) {
+    const entries = getHistory();
+    entries.unshift({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      target,
+      type,
+      timestamp: new Date().toISOString(),
+      results,
+      aiSummary: aiSummary || '',
+    });
+    saveHistory(entries);
+  }
+
+  function deleteHistoryEntry(id) {
+    const entries = getHistory().filter(e => e.id !== id);
+    saveHistory(entries);
+    renderHistory();
+  }
+
+  function clearHistory() {
+    if (!confirm('Delete all scan history?')) return;
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+  }
+
+  function histSummaryInvestigate(d) {
+    const parts = [];
+    if (d.sherlock) {
+      const hits = (d.sherlock.results || []).length;
+      if (hits) parts.push(`Sherlock: ${hits} hits`);
+    }
+    if (d.holehe) {
+      const hits = (d.holehe.results || []).filter(r => r.exists).length;
+      if (hits) parts.push(`Holehe: ${hits} accounts`);
+    }
+    if (d.hibp) {
+      const breaches = (d.hibp.breaches || []).length;
+      if (breaches) parts.push(`HIBP: ${breaches} breaches`);
+    }
+    if (d.harvester) {
+      const emails = (d.harvester.emails || []).length;
+      const hosts = (d.harvester.hosts || []).length;
+      if (emails) parts.push(`${emails} emails`);
+      if (hosts) parts.push(`${hosts} hosts`);
+    }
+    if (d.platformCheck) {
+      const found = (d.platformCheck.results || []).filter(r => r.exists).length;
+      if (found) parts.push(`${found} platforms`);
+    }
+    if (d.github && d.github.found) parts.push('GitHub found');
+    if (d.gravatar && d.gravatar.found) parts.push('Gravatar found');
+    return parts.join(' · ') || 'scan complete';
+  }
+
+  function histSummaryRecon(d) {
+    const parts = [];
+    if (d.dns && d.dns.records) {
+      const count = Object.values(d.dns.records).reduce((a, b) => a + b.length, 0);
+      if (count) parts.push(`${count} DNS records`);
+    }
+    if (d.subdomains && d.subdomains.total) parts.push(`${d.subdomains.total} subdomains`);
+    if (d.ssl && d.ssl.found) parts.push(`SSL: ${d.ssl.days_left}d left`);
+    if (d.headers && d.headers.found) parts.push(`Headers: ${d.headers.grade}`);
+    if (d.portscan && d.portscan.total_open) parts.push(`${d.portscan.total_open} ports open`);
+    if (d.asn && d.asn.found) parts.push(d.asn.asn);
+    if (d.asn_detail && d.asn_detail.found) {
+      parts.push(`${d.asn_detail.total_prefixes} prefixes`);
+      parts.push(`${d.asn_detail.total_peers} peers`);
+    }
+    return parts.join(' · ') || 'scan complete';
+  }
+
+  function renderHistory() {
+    const entries = getHistory();
+    const list = document.getElementById('historyList');
+    const clearBtn = document.getElementById('historyClearBtn');
+    const empty = document.getElementById('historyEmpty');
+
+    if (!entries.length) {
+      list.innerHTML = '';
+      list.appendChild(empty);
+      empty.style.display = '';
+      clearBtn.style.display = 'none';
+      return;
+    }
+
+    clearBtn.style.display = '';
+    let html = '';
+    for (const e of entries) {
+      const d = new Date(e.timestamp);
+      const time = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const badge = e.type === 'RECON' ? '<span class="hist-badge rec">RECON</span>' : '<span class="hist-badge inv">INVESTIGATE</span>';
+      const summary = e.type === 'RECON' ? histSummaryRecon(e.results) : histSummaryInvestigate(e.results);
+      html += `<div class="hist-entry" onclick="loadHistoryEntry('${e.id}')">
+        <div class="hist-target">${e.target}</div>
+        ${badge}
+        <div class="hist-summary">${summary}</div>
+        <div class="hist-time">${time}</div>
+        <button class="hist-del" onclick="event.stopPropagation();deleteHistoryEntry('${e.id}')" title="Delete">✕</button>
+      </div>`;
+    }
+    list.innerHTML = html;
+  }
+
+  function loadHistoryEntry(id) {
+    const entry = getHistory().find(e => e.id === id);
+    if (!entry) return;
+
+    if (entry.type === 'INVESTIGATE') {
+      switchMode('investigate');
+      document.getElementById('targetInput').value = entry.target;
+      document.getElementById('emptyState').style.display = 'none';
+      const res = document.getElementById('results');
+      res.style.display = 'block';
+      res.innerHTML = '<div class="result-grid" id="resultCards"></div>';
+      const cardsEl = document.getElementById('resultCards');
+      const d = entry.results;
+      if (d.sherlock) cardsEl.innerHTML += renderSherlockCard(d.sherlock);
+      if (d.holehe) cardsEl.innerHTML += renderHoleheCard(d.holehe);
+      if (d.harvester) cardsEl.innerHTML += renderHarvesterCard(d.harvester);
+      if (d.hibp) cardsEl.innerHTML += renderHibpCard(d.hibp);
+      if (d.gravatar) cardsEl.innerHTML += renderGravatarCard(d.gravatar);
+      if (d.github) cardsEl.innerHTML += renderGithubCard(d.github);
+      if (d.enricher) cardsEl.innerHTML += renderEnricherCard(d.enricher);
+      if (d.platformCheck) cardsEl.innerHTML += renderPlatformCheckCard(d.platformCheck);
+      if (d.nameSearch) cardsEl.innerHTML += renderNameSearchCard(d.nameSearch);
+      if (entry.aiSummary) {
+        const aiBlock = document.createElement('div');
+        aiBlock.innerHTML = renderAIBlock({ summary: entry.aiSummary });
+        res.insertBefore(aiBlock, cardsEl);
+      }
+    } else {
+      switchMode('recon');
+      document.getElementById('reconTargetInput').value = entry.target;
+      updateReconChip();
+      document.getElementById('reconEmptyState').style.display = 'none';
+      const res = document.getElementById('reconResults');
+      res.style.display = 'block';
+      res.innerHTML = '<div id="reconAiBlock"></div><div class="result-grid" id="reconCards"></div>';
+      const cardsEl = document.getElementById('reconCards');
+      const aiEl = document.getElementById('reconAiBlock');
+      const d = entry.results;
+      reconCollected = d;
+      if (d.dns) cardsEl.innerHTML += renderDnsCard(d.dns);
+      if (d.whois) cardsEl.innerHTML += renderWhoisCard(d.whois);
+      if (d.ssl) cardsEl.innerHTML += renderSslCard(d.ssl);
+      if (d.headers) cardsEl.innerHTML += renderHeadersCard(d.headers);
+      if (d.subdomains) cardsEl.innerHTML += renderSubdomainsCard(d.subdomains);
+      if (d.asn) cardsEl.innerHTML += renderAsnCard(d.asn);
+      if (d.asn_detail) {
+        cardsEl.innerHTML += renderAsnInfoCard(d.asn_detail);
+        cardsEl.innerHTML += renderPrefixesCard(d.asn_detail);
+        cardsEl.innerHTML += renderPeeringCard(d.asn_detail);
+      }
+      if (d.portscan) cardsEl.innerHTML += renderPortscanCard(d.portscan);
+      if (entry.aiSummary) {
+        reconAISummary = entry.aiSummary;
+        aiEl.innerHTML = renderAIBlock({ summary: entry.aiSummary });
+      }
+    }
+    showToast('Loaded scan from history');
   }
 
   window.onload = () => {
