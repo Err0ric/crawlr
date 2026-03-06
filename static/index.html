@@ -754,8 +754,8 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="targetInput" type="text" placeholder="username, email, or full name..." onkeydown="if(event.key==='Enter')runScan()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);opacity:0.4;margin-top:4px;">tip: enter multiple targets on separate lines</div>
+      <input class="target-input" id="targetInput" type="text" placeholder="username, email, domain, or IP..." onkeydown="if(event.key==='Enter')runScan()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);opacity:0.4;margin-top:4px;">tip: separate multiple targets with commas</div>
       <div class="chips">
         <div class="chip on"  onclick="pickChip(this)">Auto</div>
         <div class="chip"     onclick="pickChip(this)">Email</div>
@@ -1729,64 +1729,16 @@
     return html;
   }
 
-  async function runScan() {
-    if (scanning) return;
-    const target = document.getElementById('targetInput').value.trim();
-    if (!target) { document.getElementById('targetInput').focus(); return; }
-
-    // Auto-route recon targets (domain, IP, ASN) to RECON mode
-    const chip = document.querySelector('.chip.on');
-    const chipMode = chip ? chip.textContent.trim().toLowerCase() : 'auto';
-    if (chipMode === 'auto' && (isDomain(target) || isIP(target) || isASN(target))) {
-      const label = isASN(target) ? 'ASN' : isIP(target) ? 'IP address' : 'Domain';
-      document.getElementById('reconTargetInput').value = target;
-      switchMode('recon');
-      updateReconChip();
-      showToast(`${label} detected — switching to RECON mode`);
-      setTimeout(() => runRecon(), 100);
-      return;
-    }
-
-    scanning = true;
-    currentTarget = target;
-    const runBtn = document.querySelector('.run-btn');
-    runBtn.textContent = '⏳ SCANNING...';
-    runBtn.style.pointerEvents = 'none';
-
-    document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('aiReportTab').style.display = 'none';
-    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
-    document.getElementById('deepDiveBtn').style.display = 'none';
-    document.getElementById('deepDiveResults').style.display = 'none';
-    document.getElementById('deepDiveResults').innerHTML = '';
-    // Switch back to Results tab if on AI Report
-    const activeTab = document.querySelector('#investigateWorkspace .tab.on');
-    if (activeTab && activeTab.id === 'aiReportTab') {
-      setTab(document.querySelector('#investigateWorkspace .tab'), 'content');
-    }
-    const res = document.getElementById('results');
-    res.style.display = 'block';
-    res.innerHTML = '<div class="agent-log" id="log"></div><div id="aiBlock"></div><div class="result-grid" id="resultCards"></div>';
-    const logEl = document.getElementById('log');
-    const cardsEl = document.getElementById('resultCards');
-    const aiEl = document.getElementById('aiBlock');
-
-    const t0 = performance.now();
+  // Run all modules for a single target, appending to provided DOM elements
+  async function _runSingleTarget(target, logEl, cardsEl, aiEl, t0) {
     const inputType = getInputType(target);
     const email = inputType === 'email';
     const domain = inputType === 'domain';
     const nameSearch = inputType === 'name';
 
     const collected = {};
-    lastCollected = collected;
-    lastAISummary = '';
-
-    // Sync mini sidebar target
-    document.getElementById('sbMiniTarget').textContent = target;
-
     const username = email ? target.split('@')[0] : target;
 
-    // Name Search — show people-search links card
     if (nameSearch) {
       const row = addLogRow(logEl, `Name search for "${target}"`, 'done');
       setLogTime(row, 0);
@@ -1794,114 +1746,75 @@
       collected.nameSearch = { name: target };
     }
 
-    // Sherlock — run for usernames and emails (use local part as username)
     if (!domain && !nameSearch && isModOn('Sherlock')) {
       collected.sherlock = await runModule(logEl, cardsEl, t0,
         `Sherlock scan on "${username}"`,
-        '/api/recon/sherlock',
-        { username },
-        renderSherlockCard
-      );
+        '/api/recon/sherlock', { username }, renderSherlockCard);
     }
 
-    // GitHub — run for usernames (not emails, not domains)
     if (!domain && !email && !nameSearch) {
       collected.github = await runModule(logEl, cardsEl, t0,
         `GitHub profile lookup "${username}"`,
-        '/api/recon/github',
-        { username },
-        renderGithubCard
-      );
+        '/api/recon/github', { username }, renderGithubCard);
     }
 
-    // Profile scraper — run after Sherlock for usernames
     if (!domain && !nameSearch && collected.sherlock) {
       const sherlockSites = (collected.sherlock.results || []).map(r => r.site);
       collected.enricher = await runModule(logEl, cardsEl, t0,
         `Scraping profile bios for "${username}"`,
-        '/api/recon/enrich',
-        { username, sherlock_sites: sherlockSites },
-        renderEnricherCard
-      );
+        '/api/recon/enrich', { username, sherlock_sites: sherlockSites }, renderEnricherCard);
     }
 
-    // Platform Check — check major platforms Sherlock misses
     if (!domain && !nameSearch) {
       const sherlockSites = collected.sherlock ? (collected.sherlock.results || []).map(r => r.site) : [];
       collected.platformCheck = await runModule(logEl, cardsEl, t0,
         `Platform existence check for "${username}"`,
-        '/api/recon/platform-check',
-        { username, sherlock_sites: sherlockSites },
-        renderPlatformCheckCard
-      );
+        '/api/recon/platform-check', { username, sherlock_sites: sherlockSites }, renderPlatformCheckCard);
     }
 
-    // Holehe — only when target is an email
     if (email && isModOn('Holehe')) {
       collected.holehe = await runModule(logEl, cardsEl, t0,
         `Holehe email check on "${target}"`,
-        '/api/recon/holehe',
-        { email: target },
-        renderHoleheCard
-      );
+        '/api/recon/holehe', { email: target }, renderHoleheCard);
     }
 
-    // HIBP / Breach check — only when target is an email and toggled on
     if (email && isModOn('HIBP')) {
       collected.hibp = await runModule(logEl, cardsEl, t0,
         `Breach check on "${target}"`,
-        '/api/recon/hibp',
-        { email: target },
-        renderHibpCard
-      );
+        '/api/recon/hibp', { email: target }, renderHibpCard);
     }
 
-    // Gravatar — only when target is an email
     if (email) {
       collected.gravatar = await runModule(logEl, cardsEl, t0,
         `Gravatar lookup for "${target}"`,
-        '/api/recon/gravatar',
-        { email: target },
-        renderGravatarCard
-      );
+        '/api/recon/gravatar', { email: target }, renderGravatarCard);
     }
 
-    // theHarvester — when target is a domain, or extract domain from email
     if ((domain || email) && isModOn('theHarvester')) {
       const d = email ? target.split('@')[1] : target;
       collected.harvester = await runModule(logEl, cardsEl, t0,
         `theHarvester domain recon on "${d}"`,
-        '/api/recon/harvester',
-        { domain: d },
-        renderHarvesterCard
-      );
+        '/api/recon/harvester', { domain: d }, renderHarvesterCard);
     }
 
-    // Hunter.io — when target is a domain or email, toggled on with API key
     if ((domain || email) && isModOn('Hunter.io') && getKey('hunter')) {
       const d = email ? target.split('@')[1] : target;
       collected.hunter = await runModuleWithKey(logEl, cardsEl, t0,
         `Hunter.io email discovery on "${d}"`,
-        '/api/recon/hunter',
-        { domain: d },
-        { 'X-Hunter-Key': getKey('hunter') },
-        renderHunterCard
-      );
+        '/api/recon/hunter', { domain: d },
+        { 'X-Hunter-Key': getKey('hunter') }, renderHunterCard);
     }
 
-    // Shodan — when target is a domain or IP, toggled on with API key
     if (!email && !nameSearch && isModOn('Shodan') && getKey('shodan')) {
       collected.shodan = await runModuleWithKey(logEl, cardsEl, t0,
         `Shodan host lookup on "${target}"`,
-        '/api/recon/shodan',
-        { target },
-        { 'X-Shodan-Key': getKey('shodan') },
-        renderShodanCard
-      );
+        '/api/recon/shodan', { target },
+        { 'X-Shodan-Key': getKey('shodan') }, renderShodanCard);
     }
 
-    // AI Analysis — only if we have an API key and at least some results
+    // AI Analysis
     let scanTokens = 0;
+    let aiSummary = '';
     const apiKey = getApiKey();
     const hasResults = Object.values(collected).some(v => v);
     if (apiKey && hasResults) {
@@ -1910,10 +1823,7 @@
       try {
         const resp = await fetch('/api/analyze/summarize', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Api-Key': apiKey,
-          },
+          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
           body: JSON.stringify({
             target,
             sherlock: collected.sherlock,
@@ -1939,26 +1849,8 @@
           const data = await resp.json();
           scanTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
-          lastAISummary = data.summary;
-          aiEl.innerHTML = renderAIBlock(data);
-          updateAIProgress();
-          document.getElementById('aiReportTab').style.display = '';
-          document.getElementById('aiReportContent').innerHTML = renderAIBlock(data);
-          // Show Deep Dive button if profiles are available
-          const ddBtn = document.getElementById('deepDiveBtn');
-          const ddResults = document.getElementById('deepDiveResults');
-          ddResults.style.display = 'none';
-          ddResults.innerHTML = '';
-          if (_collectProfileUrls().length > 0) {
-            ddBtn.style.display = '';
-            ddBtn.querySelector('button').textContent = '⚡ Run Deep Dive Analysis';
-            ddBtn.querySelector('button').style.pointerEvents = '';
-            ddBtn.querySelector('button').style.color = '#f59e0b';
-            ddBtn.querySelector('button').style.borderColor = 'rgba(245,158,11,0.4)';
-            ddBtn.querySelector('button').style.background = 'rgba(245,158,11,0.08)';
-          } else {
-            ddBtn.style.display = 'none';
-          }
+          aiSummary = data.summary;
+          if (aiEl) aiEl.innerHTML = renderAIBlock(data);
         }
       } catch (e) {
         clearInterval(aiTimer);
@@ -1969,9 +1861,161 @@
       addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
     }
 
-    collapseLog(logEl, (performance.now() - t0) / 1000, scanTokens);
+    return { collected, aiSummary, scanTokens };
+  }
 
-    addHistoryEntry(target, 'INVESTIGATE', collected, lastAISummary);
+  async function runScan() {
+    if (scanning) return;
+    const rawInput = document.getElementById('targetInput').value.trim();
+    if (!rawInput) { document.getElementById('targetInput').focus(); return; }
+
+    // Parse comma-separated targets
+    const targets = rawInput.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    if (targets.length === 0) { document.getElementById('targetInput').focus(); return; }
+
+    // If single target is a recon type in auto mode, route to RECON
+    if (targets.length === 1) {
+      const target = targets[0];
+      const chip = document.querySelector('.chip.on');
+      const chipMode = chip ? chip.textContent.trim().toLowerCase() : 'auto';
+      if (chipMode === 'auto' && (isDomain(target) || isIP(target) || isASN(target))) {
+        const label = isASN(target) ? 'ASN' : isIP(target) ? 'IP address' : 'Domain';
+        document.getElementById('reconTargetInput').value = target;
+        switchMode('recon');
+        updateReconChip();
+        showToast(`${label} detected — switching to RECON mode`);
+        setTimeout(() => runRecon(), 100);
+        return;
+      }
+    }
+
+    scanning = true;
+    const isBulk = targets.length > 1;
+    currentTarget = isBulk ? targets.join(', ') : targets[0];
+    const runBtn = document.querySelector('.run-btn');
+    runBtn.textContent = '⏳ SCANNING...';
+    runBtn.style.pointerEvents = 'none';
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('aiReportTab').style.display = 'none';
+    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
+    document.getElementById('deepDiveBtn').style.display = 'none';
+    document.getElementById('deepDiveResults').style.display = 'none';
+    document.getElementById('deepDiveResults').innerHTML = '';
+    const activeTab = document.querySelector('#investigateWorkspace .tab.on');
+    if (activeTab && activeTab.id === 'aiReportTab') {
+      setTab(document.querySelector('#investigateWorkspace .tab'), 'content');
+    }
+
+    const res = document.getElementById('results');
+    res.style.display = 'block';
+    document.getElementById('sbMiniTarget').textContent = isBulk ? `${targets.length} targets` : targets[0];
+
+    if (!isBulk) {
+      // Single target — original flow
+      const target = targets[0];
+      res.innerHTML = '<div class="agent-log" id="log"></div><div id="aiBlock"></div><div class="result-grid" id="resultCards"></div>';
+      const logEl = document.getElementById('log');
+      const cardsEl = document.getElementById('resultCards');
+      const aiEl = document.getElementById('aiBlock');
+      const t0 = performance.now();
+
+      lastCollected = {};
+      lastAISummary = '';
+
+      const result = await _runSingleTarget(target, logEl, cardsEl, aiEl, t0);
+      lastCollected = result.collected;
+      lastAISummary = result.aiSummary;
+
+      if (result.aiSummary) {
+        updateAIProgress();
+        document.getElementById('aiReportTab').style.display = '';
+        document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: result.aiSummary });
+        const ddBtn = document.getElementById('deepDiveBtn');
+        const ddResults = document.getElementById('deepDiveResults');
+        ddResults.style.display = 'none';
+        ddResults.innerHTML = '';
+        if (_collectProfileUrls().length > 0) {
+          ddBtn.style.display = '';
+          ddBtn.querySelector('button').textContent = '⚡ Run Deep Dive Analysis';
+          ddBtn.querySelector('button').style.pointerEvents = '';
+          ddBtn.querySelector('button').style.color = '#f59e0b';
+          ddBtn.querySelector('button').style.borderColor = 'rgba(245,158,11,0.4)';
+          ddBtn.querySelector('button').style.background = 'rgba(245,158,11,0.08)';
+        } else {
+          ddBtn.style.display = 'none';
+        }
+      }
+      collapseLog(logEl, (performance.now() - t0) / 1000, result.scanTokens);
+      addHistoryEntry(target, 'INVESTIGATE', result.collected, result.aiSummary);
+
+    } else {
+      // Bulk mode — collapsible sections per target
+      res.innerHTML = '';
+      const allCollected = {};
+      const t0 = performance.now();
+
+      for (let i = 0; i < targets.length; i++) {
+        const target = targets[i];
+        runBtn.textContent = `⏳ ${i + 1}/${targets.length}: ${target.length > 20 ? target.slice(0, 20) + '...' : target}`;
+
+        // Create collapsible section
+        const section = document.createElement('div');
+        section.style.cssText = 'border:1px solid var(--border-mid);border-radius:4px;margin-bottom:8px;overflow:hidden;';
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);cursor:pointer;font-family:Barlow Condensed,sans-serif;font-size:14px;font-weight:600;letter-spacing:1px;color:var(--text-bright);';
+        header.innerHTML = `<span class="sec-arrow" style="font-size:10px;transition:transform 0.15s;">▼</span><span>${i + 1}/${targets.length}</span><span style="color:var(--text-mid);font-weight:400;">${target}</span><span id="bulkStatus_${i}" style="margin-left:auto;font-size:10px;font-family:Share Tech Mono,monospace;color:var(--text-dim);">scanning...</span>`;
+        const body = document.createElement('div');
+        body.id = `bulkBody_${i}`;
+        body.style.cssText = 'padding:8px;';
+        body.innerHTML = `<div class="agent-log" id="bulkLog_${i}"></div><div id="bulkAi_${i}"></div><div class="result-grid" id="bulkCards_${i}"></div>`;
+
+        header.onclick = () => {
+          const open = body.style.display !== 'none';
+          body.style.display = open ? 'none' : '';
+          header.querySelector('.sec-arrow').style.transform = open ? 'rotate(-90deg)' : '';
+        };
+
+        section.appendChild(header);
+        section.appendChild(body);
+        res.appendChild(section);
+
+        const logEl = document.getElementById(`bulkLog_${i}`);
+        const cardsEl = document.getElementById(`bulkCards_${i}`);
+        const aiEl = document.getElementById(`bulkAi_${i}`);
+        const tStart = performance.now();
+
+        const result = await _runSingleTarget(target, logEl, cardsEl, aiEl, tStart);
+
+        // Update status badge
+        const statusEl = document.getElementById(`bulkStatus_${i}`);
+        const hitCount = Object.values(result.collected).filter(v => v).length;
+        statusEl.textContent = `${hitCount} modules · ${((performance.now() - tStart) / 1000).toFixed(1)}s`;
+        statusEl.style.color = 'var(--green)';
+
+        collapseLog(logEl, (performance.now() - tStart) / 1000, result.scanTokens);
+        addHistoryEntry(target, 'INVESTIGATE', result.collected, result.aiSummary);
+
+        allCollected[target] = result.collected;
+
+        // Collapse previous sections, keep current open
+        if (i > 0) {
+          const prevBody = document.getElementById(`bulkBody_${i - 1}`);
+          if (prevBody) {
+            prevBody.style.display = 'none';
+            const prevArrow = prevBody.parentElement.querySelector('.sec-arrow');
+            if (prevArrow) prevArrow.style.transform = 'rotate(-90deg)';
+          }
+        }
+      }
+
+      // Set last target as active for Deep Dive
+      const lastTarget = targets[targets.length - 1];
+      lastCollected = allCollected[lastTarget] || {};
+      currentTarget = lastTarget;
+
+      showToast(`Bulk scan complete — ${targets.length} targets processed`);
+    }
 
     runBtn.textContent = '▶ Run Investigation';
     runBtn.style.pointerEvents = '';
