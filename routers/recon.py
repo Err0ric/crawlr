@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from modules.sherlock import run_sherlock
 from modules.holehe import run_holehe
+from modules.harvester import run_harvester
 
 router = APIRouter()
 
@@ -12,6 +13,10 @@ class SherlockRequest(BaseModel):
 
 class HoleheRequest(BaseModel):
     email: str
+
+
+class HarvesterRequest(BaseModel):
+    domain: str
 
 
 @router.get("/ping")
@@ -33,3 +38,11 @@ async def holehe_scan(req: HoleheRequest):
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid email is required")
     return await run_holehe(email)
+
+
+@router.post("/harvester")
+async def harvester_scan(req: HarvesterRequest):
+    domain = req.domain.strip()
+    if not domain:
+        raise HTTPException(status_code=400, detail="Domain is required")
+    return await run_harvester(domain)
