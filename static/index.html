@@ -667,6 +667,11 @@
 
 <div class="workspace" id="reconWorkspace" style="display:none;">
   <div class="sidebar">
+    <div class="sb-toggle" onclick="toggleReconSidebar()" title="Collapse sidebar">◀</div>
+    <div class="sb-mini">
+      <div class="sb-mini-target" id="reconSbMiniTarget"></div>
+      <div class="sb-mini-run" onclick="runRecon()" title="Run Recon">▶</div>
+    </div>
     <div class="pane">
       <div class="pane-head">
         <div class="pane-label">// <span>Target</span></div>
@@ -1585,184 +1590,244 @@
     }
   }
 
+  function toggleReconSidebar() {
+    const ws = document.getElementById('reconWorkspace');
+    const btn = ws.querySelector('.sb-toggle');
+    ws.classList.toggle('sb-collapsed');
+    btn.textContent = ws.classList.contains('sb-collapsed') ? '▶' : '◀';
+    document.getElementById('reconSbMiniTarget').textContent = document.getElementById('reconTargetInput').value.trim() || '—';
+  }
+
   function renderReconGraph() {
     const container = document.getElementById('reconGraph');
     container.innerHTML = '';
-    if (typeof d3 === 'undefined') { container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:11px;">D3.js failed to load</div>'; return; }
+    const emptyMsg = (msg) => { container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:11px;">${msg}</div>`; };
+    if (typeof d3 === 'undefined') { emptyMsg('D3.js failed to load'); return; }
     const d = reconCollected;
     const target = document.getElementById('reconTargetInput').value.trim();
-    if (!target || !d || Object.keys(d).length === 0) { container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:11px;">Run a recon scan first</div>'; return; }
+    if (!target || !d || Object.keys(d).length === 0) { emptyMsg('Run a recon scan first'); return; }
 
-    const nodes = [];
-    const links = [];
-    const nodeMap = {};
+    const colorMap = { domain: '#a855f7', a: '#a855f7', mx: '#d97706', ns: '#14b8a6', subdomain: '#7c3aed', ip: '#6b7280', asn: '#4b5563', cname: '#8b5cf6' };
     const asnInfo = d.asn || {};
 
-    function addNode(id, label, type, size) {
-      if (nodeMap[id]) return;
-      nodeMap[id] = true;
-      nodes.push({ id, label, type, size });
-    }
-    function addLink(source, target, type) {
-      links.push({ source, target, type });
-    }
+    // Build hierarchical tree data
+    const treeNodes = []; // {id, label, type, lane, row}
+    const treeLinks = []; // {source, target, type}
+    const idSet = {};
+    let rowCounters = { 1: 0, 2: 0, 3: 0 }; // per-lane row counters
+    let subRow = 0;
 
-    // Center domain node
-    addNode(target, target, 'domain', 24);
+    function addN(id, label, type, lane) {
+      if (idSet[id]) return;
+      idSet[id] = true;
+      const row = (lane <= 3) ? rowCounters[lane]++ : 0;
+      treeNodes.push({ id, label, type, lane, row });
+    }
+    function addL(src, tgt, type) { treeLinks.push({ source: src, target: tgt, type }); }
 
-    // DNS A records
+    // Lane 0: Domain
+    addN(target, target, 'domain', 0);
+
+    // Lane 1: Record type groups + Lane 2: values
     if (d.dns && d.dns.records) {
-      const aRecords = d.dns.records['A'] || [];
-      for (const ip of aRecords) {
-        addNode(ip, ip, 'ip', 14);
-        addLink(target, ip, 'a');
-      }
-      // MX
-      const mxRecords = d.dns.records['MX'] || [];
-      for (const mx of mxRecords) {
-        const clean = mx.replace(/^\d+\s+/, '').replace(/\.$/, '');
-        addNode('mx_' + clean, clean, 'mx', 14);
-        addLink(target, 'mx_' + clean, 'mx');
-      }
-      // NS
-      const nsRecords = d.dns.records['NS'] || [];
-      for (const ns of nsRecords) {
-        const clean = ns.replace(/\.$/, '');
-        addNode('ns_' + clean, clean, 'ns', 14);
-        addLink(target, 'ns_' + clean, 'ns');
-      }
-      // CNAME
-      const cnameRecords = d.dns.records['CNAME'] || [];
-      for (const cn of cnameRecords) {
-        const clean = cn.replace(/\.$/, '');
-        addNode('cn_' + clean, clean, 'cname', 12);
-        addLink(target, 'cn_' + clean, 'cname');
-      }
-    }
-
-    // Subdomains
-    if (d.subdomains && d.subdomains.subdomains) {
-      for (const s of d.subdomains.subdomains) {
-        addNode(s.subdomain, s.subdomain, 'subdomain', 10);
-        addLink(target, s.subdomain, 'sub');
-        for (const ip of (s.ips || [])) {
-          addNode(ip, ip, 'ip', 12);
-          addLink(s.subdomain, ip, 'a');
+      const aRecs = d.dns.records['A'] || [];
+      for (const ip of aRecs) {
+        const rid = 'a_rec_' + ip;
+        addN(rid, 'A', 'a', 1);
+        addL(target, rid, 'a');
+        addN(ip, ip, 'ip', 2);
+        addL(rid, ip, 'a');
+        if (asnInfo.asn) {
+          const aid = 'asn_' + ip;
+          addN(aid, `${asnInfo.asn} ${(asnInfo.org || '').slice(0, 30)}`, 'asn', 3);
+          addL(ip, aid, 'asn');
         }
       }
+      const mxRecs = d.dns.records['MX'] || [];
+      for (const mx of mxRecs) {
+        const clean = mx.replace(/^\d+\s+/, '').replace(/\.$/, '');
+        const mid = 'mx_' + clean;
+        addN(mid, 'MX', 'mx', 1);
+        addL(target, mid, 'mx');
+        const vid = 'mxv_' + clean;
+        addN(vid, clean, 'ip', 2);
+        addL(mid, vid, 'mx');
+      }
+      const nsRecs = d.dns.records['NS'] || [];
+      for (const ns of nsRecs) {
+        const clean = ns.replace(/\.$/, '');
+        const nid = 'ns_' + clean;
+        addN(nid, 'NS', 'ns', 1);
+        addL(target, nid, 'ns');
+        const vid = 'nsv_' + clean;
+        addN(vid, clean, 'ip', 2);
+        addL(nid, vid, 'ns');
+      }
+      const cnRecs = d.dns.records['CNAME'] || [];
+      for (const cn of cnRecs) {
+        const clean = cn.replace(/\.$/, '');
+        const cid = 'cn_' + clean;
+        addN(cid, 'CNAME', 'cname', 1);
+        addL(target, cid, 'cname');
+        const vid = 'cnv_' + clean;
+        addN(vid, clean, 'ip', 2);
+        addL(cid, vid, 'cname');
+      }
     }
 
-    if (nodes.length <= 1) {
-      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:11px;">No graph data available — run a recon scan first</div>';
-      return;
+    // Subdomains below main records
+    const subNodes = [];
+    if (d.subdomains && d.subdomains.subdomains) {
+      for (const s of d.subdomains.subdomains.slice(0, 25)) {
+        const sid = 'sub_' + s.subdomain;
+        subNodes.push({ id: sid, label: s.subdomain, type: 'subdomain', ips: s.ips || [] });
+        addL(target, sid, 'sub');
+      }
     }
+
+    if (treeNodes.length <= 1 && subNodes.length === 0) { emptyMsg('No graph data — run a recon scan first'); return; }
 
     const rect = container.getBoundingClientRect();
-    const width = rect.width || 800;
-    const height = rect.height || 500;
+    const W = rect.width || 900;
 
-    const colorMap = {
-      domain: '#a855f7', ip: '#6b7280', mx: '#d97706', ns: '#14b8a6',
-      subdomain: '#7c3aed', cname: '#8b5cf6',
-    };
+    // Layout params
+    const laneX = [60, 220, 440, 680];
+    const boxH = 28, gapY = 8, startY = 70;
+    const domainBoxW = 150, typeBoxW = 50, valBoxW = 180, asnBoxW = 200;
+    const boxWidths = [domainBoxW, typeBoxW, valBoxW, asnBoxW];
+
+    // Assign positions
+    const positions = {};
+    // Track lane positions
+    const laneRows = [0, 0, 0, 0];
+
+    // Domain node center
+    const mainH = Math.max(rowCounters[1], rowCounters[2], rowCounters[3]) * (boxH + gapY);
+    positions[target] = { x: laneX[0], y: startY + mainH / 2 };
+
+    // Position lane nodes in order they appear in treeLinks from domain
+    const lane1Order = [], lane2Order = [], lane3Order = [];
+    for (const n of treeNodes) {
+      if (n.lane === 1) lane1Order.push(n);
+      if (n.lane === 2) lane2Order.push(n);
+      if (n.lane === 3) lane3Order.push(n);
+    }
+    lane1Order.forEach((n, i) => { positions[n.id] = { x: laneX[1], y: startY + i * (boxH + gapY) }; });
+    lane2Order.forEach((n, i) => { positions[n.id] = { x: laneX[2], y: startY + i * (boxH + gapY) }; });
+    lane3Order.forEach((n, i) => { positions[n.id] = { x: laneX[3], y: startY + i * (boxH + gapY) }; });
+
+    // Subdomain section
+    const subStartY = startY + Math.max(lane1Order.length, lane2Order.length, lane3Order.length) * (boxH + gapY) + 40;
+    subNodes.forEach((s, i) => {
+      positions[s.id] = { x: laneX[1], y: subStartY + i * (boxH + gapY) };
+      s.ips.forEach((ip, j) => {
+        const ipId = 'subip_' + s.id + '_' + ip;
+        positions[ipId] = { x: laneX[2], y: subStartY + i * (boxH + gapY) };
+        if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: 'ip', lane: 2, row: 0 }); }
+        addL(s.id, ipId, 'sub');
+        if (asnInfo.asn) {
+          const aId = 'subasn_' + ipId;
+          if (!idSet[aId]) { idSet[aId] = true; treeNodes.push({ id: aId, label: `${asnInfo.asn} ${(asnInfo.org || '').slice(0, 30)}`, type: 'asn', lane: 3, row: 0 }); }
+          positions[aId] = { x: laneX[3], y: subStartY + i * (boxH + gapY) };
+          addL(ipId, aId, 'asn');
+        }
+      });
+    });
+    // Add subdomain nodes to treeNodes
+    for (const s of subNodes) {
+      if (!treeNodes.find(n => n.id === s.id)) treeNodes.push({ id: s.id, label: s.label, type: s.type, lane: 1, row: 0 });
+    }
+
+    const totalH = Math.max(subStartY + subNodes.length * (boxH + gapY) + 60, rect.height || 500);
+    const svgW = Math.max(W, 920);
 
     const svg = d3.select(container).append('svg')
-      .attr('width', width).attr('height', height)
-      .style('background', 'var(--bg)');
+      .attr('width', svgW).attr('height', totalH)
+      .style('background', '#07060f');
 
     const g = svg.append('g');
 
-    // Zoom
-    svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', (e) => {
-      g.attr('transform', e.transform);
-    }));
+    svg.call(d3.zoom().scaleExtent([0.3, 4]).on('zoom', (e) => g.attr('transform', e.transform)));
 
-    // Tooltip
+    // Legend
+    const legend = g.append('g').attr('transform', 'translate(60, 20)');
+    const legendItems = [
+      { label: 'A Record', color: colorMap.a }, { label: 'MX', color: colorMap.mx },
+      { label: 'NS', color: colorMap.ns }, { label: 'Subdomain', color: colorMap.subdomain },
+      { label: 'IP', color: colorMap.ip }, { label: 'ASN', color: colorMap.asn },
+    ];
+    legendItems.forEach((item, i) => {
+      const lg = legend.append('g').attr('transform', `translate(${i * 100}, 0)`);
+      lg.append('rect').attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', item.color).attr('opacity', 0.8);
+      lg.append('text').attr('x', 14).attr('y', 9).text(item.label)
+        .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px');
+    });
+
+    // Subdomain separator
+    if (subNodes.length > 0) {
+      g.append('line')
+        .attr('x1', 40).attr('x2', svgW - 40)
+        .attr('y1', subStartY - 20).attr('y2', subStartY - 20)
+        .attr('stroke', '#1a1830').attr('stroke-dasharray', '4,4');
+      g.append('text').attr('x', 60).attr('y', subStartY - 8)
+        .text('// SUBDOMAINS')
+        .attr('fill', '#3d3460').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px').attr('letter-spacing', '2px');
+    }
+
+    // Draw links as curved bezier paths
+    for (const link of treeLinks) {
+      const sp = positions[link.source];
+      const tp = positions[link.target];
+      if (!sp || !tp) continue;
+      const srcW = boxWidths[treeNodes.find(n => n.id === link.source)?.lane] || 100;
+      const x1 = sp.x + srcW, y1 = sp.y + boxH / 2;
+      const x2 = tp.x, y2 = tp.y + boxH / 2;
+      const mx = (x1 + x2) / 2;
+      const col = colorMap[link.type] || colorMap.a;
+      g.append('path')
+        .attr('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`)
+        .attr('fill', 'none').attr('stroke', col).attr('stroke-opacity', 0.35).attr('stroke-width', 1.5);
+    }
+
+    // Draw nodes as boxes
     const tooltip = d3.select(container).append('div').attr('class', 'graph-tooltip').style('display', 'none');
 
-    const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(100))
-      .force('charge', d3.forceManyBody().strength(-200))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(d => d.size + 10));
+    for (const n of treeNodes) {
+      const pos = positions[n.id];
+      if (!pos) continue;
+      const bw = boxWidths[n.lane] || 150;
+      const col = colorMap[n.type] || colorMap.ip;
+      const ng = g.append('g').attr('transform', `translate(${pos.x}, ${pos.y})`);
 
-    // Links
-    const link = g.append('g').selectAll('line').data(links).join('line')
-      .attr('stroke', d => {
-        if (d.type === 'mx') return 'rgba(217,119,6,0.3)';
-        if (d.type === 'ns') return 'rgba(20,184,166,0.3)';
-        return 'rgba(124,58,237,0.2)';
+      // Box
+      ng.append('rect')
+        .attr('width', bw).attr('height', boxH).attr('rx', 3)
+        .attr('fill', n.type === 'domain' ? 'rgba(124,58,237,0.15)' : 'rgba(15,14,28,0.9)')
+        .attr('stroke', col).attr('stroke-width', n.type === 'domain' ? 2 : 1)
+        .attr('stroke-opacity', n.type === 'domain' ? 0.8 : 0.4);
+
+      // Label
+      const maxChars = Math.floor(bw / 7);
+      const label = n.label.length > maxChars ? n.label.slice(0, maxChars - 1) + '…' : n.label;
+      ng.append('text')
+        .attr('x', bw / 2).attr('y', boxH / 2 + 4)
+        .attr('text-anchor', 'middle')
+        .attr('fill', n.type === 'domain' ? '#e8e0f8' : (n.type === 'asn' ? '#4b5563' : '#b0a8cc'))
+        .attr('font-family', 'Share Tech Mono, monospace')
+        .attr('font-size', n.type === 'domain' ? '11px' : (n.type === 'asn' ? '8px' : '9px'))
+        .text(label);
+
+      // Hover tooltip
+      ng.on('mouseover', (e) => {
+        let info = n.label;
+        if (n.type === 'ip' && asnInfo.asn) info += ` — ${asnInfo.asn} (${asnInfo.org || ''})`;
+        tooltip.style('display', 'block').text(info);
       })
-      .attr('stroke-width', 1);
-
-    // Nodes
-    const node = g.append('g').selectAll('g').data(nodes).join('g')
-      .call(d3.drag()
-        .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-        .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-        .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
-      );
-
-    node.append('circle')
-      .attr('r', d => d.size)
-      .attr('fill', d => colorMap[d.type] || '#6b7280')
-      .attr('fill-opacity', 0.8)
-      .attr('stroke', d => colorMap[d.type] || '#6b7280')
-      .attr('stroke-width', 2)
-      .attr('stroke-opacity', 0.3);
-
-    // Glow on domain node
-    node.filter(d => d.type === 'domain').select('circle')
-      .attr('fill-opacity', 1)
-      .attr('stroke-opacity', 0.6)
-      .attr('stroke-width', 4);
-
-    // Labels
-    node.append('text')
-      .text(d => d.label.length > 28 ? d.label.slice(0, 26) + '…' : d.label)
-      .attr('x', d => d.size + 6)
-      .attr('y', 4)
-      .attr('fill', d => d.type === 'domain' ? '#e8e0f8' : '#6e5f99')
-      .attr('font-family', 'Share Tech Mono, monospace')
-      .attr('font-size', d => d.type === 'domain' ? '11px' : '9px');
-
-    // Type badges
-    node.filter(d => d.type !== 'domain').append('text')
-      .text(d => d.type.toUpperCase())
-      .attr('x', d => d.size + 6)
-      .attr('y', -6)
-      .attr('fill', d => colorMap[d.type] || '#6b7280')
-      .attr('font-family', 'Share Tech Mono, monospace')
-      .attr('font-size', '7px')
-      .attr('opacity', 0.6);
-
-    // Hover
-    node.on('mouseover', (e, d) => {
-      let info = d.label;
-      if (d.type === 'ip' && asnInfo.asn) info += ` (${asnInfo.asn} — ${asnInfo.org || ''})`;
-      tooltip.style('display', 'block').text(info);
-      // Highlight connections
-      link.attr('stroke-opacity', l => (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.15);
-      node.selectAll('circle').attr('opacity', n => {
-        if (n.id === d.id) return 1;
-        const connected = links.some(l => (l.source.id === d.id && l.target.id === n.id) || (l.target.id === d.id && l.source.id === n.id));
-        return connected ? 1 : 0.2;
-      });
-    })
-    .on('mousemove', (e) => {
-      tooltip.style('left', (e.offsetX + 14) + 'px').style('top', (e.offsetY - 10) + 'px');
-    })
-    .on('mouseout', () => {
-      tooltip.style('display', 'none');
-      link.attr('stroke-opacity', 1);
-      node.selectAll('circle').attr('opacity', 1);
-    });
-
-    simulation.on('tick', () => {
-      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-          .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-      node.attr('transform', d => `translate(${d.x},${d.y})`);
-    });
+      .on('mousemove', (e) => {
+        tooltip.style('left', (e.offsetX + 14) + 'px').style('top', (e.offsetY - 10) + 'px');
+      })
+      .on('mouseout', () => tooltip.style('display', 'none'));
+    }
   }
 
   function switchMode(mode) {
