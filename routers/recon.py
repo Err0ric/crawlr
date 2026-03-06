@@ -10,6 +10,7 @@ from modules.github import run_github
 from modules.enricher import run_enricher
 from modules.platform_check import run_platform_check
 from modules.hunter import run_hunter
+from modules.profile_scraper import scrape_profiles
 from modules.shodan_lookup import run_shodan
 
 router = APIRouter()
@@ -128,3 +129,19 @@ async def shodan_scan(req: ShodanRequest, x_shodan_key: str = Header(...)):
     if not x_shodan_key:
         raise HTTPException(status_code=401, detail="Shodan API key is required")
     return await run_shodan(target, x_shodan_key)
+
+
+class ScrapeProfilesRequest(BaseModel):
+    urls: list[dict]
+
+
+@router.post("/scrape-profiles")
+async def scrape_profiles_endpoint(req: ScrapeProfilesRequest):
+    if not req.urls:
+        raise HTTPException(status_code=400, detail="URLs list is required")
+    results = await scrape_profiles(req.urls)
+    return {
+        "total": len(results),
+        "scraped": sum(1 for r in results if "error" not in r),
+        "results": results,
+    }

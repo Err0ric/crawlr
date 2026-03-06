@@ -1281,6 +1281,35 @@
     return html;
   }
 
+  /* ── Deep Dive Profile Scrape renderer ── */
+  function renderProfileScrapeCard(data) {
+    const results = (data.results || []).filter(r => !r.error);
+    if (results.length === 0) {
+      return `<div class="rcard">
+        <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-none">NO DATA</div></div>
+        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>Could not scrape any profile pages</div></div>
+      </div>`;
+    }
+    let html = `<div class="rcard">
+      <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-hit">${results.length} SCRAPED</div></div>
+      <div class="rcard-body">`;
+    for (const p of results) {
+      html += `<div class="ritem" style="flex-direction:column;align-items:flex-start;gap:2px;">
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          <div class="dot dg"></div>
+          <a href="${p.url}" target="_blank" rel="noopener" style="color:var(--text-bright);text-decoration:none;font-weight:600;">${p.site}</a>
+          ${p.display_name ? `<span style="color:var(--text-mid)">— ${p.display_name}</span>` : ''}
+        </div>
+        ${p.bio ? `<div style="padding-left:12px;color:var(--text-dim);font-size:10px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;">${p.bio.slice(0, 200)}${p.bio.length > 200 ? '...' : ''}</div>` : ''}
+        ${p.emails && p.emails.length ? `<div style="padding-left:12px;color:var(--green);font-size:10px;">emails: ${p.emails.join(', ')}</div>` : ''}
+        ${p.location ? `<div style="padding-left:12px;color:var(--text-dim);font-size:10px;">location: ${p.location}</div>` : ''}
+      </div>`;
+    }
+    html += `<div style="padding:6px 0 2px;font-family:'Share Tech Mono',monospace;font-size:9px;color:#f59e0b;opacity:0.8;">⚠ active technique — profile pages were visited directly</div>`;
+    html += `</div></div>`;
+    return html;
+  }
+
   /* ── Platform Check renderer ── */
   function renderPlatformCheckCard(data) {
     const results = data.results || [];
@@ -1627,6 +1656,41 @@
       );
     }
 
+    // Deep Dive: scrape profile pages when Active Techniques is ON
+    const activeOn = document.getElementById('activeTechToggle').classList.contains('on');
+    if (activeOn && !nameSearch) {
+      const profileUrls = [];
+      // Gather URLs from Sherlock results (skip false positives)
+      if (collected.sherlock && collected.sherlock.results) {
+        for (const r of collected.sherlock.results) {
+          if (r.confidence !== 'false_positive' && r.url) {
+            profileUrls.push({ site: r.site, url: r.url });
+          }
+        }
+      }
+      // Gather URLs from platform check results
+      if (collected.platformCheck && collected.platformCheck.results) {
+        for (const r of collected.platformCheck.results) {
+          if (r.found && r.url && !profileUrls.some(p => p.url === r.url)) {
+            profileUrls.push({ site: r.platform, url: r.url });
+          }
+        }
+      }
+      if (profileUrls.length > 0) {
+        collected.profileScrape = await runModule(logEl, cardsEl, t0,
+          `Deep Dive scraping ${Math.min(profileUrls.length, 20)} profiles`,
+          '/api/recon/scrape-profiles',
+          { urls: profileUrls.slice(0, 20) },
+          renderProfileScrapeCard
+        );
+      }
+    } else if (!activeOn && !nameSearch) {
+      cardsEl.innerHTML += `<div class="rcard">
+        <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-none">OFF</div></div>
+        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>Enable Active Techniques for live profile correlation</div></div>
+      </div>`;
+    }
+
     // AI Analysis — only if we have an API key and at least some results
     let scanTokens = 0;
     const apiKey = getApiKey();
@@ -1654,6 +1718,7 @@
             hunter: collected.hunter || null,
             shodan: collected.shodan || null,
             name_search: collected.nameSearch || null,
+            profile_scrape: collected.profileScrape || null,
             active_techniques: document.getElementById('activeTechToggle').classList.contains('on'),
           }),
         });
@@ -2940,6 +3005,7 @@
       if (d.platformCheck) cardsEl.innerHTML += renderPlatformCheckCard(d.platformCheck);
       if (d.hunter) cardsEl.innerHTML += renderHunterCard(d.hunter);
       if (d.shodan) cardsEl.innerHTML += renderShodanCard(d.shodan);
+      if (d.profileScrape) cardsEl.innerHTML += renderProfileScrapeCard(d.profileScrape);
       if (d.nameSearch) cardsEl.innerHTML += renderNameSearchCard(d.nameSearch);
       if (entry.aiSummary) {
         const aiBlock = document.createElement('div');

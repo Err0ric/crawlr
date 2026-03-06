@@ -19,6 +19,7 @@ class AnalyzeRequest(BaseModel):
     platform_check: Optional[dict] = None
     hunter: Optional[dict] = None
     shodan: Optional[dict] = None
+    profile_scrape: Optional[dict] = None
     name_search: Optional[dict] = None
     active_techniques: bool = False
 
@@ -136,6 +137,31 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
             prompt_parts.append(
                 f"Platform existence check found no profile on: {', '.join(not_found)}"
             )
+
+    if req.profile_scrape and req.profile_scrape.get("results"):
+        prompt_parts.append(
+            "\n== LIVE PROFILE SCRAPE DATA (Active Techniques - visited each profile URL) =="
+        )
+        for p in req.profile_scrape["results"]:
+            if p.get("error"):
+                continue
+            parts = [f"Site: {p.get('site', '')}"]
+            if p.get("display_name"):
+                parts.append(f"Display Name: {p['display_name']}")
+            if p.get("bio"):
+                parts.append(f"Bio: {p['bio'][:300]}")
+            if p.get("emails"):
+                parts.append(f"Emails on page: {', '.join(p['emails'])}")
+            if p.get("location"):
+                parts.append(f"Location: {p['location']}")
+            if p.get("links"):
+                parts.append(f"Linked URLs: {', '.join(p['links'][:5])}")
+            prompt_parts.append(" | ".join(parts))
+        prompt_parts.append(
+            "IMPORTANT: Cross-reference display names, bios, and linked URLs across platforms "
+            "to correlate identity. Look for consistent real names, locations, linked personal sites, "
+            "and email addresses that appear on multiple profiles."
+        )
 
     if req.hunter and req.hunter.get("emails"):
         emails = [e["email"] for e in req.hunter["emails"][:15]]
