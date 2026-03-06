@@ -114,11 +114,95 @@ async def _scrape_twitch(username: str, client: httpx.AsyncClient) -> dict | Non
         return None
 
 
+async def _scrape_onlyfans(username: str, client: httpx.AsyncClient) -> dict | None:
+    try:
+        r = await client.get(
+            f"https://onlyfans.com/{username}",
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+        if r.status_code != 200:
+            return None
+        soup = BeautifulSoup(r.text, "html.parser")
+        og_title = soup.find("meta", property="og:title")
+        og_desc = soup.find("meta", property="og:description")
+        name = og_title["content"] if og_title and og_title.get("content") else ""
+        desc = og_desc["content"] if og_desc and og_desc.get("content") else ""
+        # Filter generic / not-found pages
+        if not name or name.lower() == "onlyfans" or "onlyfans" == name.strip().lower():
+            return None
+        return {
+            "platform": "OnlyFans",
+            "display_name": name,
+            "bio": desc[:300],
+            "url": f"https://onlyfans.com/{username}",
+        }
+    except Exception:
+        return None
+
+
+async def _scrape_patreon(username: str, client: httpx.AsyncClient) -> dict | None:
+    try:
+        r = await client.get(
+            f"https://www.patreon.com/{username}",
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+        if r.status_code != 200:
+            return None
+        soup = BeautifulSoup(r.text, "html.parser")
+        og_title = soup.find("meta", property="og:title")
+        og_desc = soup.find("meta", property="og:description")
+        raw_title = og_title["content"] if og_title and og_title.get("content") else ""
+        desc = og_desc["content"] if og_desc and og_desc.get("content") else ""
+        # Title is usually "Name | creating ... | Patreon" or "Name is creating ... | Patreon"
+        name = re.split(r"\s*[\|]", raw_title)[0].strip() if raw_title else ""
+        if not name or name.lower() == "patreon" or "best platform for creators" in desc.lower():
+            return None
+        return {
+            "platform": "Patreon",
+            "display_name": name,
+            "bio": desc[:300],
+            "url": f"https://patreon.com/{username}",
+        }
+    except Exception:
+        return None
+
+
+async def _scrape_cashapp(username: str, client: httpx.AsyncClient) -> dict | None:
+    try:
+        r = await client.get(
+            f"https://cash.app/${username}",
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+        if r.status_code != 200:
+            return None
+        soup = BeautifulSoup(r.text, "html.parser")
+        og_title = soup.find("meta", property="og:title")
+        og_desc = soup.find("meta", property="og:description")
+        name = og_title["content"] if og_title and og_title.get("content") else ""
+        desc = og_desc["content"] if og_desc and og_desc.get("content") else ""
+        if not name or "cash app" in name.lower() or "send and receive money" in desc.lower():
+            return None
+        return {
+            "platform": "CashApp",
+            "display_name": name,
+            "bio": desc[:300],
+            "url": f"https://cash.app/${username}",
+        }
+    except Exception:
+        return None
+
+
 SCRAPERS = {
     "Reddit": _scrape_reddit,
     "TikTok": _scrape_tiktok,
     "YouTube": _scrape_youtube,
     "Twitch": _scrape_twitch,
+    "OnlyFans": _scrape_onlyfans,
+    "Patreon": _scrape_patreon,
+    "CashApp": _scrape_cashapp,
 }
 
 # Sherlock site names that map to our scrapers
@@ -127,6 +211,9 @@ SITE_MAP = {
     "TikTok": "TikTok",
     "YouTube": "YouTube",
     "Twitch": "Twitch",
+    "OnlyFans": "OnlyFans",
+    "Patreon": "Patreon",
+    "Cash App": "CashApp",
 }
 
 
