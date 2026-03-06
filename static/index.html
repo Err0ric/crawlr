@@ -862,6 +862,32 @@
     return html;
   }
 
+  /* ── Enricher results renderer ── */
+  function renderEnricherCard(data) {
+    const profiles = data.profiles || [];
+    if (profiles.length === 0) {
+      return `<div class="rcard">
+        <div class="rcard-head"><div class="rcard-title">Profile Scraper</div><div class="badge b-none">NO DATA</div></div>
+        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No scrapeable profiles found</div></div>
+      </div>`;
+    }
+    let html = `<div class="rcard">
+      <div class="rcard-head"><div class="rcard-title">Profile Scraper</div><div class="badge b-hit">${profiles.length} PROFILE${profiles.length !== 1 ? 'S' : ''}</div></div>
+      <div class="rcard-body">`;
+    for (const p of profiles) {
+      html += `<div class="ritem" style="flex-direction:column;align-items:flex-start;gap:2px;">
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          <div class="dot dg"></div>
+          <strong style="color:var(--text-bright)">${p.platform}</strong>
+          ${p.display_name ? `<span style="color:var(--text-mid)">— ${p.display_name}</span>` : ''}
+        </div>
+        ${p.bio ? `<div style="padding-left:12px;color:var(--text-dim);font-size:10px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;">${p.bio.slice(0, 150)}${p.bio.length > 150 ? '...' : ''}</div>` : ''}
+      </div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
   /* ── Main scan ── */
   let scanning = false;
 
@@ -1008,6 +1034,17 @@
       );
     }
 
+    // Profile scraper — run after Sherlock for usernames
+    if (!domain && collected.sherlock) {
+      const sherlockSites = (collected.sherlock.results || []).map(r => r.site);
+      collected.enricher = await runModule(logEl, cardsEl, t0,
+        `Scraping profile bios for "${username}"`,
+        '/api/recon/enrich',
+        { username, sherlock_sites: sherlockSites },
+        renderEnricherCard
+      );
+    }
+
     // Holehe — only when target is an email
     if (email) {
       collected.holehe = await runModule(logEl, cardsEl, t0,
@@ -1070,6 +1107,7 @@
             hibp: collected.hibp,
             gravatar: collected.gravatar,
             github: collected.github,
+            enricher: collected.enricher,
           }),
         });
         clearInterval(aiTimer);

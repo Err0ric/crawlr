@@ -6,6 +6,7 @@ from modules.harvester import run_harvester
 from modules.hibp import run_hibp
 from modules.gravatar import run_gravatar
 from modules.github import run_github
+from modules.enricher import run_enricher
 
 router = APIRouter()
 
@@ -20,6 +21,11 @@ class HoleheRequest(BaseModel):
 
 class HarvesterRequest(BaseModel):
     domain: str
+
+
+class EnricherRequest(BaseModel):
+    username: str
+    sherlock_sites: list[str] | None = None
 
 
 @router.get("/ping")
@@ -73,3 +79,11 @@ async def github_scan(req: SherlockRequest):
     if not username:
         raise HTTPException(status_code=400, detail="Username is required")
     return await run_github(username)
+
+
+@router.post("/enrich")
+async def enrich_profiles(req: EnricherRequest):
+    username = req.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+    return await run_enricher(username, req.sherlock_sites)

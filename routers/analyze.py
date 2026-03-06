@@ -15,6 +15,7 @@ class AnalyzeRequest(BaseModel):
     hibp: Optional[dict] = None
     gravatar: Optional[dict] = None
     github: Optional[dict] = None
+    enricher: Optional[dict] = None
 
 
 @router.get("/ping")
@@ -92,6 +93,16 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
             parts.append(f"blog: {gh['blog']}")
         parts.append(f"{gh.get('public_repos', 0)} repos, {gh.get('followers', 0)} followers")
         prompt_parts.append(f"GitHub profile found — {', '.join(parts)}")
+
+    if req.enricher and req.enricher.get("profiles"):
+        for p in req.enricher["profiles"]:
+            parts = []
+            if p.get("display_name"):
+                parts.append(f"display name: {p['display_name']}")
+            if p.get("bio"):
+                parts.append(f"bio: {p['bio'][:200]}")
+            if parts:
+                prompt_parts.append(f"{p.get('platform', 'Unknown')} profile — {', '.join(parts)}")
 
     recon_data = "\n".join(prompt_parts)
 
