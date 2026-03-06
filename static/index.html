@@ -508,7 +508,7 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="targetInput" type="text" placeholder="email, username, domain, ip..." />
+      <input class="target-input" id="targetInput" type="text" placeholder="email, username, domain, ip..." onkeydown="if(event.key==='Enter')runScan()" />
       <div class="chips">
         <div class="chip on"  onclick="pickChip(this)">Auto</div>
         <div class="chip"     onclick="pickChip(this)">Email</div>

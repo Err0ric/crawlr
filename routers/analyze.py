@@ -65,12 +65,20 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
                 "role": "user",
                 "content": (
                     "You are an OSINT analyst assistant. Based on the following reconnaissance "
-                    "data, provide a concise intelligence summary. Include:\n"
+                    "data, provide a concise intelligence summary. Include:\n\n"
                     "1. A brief overview of the target's digital footprint\n"
                     "2. Notable findings or patterns\n"
                     "3. 2-4 specific suggested next investigative steps (each on its own line prefixed with →)\n\n"
+                    "4. An **Identity Leads (inferred from public data only)** section that:\n"
+                    "   - Attempts to infer potential real names from username patterns, profile bios, "
+                    "GitHub commit author fields, linked accounts, or naming conventions across platforms\n"
+                    "   - Suggests specific phone number lookup strategies: reverse lookup sites "
+                    "(e.g. Truecaller, Spokeo, WhitePages), carrier lookup tools, social media phone "
+                    "search features, or recovery flow enumeration on detected accounts\n"
+                    "   - Lists each identity lead on its own line prefixed with →\n"
+                    "   - Clearly notes these are inferences from publicly available data, not confirmed identities\n\n"
                     "Keep the summary factual, concise, and actionable. Do not use markdown headers. "
-                    "Use plain text with → for action items.\n\n"
+                    "Use plain text with → for action items. Use **bold** for emphasis.\n\n"
                     f"Recon data:\n{recon_data}"
                 ),
             }
