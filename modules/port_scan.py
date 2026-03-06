@@ -1,6 +1,7 @@
 import socket
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from modules.resolver import resolve_domain
 
 TOP_PORTS = [
     (21, "FTP"), (22, "SSH"), (23, "Telnet"), (25, "SMTP"),
@@ -21,7 +22,7 @@ def _check_port(ip: str, port: int, timeout: float = 2.0) -> bool:
 
 async def run_portscan(domain: str, timeout: float = 2.0) -> dict:
     try:
-        ip = socket.gethostbyname(domain)
+        ip = resolve_domain(domain)
     except Exception as e:
         return {"domain": domain, "found": False, "error": f"Could not resolve: {e}"}
 
