@@ -140,7 +140,10 @@
     overflow: hidden;
     position: relative;
     z-index: 1;
+    transition: grid-template-columns 0.25s ease;
   }
+
+  .workspace.sb-collapsed { grid-template-columns: 44px 1fr; }
 
   .sidebar {
     border-right: 1px solid var(--border);
@@ -148,7 +151,21 @@
     flex-direction: column;
     background: var(--bg2);
     overflow: hidden;
+    position: relative;
   }
+
+  .sb-toggle { position: absolute; top: 8px; right: 6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-dim); font-size: 10px; z-index: 5; border-radius: 3px; transition: all 0.15s; }
+  .sb-toggle:hover { color: var(--text-mid); background: var(--bg3); }
+
+  .sb-collapsed .sidebar .pane,
+  .sb-collapsed .sidebar .mod-scroll,
+  .sb-collapsed .sidebar .run-wrap { display: none; }
+
+  .sb-mini { display: none; padding: 12px 0; text-align: center; flex: 1; }
+  .sb-collapsed .sb-mini { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .sb-mini-target { writing-mode: vertical-rl; text-orientation: mixed; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #991b1b; letter-spacing: 2px; max-height: 200px; overflow: hidden; text-overflow: ellipsis; }
+  .sb-mini-run { width: 28px; height: 28px; border-radius: 3px; border: 1px solid var(--red-dim); background: var(--red-glow); color: var(--red-bright); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.15s; }
+  .sb-mini-run:hover { background: var(--red-glow-hi); border-color: var(--red); }
 
   .pane { padding: 14px 16px; border-bottom: 1px solid var(--border); }
 
@@ -560,6 +577,11 @@
 
 <div class="workspace">
   <div class="sidebar">
+    <div class="sb-toggle" onclick="toggleSidebar()" title="Collapse sidebar">◀</div>
+    <div class="sb-mini">
+      <div class="sb-mini-target" id="sbMiniTarget"></div>
+      <div class="sb-mini-run" onclick="runScan()" title="Run Investigation">▶</div>
+    </div>
     <div class="pane">
       <div class="pane-head">
         <div class="pane-label">// <span>Target</span></div>
@@ -571,6 +593,7 @@
         <div class="chip"     onclick="pickChip(this)">Email</div>
         <div class="chip"     onclick="pickChip(this)">Username</div>
         <div class="chip"     onclick="pickChip(this)">Domain</div>
+        <div class="chip"     onclick="pickChip(this)">Name</div>
         <div class="chip"     onclick="pickChip(this)">Phone</div>
         <div class="chip"     onclick="pickChip(this)">IP</div>
       </div>
@@ -983,6 +1006,21 @@
 
   function isEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
   function isDomain(s) { return /^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$/.test(s); }
+  function isName(s) { return /^[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(s.trim()) && !isEmail(s) && !isDomain(s); }
+
+  function getInputType(target) {
+    const active = document.querySelector('.chip.on');
+    const chip = active ? active.textContent.trim().toLowerCase() : 'auto';
+    if (chip === 'email') return 'email';
+    if (chip === 'username') return 'username';
+    if (chip === 'domain') return 'domain';
+    if (chip === 'name') return 'name';
+    // Auto-detect
+    if (isEmail(target)) return 'email';
+    if (isDomain(target)) return 'domain';
+    if (isName(target)) return 'name';
+    return 'username';
+  }
 
   async function runModule(logEl, cardsEl, t0, label, url, body, renderFn) {
     const row = addLogRow(logEl, `Running ${label}...`, 'run');
@@ -1103,17 +1141,30 @@
     const aiEl = document.getElementById('aiBlock');
 
     const t0 = performance.now();
-    const email = isEmail(target);
-    const domain = isDomain(target);
+    const inputType = getInputType(target);
+    const email = inputType === 'email';
+    const domain = inputType === 'domain';
+    const nameSearch = inputType === 'name';
 
     const collected = {};
     lastCollected = collected;
     lastAISummary = '';
 
+    // Sync mini sidebar target
+    document.getElementById('sbMiniTarget').textContent = target;
+
     const username = email ? target.split('@')[0] : target;
 
+    // Name Search — show people-search links card
+    if (nameSearch) {
+      const row = addLogRow(logEl, `Name search for "${target}"`, 'done');
+      setLogTime(row, 0);
+      cardsEl.innerHTML += renderNameSearchCard(target);
+      collected.nameSearch = { name: target };
+    }
+
     // Sherlock — run for usernames and emails (use local part as username)
-    if (!domain) {
+    if (!domain && !nameSearch) {
       collected.sherlock = await runModule(logEl, cardsEl, t0,
         `Sherlock scan on "${username}"`,
         '/api/recon/sherlock',
@@ -1123,7 +1174,7 @@
     }
 
     // GitHub — run for usernames (not emails, not domains)
-    if (!domain && !email) {
+    if (!domain && !email && !nameSearch) {
       collected.github = await runModule(logEl, cardsEl, t0,
         `GitHub profile lookup "${username}"`,
         '/api/recon/github',
@@ -1133,7 +1184,7 @@
     }
 
     // Profile scraper — run after Sherlock for usernames
-    if (!domain && collected.sherlock) {
+    if (!domain && !nameSearch && collected.sherlock) {
       const sherlockSites = (collected.sherlock.results || []).map(r => r.site);
       collected.enricher = await runModule(logEl, cardsEl, t0,
         `Scraping profile bios for "${username}"`,
@@ -1206,6 +1257,7 @@
             gravatar: collected.gravatar,
             github: collected.github,
             enricher: collected.enricher,
+            name_search: collected.nameSearch || null,
             active_techniques: document.getElementById('activeTechToggle').classList.contains('on'),
           }),
         });
@@ -1238,6 +1290,38 @@
     scanning = false;
   }
 
+  function toggleSidebar() {
+    const ws = document.querySelector('.workspace');
+    const btn = document.querySelector('.sb-toggle');
+    ws.classList.toggle('sb-collapsed');
+    btn.textContent = ws.classList.contains('sb-collapsed') ? '▶' : '◀';
+    // Sync mini target text
+    const target = document.getElementById('targetInput').value.trim();
+    document.getElementById('sbMiniTarget').textContent = target || '—';
+  }
+
+  function renderNameSearchCard(name) {
+    const enc = encodeURIComponent(name);
+    const links = [
+      { site: 'TruePeopleSearch', url: `https://www.truepeoplesearch.com/results?name=${enc}` },
+      { site: 'FastPeopleSearch', url: `https://www.fastpeoplesearch.com/name/${name.replace(/\s+/g, '-').toLowerCase()}` },
+      { site: 'Spokeo', url: `https://www.spokeo.com/${name.replace(/\s+/g, '-')}` },
+      { site: 'BeenVerified', url: `https://www.beenverified.com/people/${name.replace(/\s+/g, '-').toLowerCase()}/` },
+      { site: 'WhitePages', url: `https://www.whitepages.com/name/${name.replace(/\s+/g, '-')}` },
+      { site: 'Pipl', url: `https://pipl.com/search/?q=${enc}` },
+      { site: 'LinkedIn', url: `https://www.linkedin.com/search/results/people/?keywords=${enc}` },
+      { site: 'Facebook', url: `https://www.facebook.com/search/people/?q=${enc}` },
+    ];
+    let html = `<div class="rcard">
+      <div class="rcard-head"><div class="rcard-title">Name Search</div><div class="badge b-hit">${links.length} LINKS</div></div>
+      <div class="rcard-body">`;
+    for (const l of links) {
+      html += `<div class="ritem"><div class="dot dg"></div><a href="${l.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${l.site}</a></div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
   function exportMarkdown() {
     if (!currentTarget) return;
     const d = lastCollected;
@@ -1246,6 +1330,16 @@
     const ts = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
     let md = `# Crawlr Investigation Report\n\n`;
     md += `**Target:** ${currentTarget}\n**Date:** ${ts}\n\n---\n\n`;
+
+    // Name Search
+    if (d.nameSearch) {
+      md += `## Name Search: ${d.nameSearch.name}\n\n`;
+      md += `- [TruePeopleSearch](https://www.truepeoplesearch.com/results?name=${encodeURIComponent(d.nameSearch.name)})\n`;
+      md += `- [FastPeopleSearch](https://www.fastpeoplesearch.com/name/${d.nameSearch.name.replace(/\s+/g, '-').toLowerCase()})\n`;
+      md += `- [Spokeo](https://www.spokeo.com/${d.nameSearch.name.replace(/\s+/g, '-')})\n`;
+      md += `- [BeenVerified](https://www.beenverified.com/people/${d.nameSearch.name.replace(/\s+/g, '-').toLowerCase()}/)\n`;
+      md += `- [WhitePages](https://www.whitepages.com/name/${d.nameSearch.name.replace(/\s+/g, '-')})\n\n`;
+    }
 
     // Sherlock
     if (d.sherlock && d.sherlock.results && d.sherlock.results.length) {

@@ -16,6 +16,7 @@ class AnalyzeRequest(BaseModel):
     gravatar: Optional[dict] = None
     github: Optional[dict] = None
     enricher: Optional[dict] = None
+    name_search: Optional[dict] = None
     active_techniques: bool = False
 
 
@@ -104,6 +105,14 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
                 parts.append(f"bio: {p['bio'][:200]}")
             if parts:
                 prompt_parts.append(f"{p.get('platform', 'Unknown')} profile — {', '.join(parts)}")
+
+    if req.name_search and req.name_search.get("name"):
+        prompt_parts.append(
+            f"This is a NAME SEARCH for real person: {req.name_search['name']}. "
+            "Focus on people-search strategies: TruePeopleSearch, FastPeopleSearch, Spokeo, "
+            "BeenVerified, WhitePages, Pipl, LinkedIn, Facebook. "
+            "Suggest how to narrow results by location, age, or known associates."
+        )
 
     recon_data = "\n".join(prompt_parts)
 
