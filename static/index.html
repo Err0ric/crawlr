@@ -562,7 +562,8 @@
   </div>
   <div class="header-divider"></div>
   <div class="header-nav">
-    <div class="hnav active">Investigate</div>
+    <div class="hnav active" onclick="switchMode('investigate')">Investigate</div>
+    <div class="hnav" onclick="switchMode('recon')">Recon</div>
     <div class="hnav">History</div>
     <div class="hnav">Reports</div>
     <div class="hnav">Settings</div>
@@ -575,7 +576,7 @@
   </div>
 </header>
 
-<div class="workspace">
+<div class="workspace" id="investigateWorkspace">
   <div class="sidebar">
     <div class="sb-toggle" onclick="toggleSidebar()" title="Collapse sidebar">◀</div>
     <div class="sb-mini">
@@ -655,9 +656,69 @@
   </div>
 </div>
 
+<div class="workspace" id="reconWorkspace" style="display:none;">
+  <div class="sidebar">
+    <div class="pane">
+      <div class="pane-head">
+        <div class="pane-label">// <span>Target</span></div>
+        <div class="pane-rule"></div>
+      </div>
+      <input class="target-input" id="reconTargetInput" type="text" placeholder="domain or IP address..." onkeydown="if(event.key==='Enter')runRecon()" />
+    </div>
+
+    <div class="pane" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
+      <div class="pane-head">
+        <div class="pane-label">// <span>Modules</span></div>
+        <div class="pane-rule"></div>
+      </div>
+      <div class="mod-scroll">
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">DNS Records</div><div class="mod-sub">A · MX · NS · TXT · CNAME</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">WHOIS</div><div class="mod-sub">registrar · dates · nameservers</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">SSL Certificate</div><div class="mod-sub">issuer · expiry · SANs</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HTTP Headers</div><div class="mod-sub">server · security header grading</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Subdomains</div><div class="mod-sub">common subdomain enumeration</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">ASN / BGP</div><div class="mod-sub">IP ranges · network info</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Port Scan</div><div class="mod-sub">top 20 common ports</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · attack surface summary</div></div><div class="mod-tag">KEY</div></div>
+      </div>
+    </div>
+
+    <div class="run-wrap">
+      <button class="run-btn" id="reconRunBtn" onclick="runRecon()">▶ Run Recon</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tab-bar">
+      <div class="tab on">Results</div>
+      <div class="tab-spacer"></div>
+      <button class="action-btn" onclick="exportReconMarkdown()">Export</button>
+    </div>
+
+    <div class="content" id="reconContent">
+      <div class="empty" id="reconEmptyState">
+        <div class="empty-glyph">[&lt;/&gt;]</div>
+        <div class="empty-title">Infrastructure Recon</div>
+        <div class="empty-sub">Enter a domain or IP to scan DNS, WHOIS, SSL, headers, subdomains, ASN, and open ports.</div>
+      </div>
+      <div id="reconResults" style="display:none;"></div>
+    </div>
+
+    <div class="statusbar">
+      <div class="sbi"><div class="sbd" style="background:var(--success)"></div><span>RECON READY</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>8 MODULES</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0-dev</span></div>
+      <div class="sbi" style="margin-left:auto"><span id="reconClock"></span></div>
+    </div>
+  </div>
+</div>
+
 <script>
   setInterval(() => {
-    document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', {hour12:false});
+    const t = new Date().toLocaleTimeString('en-US', {hour12:false});
+    document.getElementById('clock').textContent = t;
+    const rc = document.getElementById('reconClock');
+    if (rc) rc.textContent = t;
   }, 1000);
 
   /* ── State ── */
@@ -1470,6 +1531,300 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `crawlr-${currentTarget.replace(/[^a-zA-Z0-9._@-]/g, '_')}-${date}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  /* ══════════════════════════════════════════
+     RECON MODE
+     ══════════════════════════════════════════ */
+
+  function switchMode(mode) {
+    document.querySelectorAll('.hnav').forEach(n => n.classList.remove('active'));
+    if (mode === 'recon') {
+      document.querySelectorAll('.hnav')[1].classList.add('active');
+      document.getElementById('investigateWorkspace').style.display = 'none';
+      document.getElementById('reconWorkspace').style.display = '';
+    } else {
+      document.querySelectorAll('.hnav')[0].classList.add('active');
+      document.getElementById('investigateWorkspace').style.display = '';
+      document.getElementById('reconWorkspace').style.display = 'none';
+    }
+  }
+
+  let reconScanning = false;
+  let reconCollected = {};
+  let reconAISummary = '';
+
+  // Recon card renderers
+  function renderDnsCard(data) {
+    const recs = data.records || {};
+    const total = data.total || 0;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">DNS Records</div><div class="badge ${total > 0 ? 'b-hit' : 'b-none'}">${total} RECORDS</div></div><div class="rcard-body">`;
+    if (total === 0) {
+      html += `<div class="ritem"><div class="dot dd"></div>No DNS records found</div>`;
+    } else {
+      for (const [rtype, records] of Object.entries(recs)) {
+        for (const r of records) {
+          html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--red);min-width:40px;display:inline-block">${rtype}</strong> <span>${r}</span></div>`;
+        }
+      }
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderWhoisCard(data) {
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No WHOIS data'}</div></div></div>`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-hit">FOUND</div></div><div class="rcard-body">`;
+    const fields = [
+      ['Registrar', data.registrar], ['Created', data.creation_date], ['Expires', data.expiration_date],
+      ['Updated', data.updated_date], ['Org', data.org], ['Country', data.country],
+    ];
+    for (const [k, v] of fields) {
+      if (v) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:70px;display:inline-block">${k}</strong> ${v}</div>`;
+    }
+    if (data.name_servers && data.name_servers.length) {
+      html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:70px;display:inline-block">NS</strong> ${data.name_servers.join(', ')}</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderSslCard(data) {
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">SSL Certificate</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No SSL'}</div></div></div>`;
+    const daysColor = data.days_left < 30 ? 'color:var(--amber-bright)' : 'color:var(--success)';
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">SSL Certificate</div><div class="badge b-hit" style="${data.days_left < 30 ? 'background:rgba(217,119,6,0.1);color:var(--amber-bright);border-color:rgba(217,119,6,0.25)' : ''}">${data.days_left}d LEFT</div></div><div class="rcard-body">`;
+    html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:60px;display:inline-block">CN</strong> ${data.common_name}</div>`;
+    html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:60px;display:inline-block">Issuer</strong> ${data.issuer}</div>`;
+    html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:60px;display:inline-block">Valid</strong> ${data.not_before} — ${data.not_after}</div>`;
+    if (data.sans && data.sans.length) {
+      const visible = data.sans.slice(0, 5);
+      html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:60px;display:inline-block">SANs</strong> ${visible.join(', ')}${data.sans.length > 5 ? ` (+${data.sans.length - 5} more)` : ''}</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderHeadersCard(data) {
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">HTTP Headers</div><div class="badge b-none">ERROR</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'Failed'}</div></div></div>`;
+    const gradeColors = { A: 'b-hit', B: 'b-hit', C: 'b-warn', F: 'b-none' };
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">HTTP Headers</div><div class="badge ${gradeColors[data.grade] || 'b-none'}">GRADE ${data.grade} (${data.present}/${data.total})</div></div><div class="rcard-body">`;
+    if (data.server) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Server:</strong> ${data.server}</div>`;
+    const sec = data.security_headers || {};
+    for (const [label, info] of Object.entries(sec)) {
+      const dot = info.present ? 'dg' : 'dd';
+      const icon = info.present ? '✓' : '✗';
+      html += `<div class="ritem"><div class="dot ${dot}"></div><span style="min-width:80px;display:inline-block;${info.present ? '' : 'color:var(--text-dim)'}">${icon} ${label}</span>${info.present ? `<span style="color:var(--text-dim);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px;">${info.value}</span>` : ''}</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderSubdomainsCard(data) {
+    const subs = data.subdomains || [];
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Subdomains</div><div class="badge ${subs.length > 0 ? 'b-hit' : 'b-none'}">${subs.length}/${data.checked || 0} FOUND</div></div><div class="rcard-body">`;
+    if (subs.length === 0) {
+      html += `<div class="ritem"><div class="dot dd"></div>No subdomains found</div>`;
+    } else {
+      const visible = subs.slice(0, 8);
+      for (const s of visible) {
+        html += `<div class="ritem"><div class="dot dg"></div>${s.subdomain} <span style="color:var(--text-dim);margin-left:auto">${s.ips.join(', ')}</span></div>`;
+      }
+      if (subs.length > 8) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra').forEach(e=>e.style.display='flex');this.remove()">+ ${subs.length - 8} more →</div>`;
+        for (const s of subs.slice(8)) {
+          html += `<div class="ritem ritem-extra" style="display:none"><div class="dot dg"></div>${s.subdomain} <span style="color:var(--text-dim);margin-left:auto">${s.ips.join(', ')}</span></div>`;
+        }
+      }
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderAsnCard(data) {
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN / BGP</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No ASN data'}</div></div></div>`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN / BGP</div><div class="badge b-hit">${data.asn || 'FOUND'}</div></div><div class="rcard-body">`;
+    html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:50px;display:inline-block">IP</strong> ${data.ip}</div>`;
+    if (data.asn) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:50px;display:inline-block">ASN</strong> ${data.asn}</div>`;
+    if (data.org) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:50px;display:inline-block">Org</strong> ${data.org}</div>`;
+    if (data.prefixes && data.prefixes.length) {
+      html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:50px;display:inline-block">Nets</strong> ${data.prefixes.slice(0, 5).join(', ')}${data.prefixes.length > 5 ? ` (+${data.prefixes.length - 5})` : ''}</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  function renderPortscanCard(data) {
+    if (!data.results) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Port Scan</div><div class="badge b-none">ERROR</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'Failed'}</div></div></div>`;
+    const open = data.total_open || 0;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Port Scan</div><div class="badge ${open > 0 ? 'b-hit' : 'b-none'}">${open}/${data.total_scanned} OPEN</div></div><div class="rcard-body">`;
+    if (data.ip) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">IP:</strong> ${data.ip}</div>`;
+    for (const r of data.results) {
+      if (r.open) {
+        html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--success)">${r.port}</strong> <span>${r.service}</span> <span style="color:var(--success);margin-left:auto">OPEN</span></div>`;
+      }
+    }
+    if (open === 0) html += `<div class="ritem"><div class="dot dd"></div>No open ports detected</div>`;
+    html += `</div></div>`;
+    return html;
+  }
+
+  async function runRecon() {
+    if (reconScanning) return;
+    const target = document.getElementById('reconTargetInput').value.trim();
+    if (!target) { document.getElementById('reconTargetInput').focus(); return; }
+
+    reconScanning = true;
+    reconCollected = {};
+    reconAISummary = '';
+    const runBtn = document.getElementById('reconRunBtn');
+    runBtn.textContent = '⏳ SCANNING...';
+    runBtn.style.pointerEvents = 'none';
+
+    document.getElementById('reconEmptyState').style.display = 'none';
+    const res = document.getElementById('reconResults');
+    res.style.display = 'block';
+    res.innerHTML = '<div class="agent-log" id="reconLog"></div><div id="reconAiBlock"></div><div class="result-grid" id="reconCards"></div>';
+    const logEl = document.getElementById('reconLog');
+    const cardsEl = document.getElementById('reconCards');
+    const aiEl = document.getElementById('reconAiBlock');
+    const t0 = performance.now();
+
+    reconCollected.dns = await runModule(logEl, cardsEl, t0,
+      `DNS lookup on "${target}"`, '/api/infra/dns', { domain: target }, renderDnsCard);
+
+    reconCollected.whois = await runModule(logEl, cardsEl, t0,
+      `WHOIS lookup on "${target}"`, '/api/infra/whois', { domain: target }, renderWhoisCard);
+
+    reconCollected.ssl = await runModule(logEl, cardsEl, t0,
+      `SSL certificate check on "${target}"`, '/api/infra/ssl', { domain: target }, renderSslCard);
+
+    reconCollected.headers = await runModule(logEl, cardsEl, t0,
+      `HTTP headers scan on "${target}"`, '/api/infra/headers', { domain: target }, renderHeadersCard);
+
+    reconCollected.subdomains = await runModule(logEl, cardsEl, t0,
+      `Subdomain enumeration on "${target}"`, '/api/infra/subdomains', { domain: target }, renderSubdomainsCard);
+
+    reconCollected.asn = await runModule(logEl, cardsEl, t0,
+      `ASN/BGP lookup on "${target}"`, '/api/infra/asn', { domain: target }, renderAsnCard);
+
+    reconCollected.portscan = await runModule(logEl, cardsEl, t0,
+      `Port scan on "${target}"`, '/api/infra/portscan', { domain: target }, renderPortscanCard);
+
+    // AI Analysis
+    const apiKey = getApiKey();
+    if (apiKey) {
+      const aiRow = addLogRow(logEl, 'Sending recon data to Claude for analysis...', 'run');
+      const aiTimer = setInterval(() => setLogTime(aiRow, (performance.now() - t0) / 1000), 200);
+      try {
+        const resp = await fetch('/api/infra/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+          body: JSON.stringify({
+            target,
+            dns: reconCollected.dns,
+            whois: reconCollected.whois,
+            ssl: reconCollected.ssl,
+            headers: reconCollected.headers,
+            subdomains: reconCollected.subdomains,
+            asn: reconCollected.asn,
+            portscan: reconCollected.portscan,
+          }),
+        });
+        clearInterval(aiTimer);
+        setLogTime(aiRow, (performance.now() - t0) / 1000);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
+          updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
+        } else {
+          const data = await resp.json();
+          reconAISummary = data.summary;
+          updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
+          aiEl.innerHTML = renderAIBlock(data);
+        }
+      } catch (e) {
+        clearInterval(aiTimer);
+        setLogTime(aiRow, (performance.now() - t0) / 1000);
+        updateLogRow(aiRow, `AI Analysis error: ${e.message}`, 'wait');
+      }
+    } else {
+      addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
+    }
+
+    const doneRow = addLogRow(logEl, 'Recon complete.', 'done');
+    setLogTime(doneRow, (performance.now() - t0) / 1000);
+    runBtn.textContent = '▶ Run Recon';
+    runBtn.style.pointerEvents = '';
+    reconScanning = false;
+  }
+
+  function exportReconMarkdown() {
+    const target = document.getElementById('reconTargetInput').value.trim();
+    if (!target) return;
+    const d = reconCollected;
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const ts = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    let md = `# Crawlr Infrastructure Recon Report\n\n`;
+    md += `**Target:** ${target}\n**Date:** ${ts}\n\n---\n\n`;
+
+    if (d.dns && d.dns.records) {
+      md += `## DNS Records\n\n`;
+      for (const [rtype, records] of Object.entries(d.dns.records)) {
+        for (const r of records) md += `- **${rtype}** ${r}\n`;
+      }
+      md += '\n';
+    }
+    if (d.whois && d.whois.found) {
+      md += `## WHOIS\n\n`;
+      if (d.whois.registrar) md += `- **Registrar:** ${d.whois.registrar}\n`;
+      if (d.whois.creation_date) md += `- **Created:** ${d.whois.creation_date}\n`;
+      if (d.whois.expiration_date) md += `- **Expires:** ${d.whois.expiration_date}\n`;
+      if (d.whois.org) md += `- **Org:** ${d.whois.org}\n`;
+      if (d.whois.name_servers) md += `- **NS:** ${d.whois.name_servers.join(', ')}\n`;
+      md += '\n';
+    }
+    if (d.ssl && d.ssl.found) {
+      md += `## SSL Certificate\n\n`;
+      md += `- **CN:** ${d.ssl.common_name}\n- **Issuer:** ${d.ssl.issuer}\n- **Days Left:** ${d.ssl.days_left}\n`;
+      if (d.ssl.sans) md += `- **SANs:** ${d.ssl.sans.join(', ')}\n`;
+      md += '\n';
+    }
+    if (d.headers && d.headers.found) {
+      md += `## HTTP Headers — Grade ${d.headers.grade}\n\n`;
+      md += `- **Server:** ${d.headers.server || 'unknown'}\n`;
+      const sec = d.headers.security_headers || {};
+      for (const [label, info] of Object.entries(sec)) {
+        md += `- ${info.present ? '✓' : '✗'} ${label}${info.present ? ': ' + info.value : ''}\n`;
+      }
+      md += '\n';
+    }
+    if (d.subdomains && d.subdomains.subdomains && d.subdomains.subdomains.length) {
+      md += `## Subdomains — ${d.subdomains.total} found\n\n`;
+      for (const s of d.subdomains.subdomains) md += `- ${s.subdomain} (${s.ips.join(', ')})\n`;
+      md += '\n';
+    }
+    if (d.asn && d.asn.found) {
+      md += `## ASN / BGP\n\n- **IP:** ${d.asn.ip}\n`;
+      if (d.asn.asn) md += `- **ASN:** ${d.asn.asn}\n`;
+      if (d.asn.org) md += `- **Org:** ${d.asn.org}\n`;
+      if (d.asn.prefixes) md += `- **Prefixes:** ${d.asn.prefixes.join(', ')}\n`;
+      md += '\n';
+    }
+    if (d.portscan && d.portscan.results) {
+      const open = d.portscan.results.filter(r => r.open);
+      md += `## Port Scan — ${open.length} open\n\n`;
+      for (const r of open) md += `- **${r.port}** ${r.service} — OPEN\n`;
+      md += '\n';
+    }
+    if (reconAISummary) md += `---\n\n## AI Analysis\n\n${reconAISummary}\n`;
+    md += `\n---\n*Generated by Crawlr*\n`;
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `crawlr-recon-${target.replace(/[^a-zA-Z0-9._@-]/g, '_')}-${date}.md`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
