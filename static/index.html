@@ -767,23 +767,39 @@
   }
 
   /* ── AI Analysis renderer ── */
+  function mdInline(text) {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code style="background:var(--bg3);padding:1px 5px;border-radius:2px;font-size:11px;">$1</code>');
+  }
+
   function renderAIBlock(data) {
-    const lines = data.summary.split('\n').filter(l => l.trim());
+    const lines = data.summary.split('\n');
     const leads = [];
-    const body = [];
-    for (const line of lines) {
-      if (line.trim().startsWith('→')) {
-        leads.push(line.trim().substring(1).trim());
+    const bodyParts = [];
+
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) { bodyParts.push('<br>'); continue; }
+      if (/^→\s*/.test(line)) {
+        leads.push(mdInline(line.replace(/^→\s*/, '')));
+      } else if (/^[-•]\s+/.test(line)) {
+        leads.push(mdInline(line.replace(/^[-•]\s+/, '')));
       } else {
-        body.push(line);
+        bodyParts.push(mdInline(line));
       }
     }
+
+    // Collapse multiple consecutive <br> into one
+    const bodyHtml = bodyParts.join('<br>').replace(/(<br>){3,}/g, '<br><br>');
+
     let html = `<div class="ai-block">
       <div class="ai-head">
         <div class="ai-tag">// AI Analysis</div>
         <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
       </div>
-      <div class="ai-body">${body.join('<br>')}`
+      <div class="ai-body">${bodyHtml}`;
     if (leads.length) {
       html += `<div class="leads">`;
       for (const l of leads) {
