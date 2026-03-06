@@ -768,8 +768,7 @@
   <div class="main">
     <div class="tab-bar">
       <div class="tab on" onclick="setTab(this,'content')">Results</div>
-      <div class="tab"    onclick="setTab(this,'content')">Raw Output</div>
-      <div class="tab"    onclick="setTab(this,'content')">AI Report</div>
+      <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI Report</div>
       <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
       <button class="action-btn" onclick="exportMarkdown()">Export</button>
@@ -788,6 +787,16 @@
     <div class="content" id="notesPanel" style="display:none;padding:0;position:relative;">
       <textarea id="notesArea" spellcheck="false" placeholder="// case notes, leads, observations..."></textarea>
       <div id="notesCount"></div>
+    </div>
+
+    <div class="content" id="aiReportPanel" style="display:none;">
+      <div id="aiReportContent">
+        <div class="empty">
+          <div class="empty-glyph">[~]</div>
+          <div class="empty-title">No AI Report</div>
+          <div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div>
+        </div>
+      </div>
     </div>
 
     <div class="statusbar">
@@ -1003,10 +1012,11 @@
   }
 
   function setTab(el, panel) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+    document.querySelectorAll('#investigateWorkspace .tab').forEach(t => t.classList.remove('on'));
     el.classList.add('on');
-    document.getElementById('content').style.display = panel === 'notes' ? 'none' : '';
+    document.getElementById('content').style.display = panel === 'content' ? '' : 'none';
     document.getElementById('notesPanel').style.display = panel === 'notes' ? 'flex' : 'none';
+    document.getElementById('aiReportPanel').style.display = panel === 'aiReport' ? '' : 'none';
   }
 
   /* ── Notes auto-save ── */
@@ -1474,6 +1484,13 @@
     runBtn.style.pointerEvents = 'none';
 
     document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('aiReportTab').style.display = 'none';
+    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
+    // Switch back to Results tab if on AI Report
+    const activeTab = document.querySelector('#investigateWorkspace .tab.on');
+    if (activeTab && activeTab.id === 'aiReportTab') {
+      setTab(document.querySelector('#investigateWorkspace .tab'), 'content');
+    }
     const res = document.getElementById('results');
     res.style.display = 'block';
     res.innerHTML = '<div class="agent-log" id="log"></div><div id="aiBlock"></div><div class="result-grid" id="resultCards"></div>';
@@ -1652,6 +1669,8 @@
           lastAISummary = data.summary;
           aiEl.innerHTML = renderAIBlock(data);
           updateAIProgress();
+          document.getElementById('aiReportTab').style.display = '';
+          document.getElementById('aiReportContent').innerHTML = renderAIBlock(data);
         }
       } catch (e) {
         clearInterval(aiTimer);
@@ -2926,6 +2945,8 @@
         const aiBlock = document.createElement('div');
         aiBlock.innerHTML = renderAIBlock({ summary: entry.aiSummary });
         res.insertBefore(aiBlock, cardsEl);
+        document.getElementById('aiReportTab').style.display = '';
+        document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: entry.aiSummary });
       }
     } else {
       switchMode('recon');
