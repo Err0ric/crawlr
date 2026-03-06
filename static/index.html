@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crawlr</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:          #060608;
+    --bg2:         #0a0a0e;
+    --bg3:         #0e0e14;
+    --bg4:         #12121a;
+    --border:      #1a1a26;
+    --border-mid:  #252535;
+    --border-hi:   #3a2a4a;
+    --red:         #cc2244;
+    --red-dim:     #991833;
+    --red-bright:  #ff2255;
+    --red-glow:    rgba(204,34,68,0.12);
+    --red-glow-hi: rgba(204,34,68,0.22);
+    --amber:       #d97706;
+    --amber-bright:#f59e0b;
+    --text:        #b0a8c0;
+    --text-dim:    #453d55;
+    --text-mid:    #6e6480;
+    --text-bright: #e8e0f0;
+    --success:     #16a34a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 3px,
+      rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 9997;
+  }
+
+  header {
+    position: relative;
+    z-index: 100;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+
+  .logo { display: flex; align-items: center; gap: 10px; margin-right: 8px; }
+
+  .logo-wordmark {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-bright);
+  }
+
+  .logo-wordmark em { color: var(--red); font-style: normal; }
+
+  .header-divider { width: 1px; height: 20px; background: var(--border-mid); margin: 0 20px; }
+
+  .header-nav { display: flex; height: 100%; }
+
+  .hnav {
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    height: 100%;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+
+  .hnav:hover { color: var(--text-mid); }
+  .hnav.active { color: var(--text-bright); border-bottom-color: var(--red); }
+
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .key-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 12px;
+    border: 1px solid var(--border-mid);
+    border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-mid);
+    cursor: pointer;
+    background: var(--bg3);
+    transition: all 0.15s;
+  }
+
+  .key-pill:hover { border-color: var(--border-hi); color: var(--text); }
+
+  .key-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--amber-bright);
+    box-shadow: 0 0 6px var(--amber);
+    animation: blink 2s step-end infinite;
+  }
+
+  .key-dot.set { background: var(--success); box-shadow: 0 0 6px var(--success); animation: none; }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .workspace {
+    display: grid;
+    grid-template-columns: 296px 1fr;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+  }
+
+  .sidebar {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg2);
+    overflow: hidden;
+  }
+
+  .pane { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+
+  .pane-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+
+  .pane-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .pane-label span { color: var(--red); }
+  .pane-rule { flex: 1; height: 1px; background: var(--border); }
+
+  .target-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border-mid);
+    border-radius: 3px;
+    padding: 8px 11px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--text-bright);
+    outline: none;
+    transition: all 0.15s;
+    margin-bottom: 8px;
+  }
+
+  .target-input:focus {
+    border-color: var(--red-dim);
+    box-shadow: 0 0 0 2px var(--red-glow);
+    background: var(--bg4);
+  }
+
+  .target-input::placeholder { color: var(--text-dim); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+
+  .chip {
+    padding: 3px 9px;
+    border: 1px solid var(--border-mid);
+    border-radius: 2px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.12s;
+  }
+
+  .chip:hover { border-color: var(--border-hi); color: var(--text-mid); }
+  .chip.on { border-color: var(--red-dim); color: var(--red); background: var(--red-glow); }
+
+  .mod-scroll { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .mod-scroll::-webkit-scrollbar { width: 2px; }
+  .mod-scroll::-webkit-scrollbar-thumb { background: var(--border-mid); }
+
+  .mod { display: flex; align-items: center; padding: 8px 16px; gap: 11px; cursor: pointer; transition: background 0.1s; }
+  .mod:hover { background: var(--bg3); }
+
+  .mod-toggle {
+    width: 28px; height: 16px;
+    border-radius: 8px;
+    background: var(--border-mid);
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+
+  .mod-toggle.on { background: var(--red-dim); }
+
+  .mod-toggle::after {
+    content: '';
+    position: absolute;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    top: 3px; left: 3px;
+    transition: all 0.2s;
+  }
+
+  .mod-toggle.on::after { background: #fff; left: 15px; }
+
+  .mod-info { flex: 1; }
+  .mod-name { font-weight: 600; font-size: 13px; color: var(--text-bright); margin-bottom: 1px; }
+  .mod-sub { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-dim); }
+
+  .mod-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    border: 1px solid var(--border-mid);
+    color: var(--text-dim);
+  }
+
+  .mod-tag.free { border-color: #1a301a; color: #2d5a2d; }
+
+  .run-wrap { padding: 13px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
+
+  .run-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--red-glow);
+    border: 1px solid var(--red-dim);
+    border-radius: 3px;
+    color: var(--red-bright);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .run-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(204,34,68,0.1), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s;
+  }
+
+  .run-btn:hover { background: var(--red-glow-hi); border-color: var(--red); box-shadow: 0 0 24px var(--red-glow); }
+  .run-btn:hover::after { transform: translateX(100%); }
+
+  .main { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+
+  .tab-bar {
+    display: flex;
+    align-items: center;
+    height: 38px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+    padding-right: 12px;
+  }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    height: 100%;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+
+  .tab:hover { color: var(--text-mid); }
+  .tab.on { color: var(--text-bright); border-bottom-color: var(--red); }
+  .tab-spacer { flex: 1; }
+
+  .action-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    cursor: pointer;
+    background: transparent;
+    transition: all 0.15s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-left: 6px;
+  }
+
+  .action-btn:hover { border-color: var(--border-mid); color: var(--text-mid); }
+
+  .content { flex: 1; overflow-y: auto; padding: 22px 24px; }
+  .content::-webkit-scrollbar { width: 3px; }
+  .content::-webkit-scrollbar-thumb { background: var(--border-mid); }
+
+  .empty {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    user-select: none;
+  }
+
+  .empty-glyph { font-family: 'Share Tech Mono', monospace; font-size: 32px; color: var(--border-mid); letter-spacing: 4px; }
+  .empty-title { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); }
+  .empty-sub { font-size: 12px; color: var(--text-dim); text-align: center; max-width: 280px; line-height: 1.7; }
+
+  .agent-log { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 18px; }
+
+  .log-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  .log-row:last-child { border-bottom: none; }
+
+  .log-icon { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; }
+
+  .s-done .log-icon { background: var(--success); color: #fff; }
+  .s-run  .log-icon { background: var(--amber); color: #000; animation: spin 0.8s linear infinite; }
+  .s-wait .log-icon { background: var(--border-mid); color: var(--text-dim); }
+
+  .s-done { color: var(--text-mid); }
+  .s-run  { color: var(--amber-bright); background: rgba(217,119,6,0.05); }
+  .s-wait { color: var(--text-dim); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .log-time { margin-left: auto; font-size: 9px; color: var(--text-dim); }
+
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+
+  .rcard { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; transition: border-color 0.15s; }
+  .rcard:hover { border-color: var(--border-mid); }
+
+  .rcard-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+
+  .rcard-title { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-mid); }
+
+  .badge { font-family: 'Share Tech Mono', monospace; font-size: 9px; padding: 2px 7px; border-radius: 2px; }
+  .b-hit  { background: rgba(22,163,74,0.1);  color: #4ade80; border: 1px solid rgba(22,163,74,0.25); }
+  .b-warn { background: rgba(217,119,6,0.1);  color: var(--amber-bright); border: 1px solid rgba(217,119,6,0.25); }
+  .b-none { background: var(--bg4); color: var(--text-dim); border: 1px solid var(--border); }
+
+  .rcard-body { padding: 8px 12px; }
+
+  .ritem { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text); border-bottom: 1px solid rgba(26,26,38,0.5); }
+  .ritem:last-child { border-bottom: none; }
+
+  .dot { width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+  .dg { background: #4ade80; }
+  .da { background: var(--amber-bright); }
+  .dd { background: var(--text-dim); }
+
+  .rmore { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); padding: 5px 0 2px; cursor: pointer; transition: color 0.12s; }
+  .rmore:hover { color: var(--red); }
+
+  .ai-block { background: var(--bg2); border: 1px solid var(--border-mid); border-left: 2px solid var(--red-dim); border-radius: 4px; overflow: hidden; margin-bottom: 14px; }
+
+  .ai-head { display: flex; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg3); gap: 10px; }
+
+  .ai-tag { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--red); }
+  .ai-meta { margin-left: auto; font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-dim); }
+
+  .ai-body { padding: 14px 16px; font-size: 13px; line-height: 1.75; color: var(--text); }
+  .ai-body strong { color: var(--amber-bright); font-weight: 600; }
+
+  .leads { margin-top: 12px; display: flex; flex-direction: column; gap: 5px; }
+
+  .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-mid); line-height: 1.5; }
+  .lead-arr { color: var(--red-dim); flex-shrink: 0; }
+
+  .export-row { display: flex; gap: 7px; margin-top: 4px; }
+
+  .exp-btn { padding: 6px 14px; background: transparent; border: 1px solid var(--border-mid); border-radius: 3px; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); cursor: pointer; letter-spacing: 1px; text-transform: uppercase; transition: all 0.15s; }
+  .exp-btn:hover { border-color: var(--red-dim); color: var(--red); background: var(--red-glow); }
+
+  .statusbar { height: 24px; display: flex; align-items: center; gap: 20px; padding: 0 16px; border-top: 1px solid var(--border); background: var(--bg2); font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-dim); flex-shrink: 0; position: relative; z-index: 10; }
+  .sbi { display: flex; align-items: center; gap: 5px; }
+  .sbd { width: 4px; height: 4px; border-radius: 50%; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(8px); z-index: 200; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal { background: var(--bg2); border: 1px solid var(--border-hi); border-radius: 6px; padding: 28px; width: 400px; box-shadow: 0 0 80px rgba(204,34,68,0.07), 0 40px 80px rgba(0,0,0,0.7); }
+
+  .modal-eye { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: var(--red-dim); margin-bottom: 8px; }
+  .modal-title { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 600; letter-spacing: 1px; color: var(--text-bright); margin-bottom: 6px; }
+  .modal-sub { font-size: 12px; color: var(--text-mid); line-height: 1.6; margin-bottom: 18px; }
+
+  .modal-input { width: 100%; background: var(--bg3); border: 1px solid var(--border-mid); border-radius: 3px; padding: 9px 12px; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--text-bright); outline: none; margin-bottom: 8px; transition: border-color 0.15s; letter-spacing: 1px; }
+  .modal-input:focus { border-color: var(--red-dim); }
+
+  .modal-note { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-dim); line-height: 1.7; margin-bottom: 18px; }
+  .modal-note a { color: var(--red-dim); text-decoration: none; }
+  .modal-note a:hover { color: var(--red); }
+
+  .modal-actions { display: flex; gap: 8px; }
+
+  .modal-primary { flex: 1; padding: 9px; background: var(--red-glow); border: 1px solid var(--red-dim); border-radius: 3px; color: var(--red-bright); font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; cursor: pointer; transition: all 0.15s; }
+  .modal-primary:hover { background: var(--red-glow-hi); border-color: var(--red); }
+
+  .modal-secondary { padding: 9px 14px; background: transparent; border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; font-size: 10px; cursor: pointer; transition: all 0.15s; }
+  .modal-secondary:hover { border-color: var(--border-hi); color: var(--text-mid); }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-eye">// Authentication</div>
+    <div class="modal-title">Set API Key</div>
+    <div class="modal-sub">Your key is stored in browser session memory only. It is never transmitted to or stored on this server.</div>
+    <input class="modal-input" type="password" id="keyInput" placeholder="sk-ant-api03-..." />
+    <div class="modal-note">
+      No key? Get one at <a href="#">console.anthropic.com →</a><br>
+      Session clears automatically when you close your browser.
+    </div>
+    <div class="modal-actions">
+      <button class="modal-primary" onclick="saveKey()">Authenticate</button>
+      <button class="modal-secondary" onclick="closeModal()">Skip</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+      <rect x="0.75" y="0.75" width="24.5" height="24.5" rx="3" stroke="#cc2244" stroke-width="1.2"/>
+      <path d="M6 13h3.5l2.5-5.5 3 11 2.5-5.5H20" stroke="#cc2244" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="logo-wordmark">CRAWL<em>R</em></div>
+  </div>
+  <div class="header-divider"></div>
+  <div class="header-nav">
+    <div class="hnav active">Investigate</div>
+    <div class="hnav">History</div>
+    <div class="hnav">Reports</div>
+    <div class="hnav">Settings</div>
+  </div>
+  <div class="header-right">
+    <div class="key-pill" onclick="openModal()">
+      <div class="key-dot" id="keyDot"></div>
+      <span id="keyLabel">NO KEY</span>
+    </div>
+  </div>
+</header>
+
+<div class="workspace">
+  <div class="sidebar">
+    <div class="pane">
+      <div class="pane-head">
+        <div class="pane-label">// <span>Target</span></div>
+        <div class="pane-rule"></div>
+      </div>
+      <input class="target-input" id="targetInput" type="text" placeholder="email, username, domain, ip..." />
+      <div class="chips">
+        <div class="chip on"  onclick="pickChip(this)">Auto</div>
+        <div class="chip"     onclick="pickChip(this)">Email</div>
+        <div class="chip"     onclick="pickChip(this)">Username</div>
+        <div class="chip"     onclick="pickChip(this)">Domain</div>
+        <div class="chip"     onclick="pickChip(this)">Phone</div>
+        <div class="chip"     onclick="pickChip(this)">IP</div>
+      </div>
+    </div>
+
+    <div class="pane" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
+      <div class="pane-head">
+        <div class="pane-label">// <span>Modules</span></div>
+        <div class="pane-rule"></div>
+      </div>
+      <div class="mod-scroll">
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Sherlock</div><div class="mod-sub">username · social enumeration</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Holehe</div><div class="mod-sub">email · account detection</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">theHarvester</div><div class="mod-sub">domain · subdomain recon</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HIBP</div><div class="mod-sub">email · breach database</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Shodan</div><div class="mod-sub">ip/domain · exposed services</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · interpret &amp; suggest leads</div></div><div class="mod-tag">KEY</div></div>
+      </div>
+    </div>
+
+    <div class="run-wrap">
+      <button class="run-btn" onclick="runScan()">▶ Run Investigation</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tab-bar">
+      <div class="tab on" onclick="setTab(this)">Results</div>
+      <div class="tab"    onclick="setTab(this)">Raw Output</div>
+      <div class="tab"    onclick="setTab(this)">AI Report</div>
+      <div class="tab-spacer"></div>
+      <button class="action-btn">Export</button>
+      <button class="action-btn">Clear</button>
+    </div>
+
+    <div class="content" id="content">
+      <div class="empty" id="emptyState">
+        <div class="empty-glyph">[:::]</div>
+        <div class="empty-title">No Active Investigation</div>
+        <div class="empty-sub">Enter a target and select modules on the left, then run the investigation.</div>
+      </div>
+      <div id="results" style="display:none;"></div>
+    </div>
+
+    <div class="statusbar">
+      <div class="sbi"><div class="sbd" style="background:var(--success)"></div><span>READY</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>7 MODULES</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0-dev</span></div>
+      <div class="sbi" style="margin-left:auto"><span id="clock"></span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  setInterval(() => {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', {hour12:false});
+  }, 1000);
+
+  function openModal()  { document.getElementById('overlay').classList.add('open'); }
+  function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+
+  function saveKey() {
+    const k = document.getElementById('keyInput').value;
+    if (k) {
+      sessionStorage.setItem('cs_key', k);
+      document.getElementById('keyDot').classList.add('set');
+      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
+    }
+    closeModal();
+  }
+
+  function pickChip(el) {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+    el.classList.add('on');
+  }
+
+  function setTab(el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+    el.classList.add('on');
+  }
+
+  const steps = [
+    { text: 'Detecting input type...', dur: 700 },
+    { text: 'Initializing Sherlock username scan...', dur: 1000 },
+    { text: 'Running Holehe email account check...', dur: 900 },
+    { text: 'Running theHarvester domain recon...', dur: 1100 },
+    { text: 'Sending results to Claude for analysis...', dur: 1200 },
+    { text: 'Investigation complete.', dur: 0 },
+  ];
+
+  function runScan() {
+    const target = document.getElementById('targetInput').value || 'target@example.com';
+    document.getElementById('emptyState').style.display = 'none';
+    const res = document.getElementById('results');
+    res.style.display = 'block';
+    res.innerHTML = '<div class="agent-log" id="log"></div>';
+
+    let i = 0;
+    function step() {
+      const log = document.getElementById('log');
+      if (i > 0) {
+        const prev = log.querySelector(`[data-i="${i-1}"]`);
+        if (prev) { prev.className = 'log-row s-done'; prev.querySelector('.log-icon').textContent = '✓'; }
+      }
+      if (i >= steps.length) { renderResults(target); return; }
+      const row = document.createElement('div');
+      row.className = 'log-row s-run';
+      row.dataset.i = i;
+      row.innerHTML = `<div class="log-icon">⟳</div><span>${steps[i].text}</span><span class="log-time">${(i*0.9+0.1).toFixed(1)}s</span>`;
+      log.appendChild(row);
+      row.scrollIntoView({behavior:'smooth', block:'nearest'});
+      i++;
+      if (steps[i-1].dur > 0) setTimeout(step, steps[i-1].dur);
+    }
+    step();
+  }
+
+  function renderResults(target) {
+    const domain = target.includes('@') ? target.split('@')[1] : target;
+    document.getElementById('results').innerHTML += `
+      <div class="ai-block">
+        <div class="ai-head">
+          <div class="ai-tag">// AI Analysis</div>
+          <div class="ai-meta">claude-sonnet · 912 tokens · 5.2s</div>
+        </div>
+        <div class="ai-body">
+          Target <strong>${target}</strong> has a significant digital footprint.
+          Username matches found on <strong>14 platforms</strong> including GitHub, LinkedIn, and Reddit.
+          Associated email appears in <strong>2 breach datasets</strong> (LinkedIn 2021, RockYou2024).
+          Domain recon revealed <strong>3 subdomains</strong>, one exposing an unauthenticated admin panel.
+          <div class="leads">
+            <div class="lead"><span class="lead-arr">→</span>Investigate exposed panel at staging.${domain} — no auth detected on port 8080</div>
+            <div class="lead"><span class="lead-arr">→</span>Cross-reference GitHub activity with known breach credential patterns</div>
+            <div class="lead"><span class="lead-arr">→</span>LinkedIn profile reveals current employer — enumerate corporate email format</div>
+          </div>
+        </div>
+      </div>
+      <div class="result-grid">
+        <div class="rcard">
+          <div class="rcard-head"><div class="rcard-title">Sherlock · Profiles</div><div class="badge b-hit">14 HITS</div></div>
+          <div class="rcard-body">
+            <div class="ritem"><div class="dot dg"></div>github.com/target</div>
+            <div class="ritem"><div class="dot dg"></div>twitter.com/target</div>
+            <div class="ritem"><div class="dot dg"></div>reddit.com/u/target</div>
+            <div class="ritem"><div class="dot dg"></div>linkedin.com/in/target</div>
+            <div class="rmore">+ 10 more →</div>
+          </div>
+        </div>
+        <div class="rcard">
+          <div class="rcard-head"><div class="rcard-title">Holehe · Email Accounts</div><div class="badge b-hit">8 HITS</div></div>
+          <div class="rcard-body">
+            <div class="ritem"><div class="dot dg"></div>spotify.com</div>
+            <div class="ritem"><div class="dot dg"></div>adobe.com</div>
+            <div class="ritem"><div class="dot dg"></div>dropbox.com</div>
+            <div class="ritem"><div class="dot dg"></div>slack.com</div>
+            <div class="rmore">+ 4 more →</div>
+          </div>
+        </div>
+        <div class="rcard">
+          <div class="rcard-head"><div class="rcard-title">theHarvester · Domain</div><div class="badge b-warn">REVIEW</div></div>
+          <div class="rcard-body">
+            <div class="ritem"><div class="dot da"></div>staging.${domain}</div>
+            <div class="ritem"><div class="dot dg"></div>mail.${domain}</div>
+            <div class="ritem"><div class="dot dg"></div>vpn.${domain}</div>
+            <div class="ritem"><div class="dot dd"></div>admin@${domain}</div>
+          </div>
+        </div>
+        <div class="rcard">
+          <div class="rcard-head"><div class="rcard-title">HIBP · Breaches</div><div class="badge b-warn">2 FOUND</div></div>
+          <div class="rcard-body">
+            <div class="ritem"><div class="dot da"></div>LinkedIn (2021)</div>
+            <div class="ritem"><div class="dot da"></div>RockYou2024</div>
+            <div class="ritem"><div class="dot dd"></div>No paste exposure</div>
+          </div>
+        </div>
+      </div>
+      <div class="export-row">
+        <button class="exp-btn">Export PDF</button>
+        <button class="exp-btn">Export Markdown</button>
+        <button class="exp-btn">Export JSON</button>
+      </div>
+    `;
+  }
+
+  window.onload = () => {
+    if (!sessionStorage.getItem('cs_key')) setTimeout(openModal, 500);
+  };
+</script>
+</body>
+</html>
