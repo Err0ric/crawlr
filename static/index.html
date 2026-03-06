@@ -461,13 +461,22 @@
   .ai-body { padding: 14px 16px; font-size: 13px; line-height: 1.75; color: var(--text); }
   .ai-body strong { color: var(--amber-bright); font-weight: 600; }
 
-  .ai-section { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--red); margin: 16px 0 8px; }
+  .ai-section { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--red); margin: 16px 0 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
   .ai-section:first-child { margin-top: 0; }
+  .ai-section .sec-arrow { display: inline-block; transition: transform 0.2s ease; font-size: 8px; }
+  .ai-section.collapsed .sec-arrow { transform: rotate(-90deg); }
+  .ai-section.collapsed + .leads,
+  .ai-section.collapsed + div:not(.ai-section):not(.leads) { display: none; }
 
   .leads { margin-top: 4px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px; }
+  .sec-hidden { display: none !important; }
 
-  .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-mid); line-height: 1.5; }
+  .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-mid); line-height: 1.5; position: relative; }
   .lead-arr { color: var(--red-dim); flex-shrink: 0; }
+  .lead-copy { margin-left: auto; flex-shrink: 0; cursor: pointer; color: var(--text-dim); font-size: 10px; opacity: 0; transition: opacity 0.15s, color 0.15s; padding: 0 2px; }
+  .lead:hover .lead-copy { opacity: 1; }
+  .lead-copy:hover { color: var(--red); }
+  .lead-copy.copied { color: var(--success); opacity: 1; }
 
   .export-row { display: flex; gap: 7px; margin-top: 4px; }
 
@@ -596,7 +605,7 @@
       <div class="tab"    onclick="setTab(this,'content')">AI Report</div>
       <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
-      <button class="action-btn">Export</button>
+      <button class="action-btn" onclick="exportMarkdown()">Export</button>
       <button class="action-btn">Clear</button>
     </div>
 
@@ -628,7 +637,9 @@
     document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', {hour12:false});
   }, 1000);
 
-  /* ── Check state manager ── */
+  /* ── State ── */
+  let lastCollected = {};
+  let lastAISummary = '';
   let currentTarget = '';
   function getChecked() {
     try { return JSON.parse(localStorage.getItem('crawlr_checked_' + currentTarget) || '{}'); } catch { return {}; }
@@ -665,6 +676,26 @@
     const leads = document.querySelectorAll('#aiBlock .lead.chk-item');
     const checked = document.querySelectorAll('#aiBlock .lead.chk-item.done');
     counter.textContent = `${checked.length} / ${leads.length} reviewed`;
+  }
+
+  function toggleSection(el) {
+    el.classList.toggle('collapsed');
+    // Hide all sibling elements until the next ai-section
+    let next = el.nextElementSibling;
+    while (next && !next.classList.contains('ai-section')) {
+      next.classList.toggle('sec-hidden');
+      next = next.nextElementSibling;
+    }
+  }
+
+  function copyLead(el) {
+    const textEl = el.parentElement.querySelector('.lead-text');
+    const text = textEl ? textEl.textContent : '';
+    navigator.clipboard.writeText(text).then(() => {
+      el.classList.add('copied');
+      el.textContent = '✓';
+      setTimeout(() => { el.classList.remove('copied'); el.textContent = '⧉'; }, 1200);
+    });
   }
 
   function openModal() {
@@ -1000,7 +1031,7 @@
   const sectionHeadings = [
     'digital footprint', 'notable findings', 'next steps', 'identity leads',
     'phone lookup strategies', 'phone lookup', 'investigative steps',
-    'overview', 'findings', 'patterns',
+    'overview', 'findings', 'patterns', 'active techniques',
   ];
 
   function isSectionHeading(line) {
@@ -1036,11 +1067,11 @@
       if (isSectionHeading(line)) {
         if (inLeads) { html += '</div>'; inLeads = false; }
         const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
-        html += `<div class="ai-section">// ${label}</div>`;
+        html += `<div class="ai-section" onclick="toggleSection(this)"><span class="sec-arrow">▼</span> // ${label}</div>`;
       } else if (isBullet) {
         if (!inLeads) { html += '<div class="leads">'; inLeads = true; }
         const id = 'ai_' + (aiLeadCounter++);
-        html += `<div class="lead chk-item ${chkItemClass(id)}">${chkHtml(id)}<span class="lead-arr">→</span><span>${mdInline(bulletText)}</span></div>`;
+        html += `<div class="lead chk-item ${chkItemClass(id)}">${chkHtml(id)}<span class="lead-arr">→</span><span class="lead-text">${mdInline(bulletText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy">⧉</span></div>`;
       } else {
         if (inLeads) { html += '</div>'; inLeads = false; }
         html += `<div style="margin-bottom:4px">${mdInline(line)}</div>`;
@@ -1076,6 +1107,8 @@
     const domain = isDomain(target);
 
     const collected = {};
+    lastCollected = collected;
+    lastAISummary = '';
 
     const username = email ? target.split('@')[0] : target;
 
@@ -1184,6 +1217,7 @@
         } else {
           const data = await resp.json();
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
+          lastAISummary = data.summary;
           aiEl.innerHTML = renderAIBlock(data);
           updateAIProgress();
         }
@@ -1202,6 +1236,107 @@
     runBtn.textContent = '▶ Run Investigation';
     runBtn.style.pointerEvents = '';
     scanning = false;
+  }
+
+  function exportMarkdown() {
+    if (!currentTarget) return;
+    const d = lastCollected;
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const ts = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    let md = `# Crawlr Investigation Report\n\n`;
+    md += `**Target:** ${currentTarget}\n**Date:** ${ts}\n\n---\n\n`;
+
+    // Sherlock
+    if (d.sherlock && d.sherlock.results && d.sherlock.results.length) {
+      md += `## Sherlock — ${d.sherlock.total} profiles found\n\n`;
+      for (const r of d.sherlock.results) {
+        md += `- [${r.site}](${r.url})\n`;
+      }
+      md += '\n';
+    }
+
+    // GitHub
+    if (d.github && d.github.found) {
+      const g = d.github;
+      md += `## GitHub Profile\n\n`;
+      if (g.name) md += `- **Name:** ${g.name}\n`;
+      if (g.bio) md += `- **Bio:** ${g.bio}\n`;
+      if (g.location) md += `- **Location:** ${g.location}\n`;
+      if (g.company) md += `- **Company:** ${g.company}\n`;
+      if (g.email) md += `- **Email:** ${g.email}\n`;
+      if (g.blog) md += `- **Blog:** ${g.blog}\n`;
+      md += `- **Repos:** ${g.public_repos} | **Followers:** ${g.followers}\n`;
+      if (g.profile_url) md += `- **URL:** ${g.profile_url}\n`;
+      md += '\n';
+    }
+
+    // Enricher / Profile Scraper
+    if (d.enricher && d.enricher.profiles && d.enricher.profiles.length) {
+      md += `## Profile Scraper — ${d.enricher.total} profiles\n\n`;
+      for (const p of d.enricher.profiles) {
+        md += `### ${p.platform}\n`;
+        if (p.display_name) md += `- **Display Name:** ${p.display_name}\n`;
+        if (p.bio) md += `- **Bio:** ${p.bio}\n`;
+        if (p.url) md += `- **URL:** ${p.url}\n`;
+        md += '\n';
+      }
+    }
+
+    // Holehe
+    if (d.holehe && d.holehe.results && d.holehe.results.length) {
+      md += `## Holehe — ${d.holehe.total} services\n\n`;
+      for (const r of d.holehe.results) {
+        md += `- ${r.site} (${r.domain})\n`;
+      }
+      md += '\n';
+    }
+
+    // HIBP
+    if (d.hibp && d.hibp.breaches && d.hibp.breaches.length) {
+      md += `## Breaches — ${d.hibp.total} found\n\n`;
+      md += d.hibp.breaches.join(', ') + '\n\n';
+    }
+
+    // Gravatar
+    if (d.gravatar && d.gravatar.found) {
+      const g = d.gravatar;
+      md += `## Gravatar\n\n`;
+      if (g.name) md += `- **Name:** ${g.name}\n`;
+      if (g.display_name) md += `- **Display Name:** ${g.display_name}\n`;
+      if (g.location) md += `- **Location:** ${g.location}\n`;
+      if (g.profile_url) md += `- **URL:** ${g.profile_url}\n`;
+      md += '\n';
+    }
+
+    // Harvester
+    if (d.harvester) {
+      const h = d.harvester;
+      if (h.hosts && h.hosts.length) {
+        md += `## theHarvester — ${h.total_hosts} hosts\n\n`;
+        for (const host of h.hosts) md += `- ${host}\n`;
+        md += '\n';
+      }
+      if (h.emails && h.emails.length) {
+        md += `### Emails found\n\n`;
+        for (const e of h.emails) md += `- ${e}\n`;
+        md += '\n';
+      }
+    }
+
+    // AI Analysis
+    if (lastAISummary) {
+      md += `---\n\n## AI Analysis\n\n${lastAISummary}\n`;
+    }
+
+    md += `\n---\n*Generated by Crawlr*\n`;
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `crawlr-${currentTarget.replace(/[^a-zA-Z0-9._@-]/g, '_')}-${date}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   window.onload = () => {
