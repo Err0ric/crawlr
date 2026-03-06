@@ -336,6 +336,38 @@
   .content::-webkit-scrollbar { width: 3px; }
   .content::-webkit-scrollbar-thumb { background: var(--border-mid); }
 
+  #notesArea {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text-bright);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 22px 24px;
+    padding-bottom: 36px;
+  }
+
+  #notesArea:focus { box-shadow: inset 0 0 0 1px var(--red-dim); }
+
+  #notesArea::placeholder { color: var(--text-dim); }
+
+  #notesArea::-webkit-scrollbar { width: 3px; }
+  #notesArea::-webkit-scrollbar-thumb { background: var(--border-mid); }
+
+  #notesCount {
+    position: absolute;
+    bottom: 6px;
+    right: 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    pointer-events: none;
+  }
+
   .empty {
     height: 100%;
     display: flex;
@@ -542,9 +574,10 @@
 
   <div class="main">
     <div class="tab-bar">
-      <div class="tab on" onclick="setTab(this)">Results</div>
-      <div class="tab"    onclick="setTab(this)">Raw Output</div>
-      <div class="tab"    onclick="setTab(this)">AI Report</div>
+      <div class="tab on" onclick="setTab(this,'content')">Results</div>
+      <div class="tab"    onclick="setTab(this,'content')">Raw Output</div>
+      <div class="tab"    onclick="setTab(this,'content')">AI Report</div>
+      <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
       <button class="action-btn">Export</button>
       <button class="action-btn">Clear</button>
@@ -557,6 +590,11 @@
         <div class="empty-sub">Enter a target and select modules on the left, then run the investigation.</div>
       </div>
       <div id="results" style="display:none;"></div>
+    </div>
+
+    <div class="content" id="notesPanel" style="display:none;padding:0;position:relative;">
+      <textarea id="notesArea" spellcheck="false" placeholder="// case notes, leads, observations..."></textarea>
+      <div id="notesCount"></div>
     </div>
 
     <div class="statusbar">
@@ -605,10 +643,26 @@
     el.classList.add('on');
   }
 
-  function setTab(el) {
+  function setTab(el, panel) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
     el.classList.add('on');
+    document.getElementById('content').style.display = panel === 'notes' ? 'none' : '';
+    document.getElementById('notesPanel').style.display = panel === 'notes' ? 'flex' : 'none';
   }
+
+  /* ── Notes auto-save ── */
+  (function initNotes() {
+    const area = document.getElementById('notesArea');
+    const counter = document.getElementById('notesCount');
+    const saved = localStorage.getItem('crawlr_notes');
+    if (saved) area.value = saved;
+    function updateCount() { counter.textContent = area.value.length + ' chars'; }
+    updateCount();
+    area.addEventListener('input', () => {
+      localStorage.setItem('crawlr_notes', area.value);
+      updateCount();
+    });
+  })();
 
   /* ── Log helpers ── */
   function addLogRow(logEl, text, status) {
