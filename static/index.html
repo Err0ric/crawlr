@@ -50,6 +50,59 @@
     --red-glow: rgba(107,114,128,0.12); --red-glow-hi: rgba(107,114,128,0.22);
     --text: #9ca3af; --text-dim: #374151; --text-mid: #6b7280; --text-bright: #d1d5db;
   }
+  [data-theme="flashbang"] {
+    --bg: #ffffff; --bg2: #f5f5f5; --bg3: #eeeeee; --bg4: #e8e8e8;
+    --border: #d0d0d0; --border-mid: #bbbbbb; --border-hi: #6200ea;
+    --red: #6200ea; --red-dim: #5000c0; --red-bright: #7c4dff;
+    --red-glow: rgba(98,0,234,0.08); --red-glow-hi: rgba(98,0,234,0.15);
+    --amber: #e65100; --amber-bright: #f57c00;
+    --text: #333333; --text-dim: #999999; --text-mid: #666666; --text-bright: #111111;
+    --success: #2e7d32;
+  }
+  [data-theme="flashbang"] header { background: #f5f5f5; border-bottom-color: #d0d0d0; }
+  [data-theme="flashbang"] .hnav { color: #666; }
+  [data-theme="flashbang"] .hnav:hover { color: #333; }
+  [data-theme="flashbang"] .hnav.active { color: #111; }
+  [data-theme="flashbang"] .sidebar { background: #f5f5f5; border-color: #d0d0d0; }
+  [data-theme="flashbang"] .mod-tag { background: #e0e0e0; color: #555; border-color: #ccc; }
+  [data-theme="flashbang"] .mod-tag.free { background: rgba(46,125,50,0.1); color: #2e7d32; border-color: rgba(46,125,50,0.3); }
+  [data-theme="flashbang"] .mod-tag.warn { background: rgba(230,81,0,0.1); color: #e65100; border-color: rgba(230,81,0,0.3); }
+  [data-theme="flashbang"] .run-btn { color: #6200ea; border-color: #6200ea; background: rgba(98,0,234,0.06); }
+  [data-theme="flashbang"] .run-btn:hover { background: rgba(98,0,234,0.12); }
+  [data-theme="flashbang"] .action-btn { color: #6200ea; border-color: #bbb; }
+  [data-theme="flashbang"] .modal { background: #fff; }
+  [data-theme="flashbang"] .modal-input { background: #f5f5f5; color: #111; border-color: #ccc; }
+  [data-theme="flashbang"] .key-pill { background: #e8e8e8; border-color: #ccc; }
+  [data-theme="flashbang"] .chip { background: #e8e8e8; color: #555; border-color: #ccc; }
+  [data-theme="flashbang"] .chip.on { background: rgba(98,0,234,0.1); color: #6200ea; border-color: #6200ea; }
+  [data-theme="flashbang"] .graph-tooltip { background: #fff; border-color: #bbb; color: #111; }
+  [data-theme="flashbang"] .log-row { border-color: #e0e0e0; }
+  [data-theme="flashbang"] .toast { background: #333; color: #fff; }
+  [data-theme="flashbang"] .overlay { background: rgba(0,0,0,0.3); }
+  [data-theme="flashbang"] .badge { border-color: #ccc; }
+  [data-theme="flashbang"] .b-hit { background: rgba(46,125,50,0.1); color: #2e7d32; border-color: rgba(46,125,50,0.3); }
+  [data-theme="flashbang"] .b-warn { background: rgba(230,81,0,0.1); color: #e65100; border-color: rgba(230,81,0,0.3); }
+  [data-theme="flashbang"] .b-none { background: #f0f0f0; color: #999; border-color: #ddd; }
+  [data-theme="flashbang"] .dot.dg { background: #2e7d32; }
+  [data-theme="flashbang"] .dot.dd { background: #ccc; }
+  [data-theme="flashbang"] .mod-toggle { background: #d0d0d0; }
+  [data-theme="flashbang"] .mod-toggle.on { background: #6200ea; }
+  [data-theme="flashbang"] .mod-toggle::after { background: #fff; }
+  [data-theme="flashbang"] .empty-glyph { color: #bbb; }
+  [data-theme="flashbang"] .pane-rule { background: #d0d0d0; }
+  [data-theme="flashbang"] .modal-primary { background: rgba(98,0,234,0.1); border-color: #6200ea; color: #6200ea; }
+  [data-theme="flashbang"] .modal-primary:hover { background: rgba(98,0,234,0.2); }
+  [data-theme="flashbang"] body::before { display: none; }
+  [data-theme="flashbang"] .logo-wordmark { color: #111; }
+  [data-theme="flashbang"] .logo-wordmark em { color: #6200ea; }
+  [data-theme="flashbang"] .header-divider { background: #d0d0d0; }
+  [data-theme="flashbang"] .hist-badge.inv { background: rgba(98,0,234,0.1); color: #6200ea; border-color: rgba(98,0,234,0.3); }
+  [data-theme="flashbang"] .hist-badge.rec { background: rgba(46,125,50,0.1); color: #2e7d32; border-color: rgba(46,125,50,0.3); }
+  [data-theme="flashbang"] .hist-entry { background: #f5f5f5; border-color: #ddd; }
+  [data-theme="flashbang"] .hist-entry:hover { border-color: #6200ea; }
+  [data-theme="flashbang"] .s-run .log-icon { background: #e65100; }
+  [data-theme="flashbang"] .s-done .log-icon { background: #2e7d32; }
+  [data-theme="flashbang"] .s-wait .log-icon { background: #999; }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
@@ -646,8 +699,8 @@
 <header>
   <div class="logo">
     <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
-      <rect x="0.75" y="0.75" width="24.5" height="24.5" rx="3" stroke="#a855f7" stroke-width="1.2"/>
-      <path d="M6 13h3.5l2.5-5.5 3 11 2.5-5.5H20" stroke="#a855f7" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="0.75" y="0.75" width="24.5" height="24.5" rx="3" stroke="var(--red-bright)" stroke-width="1.2"/>
+      <path d="M6 13h3.5l2.5-5.5 3 11 2.5-5.5H20" stroke="var(--red-bright)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
     <div class="logo-wordmark">CRAWL<em>R</em></div>
   </div>
@@ -1798,6 +1851,9 @@
     document.getElementById('reconSbMiniTarget').textContent = document.getElementById('reconTargetInput').value.trim() || '—';
   }
 
+  // Helper to read current CSS custom property values for graph rendering
+  function _css(prop) { return getComputedStyle(document.documentElement).getPropertyValue(prop).trim(); }
+
   function renderAsnGraph(container, data, target) {
     const colorASN = '#a855f7', colorV4 = '#d97706', colorV6 = '#14b8a6';
     const v4 = (data.prefixes_v4 || []).slice(0, 40);
@@ -1840,7 +1896,7 @@
 
     const svg = d3.select(container).append('svg')
       .attr('width', W).attr('height', totalH)
-      .style('background', '#07060f');
+      .style('background', _css('--bg'));
     const g = svg.append('g');
     svg.call(d3.zoom().scaleExtent([0.3, 4]).on('zoom', (e) => g.attr('transform', e.transform)));
 
@@ -1853,21 +1909,21 @@
       const lg = legend.append('g').attr('transform', `translate(${i * 120}, 0)`);
       lg.append('rect').attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', item.color).attr('opacity', 0.8);
       lg.append('text').attr('x', 14).attr('y', 9).text(item.label)
-        .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px');
+        .attr('fill', _css('--text-mid')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px');
     });
 
     // Draw center ASN node
     const cg = g.append('g').attr('transform', `translate(${laneX[0]}, ${centerY})`);
     cg.append('rect').attr('width', centerW).attr('height', 44).attr('rx', 4)
-      .attr('fill', 'rgba(124,58,237,0.18)').attr('stroke', colorASN).attr('stroke-width', 2).attr('stroke-opacity', 0.9);
+      .attr('fill', _css('--red-glow')).attr('stroke', colorASN).attr('stroke-width', 2).attr('stroke-opacity', 0.9);
     const asnLabel = data.asn || target;
     cg.append('text').attr('x', centerW / 2).attr('y', 18).attr('text-anchor', 'middle')
-      .attr('fill', '#e8e0f8').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '13px').attr('font-weight', '600')
+      .attr('fill', _css('--text-bright')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '13px').attr('font-weight', '600')
       .text(asnLabel);
     if (data.org) {
       const orgTrunc = data.org.length > 28 ? data.org.slice(0, 27) + '…' : data.org;
       cg.append('text').attr('x', centerW / 2).attr('y', 34).attr('text-anchor', 'middle')
-        .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px')
+        .attr('fill', _css('--text-mid')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px')
         .text(orgTrunc);
     }
 
@@ -1905,7 +1961,7 @@
         .text(prefix);
       if (count) {
         ng.append('text').attr('x', bw - 6).attr('y', boxH / 2 + 3).attr('text-anchor', 'end')
-          .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '8px')
+          .attr('fill', _css('--text-mid')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '8px')
           .text(count + ' IPs');
       }
       ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} — ${count} IPs`))
@@ -1918,7 +1974,7 @@
       if (v4.length > 0) {
         g.append('line').attr('x1', laneX[1] - 20).attr('x2', laneX[1] + maxBoxW + 20)
           .attr('y1', v6StartY - 28).attr('y2', v6StartY - 28)
-          .attr('stroke', '#1a1830').attr('stroke-dasharray', '4,4');
+          .attr('stroke', _css('--border')).attr('stroke-dasharray', '4,4');
       }
       g.append('text').attr('x', laneX[1]).attr('y', v6StartY - 12)
         .text(`// IPv6 PREFIXES (${data.prefixes_v6.length})`)
@@ -1947,7 +2003,7 @@
         .text(prefix.length > 26 ? prefix.slice(0, 25) + '…' : prefix);
       if (count) {
         ng.append('text').attr('x', bw - 6).attr('y', boxH / 2 + 3).attr('text-anchor', 'end')
-          .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '8px')
+          .attr('fill', _css('--text-mid')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '8px')
           .text(count + ' IPs');
       }
       ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} — ${count} IPs`))
@@ -1965,7 +2021,7 @@
     statItems.push(`${(data.prefixes_v4 || []).length} IPv4 + ${(data.prefixes_v6 || []).length} IPv6 prefixes`);
     if (data.total_peers) statItems.push(`${data.total_peers} peers`);
     stats.append('text').attr('y', 0)
-      .attr('fill', '#3d3460').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px')
+      .attr('fill', _css('--text-dim')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px')
       .text(statItems.join('  ·  '));
   }
 
@@ -2126,7 +2182,7 @@
 
     const svg = d3.select(container).append('svg')
       .attr('width', svgW).attr('height', totalH)
-      .style('background', '#07060f');
+      .style('background', _css('--bg'));
 
     const g = svg.append('g');
 
@@ -2144,7 +2200,7 @@
       const lg = legend.append('g').attr('transform', `translate(${i * 100}, 0)`);
       lg.append('rect').attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', item.color).attr('opacity', 0.8);
       lg.append('text').attr('x', 14).attr('y', 9).text(item.label)
-        .attr('fill', '#6e5f99').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px');
+        .attr('fill', _css('--text-mid')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px');
     });
 
     // Subdomain separator
@@ -2152,10 +2208,10 @@
       g.append('line')
         .attr('x1', 40).attr('x2', svgW - 40)
         .attr('y1', subStartY - 20).attr('y2', subStartY - 20)
-        .attr('stroke', '#1a1830').attr('stroke-dasharray', '4,4');
+        .attr('stroke', _css('--border')).attr('stroke-dasharray', '4,4');
       g.append('text').attr('x', 60).attr('y', subStartY - 8)
         .text('// SUBDOMAINS')
-        .attr('fill', '#3d3460').attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px').attr('letter-spacing', '2px');
+        .attr('fill', _css('--text-dim')).attr('font-family', 'Share Tech Mono, monospace').attr('font-size', '9px').attr('letter-spacing', '2px');
     }
 
     // Draw links as curved bezier paths
@@ -2194,9 +2250,9 @@
       const ng = g.append('g').attr('transform', `translate(${pos.x}, ${pos.y})`);
 
       // Box
-      const fillColor = n.type === 'domain' ? 'rgba(124,58,237,0.15)'
+      const fillColor = n.type === 'domain' ? _css('--red-glow')
         : isCf ? 'rgba(245,158,11,0.08)'
-        : isSub ? 'rgba(124,58,237,0.08)' : 'rgba(15,14,28,0.9)';
+        : isSub ? 'rgba(124,58,237,0.08)' : _css('--bg');
       ng.append('rect')
         .attr('width', bw).attr('height', bh).attr('rx', 3)
         .attr('fill', fillColor)
@@ -2224,7 +2280,7 @@
       ng.append('text')
         .attr('x', labelX).attr('y', bh / 2 + 4)
         .attr('text-anchor', 'middle')
-        .attr('fill', isCf ? '#f59e0b' : (n.type === 'domain' ? '#e8e0f8' : (isSub ? '#a78bfa' : (n.type === 'asn' ? '#4b5563' : '#b0a8cc'))))
+        .attr('fill', isCf ? '#f59e0b' : (n.type === 'domain' ? _css('--text-bright') : (isSub ? _css('--red-bright') : (n.type === 'asn' ? _css('--text-dim') : _css('--text')))))
         .attr('font-family', 'Share Tech Mono, monospace')
         .attr('font-size', fontSize)
         .text(label);
@@ -2949,6 +3005,7 @@
     { id: 'midnight', label: 'Midnight', preview: '#3b82f6' },
     { id: 'blood', label: 'Blood', preview: '#dc2626' },
     { id: 'ghost', label: 'Ghost', preview: '#6b7280' },
+    { id: 'flashbang', label: 'Flashbang', preview: '#6200ea' },
   ];
 
   function renderSettings() {
