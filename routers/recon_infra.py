@@ -10,6 +10,7 @@ from modules.asn_lookup import run_asn
 from modules.asn_detail import run_asn_detail
 from modules.port_scan import run_portscan
 import anthropic
+import httpx
 import time
 
 router = APIRouter()
@@ -21,6 +22,10 @@ class DomainRequest(BaseModel):
 
 class AsnRequest(BaseModel):
     asn_number: int
+
+
+class IpAsnRequest(BaseModel):
+    ips: list[str]
 
 
 class ReconAnalyzeRequest(BaseModel):
@@ -96,6 +101,40 @@ async def asn_detail_scan(req: AsnRequest):
     if req.asn_number < 1:
         raise HTTPException(status_code=400, detail="Invalid ASN number")
     return await run_asn_detail(req.asn_number)
+
+
+@router.post("/ip-asn")
+async def batch_ip_asn(req: IpAsnRequest):
+    """Batch resolve IPs to ASN/org via RIPE stat."""
+    ips = list(set(ip.strip() for ip in req.ips if ip.strip()))[:30]
+    results = {}
+    async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+        for ip in ips:
+            try:
+                resp = await client.get(
+                    f"https://stat.ripe.net/data/network-info/data.json?resource={ip}"
+                )
+                if resp.status_code == 200:
+                    data = resp.json().get("data", {})
+                    asns = data.get("asns", [])
+                    asn = f"AS{asns[0]}" if asns else ""
+                    results[ip] = {"asn": asn, "org": ""}
+                    if asn:
+                        try:
+                            asn_num = asn.replace("AS", "")
+                            rdap = await client.get(
+                                f"https://rdap.arin.net/registry/autnum/{asn_num}",
+                                headers={"Accept": "application/rdap+json"},
+                            )
+                            if rdap.status_code == 200:
+                                results[ip]["org"] = rdap.json().get("name", "")
+                        except Exception:
+                            pass
+                else:
+                    results[ip] = {"asn": "", "org": ""}
+            except Exception:
+                results[ip] = {"asn": "", "org": ""}
+    return {"results": results}
 
 
 @router.post("/summarize")

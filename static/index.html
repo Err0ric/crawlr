@@ -2620,15 +2620,32 @@
     lane2Order.forEach((n, i) => { positions[n.id] = { x: laneX[2], y: startY + i * (boxH + gapY) }; });
     lane3Order.forEach((n, i) => { positions[n.id] = { x: laneX[3], y: startY + i * (boxH + gapY) }; });
 
-    // Subdomain section
+    // Subdomain section with IP → ASN columns
+    const ipAsnMap = d.ipAsn || {};
+    const subIpBoxW = 160, subAsnBoxW = 200;
+    const subIpX = laneX[1] + subBoxW + 20;
+    const subAsnX = subIpX + subIpBoxW + 20;
     const subStartY = startY + Math.max(lane1Order.length, lane2Order.length, lane3Order.length) * (boxH + gapY) + 40;
     subNodes.forEach((s, i) => {
       positions[s.id] = { x: laneX[1], y: subStartY + i * (subBoxH + subGapY) };
       s.ips.forEach((ip, j) => {
         const ipId = 'subip_' + s.id + '_' + ip;
-        positions[ipId] = { x: laneX[1] + subBoxW + 20, y: subStartY + i * (subBoxH + subGapY) };
+        positions[ipId] = { x: subIpX, y: subStartY + i * (subBoxH + subGapY) };
         if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: 'ip', lane: 2, row: 0 }); }
         addL(s.id, ipId, 'sub');
+        // ASN node for this subdomain IP
+        const isCf = _isCfIp(ip);
+        const asnData = ipAsnMap[ip];
+        const asnLabel = isCf ? 'CF PROXY' : (asnData && asnData.asn ? `${asnData.asn} ${(asnData.org || '').slice(0, 25)}` : '');
+        if (asnLabel) {
+          const asnId = 'subasn_' + s.id + '_' + ip;
+          positions[asnId] = { x: subAsnX, y: subStartY + i * (subBoxH + subGapY) };
+          if (!idSet[asnId]) {
+            idSet[asnId] = true;
+            treeNodes.push({ id: asnId, label: asnLabel, type: isCf ? 'cf_asn' : 'asn', lane: 3, row: 0 });
+          }
+          addL(ipId, asnId, isCf ? 'cf' : 'asn');
+        }
       });
     });
     // Add subdomain nodes to treeNodes
@@ -2637,7 +2654,7 @@
     }
 
     const totalH = Math.max(subStartY + subNodes.length * (subBoxH + subGapY) + 60, rect.height || 500);
-    const svgW = Math.max(W, laneX[3] + asnBoxW + 40, 920);
+    const svgW = Math.max(W, subAsnX + subAsnBoxW + 40, laneX[3] + asnBoxW + 40, 920);
 
     const svg = d3.select(container).append('svg')
       .attr('width', svgW).attr('height', totalH)
@@ -2682,13 +2699,15 @@
       const tgtNode = treeNodes.find(n => n.id === link.target);
       const srcIsSub = srcNode?.type === 'subdomain';
       const tgtIsSub = tgtNode?.type === 'subdomain';
-      const srcW = srcIsSub ? subBoxW : (boxWidths[srcNode?.lane] || 100);
-      const srcH = srcIsSub ? subBoxH : boxH;
-      const tgtH = tgtIsSub ? subBoxH : boxH;
+      const srcIsSubIp = srcNode && srcNode.id.startsWith('subip_');
+      const tgtIsSubAsn = tgtNode && (tgtNode.type === 'cf_asn' || tgtNode.id.startsWith('subasn_'));
+      const srcW = srcIsSub ? subBoxW : srcIsSubIp ? subIpBoxW : (boxWidths[srcNode?.lane] || 100);
+      const srcH = (srcIsSub || srcIsSubIp || tgtIsSubAsn) ? subBoxH : boxH;
+      const tgtH = (tgtIsSub || tgtIsSubAsn) ? subBoxH : boxH;
       const x1 = sp.x + srcW, y1 = sp.y + srcH / 2;
       const x2 = tp.x, y2 = tp.y + tgtH / 2;
       const mx = (x1 + x2) / 2;
-      const col = colorMap[link.type] || colorMap.a;
+      const col = link.type === 'cf' ? colorMap.cf_ip : (colorMap[link.type] || colorMap.a);
       g.append('path')
         .attr('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`)
         .attr('fill', 'none').attr('stroke', col).attr('stroke-opacity', 0.35).attr('stroke-width', 1.5);
@@ -2701,24 +2720,27 @@
       const pos = positions[n.id];
       if (!pos) continue;
       const isSub = n.type === 'subdomain';
+      const isSubIp = n.id.startsWith('subip_');
+      const isSubAsn = n.id.startsWith('subasn_');
+      const isCfAsn = n.type === 'cf_asn';
       const isIpNode = n.type === 'ip' && /^\d+\.\d+\.\d+\.\d+$/.test(n.label);
       const isCf = isIpNode && _isCfIp(n.label);
-      const bw = isSub ? subBoxW : (boxWidths[n.lane] || 150);
-      const bh = isSub ? subBoxH : boxH;
-      const col = isCf ? colorMap.cf_ip : (colorMap[n.type] || colorMap.ip);
+      const bw = isSub ? subBoxW : isSubIp ? subIpBoxW : isSubAsn ? subAsnBoxW : (boxWidths[n.lane] || 150);
+      const bh = (isSub || isSubIp || isSubAsn) ? subBoxH : boxH;
+      const col = (isCf || isCfAsn) ? colorMap.cf_ip : (colorMap[n.type] || colorMap.ip);
       const ng = g.append('g').attr('transform', `translate(${pos.x}, ${pos.y})`);
 
       // Box
       const fillColor = n.type === 'domain' ? _css('--red-glow')
-        : isCf ? 'rgba(245,158,11,0.08)'
+        : (isCf || isCfAsn) ? 'rgba(245,158,11,0.08)'
         : isSub ? 'rgba(124,58,237,0.08)' : _css('--bg');
       ng.append('rect')
         .attr('width', bw).attr('height', bh).attr('rx', 3)
         .attr('fill', fillColor)
         .attr('stroke', col).attr('stroke-width', n.type === 'domain' ? 2 : 1)
-        .attr('stroke-opacity', n.type === 'domain' ? 0.8 : (isCf ? 0.6 : 0.4));
+        .attr('stroke-opacity', n.type === 'domain' ? 0.8 : ((isCf || isCfAsn) ? 0.6 : 0.4));
 
-      // CF badge
+      // CF badge on IP nodes
       if (isCf) {
         ng.append('rect')
           .attr('x', bw - 24).attr('y', 2).attr('width', 22).attr('height', 12).attr('rx', 2)
@@ -2730,7 +2752,8 @@
       }
 
       // Label
-      const fontSize = n.type === 'domain' ? '11px' : (isSub ? '10px' : (n.type === 'asn' ? '8px' : '9px'));
+      const isAsnType = n.type === 'asn' || isCfAsn;
+      const fontSize = n.type === 'domain' ? '11px' : (isSub ? '10px' : (isAsnType ? '8px' : '9px'));
       const charW = isSub ? 6.5 : 7;
       const labelMaxW = isCf ? bw - 28 : bw;
       const maxChars = Math.floor(labelMaxW / charW);
@@ -2739,7 +2762,7 @@
       ng.append('text')
         .attr('x', labelX).attr('y', bh / 2 + 4)
         .attr('text-anchor', 'middle')
-        .attr('fill', isCf ? '#f59e0b' : (n.type === 'domain' ? _css('--text-bright') : (isSub ? _css('--red-bright') : (n.type === 'asn' ? _css('--text-dim') : _css('--text')))))
+        .attr('fill', isCfAsn ? '#f59e0b' : (isCf ? '#f59e0b' : (n.type === 'domain' ? _css('--text-bright') : (isSub ? _css('--red-bright') : (n.type === 'asn' ? _css('--text-dim') : _css('--text'))))))
         .attr('font-family', 'Share Tech Mono, monospace')
         .attr('font-size', fontSize)
         .text(label);
@@ -2749,8 +2772,15 @@
         let info = n.label;
         if (isCf) {
           info += ' — Cloudflare Proxy - real origin hidden';
-        } else if (n.type === 'ip' && asnInfo.asn) {
-          info += ` — ${asnInfo.asn} (${asnInfo.org || ''})`;
+        } else if (isCfAsn) {
+          info += ' — Cloudflare edge server';
+        } else if (n.type === 'ip') {
+          const ipAsn = ipAsnMap[n.label];
+          if (ipAsn && ipAsn.asn) {
+            info += ` — ${ipAsn.asn} (${ipAsn.org || ''})`;
+          } else if (asnInfo.asn) {
+            info += ` — ${asnInfo.asn} (${asnInfo.org || ''})`;
+          }
         }
         tooltip.style('display', 'block').text(info);
       })
@@ -3095,6 +3125,33 @@
 
       reconCollected.asn = await runModule(logEl, cardsEl, t0,
         `ASN/BGP lookup on "${target}"`, '/api/infra/asn', { domain: target }, renderAsnCard);
+
+      // Batch resolve subdomain IPs to ASN
+      if (reconCollected.subdomains && reconCollected.subdomains.subdomains) {
+        const allIps = new Set();
+        for (const s of reconCollected.subdomains.subdomains) {
+          for (const ip of (s.ips || [])) { if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) allIps.add(ip); }
+        }
+        // Also add main A record IPs
+        if (reconCollected.dns && reconCollected.dns.records && reconCollected.dns.records['A']) {
+          for (const ip of reconCollected.dns.records['A']) allIps.add(ip);
+        }
+        if (allIps.size > 0) {
+          const asnRow = addLogRow(logEl, `Resolving ASN for ${allIps.size} unique IPs...`, 'run');
+          try {
+            const resp = await fetch('/api/infra/ip-asn', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ips: [...allIps] }),
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              reconCollected.ipAsn = data.results || {};
+              updateLogRow(asnRow, `ASN resolved for ${Object.keys(reconCollected.ipAsn).filter(k => reconCollected.ipAsn[k].asn).length} IPs`, 'done');
+            } else { updateLogRow(asnRow, 'ASN batch resolve failed', 'wait'); }
+            setLogTime(asnRow, (performance.now() - t0) / 1000);
+          } catch (e) { updateLogRow(asnRow, `ASN resolve error: ${e.message}`, 'wait'); setLogTime(asnRow, (performance.now() - t0) / 1000); }
+        }
+      }
 
       reconCollected.portscan = await runModule(logEl, cardsEl, t0,
         `Port scan on "${target}"`, '/api/infra/portscan', { domain: target }, renderPortscanCard);
