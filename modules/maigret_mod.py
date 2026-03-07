@@ -8,6 +8,27 @@ from modules.sherlock import _classify_site
 
 MAIGRET_AVAILABLE = shutil.which("maigret") is not None
 
+MAIGRET_FALSE_POSITIVE_PATTERNS = [
+    "op.gg", "leagueofgraphs", "u.gg", "tracker.gg",
+    "lolprofile", "[leagueoflegends]",
+]
+
+MAIGRET_SEARCH_REDIRECT_PATTERNS = [
+    "search?q=", "summoners/search",
+]
+
+
+def _is_maigret_false_positive(site_name: str, url: str) -> bool:
+    name_lower = site_name.lower()
+    url_lower = url.lower()
+    for pat in MAIGRET_FALSE_POSITIVE_PATTERNS:
+        if pat in name_lower or pat in url_lower:
+            return True
+    for pat in MAIGRET_SEARCH_REDIRECT_PATTERNS:
+        if pat in url_lower:
+            return True
+    return False
+
 
 async def run_maigret(username: str, nsfw: bool = True, timeout: int = 180) -> dict:
     if not MAIGRET_AVAILABLE:
@@ -21,6 +42,7 @@ async def run_maigret(username: str, nsfw: bool = True, timeout: int = 180) -> d
             "--no-color",
             "--no-progressbar",
             "--no-recursion",
+            "--top-sites", "500",
             "--folderoutput", tmpdir,
         ]
         if not nsfw:
@@ -90,6 +112,8 @@ async def run_maigret(username: str, nsfw: bool = True, timeout: int = 180) -> d
                     "confidence": confidence,
                     "category": category,
                 })
+
+        results = [r for r in results if not _is_maigret_false_positive(r["site"], r["url"])]
 
         order = {"high_confidence": 0, "normal": 1, "false_positive": 2}
         results.sort(key=lambda r: order.get(r["confidence"], 1))
