@@ -404,7 +404,6 @@
   .tab {
     display: flex;
     align-items: center;
-    gap: 6px;
     padding: 0 18px;
     height: 100%;
     font-family: 'Share Tech Mono', monospace;
@@ -417,11 +416,8 @@
     margin-bottom: -1px;
     transition: all 0.15s;
   }
-  .tab .tab-dot { width: 6px; height: 6px; border-radius: 50%; display: none; }
-  .tab .tab-dot.visible { display: inline-block; }
-
   .tab:hover { color: var(--text-bright); }
-  .tab.on { color: var(--text-bright); border-bottom-color: var(--red); background: rgba(255,255,255,0.03); }
+  .tab.on { color: var(--text-bright); font-weight: 700; border-bottom-color: #a855f7; background: rgba(255,255,255,0.03); }
   .tab-spacer { flex: 1; }
 
   .action-btn {
@@ -814,7 +810,7 @@
   <div class="main">
     <div class="tab-bar">
       <div class="tab on" onclick="setTab(this,'content')">Results</div>
-      <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI Report<span class="tab-dot" id="aiReportDot" style="background:#a855f7;"></span></div>
+      <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI Report</div>
       <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
       <button class="action-btn" onclick="exportMarkdown()">Export</button>
@@ -906,7 +902,7 @@
   <div class="main">
     <div class="tab-bar">
       <div class="tab on" onclick="setReconTab('results')">Results</div>
-      <div class="tab" onclick="setReconTab('graph')">Graph<span class="tab-dot" id="graphDot" style="background:#a855f7;"></span></div>
+      <div class="tab" onclick="setReconTab('graph')">Graph</div>
       <div class="tab-spacer"></div>
       <button class="action-btn" onclick="exportReconMarkdown()">Export</button>
     </div>
@@ -1962,8 +1958,7 @@
     runBtn.style.pointerEvents = 'none';
 
     document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('aiReportTab').style.display = 'none'; document.getElementById('aiReportDot').classList.remove('visible');
-    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
+    document.getElementById('aiReportTab').style.display = 'none';    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
     document.getElementById('deepDiveBtn').style.display = 'none';
     document.getElementById('deepDiveResults').style.display = 'none';
     document.getElementById('deepDiveResults').innerHTML = '';
@@ -1994,8 +1989,7 @@
 
       if (result.aiData) {
         updateAIProgress();
-        document.getElementById('aiReportTab').style.display = ''; document.getElementById('aiReportDot').classList.add('visible');
-        document.getElementById('aiReportContent').innerHTML = renderAIBlock(result.aiData);
+        document.getElementById('aiReportTab').style.display = '';        document.getElementById('aiReportContent').innerHTML = renderAIBlock(result.aiData);
         const ddBtn = document.getElementById('deepDiveBtn');
         const ddResults = document.getElementById('deepDiveResults');
         ddResults.style.display = 'none';
@@ -2127,8 +2121,7 @@
               const corrData = await corrResp.json();
               btn.style.display = 'none';
               resultsDiv.innerHTML = renderCorrelationBlock(corrData);
-              document.getElementById('aiReportTab').style.display = ''; document.getElementById('aiReportDot').classList.add('visible');
-              document.getElementById('aiReportContent').innerHTML = renderCorrelationBlock(corrData);
+              document.getElementById('aiReportTab').style.display = '';              document.getElementById('aiReportContent').innerHTML = renderCorrelationBlock(corrData);
             }
           } catch (e) {
             btn.style.display = 'none';
@@ -2816,8 +2809,7 @@
     document.getElementById('emptyState').style.display = '';
     document.getElementById('results').style.display = 'none';
     document.getElementById('results').innerHTML = '';
-    document.getElementById('aiReportTab').style.display = 'none'; document.getElementById('aiReportDot').classList.remove('visible');
-    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
+    document.getElementById('aiReportTab').style.display = 'none';    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
     document.getElementById('deepDiveBtn').style.display = 'none';
     document.getElementById('deepDiveResults').style.display = 'none';
     document.getElementById('deepDiveResults').innerHTML = '';
@@ -3113,7 +3105,6 @@
     reconScanning = true;
     reconCollected = {};
     reconAISummary = '';
-    document.getElementById('graphDot').classList.remove('visible');
     const runBtn = document.getElementById('reconRunBtn');
     runBtn.textContent = '⏳ SCANNING...';
     runBtn.style.pointerEvents = 'none';
@@ -3240,7 +3231,6 @@
     reconScanning = false;
     // Light up Graph tab dot
     if (Object.keys(reconCollected).length > 0) {
-      document.getElementById('graphDot').classList.add('visible');
     }
   }
 
@@ -3503,8 +3493,7 @@
         const aiBlock = document.createElement('div');
         aiBlock.innerHTML = renderAIBlock({ summary: entry.aiSummary });
         res.insertBefore(aiBlock, cardsEl);
-        document.getElementById('aiReportTab').style.display = ''; document.getElementById('aiReportDot').classList.add('visible');
-        document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: entry.aiSummary });
+        document.getElementById('aiReportTab').style.display = '';        document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: entry.aiSummary });
         // Show Deep Dive button if profiles available
         const ddBtn = document.getElementById('deepDiveBtn');
         const ddResults = document.getElementById('deepDiveResults');
@@ -3533,7 +3522,6 @@
       const aiEl = document.getElementById('reconAiBlock');
       const d = entry.results;
       reconCollected = d;
-      document.getElementById('graphDot').classList.add('visible');
       if (d.dns) cardsEl.innerHTML += renderDnsCard(d.dns);
       if (d.whois) cardsEl.innerHTML += renderWhoisCard(d.whois);
       if (d.ssl) cardsEl.innerHTML += renderSslCard(d.ssl);
