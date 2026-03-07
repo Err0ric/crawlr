@@ -934,52 +934,73 @@
 </div>
 
 <div id="dorksWorkspace" class="workspace" style="display:none; flex-direction:column; height:calc(100vh - 48px); overflow:hidden;">
-  <div class="main" style="flex:1; overflow-y:auto; padding:28px 40px;">
+  <div class="main" style="flex:1; overflow-y:auto; padding:28px 60px;">
     <div style="max-width:960px; margin:0 auto;">
 
       <div style="margin-bottom:24px;">
-        <div style="font-family:'Share Tech Mono',monospace; color:var(--text-mid); font-size:11px; letter-spacing:2px; margin-bottom:6px;">// DORK GENERATOR</div>
-        <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Generate Google dorks for any target. Select the ones you want and search.</div>
+        <div style="font-family:'Share Tech Mono',monospace; color:var(--text-mid); font-size:11px; letter-spacing:2px; margin-bottom:6px;">// DORK BUILDER</div>
+        <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Tell Crawlr what you know. It builds the search.</div>
       </div>
 
-      <div style="display:flex; gap:10px; margin-bottom:20px; align-items:center;">
-        <input id="dorkInput" type="text" placeholder="name, username, company, or domain..." autocomplete="off"
-          style="flex:1; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;"
-          oninput="dorkGenerate(this.value)"
-          onkeydown="if(event.key==='Enter') dorkGenerate(this.value)"
-        />
-        <button onclick="dorkGenerate(document.getElementById('dorkInput').value)"
-          style="background:var(--red); color:#fff; border:none; border-radius:6px; padding:10px 20px; font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:1px; cursor:pointer; white-space:nowrap;">
-          GENERATE
-        </button>
-        <button onclick="dorkSelectAll()" id="dorkSelectAllBtn"
-          style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
-          SELECT ALL
-        </button>
-      </div>
-
-      <div id="dorkTypeHint" style="display:none; margin-bottom:18px; color:var(--text-mid); font-size:12px; font-family:'Share Tech Mono',monospace;">
-        Detected: <span id="dorkTypeLabel" style="color:var(--amber);"></span>
-      </div>
-
-      <div id="dorkResults" style="display:none;">
-        <div id="dorkActionBar" style="margin-top:24px; padding-top:18px; border-top:1px solid var(--border); display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <button onclick="dorkSearchSelected()"
-            style="background:var(--red); color:#fff; border:none; border-radius:6px; padding:10px 20px; font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:1px; cursor:pointer;">
-            SEARCH SELECTED (COMBINED)
-          </button>
-          <button onclick="dorkCopySelected()"
-            style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer;">
-            COPY DORKS
-          </button>
-          <span id="dorkCount" style="color:var(--text-mid); font-family:'Share Tech Mono',monospace; font-size:12px; margin-left:4px;"></span>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:22px;">
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:5px; text-transform:uppercase;">Name</label>
+          <input id="dbName" type="text" placeholder="e.g. Shayna Henderson" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:5px; text-transform:uppercase;">Username / Handle</label>
+          <input id="dbUsername" type="text" placeholder="e.g. donkeyboy15" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:5px; text-transform:uppercase;">Location</label>
+          <input id="dbLocation" type="text" placeholder="e.g. Seattle, WA" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:5px; text-transform:uppercase;">Employer / School</label>
+          <input id="dbEmployer" type="text" placeholder="e.g. Microsoft" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:5px; text-transform:uppercase;">Email</label>
+          <input id="dbEmail" type="text" placeholder="e.g. shayna@example.com" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:5px; text-transform:uppercase;">Keywords / Interests</label>
+          <input id="dbKeywords" type="text" placeholder="e.g. hiking, crypto, cats" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
         </div>
       </div>
 
-      <div id="dorkEmpty" style="margin-top:60px; text-align:center; color:var(--text-mid);">
-        <div style="font-size:32px; margin-bottom:12px; opacity:0.3;">[ · · · ]</div>
-        <div style="font-family:'Share Tech Mono',monospace; font-size:13px; letter-spacing:1px;">ENTER A TARGET TO GENERATE DORKS</div>
-        <div style="font-size:12px; margin-top:8px; opacity:0.6;">works with names, usernames, companies, domains, or emails</div>
+      <div style="margin-bottom:22px;">
+        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:8px; text-transform:uppercase;">Platforms (optional — restrict to specific sites)</label>
+        <div id="dbPlatforms" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:8px; text-transform:uppercase;">Query Preview</label>
+        <div id="dbPreview"
+          style="min-height:48px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:12px 16px; color:var(--amber); font-family:'Share Tech Mono',monospace; font-size:13px; word-break:break-all; line-height:1.6;">
+          <span style="color:var(--text-dim); font-style:italic;">Fill in fields above to build a query...</span>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button id="dbSearchBtn" onclick="dorkBuilderSearch()" disabled
+          style="background:var(--red); color:#fff; border:none; border-radius:6px; padding:10px 20px; font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:1px; cursor:pointer; white-space:nowrap; opacity:0.4;">
+          SEARCH IN GOOGLE
+        </button>
+        <button onclick="dorkBuilderCopy()"
+          style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
+          COPY QUERY
+        </button>
+        <button onclick="dorkBuilderClear()"
+          style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
+          CLEAR
+        </button>
       </div>
 
     </div>
@@ -2896,13 +2917,7 @@
     } else if (mode === 'dorks') {
       document.querySelectorAll('.hnav')[2].classList.add('active');
       document.getElementById('dorksWorkspace').style.display = 'flex';
-      // Auto-populate from investigate input if dork input is empty
-      const dorkInput = document.getElementById('dorkInput');
-      const invInput = document.getElementById('targetInput').value.trim();
-      if (!dorkInput.value.trim() && invInput) {
-        dorkInput.value = invInput;
-        dorkGenerate(invInput);
-      }
+      _initDorkPlatforms();
     } else if (mode === 'history') {
       document.querySelectorAll('.hnav')[3].classList.add('active');
       document.getElementById('historyWorkspace').style.display = 'grid';
@@ -3665,246 +3680,139 @@
   window._dorkSelected = new Set();
   window._dorkTotal = 0;
 
-  function _detectDorkType(val) {
-    if (!val) return 'unknown';
-    const v = val.trim();
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'email';
-    if (/^(https?:\/\/)?[\w-]+(\.[\w-]+)+/.test(v) && v.includes('.')) return 'domain';
-    if (/^AS\d+$/i.test(v)) return 'asn';
-    if (/\s/.test(v)) return 'name';
-    return 'username';
-  }
+  const _dorkPlatforms = [
+    { label: 'Instagram', site: 'instagram.com' },
+    { label: 'Facebook', site: 'facebook.com' },
+    { label: 'Twitter/X', site: 'twitter.com' },
+    { label: 'TikTok', site: 'tiktok.com' },
+    { label: 'Reddit', site: 'reddit.com' },
+    { label: 'LinkedIn', site: 'linkedin.com' },
+    { label: 'YouTube', site: 'youtube.com' },
+    { label: 'Twitch', site: 'twitch.tv' },
+    { label: 'GitHub', site: 'github.com' },
+    { label: 'Snapchat', site: 'snapchat.com' },
+    { label: 'Pinterest', site: 'pinterest.com' },
+    { label: 'Pastebin', site: 'pastebin.com' },
+  ];
+  window._dbPlatformActive = new Set();
+  let _dbPlatformsInit = false;
 
-  function _buildDorks(val) {
-    const type = _detectDorkType(val);
-    const v = val.trim();
-    const domain = type === 'domain' ? v.replace(/^https?:\/\//, '').replace(/\/.*/, '')
-      : type === 'email' ? v.split('@')[1]
-      : null;
-    const q = type === 'name' ? '"' + v + '"' : v;
-    const categories = [];
-
-    if (type === 'domain') {
-      categories.push({ label: 'INFRASTRUCTURE', icon: '🏗', dorks: [
-        { label: 'All indexed pages', query: 'site:' + domain },
-        { label: 'Subdomains', query: 'site:*.' + domain },
-        { label: 'Login/admin panels', query: 'site:' + domain + ' inurl:admin OR inurl:login OR inurl:portal' },
-        { label: 'Exposed files', query: 'site:' + domain + ' filetype:pdf OR filetype:xls OR filetype:xlsx OR filetype:docx OR filetype:csv' },
-        { label: 'Config/env files', query: 'site:' + domain + ' filetype:env OR filetype:cfg OR filetype:conf OR filetype:bak' },
-        { label: 'Directory listings', query: 'site:' + domain + ' intitle:"index of"' },
-        { label: 'Error pages / debug', query: 'site:' + domain + ' intext:"error" OR intext:"warning" OR intext:"debug" OR intext:"stack trace"' },
-      ]});
-      categories.push({ label: 'EMAIL & STAFF', icon: '📧', dorks: [
-        { label: 'Email addresses', query: '"@' + domain + '"' },
-        { label: 'Staff on LinkedIn', query: 'site:linkedin.com "' + domain.split('.')[0] + '"' },
-        { label: 'Staff on LinkedIn (via email)', query: 'site:linkedin.com "@' + domain + '"' },
-        { label: 'Email in GitHub', query: 'site:github.com "@' + domain + '"' },
-        { label: 'Email in Pastebin', query: 'site:pastebin.com "@' + domain + '"' },
-      ]});
-      categories.push({ label: 'DATA EXPOSURE', icon: '⚠️', dorks: [
-        { label: 'Password references', query: '"' + domain + '" password OR passwd OR credential' },
-        { label: 'API keys/tokens', query: 'site:github.com "' + domain + '" password OR token OR secret OR key' },
-        { label: 'Cloud storage buckets', query: '"' + domain + '" site:s3.amazonaws.com OR site:storage.googleapis.com OR site:blob.core.windows.net' },
-        { label: 'Pastebin leaks', query: 'site:pastebin.com "' + domain + '"' },
-        { label: 'Job postings (tech stack)', query: '"' + domain + '" OR "' + domain.split('.')[0] + '" site:linkedin.com OR site:indeed.com OR site:glassdoor.com "engineer" OR "developer" OR "security"' },
-      ]});
-      categories.push({ label: 'CACHED / ARCHIVED', icon: '🗄', dorks: [
-        { label: 'Google cache', query: 'cache:' + domain },
-        { label: 'Wayback Machine', query: 'site:web.archive.org "' + domain + '"' },
-        { label: 'Cached login pages', query: 'cache:' + domain + '/login' },
-      ]});
-    }
-
-    if (type === 'email') {
-      categories.push({ label: 'IDENTITY', icon: '🆔', dorks: [
-        { label: 'Email indexed anywhere', query: '"' + v + '"' },
-        { label: 'Email on social media', query: '"' + v + '" site:twitter.com OR site:reddit.com OR site:instagram.com' },
-        { label: 'Email in GitHub', query: 'site:github.com "' + v + '"' },
-        { label: 'Email in Pastebin', query: 'site:pastebin.com "' + v + '"' },
-        { label: 'Email in data leaks', query: '"' + v + '" "password" OR "leak" OR "breach" OR "dump"' },
-        { label: 'LinkedIn profile', query: 'site:linkedin.com "' + v + '"' },
-      ]});
-      categories.push({ label: 'DOMAIN (from email)', icon: '🏗', dorks: [
-        { label: 'All staff at domain', query: '"@' + domain + '"' },
-        { label: 'Domain on LinkedIn', query: 'site:linkedin.com "@' + domain + '"' },
-        { label: 'Domain exposed files', query: 'site:' + domain + ' filetype:pdf OR filetype:xls' },
-      ]});
-    }
-
-    if (type === 'username' || type === 'name') {
-      const isName = type === 'name';
-      categories.push({ label: 'SOCIAL MEDIA', icon: '📱', dorks: [
-        { label: 'Instagram', query: 'site:instagram.com ' + q },
-        { label: 'Twitter / X', query: 'site:twitter.com ' + q + ' OR site:x.com ' + q },
-        { label: 'Facebook', query: 'site:facebook.com ' + q },
-        { label: 'TikTok', query: 'site:tiktok.com ' + q },
-        { label: 'Reddit', query: 'site:reddit.com ' + q },
-        { label: 'LinkedIn', query: 'site:linkedin.com ' + q },
-        { label: 'YouTube', query: 'site:youtube.com ' + q },
-        { label: 'Twitch', query: 'site:twitch.tv ' + q },
-        { label: 'Pinterest', query: 'site:pinterest.com ' + q },
-      ]});
-      categories.push({ label: 'TECHNICAL', icon: '💻', dorks: [
-        { label: 'GitHub profile', query: 'site:github.com ' + q },
-        { label: 'GitHub repos/code', query: 'site:github.com ' + q + ' repos OR code OR commits' },
-        { label: 'Stack Overflow', query: 'site:stackoverflow.com ' + q },
-        { label: 'HackerNews', query: 'site:news.ycombinator.com ' + q },
-        { label: 'GitLab', query: 'site:gitlab.com ' + q },
-      ]});
-      categories.push({ label: 'IDENTITY & CONTACT', icon: '🆔', dorks: [
-        { label: 'General web presence', query: q },
-        { label: 'Email addresses', query: q + ' "@gmail.com" OR "@yahoo.com" OR "@outlook.com" OR "@hotmail.com"' },
-        { label: 'Phone numbers', query: q + ' "phone" OR "tel" OR "call" OR "contact"' },
-        { label: 'Location references', query: q + ' "lives in" OR "located in" OR "from" OR "address"' },
-        { label: 'Pastebin', query: 'site:pastebin.com ' + q },
-      ]});
-      if (isName) {
-        categories.push({ label: 'PROFESSIONAL', icon: '💼', dorks: [
-          { label: 'LinkedIn (full name)', query: 'site:linkedin.com/in ' + q },
-          { label: 'News mentions', query: q + ' site:news.google.com OR site:reuters.com OR site:apnews.com' },
-          { label: 'Court records / legal', query: q + ' "court" OR "case" OR "vs" OR "plaintiff" OR "defendant"' },
-          { label: 'Public records', query: q + ' "address" OR "age" OR "born" site:whitepages.com OR site:spokeo.com OR site:beenverified.com' },
-          { label: 'Academic / publications', query: q + ' site:scholar.google.com OR site:researchgate.net OR site:academia.edu' },
-        ]});
-      }
-      categories.push({ label: 'CACHED / ARCHIVED', icon: '🗄', dorks: [
-        { label: 'Wayback Machine', query: 'site:web.archive.org ' + q },
-        { label: 'Deleted content', query: q + ' site:webcache.googleusercontent.com' },
-      ]});
-    }
-
-    return { type, categories };
-  }
-
-  function dorkGenerate(val) {
-    if (!val || !val.trim()) return;
-    const { type, categories } = _buildDorks(val.trim());
-
-    const typeHint = document.getElementById('dorkTypeHint');
-    const typeLabel = document.getElementById('dorkTypeLabel');
-    typeHint.style.display = 'block';
-    const labels = { domain:'DOMAIN', email:'EMAIL', username:'USERNAME', name:'FULL NAME', asn:'ASN', unknown:'UNKNOWN' };
-    typeLabel.textContent = labels[type] || type.toUpperCase();
-
-    document.getElementById('dorkEmpty').style.display = 'none';
-    const results = document.getElementById('dorkResults');
-    results.style.display = 'block';
-
-    const actionBar = document.getElementById('dorkActionBar');
-    Array.from(results.children).forEach(c => { if (c.id !== 'dorkActionBar') c.remove(); });
-
-    window._dorkSelected = new Set();
-    let dorkIndex = 0;
-
-    categories.forEach(cat => {
-      const sec = document.createElement('div');
-      sec.style.cssText = 'margin-bottom:20px;';
-      let itemsHtml = '';
-      cat.dorks.forEach((d) => {
-        const idx = dorkIndex++;
-        itemsHtml += `
-          <div class="dork-item" data-idx="${idx}" data-query="${d.query.replace(/"/g,'&quot;')}"
-            style="display:flex; align-items:flex-start; gap:10px; padding:8px 12px; border-radius:5px; cursor:pointer; border:1px solid var(--border); margin-bottom:6px; background:var(--bg2);"
-            onclick="dorkToggle(${idx})">
-            <div class="dork-check" id="dcheck-${idx}"
-              style="width:14px; height:14px; min-width:14px; border:1px solid var(--border-hi); border-radius:3px; margin-top:2px; background:transparent; display:flex; align-items:center; justify-content:center;"></div>
-            <div style="flex:1;">
-              <div style="color:var(--text-mid); font-size:11px; font-family:'Share Tech Mono',monospace; margin-bottom:3px; text-transform:uppercase; letter-spacing:1px;">${d.label}</div>
-              <div style="color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:12px; word-break:break-all;">${d.query}</div>
-            </div>
-            <a href="https://www.google.com/search?q=${encodeURIComponent(d.query)}" target="_blank"
-              onclick="event.stopPropagation()"
-              style="color:var(--text-mid); font-size:11px; text-decoration:none; white-space:nowrap; padding:2px 6px; border:1px solid var(--border); border-radius:3px; font-family:'Share Tech Mono',monospace;"
-              title="Open in Google">↗</a>
-          </div>`;
-      });
-      sec.innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-          <span style="font-size:14px;">${cat.icon}</span>
-          <span style="font-family:'Share Tech Mono',monospace; color:var(--text-mid); font-size:11px; letter-spacing:2px;">${cat.label}</span>
-          <button onclick="dorkSelectCategory('${cat.label}')"
-            style="background:transparent; border:1px solid var(--border-mid); border-radius:3px; color:var(--text-mid); font-family:'Share Tech Mono',monospace; font-size:10px; padding:2px 8px; cursor:pointer; margin-left:auto;">
-            SELECT ALL
-          </button>
-        </div>
-        ${itemsHtml}`;
-      results.insertBefore(sec, actionBar);
+  function _initDorkPlatforms() {
+    if (_dbPlatformsInit) return;
+    _dbPlatformsInit = true;
+    const container = document.getElementById('dbPlatforms');
+    _dorkPlatforms.forEach((p, i) => {
+      const chip = document.createElement('div');
+      chip.id = 'dbplat-' + i;
+      chip.dataset.site = p.site;
+      chip.textContent = p.label;
+      chip.style.cssText = 'padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:var(--text-mid); font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:all .15s;';
+      chip.onclick = () => {
+        if (window._dbPlatformActive.has(i)) {
+          window._dbPlatformActive.delete(i);
+          chip.style.borderColor = 'var(--border-hi)';
+          chip.style.background = 'var(--bg2)';
+          chip.style.color = 'var(--text-mid)';
+        } else {
+          window._dbPlatformActive.add(i);
+          chip.style.borderColor = 'var(--red)';
+          chip.style.background = 'var(--bg3)';
+          chip.style.color = 'var(--text-bright)';
+        }
+        dorkBuild();
+      };
+      container.appendChild(chip);
     });
-
-    window._dorkTotal = dorkIndex;
-    dorkUpdateCount();
   }
 
-  function dorkToggle(idx) {
-    const item = document.querySelector('[data-idx="' + idx + '"]');
-    const check = document.getElementById('dcheck-' + idx);
-    if (window._dorkSelected.has(idx)) {
-      window._dorkSelected.delete(idx);
-      item.style.borderColor = 'var(--border)';
-      item.style.background = 'var(--bg2)';
-      check.style.background = 'transparent';
-      check.innerHTML = '';
+  function dorkBuild() {
+    const name = document.getElementById('dbName').value.trim();
+    const username = document.getElementById('dbUsername').value.trim();
+    const location = document.getElementById('dbLocation').value.trim();
+    const employer = document.getElementById('dbEmployer').value.trim();
+    const email = document.getElementById('dbEmail').value.trim();
+    const keywords = document.getElementById('dbKeywords').value.trim();
+
+    const parts = [];
+
+    // Name + Username logic
+    if (name && username) {
+      parts.push('("' + username + '" OR "' + name + '")');
+    } else if (name) {
+      parts.push('"' + name + '"');
+    } else if (username) {
+      parts.push(username);
+    }
+
+    if (location) parts.push('"' + location + '"');
+    if (employer) parts.push('"' + employer + '"');
+    if (email) parts.push('"' + email + '"');
+
+    // Keywords
+    if (keywords) {
+      const kws = keywords.split(',').map(k => k.trim()).filter(Boolean);
+      if (kws.length === 1) {
+        parts.push('"' + kws[0] + '"');
+      } else if (kws.length > 1) {
+        parts.push('(' + kws.map(k => '"' + k + '"').join(' OR ') + ')');
+      }
+    }
+
+    // Platforms
+    const activePlats = [];
+    window._dbPlatformActive.forEach(i => {
+      activePlats.push('site:' + _dorkPlatforms[i].site);
+    });
+    if (activePlats.length === 1) {
+      parts.push(activePlats[0]);
+    } else if (activePlats.length > 1) {
+      parts.push('(' + activePlats.join(' OR ') + ')');
+    }
+
+    const query = parts.join(' ');
+    const preview = document.getElementById('dbPreview');
+    const searchBtn = document.getElementById('dbSearchBtn');
+
+    if (query) {
+      preview.innerHTML = '<span style="color:var(--amber);">' + query.replace(/</g, '&lt;') + '</span>';
+      searchBtn.disabled = false;
+      searchBtn.style.opacity = '1';
     } else {
-      window._dorkSelected.add(idx);
-      item.style.borderColor = 'var(--red)';
-      item.style.background = 'var(--bg3)';
-      check.style.background = 'var(--red)';
-      check.innerHTML = '<span style="color:#fff;font-size:10px;line-height:1;">✓</span>';
+      preview.innerHTML = '<span style="color:var(--text-dim); font-style:italic;">Fill in fields above to build a query...</span>';
+      searchBtn.disabled = true;
+      searchBtn.style.opacity = '0.4';
     }
-    dorkUpdateCount();
+
+    window._dbCurrentQuery = query;
   }
 
-  function dorkSelectCategory(catLabel) {
-    document.querySelectorAll('.dork-item').forEach(item => {
-      const sec = item.closest('div[style*="margin-bottom:20px"]');
-      const lbl = sec ? sec.querySelector('[style*="letter-spacing:2px"]') : null;
-      if (lbl && lbl.textContent.trim() === catLabel) {
-        if (!window._dorkSelected.has(parseInt(item.dataset.idx))) dorkToggle(parseInt(item.dataset.idx));
+  function dorkBuilderSearch() {
+    const query = window._dbCurrentQuery;
+    if (!query) { showToast('Build a query first'); return; }
+    window.open('https://www.google.com/search?q=' + encodeURIComponent(query), '_blank');
+  }
+
+  function dorkBuilderCopy() {
+    const query = window._dbCurrentQuery;
+    if (!query) { showToast('Build a query first'); return; }
+    navigator.clipboard.writeText(query).then(() => showToast('Query copied to clipboard'));
+  }
+
+  function dorkBuilderClear() {
+    ['dbName','dbUsername','dbLocation','dbEmployer','dbEmail','dbKeywords'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    window._dbPlatformActive.clear();
+    _dorkPlatforms.forEach((_, i) => {
+      const chip = document.getElementById('dbplat-' + i);
+      if (chip) {
+        chip.style.borderColor = 'var(--border-hi)';
+        chip.style.background = 'var(--bg2)';
+        chip.style.color = 'var(--text-mid)';
       }
     });
-  }
-
-  function dorkSelectAll() {
-    const allSelected = window._dorkSelected.size === window._dorkTotal;
-    document.querySelectorAll('.dork-item').forEach(item => {
-      const idx = parseInt(item.dataset.idx);
-      if (allSelected) { if (window._dorkSelected.has(idx)) dorkToggle(idx); }
-      else { if (!window._dorkSelected.has(idx)) dorkToggle(idx); }
-    });
-    document.getElementById('dorkSelectAllBtn').textContent = allSelected ? 'SELECT ALL' : 'DESELECT ALL';
-  }
-
-  function dorkUpdateCount() {
-    document.getElementById('dorkCount').textContent =
-      window._dorkSelected.size + ' of ' + window._dorkTotal + ' selected';
-  }
-
-  function dorkSearchSelected() {
-    if (!window._dorkSelected || window._dorkSelected.size === 0) {
-      showToast('Select at least one dork first');
-      return;
-    }
-    const queries = [];
-    window._dorkSelected.forEach(idx => {
-      const item = document.querySelector('[data-idx="' + idx + '"]');
-      if (item) queries.push(item.dataset.query);
-    });
-    if (queries.length === 1) {
-      window.open('https://www.google.com/search?q=' + encodeURIComponent(queries[0]), '_blank');
-      return;
-    }
-    const combined = queries.map(q => '(' + q + ')').join(' OR ');
-    window.open('https://www.google.com/search?q=' + encodeURIComponent(combined), '_blank');
-  }
-
-  function dorkCopySelected() {
-    if (window._dorkSelected.size === 0) { showToast('Select at least one dork first'); return; }
-    const lines = [];
-    window._dorkSelected.forEach(idx => {
-      const item = document.querySelector('[data-idx="' + idx + '"]');
-      if (item) lines.push(item.dataset.query);
-    });
-    navigator.clipboard.writeText(lines.join('\n')).then(() => showToast('Dorks copied to clipboard'));
+    window._dbCurrentQuery = '';
+    dorkBuild();
   }
 
   function renderSettings() {
