@@ -4064,7 +4064,7 @@
         chip.dataset.site = p.site;
         chip.dataset.brandColor = brandColor;
         chip.textContent = p.label;
-        chip.style.cssText = 'padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:var(--text-mid); font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:border-color .15s, background .15s;';
+        chip.style.cssText = `padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:${brandColor}; font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:border-color .15s, background .15s;`;
         chip.onmouseenter = () => {
           if (!chip.classList.contains('active')) {
             chip.style.borderColor = brandColor;
