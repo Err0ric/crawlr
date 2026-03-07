@@ -18,7 +18,15 @@ HIGH_CONFIDENCE_SITES = {
     "snapchat", "telegram", "discord", "spotify", "soundcloud",
     "medium", "deviantart", "flickr", "vimeo", "tumblr",
     "substack", "patreon", "cashapp", "venmo", "paypal",
-    "keybase", "mastodon",
+    "keybase", "mastodon", "bluesky", "kick", "rumble", "threads",
+}
+
+URL_FALLBACKS = {
+    "bluesky": "https://bsky.app/profile/{username}",
+    "kick": "https://kick.com/{username}",
+    "rumble": "https://rumble.com/user/{username}",
+    "threads": "https://www.threads.net/@{username}",
+    "mastodon.social": "https://mastodon.social/@{username}",
 }
 
 
@@ -61,10 +69,15 @@ async def run_sherlock(username: str, timeout: int = 300) -> dict:
                 for row in reader:
                     if row.get("exists") == "Claimed":
                         site = row.get("name", "")
+                        url = row.get("url_user", "")
+                        if not url:
+                            fallback_key = site.lower().strip()
+                            if fallback_key in URL_FALLBACKS:
+                                url = URL_FALLBACKS[fallback_key].format(username=username)
                         confidence = _classify_site(site)
                         results.append({
                             "site": site,
-                            "url": row.get("url_user", ""),
+                            "url": url,
                             "response_time": round(float(row.get("response_time_s", 0)), 2),
                             "confidence": confidence,
                         })
