@@ -988,57 +988,45 @@
         <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Tell Crawlr what you know. It builds the search.</div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:22px;">
-        <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Name</label>
-          <input id="dbName" type="text" placeholder="e.g. Al Coholic" autocomplete="off" oninput="dorkBuild()"
-            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+      <div style="display:flex;gap:32px;align-items:flex-start;margin-bottom:20px;">
+        <div style="flex:1;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 20px;">
+            <div>
+              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Name</label>
+              <input id="dbName" type="text" placeholder="e.g. Al Coholic" autocomplete="off" oninput="dorkBuild()"
+                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+            </div>
+            <div>
+              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Username / Handle</label>
+              <input id="dbUsername" type="text" placeholder="e.g. xX_Pu55ySlay3r69_Xx" autocomplete="off" oninput="dorkBuild()"
+                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+            </div>
+            <div>
+              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Location</label>
+              <input id="dbLocation" type="text" placeholder="e.g. Mom's Basement, USA" autocomplete="off" oninput="dorkBuild()"
+                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+            </div>
+            <div>
+              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Employer / School</label>
+              <input id="dbEmployer" type="text" placeholder="e.g. GameStop, DeVry University" autocomplete="off" oninput="dorkBuild()"
+                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+            </div>
+            <div>
+              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Email</label>
+              <input id="dbEmail" type="text" placeholder="e.g. gordon@blackmesa.com" autocomplete="off" oninput="dorkBuild()"
+                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+            </div>
+            <div>
+              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Keywords / Interests</label>
+              <input id="dbKeywords" type="text" placeholder="e.g. Doritos, Mountain Dew" autocomplete="off" oninput="dorkBuild()"
+                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+            </div>
+          </div>
         </div>
-        <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Username / Handle</label>
-          <input id="dbUsername" type="text" placeholder="e.g. xX_Pu55ySlay3r69_Xx" autocomplete="off" oninput="dorkBuild()"
-            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        <div style="flex:1;">
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:8px; text-transform:uppercase;">Platforms (optional — restrict to specific sites)</label>
+          <div id="dbPlatforms"></div>
         </div>
-        <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Location</label>
-          <input id="dbLocation" type="text" placeholder="e.g. Mom's Basement, USA" autocomplete="off" oninput="dorkBuild()"
-            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-        </div>
-        <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Employer / School</label>
-          <input id="dbEmployer" type="text" placeholder="e.g. GameStop, DeVry University" autocomplete="off" oninput="dorkBuild()"
-            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-        </div>
-        <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Email</label>
-          <input id="dbEmail" type="text" placeholder="e.g. gordon@blackmesa.com" autocomplete="off" oninput="dorkBuild()"
-            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-        </div>
-        <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Keywords / Interests</label>
-          <input id="dbKeywords" type="text" placeholder="e.g. Doritos, Mountain Dew" autocomplete="off" oninput="dorkBuild()"
-            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-        </div>
-      </div>
-
-      <div style="margin-bottom:22px; padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
-        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">VIN Lookup // Decodes Year / Make / Model</label>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
-            oninput="this.value=this.value.toUpperCase()"
-            onkeydown="if(event.key==='Enter') vinLookup()"
-            style="flex:1; background:var(--bg1); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none; letter-spacing:1px;" />
-          <button onclick="vinLookup()"
-            style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
-            DECODE
-          </button>
-        </div>
-        <div id="dbVinResult" style="display:none; margin-top:10px; font-family:'Share Tech Mono',monospace; font-size:12px; padding:8px 12px; border-radius:5px; background:var(--bg1);"></div>
-      </div>
-
-      <div style="margin-bottom:22px;">
-        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:8px; text-transform:uppercase;">Platforms (optional — restrict to specific sites)</label>
-        <div id="dbPlatforms"></div>
       </div>
 
       <div style="margin-bottom:22px;">
@@ -1049,7 +1037,7 @@
         </div>
       </div>
 
-      <div style="display:flex; gap:10px; align-items:center;">
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:0;">
         <button id="dbSearchBtn" onclick="dorkBuilderSearch()" disabled
           style="background:var(--red); color:#fff; border:none; border-radius:6px; padding:10px 20px; font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:1px; cursor:pointer; white-space:nowrap; opacity:0.4;">
           SEARCH IN GOOGLE
@@ -1062,6 +1050,23 @@
           style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
           CLEAR
         </button>
+      </div>
+
+      <div style="border-top:1px solid var(--border-hi);margin:28px 0 20px;"></div>
+
+      <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
+        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">VIN Lookup // Decodes Year / Make / Model</label>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
+            oninput="this.value=this.value.toUpperCase()"
+            onkeydown="if(event.key==='Enter') vinLookup()"
+            style="flex:1; background:var(--bg1); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none; letter-spacing:1px;" />
+          <button onclick="vinLookup()"
+            style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
+            DECODE
+          </button>
+        </div>
+        <div id="dbVinResult" style="display:none; margin-top:10px; font-family:'Share Tech Mono',monospace; font-size:12px; padding:8px 12px; border-radius:5px; background:var(--bg1);"></div>
       </div>
 
     </div>
