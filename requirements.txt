@@ -1,8 +1,13 @@
 fastapi
-uvicorn
+uvicorn[standard]
 anthropic
 httpx
 python-whois
+dnspython
+requests
+beautifulsoup4
 sherlock-project
 holehe
 maigret
+theHarvester
+python-nmap
