@@ -439,6 +439,129 @@ async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...)):
     }
 
 
+class DeepAnalysisRequest(BaseModel):
+    target: str
+    dns: Optional[dict] = None
+    whois: Optional[dict] = None
+    ssl: Optional[dict] = None
+    headers: Optional[dict] = None
+    subdomains: Optional[dict] = None
+    asn: Optional[dict] = None
+    portscan: Optional[dict] = None
+    asn_detail: Optional[dict] = None
+
+
+@router.post("/deep")
+async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...)):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API key is required")
+
+    prompt_parts = [f"Target: {req.target}\n"]
+
+    if req.dns and req.dns.get("records"):
+        for rtype, records in req.dns["records"].items():
+            prompt_parts.append(f"DNS {rtype}: {', '.join(records[:10])}")
+        if req.dns.get("cloudflare_proxied"):
+            prompt_parts.append("CLOUDFLARE PROXY DETECTED on A records.")
+
+    if req.whois and req.whois.get("found"):
+        w = req.whois
+        parts = []
+        for k in ("registrar", "creation_date", "expiration_date", "org", "country"):
+            if w.get(k):
+                parts.append(f"{k}: {w[k]}")
+        if w.get("name_servers"):
+            parts.append(f"nameservers: {', '.join(w['name_servers'][:5])}")
+        prompt_parts.append(f"WHOIS: {', '.join(parts)}")
+
+    if req.ssl and req.ssl.get("found"):
+        s = req.ssl
+        parts = [f"issuer: {s.get('issuer', '')}", f"CN: {s.get('common_name', '')}"]
+        if s.get("days_left") is not None:
+            parts.append(f"expires in {s['days_left']} days")
+        if s.get("sans"):
+            parts.append(f"SANs: {', '.join(s['sans'][:10])}")
+        prompt_parts.append(f"SSL: {', '.join(parts)}")
+
+    if req.headers and req.headers.get("found"):
+        h = req.headers
+        prompt_parts.append(f"HTTP server: {h.get('server', 'unknown')}, grade: {h.get('grade', '?')}")
+        sec = h.get("security_headers", {})
+        missing = [k for k, v in sec.items() if not v.get("present")]
+        if missing:
+            prompt_parts.append(f"Missing security headers: {', '.join(missing)}")
+
+    if req.subdomains and req.subdomains.get("subdomains"):
+        subs = req.subdomains["subdomains"]
+        names = [s["subdomain"] for s in subs]
+        prompt_parts.append(f"Subdomains ({len(names)}): {', '.join(names[:20])}")
+
+    if req.asn and req.asn.get("found"):
+        a = req.asn
+        parts = [f"IP: {a.get('ip', '')}"]
+        if a.get("asn"):
+            parts.append(f"ASN: {a['asn']}")
+        if a.get("org"):
+            parts.append(f"org: {a['org']}")
+        prompt_parts.append(f"ASN: {', '.join(parts)}")
+
+    if req.portscan:
+        open_ports = [f"{r['port']}/{r['service']}" for r in req.portscan.get("results", []) if r.get("open")]
+        if open_ports:
+            prompt_parts.append(f"Open ports: {', '.join(open_ports)}")
+
+    if req.asn_detail and req.asn_detail.get("found"):
+        ad = req.asn_detail
+        parts = []
+        if ad.get("org"):
+            parts.append(f"org: {ad['org']}")
+        if ad.get("prefixes_v4"):
+            parts.append(f"IPv4 prefixes: {len(ad['prefixes_v4'])}")
+        if ad.get("peers"):
+            parts.append(f"peers: {ad.get('total_peers', len(ad['peers']))}")
+        prompt_parts.append(f"ASN Detail: {', '.join(parts)}")
+
+    recon_data = "\n".join(prompt_parts)
+
+    client = anthropic.Anthropic(api_key=x_api_key)
+    t0 = time.time()
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=3000,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "You are a senior security analyst. You have been given OSINT reconnaissance data for a target. "
+                    "Perform a deep analytical breakdown covering:\n\n"
+                    "## Threat Model\n"
+                    "## Attack Surface Assessment\n"
+                    "## High-Value Targets (prioritized)\n"
+                    "## Recommended Investigation Steps\n"
+                    "## Operational Security Observations\n\n"
+                    "Be specific, technical, and base every conclusion strictly on the data provided. "
+                    "Do not speculate beyond what the data supports. "
+                    "Use **bold** for emphasis. Use → prefix for action items. "
+                    "Write in markdown with ## headers.\n\n"
+                    f"Recon data:\n{recon_data}"
+                ),
+            }
+        ],
+    )
+
+    elapsed = round(time.time() - t0, 1)
+    text = message.content[0].text
+    tokens = message.usage.input_tokens + message.usage.output_tokens
+
+    return {
+        "summary": text,
+        "model": message.model,
+        "tokens": tokens,
+        "elapsed": elapsed,
+    }
+
+
 class CorrelateRequest(BaseModel):
     targets: dict  # { "target_name": { sherlock: ..., github: ..., ... }, ... }
 
