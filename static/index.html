@@ -714,6 +714,18 @@
   </div>
 </div>
 
+<div class="overlay" id="deepAnalysisOverlay" style="z-index:300;">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-eye">// DEEP ANALYSIS</div>
+    <div class="modal-title">Extended AI Analysis</div>
+    <div class="modal-sub" style="line-height:1.6;margin-bottom:12px;">This will send all recon data to Claude for deep analysis. Estimated usage: 2,000–3,000 tokens from your API key.</div>
+    <div class="modal-actions">
+      <button class="modal-primary" style="background:rgba(245,158,11,0.1);border-color:#f59e0b;" onclick="confirmDeepAnalysis()">Run Deep Analysis</button>
+      <button class="modal-secondary" onclick="closeDeepAnalysis()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="termsOverlay" style="z-index:300;">
   <div class="modal" style="max-width:480px;">
     <div class="modal-eye">// Terms of Use · v1</div>
@@ -842,6 +854,10 @@
     </div>
 
     <div class="content" id="aiReportPanel" style="display:none;">
+      <div id="deepDiveBtn" style="display:none;padding:12px 16px;">
+        <button onclick="showDeepDiveModal()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">⚡ Run Deep Dive Analysis</button>
+      </div>
+      <div id="deepDiveResults" style="display:none;padding:0 16px 16px;"></div>
       <div id="aiReportContent">
         <div class="empty">
           <div class="empty-glyph">[~]</div>
@@ -849,10 +865,6 @@
           <div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div>
         </div>
       </div>
-      <div id="deepDiveBtn" style="display:none;padding:12px 16px;">
-        <button onclick="showDeepDiveModal()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">⚡ Run Deep Dive Analysis</button>
-      </div>
-      <div id="deepDiveResults" style="display:none;padding:0 16px 16px;"></div>
     </div>
 
     <div class="statusbar">
@@ -933,14 +945,13 @@
 
     <div class="content" id="reconAiReportPanel" style="display:none;overflow-y:auto;">
       <div id="reconDeepAnalysisWrap" style="display:none;padding:16px 20px;">
-        <div id="deepAnalysisResult"></div>
-        <div style="border-top:1px solid rgba(245,158,11,0.2);margin:16px 0;"></div>
-        <button id="reconDeepAnalysisBtn" onclick="runDeepAnalysis()"
+        <button id="reconDeepAnalysisBtn" onclick="showDeepAnalysisModal()"
           style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;"
           onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'"
           onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">
           // DEEP ANALYSIS
         </button>
+        <div id="deepAnalysisResult"></div>
       </div>
       <div id="reconAiReportContent">
         <div class="empty">
@@ -3476,13 +3487,21 @@
     }
   }
 
+  function showDeepAnalysisModal() {
+    const apiKey = getApiKey();
+    if (!apiKey) { showToast('Set your Claude API key in Settings first'); return; }
+    const target = document.getElementById('reconTargetInput').value.trim();
+    if (!target || !Object.keys(reconCollected).length) { showToast('Run a recon scan first'); return; }
+    document.getElementById('deepAnalysisOverlay').classList.add('open');
+  }
+  function closeDeepAnalysis() { document.getElementById('deepAnalysisOverlay').classList.remove('open'); }
+  async function confirmDeepAnalysis() { closeDeepAnalysis(); await runDeepAnalysis(); }
+
   async function runDeepAnalysis() {
     const apiKey = getApiKey();
     if (!apiKey) { showToast('Set your Claude API key in Settings first'); return; }
     const target = document.getElementById('reconTargetInput').value.trim();
     if (!target || !Object.keys(reconCollected).length) { showToast('Run a recon scan first'); return; }
-
-    if (!confirm('// DEEP ANALYSIS\n\nThis will send all recon data to Claude (~2,000-3,000 tokens).\n\nContinue?')) return;
 
     const btn = document.getElementById('reconDeepAnalysisBtn');
     const resultEl = document.getElementById('deepAnalysisResult');
