@@ -988,50 +988,42 @@
         <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Tell Crawlr what you know. It builds the search.</div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px;align-items:start;margin-bottom:20px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px;">
         <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:8px; text-transform:uppercase;">Search Fields</label>
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            <div>
-              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Name</label>
-              <input id="dbName" type="text" placeholder="e.g. Al Coholic" autocomplete="off" oninput="dorkBuild()"
-                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:9px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-            </div>
-            <div>
-              <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Username / Handle</label>
-              <input id="dbUsername" type="text" placeholder="e.g. xX_Pu55ySlay3r69_Xx" autocomplete="off" oninput="dorkBuild()"
-                style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:9px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div>
-                <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Location</label>
-                <input id="dbLocation" type="text" placeholder="e.g. Mom's Basement, USA" autocomplete="off" oninput="dorkBuild()"
-                  style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:9px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-              </div>
-              <div>
-                <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Employer / School</label>
-                <input id="dbEmployer" type="text" placeholder="e.g. GameStop, DeVry" autocomplete="off" oninput="dorkBuild()"
-                  style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:9px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div>
-                <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Email</label>
-                <input id="dbEmail" type="text" placeholder="e.g. gordon@blackmesa.com" autocomplete="off" oninput="dorkBuild()"
-                  style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:9px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-              </div>
-              <div>
-                <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Keywords / Interests</label>
-                <input id="dbKeywords" type="text" placeholder="e.g. Doritos, Mountain Dew" autocomplete="off" oninput="dorkBuild()"
-                  style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:9px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
-              </div>
-            </div>
-          </div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Name</label>
+          <input id="dbName" type="text" placeholder="e.g. Al Coholic" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
         </div>
         <div>
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:8px; text-transform:uppercase;">Platforms (optional — restrict to specific sites)</label>
-          <div id="dbPlatforms" style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;align-items:start;"></div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Username / Handle</label>
+          <input id="dbUsername" type="text" placeholder="e.g. xX_Pu55ySlay3r69_Xx" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
         </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Email</label>
+          <input id="dbEmail" type="text" placeholder="e.g. gordon@blackmesa.com" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Location</label>
+          <input id="dbLocation" type="text" placeholder="e.g. Mom's Basement, USA" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Employer / School</label>
+          <input id="dbEmployer" type="text" placeholder="e.g. GameStop, DeVry University" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+        <div>
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:5px; text-transform:uppercase;">Keywords / Interests</label>
+          <input id="dbKeywords" type="text" placeholder="e.g. Doritos, Mountain Dew" autocomplete="off" oninput="dorkBuild()"
+            style="width:100%; box-sizing:border-box; background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none;" />
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:8px; text-transform:uppercase;">Platforms (optional — restrict to specific sites)</label>
+        <div id="dbPlatforms" style="display:flex;flex-wrap:wrap;gap:6px;align-items:start;"></div>
       </div>
 
       <div style="margin-bottom:22px;">
@@ -4049,16 +4041,13 @@
     _dbPlatformsInit = true;
     const container = document.getElementById('dbPlatforms');
     let globalIdx = 0;
-    _dorkPlatformGroups.forEach(group => {
-      const groupDiv = document.createElement('div');
-      groupDiv.style.cssText = 'margin-bottom:6px;';
+    _dorkPlatformGroups.forEach((group, gi) => {
+      // Category label as a full-width break
       const catLabel = document.createElement('div');
       catLabel.className = 'platform-cat';
       catLabel.textContent = group.cat;
-      catLabel.style.cssText = 'font-family:"Share Tech Mono",monospace; margin-bottom:4px; text-transform:uppercase;';
-      groupDiv.appendChild(catLabel);
-      const chipsRow = document.createElement('div');
-      chipsRow.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px;';
+      catLabel.style.cssText = 'font-family:"Share Tech Mono",monospace; text-transform:uppercase; width:100%;' + (gi > 0 ? 'margin-top:8px;' : '');
+      container.appendChild(catLabel);
       group.items.forEach(p => {
         const i = globalIdx++;
         const brandColor = _platformBrandColors[p.label] || 'var(--text-mid)';
@@ -4096,10 +4085,8 @@
           }
           dorkBuild();
         };
-        chipsRow.appendChild(chip);
+        container.appendChild(chip);
       });
-      groupDiv.appendChild(chipsRow);
-      container.appendChild(groupDiv);
     });
   }
 
