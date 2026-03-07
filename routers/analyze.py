@@ -210,12 +210,15 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
                 "content": (
                     "You are an OSINT analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
                     '{\n'
-                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3"],\n'
+                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"],\n'
                     '  "full_report": "markdown string"\n'
                     '}\n\n'
-                    "**short_summary**: Exactly 3-4 short bullet strings (no markdown, plain text, max 120 chars each). "
-                    "These are the most critical findings — what an investigator needs to see at a glance. "
-                    "Include a risk/exposure level assessment in the first bullet.\n\n"
+                    "**short_summary**: Exactly 4 bullet strings. STRICT RULES:\n"
+                    "- Each bullet starts with a category label followed by a dash (e.g. 'Platform Footprint –', 'Identity Lead –', 'Breach Exposure –')\n"
+                    "- Maximum 15 words per bullet\n"
+                    "- Every bullet MUST reference specific findings (actual platform names, usernames, breach names, email addresses, account counts)\n"
+                    "- NO generic observations. Bad: 'Active on multiple platforms'. Good: 'Platform Footprint – confirmed on GitHub, Reddit, Steam, and 12 others'\n"
+                    "- Plain text only, no markdown\n\n"
                     "**full_report**: A markdown string with this structure:\n\n"
                     "## Digital Footprint\n"
                     "Brief overview of the target's online presence and notable patterns.\n\n"

@@ -291,11 +291,15 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
                 "content": (
                     "You are an infrastructure security analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
                     '{\n'
-                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3"],\n'
+                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"],\n'
                     '  "full_report": "markdown string"\n'
                     '}\n\n'
-                    "**short_summary**: Exactly 3-4 short bullet strings (no markdown, plain text, max 120 chars each). "
-                    "Critical findings at a glance — exposure level, key risks, notable findings.\n\n"
+                    "**short_summary**: Exactly 4 bullet strings. STRICT RULES:\n"
+                    "- Each bullet starts with a category label followed by a dash (e.g. 'Missing Headers –', 'Open Ports –', 'SSL Risk –')\n"
+                    "- Maximum 15 words per bullet\n"
+                    "- Every bullet MUST reference specific data from the scan (actual port numbers, header names, subdomain names, CVE IDs, IP addresses)\n"
+                    "- NO generic observations. Bad: 'Several security headers missing'. Good: 'Missing Headers – no CSP, X-Frame-Options, or HSTS detected'\n"
+                    "- Plain text only, no markdown\n\n"
                     "**full_report**: A markdown string with this structure:\n\n"
                     "## Attack Surface Summary\n"
                     "Brief overview of the target's external footprint, hosting, and exposure.\n\n"
