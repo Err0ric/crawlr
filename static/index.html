@@ -3880,10 +3880,22 @@
   }
 
   function dorkSearchSelected() {
-    if (window._dorkSelected.size === 0) { showToast('Select at least one dork first'); return; }
+    if (!window._dorkSelected || window._dorkSelected.size === 0) {
+      showToast('Select at least one dork first');
+      return;
+    }
+    const queries = [];
     window._dorkSelected.forEach(idx => {
       const item = document.querySelector('[data-idx="' + idx + '"]');
-      if (item) window.open('https://www.google.com/search?q=' + encodeURIComponent(item.dataset.query), '_blank');
+      if (item) queries.push(item.dataset.query);
+    });
+    if (queries.length > 0) {
+      window.open('https://www.google.com/search?q=' + encodeURIComponent(queries[0]), '_blank');
+    }
+    queries.slice(1).forEach((q, i) => {
+      setTimeout(() => {
+        window.open('https://www.google.com/search?q=' + encodeURIComponent(q), '_blank');
+      }, (i + 1) * 300);
     });
   }
 
