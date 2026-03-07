@@ -820,6 +820,7 @@
       </div>
       <div class="mod-scroll">
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Sherlock</div><div class="mod-sub">username · social enumeration</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle" onclick="this.classList.toggle('on');document.getElementById('maigretNsfwWrap').style.display=this.classList.contains('on')?'flex':'none'"></div><div class="mod-info"><div class="mod-name">Maigret</div><div class="mod-sub">username · 3,000+ sites + NSFW</div><div id="maigretNsfwWrap" style="display:none;align-items:center;gap:6px;margin-top:4px;"><div class="mod-toggle on" id="maigretNsfwToggle" onclick="event.stopPropagation();this.classList.toggle('on')" style="transform:scale(0.7);margin:0;"></div><span style="font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:0.5px;">incl. NSFW</span></div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Holehe</div><div class="mod-sub">email · account detection</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">theHarvester</div><div class="mod-sub">domain · subdomain recon</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HIBP</div><div class="mod-sub">email · breach database</div></div><div class="mod-tag free">FREE</div></div>
@@ -1372,6 +1373,59 @@
     return html;
   }
 
+  /* ── Maigret results renderer ── */
+  function renderMaigretCard(data) {
+    if (data.error === 'maigret not installed') return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Maigret · Profiles</div><div class="badge b-none">NOT INSTALLED</div>${copyBtn('Maigret')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>maigret is not installed — run: pip install maigret</div></div></div>`;
+    const count = data.total || 0;
+    const confirmed = data.confirmed ?? count;
+    const items = data.results || [];
+
+    const badgeText = confirmed < count ? `${confirmed} CONFIRMED · ${count - confirmed} UNVERIFIED` : `${count} HIT${count !== 1 ? 'S' : ''}`;
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Maigret · Profiles</div>
+        <div class="badge ${confirmed > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div>
+        ${copyBtn('Maigret')}
+      </div>
+      <div class="rcard-body">`;
+
+    if (count === 0) {
+      html += `<div class="ritem"><div class="dot dd"></div>No profiles found</div>`;
+    } else {
+      const confirmedItems = items.filter(r => r.confidence !== 'false_positive');
+      const fpItems = items.filter(r => r.confidence === 'false_positive');
+
+      function maigretRow(r) {
+        const id = 'mg_' + r.site;
+        return `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<span>${r.site}</span>${r.category ? ` <span style="color:var(--text-dim);font-size:9px;margin-left:4px;">(${r.category})</span>` : ''} <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
+      }
+
+      const visibleConfirmed = confirmedItems.slice(0, 6);
+      const remainingConfirmed = confirmedItems.length - visibleConfirmed.length;
+      for (const r of visibleConfirmed) html += maigretRow(r);
+      if (remainingConfirmed > 0) {
+        html += `<div class="rmore" onclick="this.parentElement.querySelectorAll('.ritem-extra-mgconf').forEach(e=>e.style.display='flex');this.remove()">+ ${remainingConfirmed} more →</div>`;
+        for (const r of confirmedItems.slice(6)) {
+          html += maigretRow(r).replace('class="ritem', 'class="ritem ritem-extra-mgconf').replace(/style="/, 'style="display:none;');
+        }
+      }
+
+      if (fpItems.length > 0) {
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          <div class="rmore" style="opacity:0.5;font-size:9px;" onclick="const s=this.nextElementSibling;s.style.display=s.style.display==='none'?'block':'none';this.textContent=s.style.display==='none'?'▸ ${fpItems.length} unverified (likely false positives)':'▾ ${fpItems.length} unverified (likely false positives)'">▸ ${fpItems.length} unverified (likely false positives)</div>
+          <div style="display:none;">`;
+        for (const r of fpItems) {
+          const id = 'mg_' + r.site;
+          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.4;">${chkHtml(id)}<span>${r.site}</span> <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
+        }
+        html += `</div></div>`;
+      }
+    }
+
+    html += `</div></div>`;
+    return html;
+  }
+
   /* ── Holehe results renderer ── */
   function renderHoleheCard(data) {
     const count = data.total || 0;
@@ -1826,6 +1880,11 @@
         if (r.confidence !== 'false_positive' && r.url) urls.push({ site: r.site, url: r.url });
       }
     }
+    if (c.maigret && c.maigret.results) {
+      for (const r of c.maigret.results) {
+        if (r.confidence !== 'false_positive' && r.url && !urls.some(p => p.url === r.url)) urls.push({ site: r.site, url: r.url });
+      }
+    }
     if (c.platformCheck && c.platformCheck.results) {
       for (const r of c.platformCheck.results) {
         if (r.found && r.url && !urls.some(p => p.url === r.url)) urls.push({ site: r.platform, url: r.url });
@@ -1839,6 +1898,7 @@
     // Base AI tokens from existing data
     let est = 800;
     if (c.sherlock) est += (c.sherlock.results || []).length * 15;
+    if (c.maigret) est += (c.maigret.results || []).length * 15;
     if (c.holehe) est += (c.holehe.results || []).length * 10;
     if (c.harvester) est += 200;
     if (c.github && c.github.found) est += 150;
@@ -2083,24 +2143,37 @@
         '/api/recon/sherlock', { username }, renderSherlockCard);
     }
 
+    if (!domain && !nameSearch && isModOn('Maigret')) {
+      const nsfw = document.getElementById('maigretNsfwToggle')?.classList.contains('on') ?? true;
+      collected.maigret = await runModule(logEl, cardsEl, t0,
+        `Maigret scan on "${username}"`,
+        '/api/recon/maigret', { username, nsfw }, renderMaigretCard);
+    }
+
     if (!domain && !email && !nameSearch) {
       collected.github = await runModule(logEl, cardsEl, t0,
         `GitHub profile lookup "${username}"`,
         '/api/recon/github', { username }, renderGithubCard);
     }
 
-    if (!domain && !nameSearch && collected.sherlock) {
-      const sherlockSites = (collected.sherlock.results || []).map(r => r.site);
+    if (!domain && !nameSearch && (collected.sherlock || collected.maigret)) {
+      const allFoundSites = [
+        ...(collected.sherlock?.results || []).map(r => r.site),
+        ...(collected.maigret?.results || []).map(r => r.site),
+      ];
       collected.enricher = await runModule(logEl, cardsEl, t0,
         `Scraping profile bios for "${username}"`,
-        '/api/recon/enrich', { username, sherlock_sites: sherlockSites }, renderEnricherCard);
+        '/api/recon/enrich', { username, sherlock_sites: allFoundSites }, renderEnricherCard);
     }
 
     if (!domain && !nameSearch) {
-      const sherlockSites = collected.sherlock ? (collected.sherlock.results || []).map(r => r.site) : [];
+      const allFoundSites = [
+        ...(collected.sherlock?.results || []).map(r => r.site),
+        ...(collected.maigret?.results || []).map(r => r.site),
+      ];
       collected.platformCheck = await runModule(logEl, cardsEl, t0,
         `Platform existence check for "${username}"`,
-        '/api/recon/platform-check', { username, sherlock_sites: sherlockSites }, renderPlatformCheckCard);
+        '/api/recon/platform-check', { username, sherlock_sites: allFoundSites }, renderPlatformCheckCard);
     }
 
     if (email && isModOn('Holehe')) {
@@ -2146,12 +2219,27 @@
       const aiRow = addLogRow(logEl, 'Sending results to Claude for analysis...', 'run');
       const aiTimer = setInterval(() => setLogTime(aiRow, (performance.now() - t0) / 1000), 200);
       try {
+        // Merge sherlock + maigret results, deduplicating by URL
+        let mergedSherlock = collected.sherlock || null;
+        if (collected.maigret && collected.maigret.results && collected.maigret.results.length) {
+          const base = mergedSherlock ? [...(mergedSherlock.results || [])] : [];
+          const seenUrls = new Set(base.map(r => r.url).filter(Boolean));
+          for (const r of collected.maigret.results) {
+            if (r.url && !seenUrls.has(r.url)) {
+              base.push(r);
+              seenUrls.add(r.url);
+            }
+          }
+          const confirmed = base.filter(r => r.confidence !== 'false_positive').length;
+          mergedSherlock = { results: base, total: base.length, confirmed };
+        }
+
         const resp = await fetch('/api/analyze/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
           body: JSON.stringify({
             target,
-            sherlock: collected.sherlock,
+            sherlock: mergedSherlock,
             holehe: collected.holehe,
             harvester: collected.harvester,
             hibp: collected.hibp,
@@ -2357,6 +2445,7 @@
         for (const tgt of Object.keys(allCollected)) {
           const c = allCollected[tgt];
           if (c.sherlock) estTokens += (c.sherlock.results || []).length * 12;
+          if (c.maigret) estTokens += (c.maigret.results || []).length * 12;
           if (c.holehe) estTokens += (c.holehe.results || []).length * 8;
           if (c.github && c.github.found) estTokens += 100;
           if (c.enricher) estTokens += (c.enricher.profiles || []).length * 40;
@@ -2473,6 +2562,15 @@
       md += `## Sherlock — ${d.sherlock.total} profiles found\n\n`;
       for (const r of d.sherlock.results) {
         md += `- [${r.site}](${r.url})\n`;
+      }
+      md += '\n';
+    }
+
+    // Maigret
+    if (d.maigret && d.maigret.results && d.maigret.results.length) {
+      md += `## Maigret — ${d.maigret.total} profiles found\n\n`;
+      for (const r of d.maigret.results) {
+        md += `- [${r.site}](${r.url})${r.category ? ` (${r.category})` : ''}\n`;
       }
       md += '\n';
     }

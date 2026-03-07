@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+anthropic
+httpx
+python-whois
+sherlock-project
+holehe
+maigret

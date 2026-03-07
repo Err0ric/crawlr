@@ -12,12 +12,18 @@ from modules.platform_check import run_platform_check
 from modules.hunter import run_hunter
 from modules.profile_scraper import scrape_profiles
 from modules.shodan_lookup import run_shodan
+from modules.maigret_mod import run_maigret
 
 router = APIRouter()
 
 
 class SherlockRequest(BaseModel):
     username: str
+
+
+class MaigretRequest(BaseModel):
+    username: str
+    nsfw: bool = True
 
 
 class HoleheRequest(BaseModel):
@@ -49,6 +55,14 @@ async def sherlock_scan(req: SherlockRequest):
     if not username:
         raise HTTPException(status_code=400, detail="Username is required")
     return await run_sherlock(username)
+
+
+@router.post("/maigret")
+async def maigret_scan(req: MaigretRequest):
+    username = req.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+    return await run_maigret(username, nsfw=req.nsfw)
 
 
 @router.post("/holehe")
