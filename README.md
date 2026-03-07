@@ -2,6 +2,17 @@
 
 Dual-mode OSINT platform for identity investigation and network reconnaissance. Built with FastAPI and Claude AI.
 
+## Screenshots
+
+### Investigate Mode
+![Investigate](docs/screenshots/investigate.png)
+
+### Recon Mode
+![Recon](docs/screenshots/recon.png)
+
+### Dorks Builder
+![Dorks](docs/screenshots/dorks.png)
+
 ## Modes
 
 ### INVESTIGATE
