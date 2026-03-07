@@ -727,6 +727,9 @@
     <div style="font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:16px;">
       By using this tool you accept full responsibility for your actions. All data gathered is from publicly available sources. You must comply with all applicable local, state, and federal laws.
     </div>
+    <div style="font-size:10px;color:var(--text-mid);line-height:1.6;margin-bottom:16px;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;">
+      🔒 Your API keys are stored exclusively in your browser's localStorage and are never transmitted to or stored on our servers.
+    </div>
     <label id="termsCheckLabel" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);">
       <input type="checkbox" id="termsCheck" style="accent-color:var(--red);cursor:pointer;" onchange="document.getElementById('termsAcceptBtn').disabled=!this.checked" />
       I confirm I will use Crawlr only for authorized, lawful purposes
@@ -956,7 +959,7 @@
     <div class="rcard" style="margin-bottom:16px;">
       <div class="rcard-head"><div class="rcard-title">API Keys</div><div class="badge b-hit" style="font-size:8px;">STORED LOCALLY</div></div>
       <div class="rcard-body" style="padding:12px 16px;">
-        <div style="font-size:10px;color:var(--text-dim);margin-bottom:14px;">Keys are stored in your browser only. Never sent to or stored on this server.</div>
+        <div style="font-size:10px;color:var(--text-mid);margin-bottom:14px;">🔒 Keys are stored locally in your browser only. Never transmitted to or stored on any server.</div>
         <div id="settingsKeyList"></div>
       </div>
     </div>

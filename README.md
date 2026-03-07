@@ -79,6 +79,10 @@ uvicorn main:app --reload --port 8000
 
 Open http://localhost:8000 and add your Claude API key in Settings.
 
+## Privacy & Security
+
+API keys are stored in your browser's localStorage only. Crawlr does not transmit, log, or store your API keys on any server. All analysis runs through your own API key directly.
+
 ## Legal
 
 For authorized security research, penetration testing, investigative journalism, and missing persons investigations only. Users must agree to Terms of Service on first launch.
