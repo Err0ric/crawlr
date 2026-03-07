@@ -1191,6 +1191,15 @@
     area.addEventListener('input', () => {
       localStorage.setItem('crawlr_notes', area.value);
       updateCount();
+      // Persist notes to current history entry
+      if (typeof currentHistoryId !== 'undefined' && currentHistoryId) {
+        const entries = getHistory();
+        const entry = entries.find(e => e.id === currentHistoryId);
+        if (entry) {
+          entry.notes = area.value;
+          saveHistory(entries);
+        }
+      }
     });
   })();
 
@@ -3576,17 +3585,22 @@
     localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, HISTORY_MAX)));
   }
 
+  let currentHistoryId = null;
+
   function addHistoryEntry(target, type, results, aiSummary) {
     const entries = getHistory();
+    const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     entries.unshift({
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      id: newId,
       target,
       type,
       timestamp: new Date().toISOString(),
       results,
       aiSummary: aiSummary || '',
+      notes: '',
     });
     saveHistory(entries);
+    currentHistoryId = newId;
   }
 
   function deleteHistoryEntry(id) {
@@ -3681,6 +3695,16 @@
   function loadHistoryEntry(id) {
     const entry = getHistory().find(e => e.id === id);
     if (!entry) return;
+    currentHistoryId = entry.id;
+
+    // Restore notes
+    const notesEl = document.getElementById('notesArea');
+    if (notesEl) {
+      notesEl.value = entry.notes || '';
+      localStorage.setItem('crawlr_notes', notesEl.value);
+      const counter = document.getElementById('notesCount');
+      if (counter) counter.textContent = notesEl.value.length + ' chars';
+    }
 
     if (entry.type === 'INVESTIGATE') {
       switchMode('investigate');
