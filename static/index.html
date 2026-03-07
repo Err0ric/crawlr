@@ -588,6 +588,9 @@
   .b-none { background: var(--bg4); color: var(--text-dim); border: 1px solid var(--border); }
 
   .rcard-body { padding: 8px 12px; }
+  .rcard-body.scrollable-card { max-height: 420px; overflow-y: auto; }
+  .rcard-body.scrollable-card::-webkit-scrollbar { width: 3px; }
+  .rcard-body.scrollable-card::-webkit-scrollbar-thumb { background: var(--border-mid); }
 
   .ritem { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text); border-bottom: 1px solid rgba(26,26,38,0.5); }
   .ritem:last-child { border-bottom: none; }
@@ -1334,12 +1337,13 @@
         <div class="badge ${confirmed > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div>
         ${copyBtn('Sherlock')}
       </div>
-      <div class="rcard-body">`;
+      <div class="rcard-body scrollable-card">`;
 
     if (count === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No profiles found</div>`;
     } else {
       const confirmedItems = items.filter(r => r.confidence !== 'false_positive');
+      confirmedItems.sort((a, b) => (b.url ? 1 : 0) - (a.url ? 1 : 0));
       const fpItems = items.filter(r => r.confidence === 'false_positive');
 
       function sherlockRow(r) {
@@ -1387,12 +1391,13 @@
         <div class="badge ${confirmed > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div>
         ${copyBtn('Maigret')}
       </div>
-      <div class="rcard-body">`;
+      <div class="rcard-body scrollable-card">`;
 
     if (count === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No profiles found</div>`;
     } else {
       const confirmedItems = items.filter(r => r.confidence !== 'false_positive');
+      confirmedItems.sort((a, b) => (b.url ? 1 : 0) - (a.url ? 1 : 0));
       const fpItems = items.filter(r => r.confidence === 'false_positive');
 
       function maigretRow(r) {
