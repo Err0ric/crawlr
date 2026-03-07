@@ -89,4 +89,4 @@ For authorized security research, penetration testing, investigative journalism,
 
 ## Author
 
-Eric Henderson | [github.com/Err0ric](https://github.com/Err0ric) | DC253 / BSides Seattle
+Eric Henderson | [github.com/Err0ric](https://github.com/Err0ric)
