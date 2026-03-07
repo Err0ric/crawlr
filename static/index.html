@@ -1956,6 +1956,7 @@
     scanning = true;
     const isBulk = targets.length > 1;
     currentTarget = isBulk ? targets.join(', ') : targets[0];
+    localStorage.removeItem('crawlr_checked_' + currentTarget);
     const runBtn = document.querySelector('.run-btn');
     runBtn.textContent = '⏳ SCANNING...';
     runBtn.style.pointerEvents = 'none';
