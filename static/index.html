@@ -574,9 +574,13 @@
   .rcard { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; transition: border-color 0.15s; }
   .rcard:hover { border-color: var(--border-mid); }
 
-  .rcard-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .rcard-head { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg3); gap: 6px; }
 
-  .rcard-title { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-mid); }
+  .copy-to-notes { font-family: 'Share Tech Mono', monospace; font-size: 8px; letter-spacing: 1px; padding: 2px 7px; border-radius: 2px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+  .copy-to-notes:hover { border-color: var(--text-mid); color: var(--text-mid); }
+  .copy-to-notes.copied { border-color: #4ade80; color: #4ade80; }
+
+  .rcard-title { flex: 1; font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-mid); }
 
   .badge { font-family: 'Share Tech Mono', monospace; font-size: 9px; padding: 2px 7px; border-radius: 2px; }
   .b-hit  { background: rgba(22,163,74,0.1);  color: #4ade80; border: 1px solid rgba(22,163,74,0.25); }
@@ -1294,6 +1298,26 @@
     logEl.insertBefore(summary, logEl.firstChild);
   }
 
+  /* ── Copy card content to notes ── */
+  function copyCardToNotes(titleText, btn) {
+    const body = btn.closest('.rcard').querySelector('.rcard-body');
+    if (!body) return;
+    const contentText = body.innerText.trim();
+    const isRecon = document.getElementById('reconWorkspace').style.display !== 'none';
+    const area = document.getElementById(isRecon ? 'reconNotesArea' : 'notesArea');
+    if (!area) return;
+    const entry = `\n--- ${titleText} ---\n${contentText}\n`;
+    area.value += entry;
+    area.dispatchEvent(new Event('input'));
+    btn.textContent = '// COPIED';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '// COPY TO NOTES'; btn.classList.remove('copied'); }, 1500);
+  }
+
+  function copyBtn(title) {
+    return `<button class="copy-to-notes" onclick="copyCardToNotes('${title.replace(/'/g, "\\'")}', this)">// COPY TO NOTES</button>`;
+  }
+
   /* ── Sherlock results renderer ── */
   function renderSherlockCard(data) {
     const count = data.total || 0;
@@ -1307,6 +1331,7 @@
       <div class="rcard-head">
         <div class="rcard-title">Sherlock · Profiles</div>
         <div class="badge ${confirmed > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div>
+        ${copyBtn('Sherlock')}
       </div>
       <div class="rcard-body">`;
 
@@ -1359,6 +1384,7 @@
       <div class="rcard-head">
         <div class="rcard-title">Holehe · Email Accounts</div>
         <div class="badge b-hit">${count} HIT${count !== 1 ? 'S' : ''}</div>
+        ${copyBtn('Holehe')}
       </div>
       <div class="rcard-body">`;
 
@@ -1393,6 +1419,7 @@
       <div class="rcard-head">
         <div class="rcard-title">theHarvester · Domain</div>
         <div class="badge b-hit">${hosts.length} HOST${hosts.length !== 1 ? 'S' : ''}${emails.length ? ' · ' + emails.length + ' EMAIL' + (emails.length !== 1 ? 'S' : '') : ''}</div>
+        ${copyBtn('theHarvester')}
       </div>
       <div class="rcard-body">`;
 
@@ -1427,6 +1454,7 @@
       <div class="rcard-head">
         <div class="rcard-title">Breaches · XposedOrNot</div>
         <div class="badge b-warn">${count} BREACH${count !== 1 ? 'ES' : ''}</div>
+        ${copyBtn('Breaches')}
       </div>
       <div class="rcard-body">`;
 
@@ -1451,7 +1479,7 @@
   function renderGravatarCard(data) {
     if (!data.found) return '';
     let html = `<div class="rcard">
-      <div class="rcard-head"><div class="rcard-title">Gravatar · Profile</div><div class="badge b-hit">FOUND</div></div>
+      <div class="rcard-head"><div class="rcard-title">Gravatar · Profile</div><div class="badge b-hit">FOUND</div>${copyBtn('Gravatar')}</div>
       <div class="rcard-body">`;
     if (data.name) html += `<div class="ritem"><div class="dot dg"></div><strong>Name:</strong>&nbsp;${data.name}</div>`;
     if (data.display_name) html += `<div class="ritem"><div class="dot dg"></div><strong>Display:</strong>&nbsp;${data.display_name}</div>`;
@@ -1465,7 +1493,7 @@
   function renderGithubCard(data) {
     if (!data.found) return '';
     let html = `<div class="rcard">
-      <div class="rcard-head"><div class="rcard-title">GitHub · Profile</div><div class="badge b-hit">FOUND</div></div>
+      <div class="rcard-head"><div class="rcard-title">GitHub · Profile</div><div class="badge b-hit">FOUND</div>${copyBtn('GitHub')}</div>
       <div class="rcard-body">`;
     if (data.name) html += `<div class="ritem"><div class="dot dg"></div><strong>Name:</strong>&nbsp;${data.name}</div>`;
     if (data.bio) html += `<div class="ritem"><div class="dot dg"></div><strong>Bio:</strong>&nbsp;${data.bio}</div>`;
@@ -1484,7 +1512,7 @@
     const profiles = data.profiles || [];
     if (profiles.length === 0) return '';
     let html = `<div class="rcard">
-      <div class="rcard-head"><div class="rcard-title">Profile Scraper</div><div class="badge b-hit">${profiles.length} PROFILE${profiles.length !== 1 ? 'S' : ''}</div></div>
+      <div class="rcard-head"><div class="rcard-title">Profile Scraper</div><div class="badge b-hit">${profiles.length} PROFILE${profiles.length !== 1 ? 'S' : ''}</div>${copyBtn('Profile Scraper')}</div>
       <div class="rcard-body">`;
     for (const p of profiles) {
       html += `<div class="ritem" style="flex-direction:column;align-items:flex-start;gap:2px;">
@@ -1505,7 +1533,7 @@
     const results = (data.results || []).filter(r => !r.error);
     if (results.length === 0) return '';
     let html = `<div class="rcard">
-      <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-hit">${results.length} SCRAPED</div></div>
+      <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-hit">${results.length} SCRAPED</div>${copyBtn('Deep Dive Profile')}</div>
       <div class="rcard-body">`;
     for (const p of results) {
       html += `<div class="ritem" style="flex-direction:column;align-items:flex-start;gap:2px;">
@@ -1529,7 +1557,7 @@
     const results = data.results || [];
     const found = results.filter(r => r.found).length;
     let html = `<div class="rcard">
-      <div class="rcard-head"><div class="rcard-title">Platform Check</div><div class="badge ${found > 0 ? 'b-hit' : 'b-none'}">${found}/${results.length} FOUND</div></div>
+      <div class="rcard-head"><div class="rcard-title">Platform Check</div><div class="badge ${found > 0 ? 'b-hit' : 'b-none'}">${found}/${results.length} FOUND</div>${copyBtn('Platform Check')}</div>
       <div class="rcard-body">`;
     for (const r of results) {
       if (r.manual) {
@@ -2412,7 +2440,7 @@
       { site: 'Facebook', url: `https://www.facebook.com/search/people/?q=${enc}` },
     ];
     let html = `<div class="rcard">
-      <div class="rcard-head"><div class="rcard-title">Name Search</div><div class="badge b-hit">${links.length} LINKS</div></div>
+      <div class="rcard-head"><div class="rcard-title">Name Search</div><div class="badge b-hit">${links.length} LINKS</div>${copyBtn('Name Search')}</div>
       <div class="rcard-body">`;
     for (const l of links) {
       html += `<div class="ritem"><div class="dot dg"></div><a href="${l.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${l.site}</a></div>`;
@@ -3130,7 +3158,7 @@
     const recs = data.records || {};
     const total = data.total || 0;
     const cfBadge = data.cloudflare_proxied ? '<div class="badge" style="background:rgba(217,119,6,0.15);color:#f59e0b;border:1px solid rgba(217,119,6,0.3);margin-left:6px;">CLOUDFLARE PROXIED</div>' : '';
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">DNS Records</div><div class="badge ${total > 0 ? 'b-hit' : 'b-none'}">${total} RECORDS</div>${cfBadge}</div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">DNS Records</div><div class="badge ${total > 0 ? 'b-hit' : 'b-none'}">${total} RECORDS</div>${cfBadge}${copyBtn('DNS Records')}</div><div class="rcard-body">`;
     if (data.cloudflare_proxied) {
       // Check if subdomains have any non-CF IPs (partial proxy)
       const subIps = (reconCollected.subdomains?.subdomains || []).flatMap(s => s.ips || []);
@@ -3155,9 +3183,9 @@
   }
 
   function renderWhoisCard(data) {
-    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No WHOIS data'}</div></div></div>`;
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-none">NOT FOUND</div>${copyBtn('WHOIS')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No WHOIS data'}</div></div></div>`;
     const privBadge = data.privacy_protected ? '<div class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);margin-left:6px;">PRIVACY PROTECTED</div>' : '';
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-hit">FOUND</div>${privBadge}</div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">WHOIS</div><div class="badge b-hit">FOUND</div>${privBadge}${copyBtn('WHOIS')}</div><div class="rcard-body">`;
     if (data.privacy_protected) {
       html += `<div class="ritem" style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:3px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#d97706;"><div class="dot" style="background:#d97706"></div>Registrant data is redacted by a WHOIS privacy service</div>`;
     }
@@ -3176,9 +3204,9 @@
   }
 
   function renderSslCard(data) {
-    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">SSL Certificate</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No SSL'}</div></div></div>`;
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">SSL Certificate</div><div class="badge b-none">NOT FOUND</div>${copyBtn('SSL')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No SSL'}</div></div></div>`;
     const daysColor = data.days_left < 30 ? 'color:var(--amber-bright)' : 'color:var(--success)';
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">SSL Certificate</div><div class="badge b-hit" style="${data.days_left < 30 ? 'background:rgba(217,119,6,0.1);color:var(--amber-bright);border-color:rgba(217,119,6,0.25)' : ''}">${data.days_left}d LEFT</div></div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">SSL Certificate</div><div class="badge b-hit" style="${data.days_left < 30 ? 'background:rgba(217,119,6,0.1);color:var(--amber-bright);border-color:rgba(217,119,6,0.25)' : ''}">${data.days_left}d LEFT</div>${copyBtn('SSL')}</div><div class="rcard-body">`;
     html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:60px;display:inline-block">CN</strong> ${data.common_name}</div>`;
     html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:60px;display:inline-block">Issuer</strong> ${data.issuer}</div>`;
     html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:60px;display:inline-block">Valid</strong> ${data.not_before} — ${data.not_after}</div>`;
@@ -3191,9 +3219,9 @@
   }
 
   function renderHeadersCard(data) {
-    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">HTTP Headers</div><div class="badge b-none">ERROR</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'Failed'}</div></div></div>`;
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">HTTP Headers</div><div class="badge b-none">ERROR</div>${copyBtn('HTTP Headers')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'Failed'}</div></div></div>`;
     const gradeColors = { A: 'b-hit', B: 'b-hit', C: 'b-warn', F: 'b-none' };
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">HTTP Headers</div><div class="badge ${gradeColors[data.grade] || 'b-none'}">GRADE ${data.grade} (${data.present}/${data.total})</div></div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">HTTP Headers</div><div class="badge ${gradeColors[data.grade] || 'b-none'}">GRADE ${data.grade} (${data.present}/${data.total})</div>${copyBtn('HTTP Headers')}</div><div class="rcard-body">`;
     if (data.server) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Server:</strong> ${data.server}</div>`;
     if (reconCollected.dns && reconCollected.dns.cloudflare_proxied) {
       html += `<div class="ritem" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:4px;padding:6px 10px;margin-bottom:4px"><div class="dot" style="background:#f59e0b"></div><span style="color:#f59e0b;font-size:11px">These headers reflect <strong>Cloudflare's edge server</strong>, not the origin. Server identity, caching headers, and security headers may be injected or modified by Cloudflare.</span></div>`;
@@ -3214,7 +3242,7 @@
     const ctEntries = data.ct_entries || [];
     const ctTotal = subs.filter(s => s.source === 'CT' || s.source === 'DNS+CT').length;
     const badgeText = ctTotal > 0 ? `${subs.length} FOUND (${ctTotal} via CT)` : `${subs.length}/${data.checked || 0} FOUND`;
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Subdomains</div><div class="badge ${subs.length > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div></div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Subdomains</div><div class="badge ${subs.length > 0 ? 'b-hit' : 'b-none'}">${badgeText}</div>${copyBtn('Subdomains')}</div><div class="rcard-body">`;
     if (subs.length === 0) {
       html += `<div class="ritem"><div class="dot dd"></div>No subdomains found</div>`;
     } else {
@@ -3242,7 +3270,7 @@
 
     // CT Logs card
     if (ctEntries.length > 0) {
-      html += `<div class="rcard"><div class="rcard-head"><div class="rcard-title">CT Logs</div><div class="badge b-hit">${ctEntries.length} CERTS</div></div><div class="rcard-body">`;
+      html += `<div class="rcard"><div class="rcard-head"><div class="rcard-title">CT Logs</div><div class="badge b-hit">${ctEntries.length} CERTS</div>${copyBtn('CT Logs')}</div><div class="rcard-body">`;
       html += `<div class="ritem" style="color:var(--text-dim);font-size:10px;padding-bottom:4px;border-bottom:1px solid var(--border)"><div style="min-width:90px">Date</div><div style="flex:1">Subdomain</div><div style="min-width:80px;text-align:right">Issuer</div></div>`;
       const visibleCt = ctEntries.slice(0, 10);
       for (const e of visibleCt) {
@@ -3261,8 +3289,8 @@
   }
 
   function renderAsnCard(data) {
-    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN / BGP</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No ASN data'}</div></div></div>`;
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN / BGP</div><div class="badge b-hit">${data.asn || 'FOUND'}</div></div><div class="rcard-body">`;
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN / BGP</div><div class="badge b-none">NOT FOUND</div>${copyBtn('ASN')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'No ASN data'}</div></div></div>`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN / BGP</div><div class="badge b-hit">${data.asn || 'FOUND'}</div>${copyBtn('ASN')}</div><div class="rcard-body">`;
     html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:50px;display:inline-block">IP</strong> ${data.ip}</div>`;
     if (data.asn) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:50px;display:inline-block">ASN</strong> ${data.asn}</div>`;
     if (data.org) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright);min-width:50px;display:inline-block">Org</strong> ${data.org}</div>`;
@@ -3274,9 +3302,9 @@
   }
 
   function renderPortscanCard(data) {
-    if (!data.results) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Port Scan</div><div class="badge b-none">ERROR</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'Failed'}</div></div></div>`;
+    if (!data.results) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Port Scan</div><div class="badge b-none">ERROR</div>${copyBtn('Port Scan')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${data.error || 'Failed'}</div></div></div>`;
     const open = data.total_open || 0;
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Port Scan</div><div class="badge ${open > 0 ? 'b-hit' : 'b-none'}">${open}/${data.total_scanned} OPEN</div></div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Port Scan</div><div class="badge ${open > 0 ? 'b-hit' : 'b-none'}">${open}/${data.total_scanned} OPEN</div>${copyBtn('Port Scan')}</div><div class="rcard-body">`;
     if (data.ip) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">IP:</strong> ${data.ip}</div>`;
     for (const r of data.results) {
       if (r.open) {
@@ -3312,8 +3340,8 @@
   }
 
   function renderAsnInfoCard(data) {
-    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN Info</div><div class="badge b-none">NOT FOUND</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No data returned</div></div></div>`;
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN Info</div><div class="badge b-hit">${data.asn}</div></div><div class="rcard-body">`;
+    if (!data.found) return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN Info</div><div class="badge b-none">NOT FOUND</div>${copyBtn('ASN Info')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>No data returned</div></div></div>`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">ASN Info</div><div class="badge b-hit">${data.asn}</div>${copyBtn('ASN Info')}</div><div class="rcard-body">`;
     const fields = [
       ['ASN', data.asn], ['Name', data.name], ['Org', data.org],
       ['Handle', data.handle], ['Country', data.country], ['RIR', data.rir],
@@ -3332,7 +3360,7 @@
     const v4 = data.prefixes_v4 || [];
     const v6 = data.prefixes_v6 || [];
     if (!v4.length && !v6.length) return '';
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">IP Prefixes</div><div class="badge b-hit">${v4.length + v6.length} TOTAL</div></div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">IP Prefixes</div><div class="badge b-hit">${v4.length + v6.length} TOTAL</div>${copyBtn('IP Prefixes')}</div><div class="rcard-body">`;
     if (v4.length) {
       html += `<div class="ritem" style="color:var(--text-bright);font-weight:600"><div class="dot dg"></div>IPv4 (${v4.length})</div>`;
       for (const p of v4.slice(0, 20)) html += `<div class="ritem" style="padding-left:20px"><div class="dot dg"></div>${p}</div>`;
@@ -3351,7 +3379,7 @@
     if (!data.found) return '';
     const peers = data.peers || [];
     if (!peers.length) return '';
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Peering</div><div class="badge b-hit">${data.total_peers} PEERS</div></div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Peering</div><div class="badge b-hit">${data.total_peers} PEERS</div>${copyBtn('Peering')}</div><div class="rcard-body">`;
     for (const p of peers.slice(0, 25)) {
       html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--red-bright)">${p.asn}</strong> <span style="margin-left:6px">${p.name}</span></div>`;
     }
@@ -4350,7 +4378,7 @@
     const count = emails.length;
     if (count === 0 && !data.error) return '';
     if (data.error) return '';
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Hunter.io · Emails</div><div class="badge b-hit">${count} EMAIL${count !== 1 ? 'S' : ''}</div></div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Hunter.io · Emails</div><div class="badge b-hit">${count} EMAIL${count !== 1 ? 'S' : ''}</div>${copyBtn('Hunter.io')}</div><div class="rcard-body">`;
     {
       if (data.pattern) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Pattern:</strong> ${data.pattern}</div>`;
       const visible = emails.slice(0, 8);
@@ -4374,12 +4402,12 @@
   function renderShodanCard(data) {
     if (!data.found) {
       const err = data.error || 'No Shodan data';
-      return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Shodan · Host</div><div class="badge b-none">${data.error ? 'ERROR' : 'NOT FOUND'}</div></div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${err}</div></div></div>`;
+      return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Shodan · Host</div><div class="badge b-none">${data.error ? 'ERROR' : 'NOT FOUND'}</div>${copyBtn('Shodan')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${err}</div></div></div>`;
     }
     const ports = data.ports || [];
     const vulns = data.vulns || [];
     const services = data.services || [];
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Shodan · Host</div><div class="badge b-hit">${ports.length} PORT${ports.length !== 1 ? 'S' : ''}</div>${vulns.length ? `<div class="badge b-warn" style="margin-left:4px;">${vulns.length} CVE${vulns.length !== 1 ? 'S' : ''}</div>` : ''}</div><div class="rcard-body">`;
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Shodan · Host</div><div class="badge b-hit">${ports.length} PORT${ports.length !== 1 ? 'S' : ''}</div>${vulns.length ? `<div class="badge b-warn" style="margin-left:4px;">${vulns.length} CVE${vulns.length !== 1 ? 'S' : ''}</div>` : ''}${copyBtn('Shodan')}</div><div class="rcard-body">`;
     if (data.org) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Org:</strong> ${data.org}</div>`;
     if (data.isp) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">ISP:</strong> ${data.isp}</div>`;
     if (data.os) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">OS:</strong> ${data.os}</div>`;
