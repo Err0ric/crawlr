@@ -1871,9 +1871,8 @@
       const loadingEls = ddResults.querySelectorAll('div[style*="text-dim"]');
       loadingEls.forEach(el => el.remove());
 
-      // Render Deep Dive AI block — insert before the main AI report
-      const aiReportContent = document.getElementById('aiReportContent');
-      aiReportContent.insertAdjacentHTML('afterbegin', renderDeepDiveBlock(aiData));
+      // Render Deep Dive AI block — insert at top of ddResults, above scrape card
+      ddResults.insertAdjacentHTML('afterbegin', renderDeepDiveBlock(aiData));
 
       ddBtn.querySelector('button').textContent = '✓ Deep Dive Complete';
       ddBtn.querySelector('button').style.color = 'var(--green)';
