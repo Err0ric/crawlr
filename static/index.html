@@ -1611,7 +1611,7 @@
     const switchTab = mode === 'recon'
       ? "setReconTab('aiReport')"
       : "setTab(document.getElementById('aiReportTab'),'aiReport')";
-    if (mode === 'recon') {
+    if (mode === 'recon' || mode === 'investigate') {
       let html = `<div style="grid-column:1/-1;border:1px solid var(--red-bright);border-radius:6px;padding:20px 24px;margin-bottom:4px;background:var(--bg-card, rgba(255,255,255,0.03));box-shadow:0 0 24px rgba(180,0,80,0.15);">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
           <span style="color:var(--red-bright);font-size:11px;font-weight:700;letter-spacing:2px;">// AI SUMMARY</span>
@@ -2097,7 +2097,7 @@
           aiData = data;
           // Render inline summary card in results grid
           const summaryHtml = renderAISummaryCard(data, 'investigate');
-          if (summaryHtml && cardsEl) cardsEl.innerHTML += summaryHtml;
+          if (summaryHtml && cardsEl) cardsEl.insertAdjacentHTML('afterbegin', summaryHtml);
         }
       } catch (e) {
         clearInterval(aiTimer);
