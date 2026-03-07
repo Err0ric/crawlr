@@ -11,6 +11,7 @@ from modules.asn_detail import run_asn_detail
 from modules.port_scan import run_portscan
 import anthropic
 import httpx
+import json
 import time
 
 router = APIRouter()
@@ -253,26 +254,31 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
 
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "user",
                 "content": (
-                    "You are an infrastructure security analyst. Based on the recon data below, produce this exact structure:\n\n"
-                    "**Attack Surface Summary**\n"
+                    "You are an infrastructure security analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
+                    '{\n'
+                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3"],\n'
+                    '  "full_report": "markdown string"\n'
+                    '}\n\n'
+                    "**short_summary**: Exactly 3-4 short bullet strings (no markdown, plain text, max 120 chars each). "
+                    "Critical findings at a glance — exposure level, key risks, notable findings.\n\n"
+                    "**full_report**: A markdown string with this structure:\n\n"
+                    "## Attack Surface Summary\n"
                     "Brief overview of the target's external footprint, hosting, and exposure.\n\n"
-                    "**Misconfigurations & Weaknesses**\n"
-                    "→ Flag missing security headers, expiring certs, open sensitive ports, exposed services\n"
-                    "→ Note any information leakage from headers, DNS, or WHOIS\n\n"
-                    "**Interesting Findings**\n"
+                    "## Key Findings\n"
+                    "→ Misconfigurations, missing security headers, expiring certs, open sensitive ports\n"
                     "→ Notable subdomains (dev, staging, admin panels)\n"
-                    "→ Technology stack inferences from headers/certs/DNS\n"
-                    "→ Hosting provider and CDN details\n\n"
-                    "**Red Team Next Steps**\n"
+                    "→ Technology stack inferences, hosting provider and CDN details\n"
+                    "→ Information leakage from headers, DNS, or WHOIS\n\n"
+                    "## Recommendations\n"
                     "→ 3-5 specific actionable next steps for further reconnaissance or testing\n"
                     "→ Suggest tools and techniques for each step\n\n"
-                    "Use **bold** for emphasis. Use → prefix for all action items. "
-                    "Do not use markdown headers (no # symbols). Keep it concise and actionable.\n\n"
+                    "Use **bold** for emphasis in the full_report. Use → prefix for action items. "
+                    "Keep it concise and actionable.\n\n"
                     f"Recon data:\n{recon_data}"
                 ),
             }
@@ -283,8 +289,18 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
     text = message.content[0].text
     tokens = message.usage.input_tokens + message.usage.output_tokens
 
+    try:
+        parsed = json.loads(text)
+        short_summary = parsed.get("short_summary", [])
+        full_report = parsed.get("full_report", text)
+    except (json.JSONDecodeError, KeyError):
+        full_report = text
+        lines = [l.strip() for l in text.split("\n") if l.strip() and not l.startswith("#")]
+        short_summary = lines[:3]
+
     return {
-        "summary": text,
+        "summary": full_report,
+        "short_summary": short_summary,
         "model": message.model,
         "tokens": tokens,
         "elapsed": elapsed,

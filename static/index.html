@@ -610,11 +610,12 @@
   .ai-meta { margin-left: auto; font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-mid); }
 
   .ai-body { padding: 14px 16px; font-family: 'Barlow', sans-serif; font-size: 14px; line-height: 1.7; color: var(--text-bright); }
-  .ai-body strong { color: var(--amber); font-weight: 600; }
+  .ai-body strong { color: var(--amber-bright); font-weight: 600; }
   .ai-body p { margin-bottom: 12px; }
-  .ai-body ul, .ai-body ol { margin-bottom: 12px; }
+  .ai-body ul, .ai-body ol { margin-bottom: 12px; padding-left: 20px; }
   .ai-body li { margin-bottom: 6px; line-height: 1.6; }
-  .ai-body h2, .ai-body h3 { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-bright); margin-bottom: 8px; }
+  .ai-body h2, .ai-body h3 { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-mid); margin: 20px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .ai-body h2:first-child, .ai-body h3:first-child { margin-top: 0; }
 
   .ai-section { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-bright); margin: 16px 0 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
   .ai-section:first-child { margin-top: 0; }
@@ -819,7 +820,7 @@
   <div class="main">
     <div class="tab-bar">
       <div class="tab on" onclick="setTab(this,'content')">Results</div>
-      <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI Report</div>
+      <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI REPORT</div>
       <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
       <button class="action-btn" onclick="exportMarkdown()">Export</button>
@@ -912,6 +913,7 @@
     <div class="tab-bar">
       <div class="tab on" onclick="setReconTab('results')">Results</div>
       <div class="tab" onclick="setReconTab('graph')">Topology</div>
+      <div class="tab" id="reconAiReportTab" onclick="setReconTab('aiReport')" style="display:none;">AI Report</div>
       <div class="tab-spacer"></div>
       <button class="action-btn" onclick="exportReconMarkdown()">Export</button>
     </div>
@@ -927,6 +929,16 @@
 
     <div class="content" id="reconGraphPanel" style="display:none;padding:0;overflow:hidden;">
       <div id="reconGraph" style="width:100%;height:100%;background:var(--bg);"></div>
+    </div>
+
+    <div class="content" id="reconAiReportPanel" style="display:none;">
+      <div id="reconAiReportContent">
+        <div class="empty">
+          <div class="empty-glyph">[~]</div>
+          <div class="empty-title">No AI Report</div>
+          <div class="empty-sub">Run a recon scan with AI Analysis enabled to generate a report.</div>
+        </div>
+      </div>
     </div>
 
     <div class="statusbar">
@@ -1588,44 +1600,105 @@
 
   let aiLeadCounter = 0;
 
-  function renderAIBlock(data) {
-    aiLeadCounter = 0;
-    const lines = data.summary.split('\n');
-    let html = `<div class="ai-block">
-      <div class="ai-head">
-        <div class="ai-tag">// AI Analysis</div>
-        <span class="ai-progress" id="aiProgress"></span>
-        <div class="ai-meta">${data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history'}</div>
+  function renderAISummaryCard(data, mode) {
+    let bullets = data.short_summary || [];
+    // Fallback: extract first few non-heading, non-empty lines from summary
+    if (!bullets.length && data.summary) {
+      const lines = data.summary.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('**'));
+      bullets = lines.slice(0, 3).map(l => l.replace(/^[→•\-\*]\s*/, ''));
+    }
+    if (!bullets.length) return '';
+    const switchTab = mode === 'recon'
+      ? "setReconTab('aiReport')"
+      : "setTab(document.getElementById('aiReportTab'),'aiReport')";
+    let html = `<div class="rcard" style="border-left:2px solid var(--red-dim);">
+      <div class="rhead">
+        <span class="rtag" style="color:var(--red-bright);">// AI SUMMARY</span>
+        <span class="rmeta">${data.model ? `${data.tokens} tokens · ${data.elapsed}s` : ''}</span>
       </div>
-      <div class="ai-body">`;
+      <div style="padding:10px 14px; font-family:'Barlow',sans-serif; font-size:13px; line-height:1.6; color:var(--text-bright);">`;
+    bullets.forEach(b => {
+      html += `<div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start;">
+        <span style="color:var(--red-dim);flex-shrink:0;">→</span>
+        <span>${typeof b === 'string' ? b.replace(/</g,'&lt;') : ''}</span>
+      </div>`;
+    });
+    html += `<button onclick="${switchTab}"
+      style="margin-top:12px; background:transparent; border:1px solid var(--red-dim); color:var(--red-bright); border-radius:5px; padding:8px 16px; font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:1px; cursor:pointer; transition:all .15s;"
+      onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
+      VIEW FULL REPORT & SUGGESTIONS →
+    </button>`;
+    html += `</div></div>`;
+    return html;
+  }
 
-    let inLeads = false;
+  function _renderMarkdownReport(md) {
+    // Convert markdown to HTML for the full report
+    let html = '';
+    const lines = md.split('\n');
+    let inList = false;
+    let inPara = false;
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) {
-        if (inLeads) { html += '</div>'; inLeads = false; }
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        if (inList) { html += '</ul>'; inList = false; }
+        if (inPara) { html += '</p>'; inPara = false; }
         continue;
       }
 
-      const isBullet = /^[→•\-]\s*/.test(line);
-      const bulletText = line.replace(/^[→•\-]\s*/, '');
-
-      if (isSectionHeading(line)) {
-        if (inLeads) { html += '</div>'; inLeads = false; }
-        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
-        html += `<div class="ai-section" onclick="toggleSection(this)"><span class="sec-arrow">▼</span> // ${label}</div>`;
-      } else if (isBullet) {
-        if (!inLeads) { html += '<div class="leads">'; inLeads = true; }
-        const id = 'ai_' + (aiLeadCounter++);
-        html += `<div class="lead chk-item ${chkItemClass(id)}">${chkHtml(id)}<span class="lead-arr">→</span><span class="lead-text">${mdInline(bulletText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy">⧉</span></div>`;
-      } else {
-        if (inLeads) { html += '</div>'; inLeads = false; }
-        html += `<div style="margin-bottom:4px">${mdInline(line)}</div>`;
+      // ## Headers
+      if (/^##\s+/.test(trimmed)) {
+        if (inList) { html += '</ul>'; inList = false; }
+        if (inPara) { html += '</p>'; inPara = false; }
+        const heading = trimmed.replace(/^##\s+/, '');
+        html += `<h2>${heading}</h2>`;
+        continue;
       }
+
+      // Bullet lines (→, -, •, *)
+      if (/^[→•\-\*]\s+/.test(trimmed)) {
+        if (inPara) { html += '</p>'; inPara = false; }
+        if (!inList) { html += '<ul style="list-style:none;padding-left:0;">'; inList = true; }
+        const bulletText = trimmed.replace(/^[→•\-\*]\s+/, '');
+        html += `<li style="display:flex;gap:8px;align-items:flex-start;"><span style="color:var(--red-dim);flex-shrink:0;">→</span><span>${mdInline(bulletText)}</span></li>`;
+        continue;
+      }
+
+      // Bold section headers (legacy **Header** format)
+      if (isSectionHeading(trimmed)) {
+        if (inList) { html += '</ul>'; inList = false; }
+        if (inPara) { html += '</p>'; inPara = false; }
+        const label = trimmed.replace(/\*\*/g, '').replace(/:$/, '').trim();
+        html += `<h2>${label}</h2>`;
+        continue;
+      }
+
+      // Regular paragraph text
+      if (inList) { html += '</ul>'; inList = false; }
+      if (!inPara) { html += '<p>'; inPara = true; }
+      else { html += '<br>'; }
+      html += mdInline(trimmed);
     }
 
-    if (inLeads) html += '</div>';
+    if (inList) html += '</ul>';
+    if (inPara) html += '</p>';
+    return html;
+  }
+
+  function renderAIBlock(data) {
+    const summary = data.summary || '';
+    const meta = data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history';
+    let html = `<div class="ai-block">
+      <div class="ai-head">
+        <div class="ai-tag">// AI REPORT</div>
+        <span class="ai-progress" id="aiProgress"></span>
+        <div class="ai-meta">${meta}</div>
+      </div>
+      <div class="ai-body">`;
+    html += _renderMarkdownReport(summary);
     html += `</div></div>`;
     return html;
   }
@@ -2000,7 +2073,9 @@
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           aiSummary = data.summary;
           aiData = data;
-          if (aiEl) aiEl.innerHTML = renderAIBlock(data);
+          // Render inline summary card in results grid
+          const summaryHtml = renderAISummaryCard(data, 'investigate');
+          if (summaryHtml && cardsEl) cardsEl.innerHTML += summaryHtml;
         }
       } catch (e) {
         clearInterval(aiTimer);
@@ -2073,16 +2148,15 @@
     if (!isBulk) {
       // Single target — original flow
       const target = targets[0];
-      res.innerHTML = '<div class="agent-log" id="log"></div><div id="aiBlock"></div><div class="result-grid" id="resultCards"></div>';
+      res.innerHTML = '<div class="agent-log" id="log"></div><div class="result-grid" id="resultCards"></div>';
       const logEl = document.getElementById('log');
       const cardsEl = document.getElementById('resultCards');
-      const aiEl = document.getElementById('aiBlock');
       const t0 = performance.now();
 
       lastCollected = {};
       lastAISummary = '';
 
-      const result = await _runSingleTarget(target, logEl, cardsEl, aiEl, t0);
+      const result = await _runSingleTarget(target, logEl, cardsEl, null, t0);
       lastCollected = result.collected;
       lastAISummary = result.aiSummary;
 
@@ -2126,7 +2200,7 @@
         const body = document.createElement('div');
         body.id = `bulkBody_${i}`;
         body.style.cssText = 'padding:8px;';
-        body.innerHTML = `<div class="agent-log" id="bulkLog_${i}"></div><div id="bulkAi_${i}"></div><div class="result-grid" id="bulkCards_${i}"></div>`;
+        body.innerHTML = `<div class="agent-log" id="bulkLog_${i}"></div><div class="result-grid" id="bulkCards_${i}"></div>`;
 
         header.onclick = () => {
           const open = body.style.display !== 'none';
@@ -2140,10 +2214,9 @@
 
         const logEl = document.getElementById(`bulkLog_${i}`);
         const cardsEl = document.getElementById(`bulkCards_${i}`);
-        const aiEl = document.getElementById(`bulkAi_${i}`);
         const tStart = performance.now();
 
-        const result = await _runSingleTarget(target, logEl, cardsEl, aiEl, tStart);
+        const result = await _runSingleTarget(target, logEl, cardsEl, null, tStart);
 
         // Update status badge
         const statusEl = document.getElementById(`bulkStatus_${i}`);
@@ -2402,15 +2475,19 @@
   function setReconTab(tab) {
     const tabs = document.querySelectorAll('#reconWorkspace .tab');
     tabs.forEach(t => t.classList.remove('on'));
+    document.getElementById('reconContent').style.display = 'none';
+    document.getElementById('reconGraphPanel').style.display = 'none';
+    document.getElementById('reconAiReportPanel').style.display = 'none';
     if (tab === 'graph') {
       tabs[1].classList.add('on');
-      document.getElementById('reconContent').style.display = 'none';
       document.getElementById('reconGraphPanel').style.display = '';
       requestAnimationFrame(() => requestAnimationFrame(() => renderReconGraph()));
+    } else if (tab === 'aiReport') {
+      document.getElementById('reconAiReportTab').classList.add('on');
+      document.getElementById('reconAiReportPanel').style.display = '';
     } else {
       tabs[0].classList.add('on');
       document.getElementById('reconContent').style.display = '';
-      document.getElementById('reconGraphPanel').style.display = 'none';
     }
   }
 
@@ -3209,6 +3286,12 @@
     reconScanning = true;
     reconCollected = {};
     reconAISummary = '';
+    document.getElementById('reconAiReportTab').style.display = 'none';
+    document.getElementById('reconAiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run a recon scan with AI Analysis enabled to generate a report.</div></div>';
+    const activeReconTab = document.querySelector('#reconWorkspace .tab.on');
+    if (activeReconTab && activeReconTab.id === 'reconAiReportTab') {
+      setReconTab('results');
+    }
     const runBtn = document.getElementById('reconRunBtn');
     runBtn.textContent = '⏳ SCANNING...';
     runBtn.style.pointerEvents = 'none';
@@ -3216,10 +3299,9 @@
     document.getElementById('reconEmptyState').style.display = 'none';
     const res = document.getElementById('reconResults');
     res.style.display = 'block';
-    res.innerHTML = '<div class="agent-log" id="reconLog"></div><div id="reconAiBlock"></div><div class="result-grid" id="reconCards"></div>';
+    res.innerHTML = '<div class="agent-log" id="reconLog"></div><div class="result-grid" id="reconCards"></div>';
     const logEl = document.getElementById('reconLog');
     const cardsEl = document.getElementById('reconCards');
-    const aiEl = document.getElementById('reconAiBlock');
     const t0 = performance.now();
 
     const isAsnTarget = isASN(target);
@@ -3315,7 +3397,12 @@
           reconAISummary = data.summary;
           reconTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
-          aiEl.innerHTML = renderAIBlock(data);
+          // Inline summary card in results grid
+          const summaryHtml = renderAISummaryCard(data, 'recon');
+          if (summaryHtml) cardsEl.innerHTML += summaryHtml;
+          // Full report in AI Report tab
+          document.getElementById('reconAiReportTab').style.display = '';
+          document.getElementById('reconAiReportContent').innerHTML = renderAIBlock(data);
         }
       } catch (e) {
         clearInterval(aiTimer);
@@ -3594,10 +3681,10 @@
       lastCollected = d;
       currentTarget = entry.target;
       if (entry.aiSummary) {
-        const aiBlock = document.createElement('div');
-        aiBlock.innerHTML = renderAIBlock({ summary: entry.aiSummary });
-        res.insertBefore(aiBlock, cardsEl);
-        document.getElementById('aiReportTab').style.display = '';        document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: entry.aiSummary });
+        const histData = { summary: entry.aiSummary };
+        cardsEl.innerHTML += renderAISummaryCard(histData, 'investigate');
+        document.getElementById('aiReportTab').style.display = '';
+        document.getElementById('aiReportContent').innerHTML = renderAIBlock(histData);
         // Show Deep Dive button if profiles available
         const ddBtn = document.getElementById('deepDiveBtn');
         const ddResults = document.getElementById('deepDiveResults');
@@ -3621,9 +3708,8 @@
       document.getElementById('reconEmptyState').style.display = 'none';
       const res = document.getElementById('reconResults');
       res.style.display = 'block';
-      res.innerHTML = '<div id="reconAiBlock"></div><div class="result-grid" id="reconCards"></div>';
+      res.innerHTML = '<div class="result-grid" id="reconCards"></div>';
       const cardsEl = document.getElementById('reconCards');
-      const aiEl = document.getElementById('reconAiBlock');
       const d = entry.results;
       reconCollected = d;
       if (d.dns) cardsEl.innerHTML += renderDnsCard(d.dns);
@@ -3640,7 +3726,10 @@
       if (d.portscan) cardsEl.innerHTML += renderPortscanCard(d.portscan);
       if (entry.aiSummary) {
         reconAISummary = entry.aiSummary;
-        aiEl.innerHTML = renderAIBlock({ summary: entry.aiSummary });
+        const histData = { summary: entry.aiSummary };
+        cardsEl.innerHTML += renderAISummaryCard(histData, 'recon');
+        document.getElementById('reconAiReportTab').style.display = '';
+        document.getElementById('reconAiReportContent').innerHTML = renderAIBlock(histData);
       }
     }
     showToast('Loaded scan from history');

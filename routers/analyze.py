@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
 import anthropic
+import json
 import time
 
 router = APIRouter()
@@ -202,40 +203,39 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
 
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "user",
                 "content": (
-                    "You are an OSINT analyst. Based on the recon data below, produce this exact structure:\n\n"
-                    "**Digital Footprint**\n"
+                    "You are an OSINT analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
+                    '{\n'
+                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3"],\n'
+                    '  "full_report": "markdown string"\n'
+                    '}\n\n'
+                    "**short_summary**: Exactly 3-4 short bullet strings (no markdown, plain text, max 120 chars each). "
+                    "These are the most critical findings — what an investigator needs to see at a glance. "
+                    "Include a risk/exposure level assessment in the first bullet.\n\n"
+                    "**full_report**: A markdown string with this structure:\n\n"
+                    "## Digital Footprint\n"
                     "Brief overview of the target's online presence and notable patterns.\n\n"
-                    "**Next Steps**\n"
-                    "→ 2-4 specific investigative actions, one per line prefixed with →\n\n"
-                    "**Identity Leads** (all inferences from public data only)\n"
-                    "→ **Probable Name:** [best guess name] **(confidence: low/medium/high)** — explain your reasoning "
-                    "(e.g. username contains 'john.smith', common naming pattern, matches GitHub commit author, "
-                    "LinkedIn profile name, etc.)\n"
-                    "→ If you can suggest alternate possible names, list them with reasoning\n"
-                    "→ Suggest specific URLs to check for name confirmation: e.g. github.com/[username] commit history, "
-                    "linkedin.com/in/[username], about.me/[username] bio, gravatar profile, etc.\n\n"
-                    "**Phone Lookup Strategies** (public data only)\n"
-                    "→ Suggest specific sites: Truecaller, Spokeo, WhitePages, BeenVerified, Pipl, NumLookup\n"
-                    "→ Suggest searching the email/username on Telegram, WhatsApp, Signal user lookups\n"
-                    "→ If a probable name was inferred, suggest combining name + location for reverse phone lookup\n\n"
+                    "## Key Findings\n"
+                    "Detailed analysis organized by category. Use bullet points (→ prefix). "
+                    "Include identity leads, probable name inference with confidence level, "
+                    "platform correlations, and notable data points.\n\n"
+                    "## Recommendations\n"
+                    "→ Specific investigative next steps\n"
+                    "→ Phone lookup strategies (Truecaller, Spokeo, WhitePages, etc.)\n"
+                    "→ URLs to check for confirmation\n"
                     + (
-                        "**⚠ Active Techniques** (may alert the target — use with caution)\n"
-                        "→ ⚠ ACTIVE: Try account recovery flows on detected services (e.g. Google, Apple, Microsoft) "
-                        "which may reveal partial phone numbers or email addresses\n"
-                        "→ ⚠ ACTIVE: Password reset enumeration on detected platforms to confirm account existence "
-                        "and discover linked emails/phones\n"
-                        "→ ⚠ ACTIVE: Send a connection request or follow on social platforms to access restricted profiles\n"
-                        "→ ⚠ ACTIVE: Use email verification endpoints on services to confirm email registration\n"
-                        "→ ⚠ ACTIVE: Try forgot-password on detected services to reveal masked recovery info\n\n"
+                        "\n## Active Techniques\n"
+                        "→ ⚠ Account recovery flows on detected services\n"
+                        "→ ⚠ Password reset enumeration\n"
+                        "→ ⚠ Social engineering approaches\n"
                         if req.active_techniques else ""
                     ) +
-                    "Use **bold** for emphasis. Use → prefix for all action items and leads. "
-                    "Do not use markdown headers (no # symbols). Keep it concise and actionable.\n\n"
+                    "\nUse **bold** for emphasis in the full_report. Use → prefix for action items. "
+                    "Keep it concise and actionable.\n\n"
                     f"Recon data:\n{recon_data}"
                 ),
             }
@@ -246,8 +246,20 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
     text = message.content[0].text
     tokens = message.usage.input_tokens + message.usage.output_tokens
 
+    # Parse JSON response
+    try:
+        parsed = json.loads(text)
+        short_summary = parsed.get("short_summary", [])
+        full_report = parsed.get("full_report", text)
+    except (json.JSONDecodeError, KeyError):
+        # Fallback: treat entire response as full_report, extract first lines as summary
+        full_report = text
+        lines = [l.strip() for l in text.split("\n") if l.strip() and not l.startswith("#")]
+        short_summary = lines[:3]
+
     return {
-        "summary": text,
+        "summary": full_report,
+        "short_summary": short_summary,
         "model": message.model,
         "tokens": tokens,
         "elapsed": elapsed,
