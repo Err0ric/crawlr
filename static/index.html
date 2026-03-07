@@ -983,7 +983,7 @@
   <div class="main" style="flex:1; overflow-y:auto; padding:28px 60px;">
     <div class="dork-builder" style="max-width:960px; margin:0 auto;">
 
-      <div style="margin-bottom:24px;">
+      <div style="margin-bottom:20px;">
         <div style="font-family:'Share Tech Mono',monospace; color:var(--text-bright); font-size:11px; letter-spacing:2px; margin-bottom:6px;">// DORK BUILDER</div>
         <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Tell Crawlr what you know. It builds the search.</div>
       </div>
@@ -1054,7 +1054,7 @@
 
       <div style="border-top:1px solid var(--border-hi);margin:28px 0 20px;"></div>
 
-      <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
+      <div style="margin-top:20px;padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
         <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">VIN Lookup // Decodes Year / Make / Model</label>
         <div style="display:flex; gap:10px; align-items:center;">
           <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
@@ -3978,6 +3978,18 @@
   window._dorkSelected = new Set();
   window._dorkTotal = 0;
 
+  const _platformBrandColors = {
+    'Instagram': '#E1306C', 'Facebook': '#1877F2', 'Twitter/X': '#888888',
+    'TikTok': '#69C9D0', 'Reddit': '#FF4500', 'Snapchat': '#FFD700',
+    'Pinterest': '#E60023', 'LinkedIn': '#0A66C2', 'GitHub': '#f0f6fc',
+    'Indeed': '#2164F3', 'YouTube': '#FF0000', 'Twitch': '#9146FF',
+    'Vimeo': '#1AB7EA', 'Quora': '#B92B27', 'Medium': '#FFFFFF',
+    'Pastebin': '#02A8F3', 'Discord': '#5865F2', 'Craigslist': '#CC0000',
+    'eBay': '#E53238', 'OfferUp': '#3DAA75', 'Poshmark': '#E8205E',
+    'Steam': '#66C0F4', 'Xbox': '#107C10', 'PlayStation': '#0070D1',
+    'Scribd': '#1E7B85', 'SlideShare': '#E68523', 'PDFs': '#F40F02',
+  };
+
   const _dorkPlatformGroups = [
     { cat: 'SOCIAL', items: [
       { label: 'Instagram', site: 'instagram.com' },
@@ -4044,22 +4056,24 @@
       chipsRow.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px;';
       group.items.forEach(p => {
         const i = globalIdx++;
+        const brandColor = _platformBrandColors[p.label] || 'var(--text-mid)';
         const chip = document.createElement('div');
         chip.id = 'dbplat-' + i;
         chip.dataset.site = p.site;
+        chip.dataset.brandColor = brandColor;
         chip.textContent = p.label;
-        chip.style.cssText = 'padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:var(--text-mid); font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:all .15s;';
+        chip.style.cssText = `padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:${brandColor}; font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:all .15s;`;
         chip.onclick = () => {
           if (window._dbPlatformActive.has(i)) {
             window._dbPlatformActive.delete(i);
             chip.style.borderColor = 'var(--border-hi)';
             chip.style.background = 'var(--bg2)';
-            chip.style.color = 'var(--text-mid)';
+            chip.style.color = brandColor;
           } else {
             window._dbPlatformActive.add(i);
-            chip.style.borderColor = 'var(--red)';
+            chip.style.borderColor = brandColor;
             chip.style.background = 'var(--bg3)';
-            chip.style.color = 'var(--text-bright)';
+            chip.style.color = brandColor;
           }
           dorkBuild();
         };
