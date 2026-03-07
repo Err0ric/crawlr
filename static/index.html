@@ -609,10 +609,14 @@
   .ai-tag { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: #e879f9; }
   .ai-meta { margin-left: auto; font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-mid); }
 
-  .ai-body { padding: 14px 16px; font-size: 13px; line-height: 1.6; color: #e2e8f0; }
-  .ai-body strong { color: var(--amber-bright); font-weight: 600; }
+  .ai-body { padding: 14px 16px; font-family: 'Barlow', sans-serif; font-size: 14px; line-height: 1.7; color: var(--text-bright); }
+  .ai-body strong { color: var(--amber); font-weight: 600; }
+  .ai-body p { margin-bottom: 12px; }
+  .ai-body ul, .ai-body ol { margin-bottom: 12px; }
+  .ai-body li { margin-bottom: 6px; line-height: 1.6; }
+  .ai-body h2, .ai-body h3 { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-bright); margin-bottom: 8px; }
 
-  .ai-section { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #e879f9; margin: 16px 0 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
+  .ai-section { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-bright); margin: 16px 0 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
   .ai-section:first-child { margin-top: 0; }
   .ai-section .sec-arrow { display: inline-block; transition: transform 0.2s ease; font-size: 8px; }
   .ai-section.collapsed .sec-arrow { transform: rotate(-90deg); }
@@ -622,7 +626,7 @@
   .leads { margin-top: 4px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px; }
   .sec-hidden { display: none !important; }
 
-  .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #e2e8f0; line-height: 1.5; position: relative; }
+  .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Barlow', sans-serif; font-size: 13px; color: var(--text-bright); line-height: 1.6; position: relative; }
   .lead-arr { color: var(--red-dim); flex-shrink: 0; }
   .lead-copy { margin-left: auto; flex-shrink: 0; cursor: pointer; color: var(--text-dim); font-size: 10px; opacity: 0; transition: opacity 0.15s, color 0.15s; padding: 0 2px; }
   .lead:hover .lead-copy { opacity: 1; }
