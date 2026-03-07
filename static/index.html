@@ -966,7 +966,7 @@
         <div id="dorkActionBar" style="margin-top:24px; padding-top:18px; border-top:1px solid var(--border); display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <button onclick="dorkSearchSelected()"
             style="background:var(--red); color:#fff; border:none; border-radius:6px; padding:10px 20px; font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:1px; cursor:pointer;">
-            SEARCH SELECTED IN GOOGLE
+            SEARCH SELECTED (COMBINED)
           </button>
           <button onclick="dorkCopySelected()"
             style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer;">
@@ -3889,14 +3889,12 @@
       const item = document.querySelector('[data-idx="' + idx + '"]');
       if (item) queries.push(item.dataset.query);
     });
-    if (queries.length > 0) {
+    if (queries.length === 1) {
       window.open('https://www.google.com/search?q=' + encodeURIComponent(queries[0]), '_blank');
+      return;
     }
-    queries.slice(1).forEach((q, i) => {
-      setTimeout(() => {
-        window.open('https://www.google.com/search?q=' + encodeURIComponent(q), '_blank');
-      }, (i + 1) * 300);
-    });
+    const combined = queries.map(q => '(' + q + ')').join(' OR ');
+    window.open('https://www.google.com/search?q=' + encodeURIComponent(combined), '_blank');
   }
 
   function dorkCopySelected() {
