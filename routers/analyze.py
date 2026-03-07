@@ -449,6 +449,7 @@ class DeepAnalysisRequest(BaseModel):
     asn: Optional[dict] = None
     portscan: Optional[dict] = None
     asn_detail: Optional[dict] = None
+    shodan: Optional[dict] = None
 
 
 @router.post("/deep")
@@ -520,6 +521,23 @@ async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...)):
         if ad.get("peers"):
             parts.append(f"peers: {ad.get('total_peers', len(ad['peers']))}")
         prompt_parts.append(f"ASN Detail: {', '.join(parts)}")
+
+    if req.shodan and not req.shodan.get("error"):
+        s = req.shodan
+        parts = []
+        if s.get("ip"):
+            parts.append(f"IP: {s['ip']}")
+        if s.get("org"):
+            parts.append(f"org: {s['org']}")
+        ports = s.get("ports", [])
+        if ports:
+            port_strs = [f"{p['port']}/{p.get('transport','tcp')}" for p in ports[:15]]
+            parts.append(f"services: {', '.join(port_strs)}")
+        vulns = s.get("vulns", [])
+        if vulns:
+            parts.append(f"CVEs: {', '.join(vulns[:10])}")
+        if parts:
+            prompt_parts.append(f"Shodan: {', '.join(parts)}")
 
     recon_data = "\n".join(prompt_parts)
 

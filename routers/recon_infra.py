@@ -39,6 +39,7 @@ class ReconAnalyzeRequest(BaseModel):
     asn: Optional[dict] = None
     portscan: Optional[dict] = None
     asn_detail: Optional[dict] = None
+    shodan: Optional[dict] = None
 
 
 @router.post("/dns")
@@ -246,6 +247,35 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
         if ad.get("peers"):
             peer_strs = [f"{p['asn']} ({p['name']})" for p in ad['peers'][:10]]
             prompt_parts.append(f"Peers ({ad.get('total_peers', len(ad['peers']))}): {', '.join(peer_strs)}")
+
+    if req.shodan and not req.shodan.get("error"):
+        s = req.shodan
+        parts = []
+        if s.get("ip"):
+            parts.append(f"IP: {s['ip']}")
+        if s.get("org"):
+            parts.append(f"org: {s['org']}")
+        if s.get("os"):
+            parts.append(f"OS: {s['os']}")
+        if s.get("isp"):
+            parts.append(f"ISP: {s['isp']}")
+        ports = s.get("ports", [])
+        if ports:
+            port_strs = []
+            for p in ports[:15]:
+                svc = f"{p['port']}/{p.get('transport','tcp')}"
+                if p.get("product"):
+                    svc += f" ({p['product']}"
+                    if p.get("version"):
+                        svc += f" {p['version']}"
+                    svc += ")"
+                port_strs.append(svc)
+            parts.append(f"services: {', '.join(port_strs)}")
+        vulns = s.get("vulns", [])
+        if vulns:
+            parts.append(f"CVEs: {', '.join(vulns[:10])}")
+        if parts:
+            prompt_parts.append(f"Shodan: {', '.join(parts)}")
 
     recon_data = "\n".join(prompt_parts)
 
