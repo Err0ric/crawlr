@@ -1611,6 +1611,28 @@
     const switchTab = mode === 'recon'
       ? "setReconTab('aiReport')"
       : "setTab(document.getElementById('aiReportTab'),'aiReport')";
+    if (mode === 'recon') {
+      let html = `<div style="grid-column:1/-1;border:1px solid var(--red-bright);border-radius:6px;padding:20px 24px;margin-bottom:4px;background:linear-gradient(135deg,rgba(10,10,40,0.9),rgba(5,15,30,0.95));box-shadow:0 0 24px rgba(180,0,80,0.15);">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <span style="color:var(--red-bright);font-size:11px;font-weight:700;letter-spacing:2px;">// AI SUMMARY</span>
+          <span style="color:var(--text-mid);font-size:11px;margin-left:auto;">${data.model ? data.model + ' · ' : ''}${data.tokens} tokens · ${data.elapsed}s</span>
+          <span style="background:var(--red-bright);color:#000;font-size:10px;font-weight:800;padding:2px 8px;border-radius:3px;letter-spacing:1px;">AI</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">`;
+      bullets.forEach(b => {
+        html += `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:4px;background:rgba(180,0,80,0.08);border-left:3px solid var(--red-dim);font-size:12px;line-height:1.6;color:var(--text-bright);">
+          <span style="color:var(--red-bright);flex-shrink:0;">→</span>
+          <span>${typeof b === 'string' ? b.replace(/^→\s*/, '').trim() : b}</span>
+        </div>`;
+      });
+      html += `</div>
+        <button onclick="${switchTab}" style="background:transparent;border:1px solid var(--red-dim);color:var(--red-bright);font-size:11px;letter-spacing:1.5px;padding:8px 16px;cursor:pointer;border-radius:3px;" onmouseover="this.style.background='var(--red-bright)';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='var(--red-bright)'">
+          VIEW FULL REPORT &amp; SUGGESTIONS →
+        </button>
+      </div>`;
+      return html;
+    }
+
     let html = `<div class="rcard" style="border-left:2px solid var(--red-dim);">
       <div class="rhead">
         <span class="rtag" style="color:var(--red-bright);">// AI SUMMARY</span>
@@ -3399,7 +3421,7 @@
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           // Inline summary card in results grid
           const summaryHtml = renderAISummaryCard(data, 'recon');
-          if (summaryHtml) cardsEl.innerHTML += summaryHtml;
+          if (summaryHtml) cardsEl.insertAdjacentHTML('afterbegin', summaryHtml);
           // Full report in AI Report tab
           document.getElementById('reconAiReportTab').style.display = '';
           document.getElementById('reconAiReportContent').innerHTML = renderAIBlock(data);
