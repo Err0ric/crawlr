@@ -976,9 +976,24 @@
         </div>
       </div>
 
+      <div style="margin-bottom:22px; padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
+        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:10px; text-transform:uppercase;">VIN Lookup // Decodes Year / Make / Model</label>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
+            oninput="this.value=this.value.toUpperCase()"
+            onkeydown="if(event.key==='Enter') vinLookup()"
+            style="flex:1; background:var(--bg1); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none; letter-spacing:1px;" />
+          <button onclick="vinLookup()"
+            style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
+            DECODE
+          </button>
+        </div>
+        <div id="dbVinResult" style="display:none; margin-top:10px; font-family:'Share Tech Mono',monospace; font-size:12px; padding:8px 12px; border-radius:5px; background:var(--bg1);"></div>
+      </div>
+
       <div style="margin-bottom:22px;">
         <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; color:var(--text-mid); margin-bottom:8px; text-transform:uppercase;">Platforms (optional — restrict to specific sites)</label>
-        <div id="dbPlatforms" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+        <div id="dbPlatforms"></div>
       </div>
 
       <div style="margin-bottom:22px;">
@@ -3681,20 +3696,52 @@
   window._dorkSelected = new Set();
   window._dorkTotal = 0;
 
-  const _dorkPlatforms = [
-    { label: 'Instagram', site: 'instagram.com' },
-    { label: 'Facebook', site: 'facebook.com' },
-    { label: 'Twitter/X', site: 'twitter.com' },
-    { label: 'TikTok', site: 'tiktok.com' },
-    { label: 'Reddit', site: 'reddit.com' },
-    { label: 'LinkedIn', site: 'linkedin.com' },
-    { label: 'YouTube', site: 'youtube.com' },
-    { label: 'Twitch', site: 'twitch.tv' },
-    { label: 'GitHub', site: 'github.com' },
-    { label: 'Snapchat', site: 'snapchat.com' },
-    { label: 'Pinterest', site: 'pinterest.com' },
-    { label: 'Pastebin', site: 'pastebin.com' },
+  const _dorkPlatformGroups = [
+    { cat: 'SOCIAL', items: [
+      { label: 'Instagram', site: 'instagram.com' },
+      { label: 'Facebook', site: 'facebook.com' },
+      { label: 'Twitter/X', site: 'twitter.com' },
+      { label: 'TikTok', site: 'tiktok.com' },
+      { label: 'Reddit', site: 'reddit.com' },
+      { label: 'Snapchat', site: 'snapchat.com' },
+      { label: 'Pinterest', site: 'pinterest.com' },
+    ]},
+    { cat: 'PROFESSIONAL', items: [
+      { label: 'LinkedIn', site: 'linkedin.com' },
+      { label: 'GitHub', site: 'github.com' },
+      { label: 'Indeed', site: 'indeed.com' },
+    ]},
+    { cat: 'VIDEO / STREAMING', items: [
+      { label: 'YouTube', site: 'youtube.com' },
+      { label: 'Twitch', site: 'twitch.tv' },
+      { label: 'Vimeo', site: 'vimeo.com' },
+    ]},
+    { cat: 'FORUMS / COMMUNITIES', items: [
+      { label: 'Quora', site: 'quora.com' },
+      { label: 'Medium', site: 'medium.com' },
+      { label: 'Pastebin', site: 'pastebin.com' },
+      { label: 'Discord', site: 'discord.com' },
+    ]},
+    { cat: 'MARKETPLACE', items: [
+      { label: 'Craigslist', site: 'craigslist.org' },
+      { label: 'eBay', site: 'ebay.com' },
+      { label: 'OfferUp', site: 'offerup.com' },
+      { label: 'Poshmark', site: 'poshmark.com' },
+    ]},
+    { cat: 'GAMING', items: [
+      { label: 'Steam', site: 'steamcommunity.com' },
+      { label: 'Xbox', site: 'xbox.com' },
+      { label: 'PlayStation', site: 'psnprofiles.com' },
+    ]},
+    { cat: 'DOCUMENTS', items: [
+      { label: 'Scribd', site: 'scribd.com' },
+      { label: 'SlideShare', site: 'slideshare.net' },
+      { label: 'PDFs', site: '_filetype:pdf' },
+    ]},
   ];
+  // Flatten for indexed access
+  const _dorkPlatforms = [];
+  _dorkPlatformGroups.forEach(g => g.items.forEach(p => _dorkPlatforms.push(p)));
   window._dbPlatformActive = new Set();
   let _dbPlatformsInit = false;
 
@@ -3702,27 +3749,41 @@
     if (_dbPlatformsInit) return;
     _dbPlatformsInit = true;
     const container = document.getElementById('dbPlatforms');
-    _dorkPlatforms.forEach((p, i) => {
-      const chip = document.createElement('div');
-      chip.id = 'dbplat-' + i;
-      chip.dataset.site = p.site;
-      chip.textContent = p.label;
-      chip.style.cssText = 'padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:var(--text-mid); font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:all .15s;';
-      chip.onclick = () => {
-        if (window._dbPlatformActive.has(i)) {
-          window._dbPlatformActive.delete(i);
-          chip.style.borderColor = 'var(--border-hi)';
-          chip.style.background = 'var(--bg2)';
-          chip.style.color = 'var(--text-mid)';
-        } else {
-          window._dbPlatformActive.add(i);
-          chip.style.borderColor = 'var(--red)';
-          chip.style.background = 'var(--bg3)';
-          chip.style.color = 'var(--text-bright)';
-        }
-        dorkBuild();
-      };
-      container.appendChild(chip);
+    let globalIdx = 0;
+    _dorkPlatformGroups.forEach(group => {
+      const groupDiv = document.createElement('div');
+      groupDiv.style.cssText = 'margin-bottom:10px;';
+      const catLabel = document.createElement('div');
+      catLabel.textContent = group.cat;
+      catLabel.style.cssText = 'font-family:"Share Tech Mono",monospace; font-size:9px; letter-spacing:1.5px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase; opacity:0.6;';
+      groupDiv.appendChild(catLabel);
+      const chipsRow = document.createElement('div');
+      chipsRow.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px;';
+      group.items.forEach(p => {
+        const i = globalIdx++;
+        const chip = document.createElement('div');
+        chip.id = 'dbplat-' + i;
+        chip.dataset.site = p.site;
+        chip.textContent = p.label;
+        chip.style.cssText = 'padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:var(--text-mid); font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:all .15s;';
+        chip.onclick = () => {
+          if (window._dbPlatformActive.has(i)) {
+            window._dbPlatformActive.delete(i);
+            chip.style.borderColor = 'var(--border-hi)';
+            chip.style.background = 'var(--bg2)';
+            chip.style.color = 'var(--text-mid)';
+          } else {
+            window._dbPlatformActive.add(i);
+            chip.style.borderColor = 'var(--red)';
+            chip.style.background = 'var(--bg3)';
+            chip.style.color = 'var(--text-bright)';
+          }
+          dorkBuild();
+        };
+        chipsRow.appendChild(chip);
+      });
+      groupDiv.appendChild(chipsRow);
+      container.appendChild(groupDiv);
     });
   }
 
@@ -3762,7 +3823,8 @@
     // Platforms
     const activePlats = [];
     window._dbPlatformActive.forEach(i => {
-      activePlats.push('site:' + _dorkPlatforms[i].site);
+      const s = _dorkPlatforms[i].site;
+      activePlats.push(s.startsWith('_filetype:') ? s.slice(1) : 'site:' + s);
     });
     if (activePlats.length === 1) {
       parts.push(activePlats[0]);
@@ -3800,9 +3862,12 @@
   }
 
   function dorkBuilderClear() {
-    ['dbName','dbUsername','dbLocation','dbEmployer','dbEmail','dbKeywords'].forEach(id => {
+    ['dbName','dbUsername','dbLocation','dbEmployer','dbEmail','dbKeywords','dbVin'].forEach(id => {
       document.getElementById(id).value = '';
     });
+    const vinResult = document.getElementById('dbVinResult');
+    vinResult.style.display = 'none';
+    vinResult.innerHTML = '';
     window._dbPlatformActive.clear();
     _dorkPlatforms.forEach((_, i) => {
       const chip = document.getElementById('dbplat-' + i);
@@ -3814,6 +3879,58 @@
     });
     window._dbCurrentQuery = '';
     dorkBuild();
+  }
+
+  async function vinLookup() {
+    const vin = document.getElementById('dbVin').value.trim().toUpperCase();
+    const resultEl = document.getElementById('dbVinResult');
+    resultEl.style.display = 'block';
+
+    if (!vin || vin.length !== 17) {
+      resultEl.innerHTML = '<span style="color:var(--amber);">VIN must be exactly 17 characters</span>';
+      return;
+    }
+
+    resultEl.innerHTML = '<span style="color:var(--text-mid);">Decoding...</span>';
+
+    try {
+      const resp = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/' + encodeURIComponent(vin) + '?format=json');
+      if (!resp.ok) throw new Error('API error');
+      const data = await resp.json();
+      const results = data.Results || [];
+      const get = (id) => {
+        const r = results.find(r => r.VariableId === id);
+        return (r && r.Value && r.Value.trim()) ? r.Value.trim() : '';
+      };
+      const year = get(29);
+      const make = get(26);
+      const model = get(28);
+      const trim = get(38);
+      const bodyClass = get(5);
+
+      if (!make && !model) {
+        resultEl.innerHTML = '<span style="color:var(--red);">No vehicle data found for this VIN</span>';
+        return;
+      }
+
+      let display = '';
+      if (year) display += year + ' ';
+      if (make) display += make.toUpperCase() + ' ';
+      if (model) display += model;
+      if (trim) display += ' ' + trim;
+      if (bodyClass) display += ' // ' + bodyClass;
+
+      resultEl.innerHTML = '<span style="color:#4ade80;">&#10003; ' + display + '</span>';
+
+      // Auto-populate keywords if empty
+      const kwField = document.getElementById('dbKeywords');
+      if (!kwField.value.trim() && make && model) {
+        kwField.value = make + ', ' + model;
+        dorkBuild();
+      }
+    } catch (e) {
+      resultEl.innerHTML = '<span style="color:var(--red);">Failed to decode VIN — check format and try again</span>';
+    }
   }
 
   function renderSettings() {
