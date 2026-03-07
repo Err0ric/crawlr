@@ -2837,11 +2837,14 @@
     const subIpX = laneX[1] + subBoxW + 20;
     const subAsnX = subIpX + subIpBoxW + 20;
     const subStartY = startY + Math.max(lane1Order.length, lane2Order.length, lane3Order.length) * (boxH + gapY) + 40;
-    subNodes.forEach((s, i) => {
-      positions[s.id] = { x: laneX[1], y: subStartY + i * (subBoxH + subGapY) };
+    let subRowIdx = 0;
+    subNodes.forEach((s) => {
+      const ipCount = Math.max(s.ips.length, 1);
+      positions[s.id] = { x: laneX[1], y: subStartY + subRowIdx * (subBoxH + subGapY) };
       s.ips.forEach((ip, j) => {
+        const rowY = subStartY + (subRowIdx + j) * (subBoxH + subGapY);
         const ipId = 'subip_' + s.id + '_' + ip;
-        positions[ipId] = { x: subIpX, y: subStartY + i * (subBoxH + subGapY) };
+        positions[ipId] = { x: subIpX, y: rowY };
         if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: 'ip', lane: 2, row: 0 }); }
         addL(s.id, ipId, 'sub');
         // ASN node for this subdomain IP
@@ -2850,7 +2853,7 @@
         const asnLabel = isCf ? 'CF PROXY' : (asnData && asnData.asn ? `${asnData.asn} ${(asnData.org || '').slice(0, 25)}` : '');
         if (asnLabel) {
           const asnId = 'subasn_' + s.id + '_' + ip;
-          positions[asnId] = { x: subAsnX, y: subStartY + i * (subBoxH + subGapY) };
+          positions[asnId] = { x: subAsnX, y: rowY };
           if (!idSet[asnId]) {
             idSet[asnId] = true;
             treeNodes.push({ id: asnId, label: asnLabel, type: isCf ? 'cf_asn' : 'asn', lane: 3, row: 0 });
@@ -2858,13 +2861,14 @@
           addL(ipId, asnId, isCf ? 'cf' : 'asn');
         }
       });
+      subRowIdx += ipCount;
     });
     // Add subdomain nodes to treeNodes
     for (const s of subNodes) {
       if (!treeNodes.find(n => n.id === s.id)) treeNodes.push({ id: s.id, label: s.label, type: s.type, lane: 1, row: 0 });
     }
 
-    const totalH = Math.max(subStartY + subNodes.length * (subBoxH + subGapY) + 60, rect.height || 500);
+    const totalH = Math.max(subStartY + subRowIdx * (subBoxH + subGapY) + 60, rect.height || 500);
     const svgW = Math.max(W, subAsnX + subAsnBoxW + 40, laneX[3] + asnBoxW + 40, 920);
 
     const svg = d3.select(container).append('svg')
