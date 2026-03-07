@@ -179,6 +179,12 @@
   .hnav.active { color: var(--text-bright); border-bottom-color: var(--red); }
 
   .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .gear-btn { font-size: 18px; cursor: pointer; color: var(--text-dim); transition: color 0.15s, transform 0.15s; padding: 2px 4px; }
+  .gear-btn:hover { color: var(--text-bright); transform: rotate(30deg); }
+  .settings-overlay { position: fixed; top: 0; right: -420px; width: 400px; height: 100vh; background: var(--bg); border-left: 1px solid var(--border-hi); z-index: 9998; overflow-y: auto; transition: right 0.25s ease; box-shadow: -4px 0 30px rgba(0,0,0,0.4); }
+  .settings-overlay.open { right: 0; }
+  .settings-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 9997; display: none; }
+  .settings-backdrop.open { display: block; }
 
   .key-pill {
     display: flex;
@@ -398,21 +404,24 @@
   .tab {
     display: flex;
     align-items: center;
+    gap: 6px;
     padding: 0 18px;
     height: 100%;
     font-family: 'Share Tech Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--text-mid);
     cursor: pointer;
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
     transition: all 0.15s;
   }
+  .tab .tab-dot { width: 6px; height: 6px; border-radius: 50%; display: none; }
+  .tab .tab-dot.visible { display: inline-block; }
 
-  .tab:hover { color: var(--text-mid); }
-  .tab.on { color: var(--text-bright); border-bottom-color: var(--red); }
+  .tab:hover { color: var(--text-bright); }
+  .tab.on { color: var(--text-bright); border-bottom-color: var(--red); background: rgba(255,255,255,0.03); }
   .tab-spacer { flex: 1; }
 
   .action-btn {
@@ -745,13 +754,13 @@
     <div class="hnav active" onclick="switchMode('investigate')">Investigate</div>
     <div class="hnav" onclick="switchMode('recon')">Recon</div>
     <div class="hnav" onclick="switchMode('history')">History</div>
-    <div class="hnav" onclick="switchMode('settings')">Settings</div>
   </div>
   <div class="header-right">
     <div class="key-pill" onclick="openModal()">
       <div class="key-dot" id="keyDot"></div>
       <span id="keyLabel">NO KEY</span>
     </div>
+    <div class="gear-btn" onclick="toggleSettingsPanel()" title="Settings">⚙</div>
   </div>
 </header>
 
@@ -805,7 +814,7 @@
   <div class="main">
     <div class="tab-bar">
       <div class="tab on" onclick="setTab(this,'content')">Results</div>
-      <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI Report</div>
+      <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI Report<span class="tab-dot" id="aiReportDot" style="background:#a855f7;"></span></div>
       <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
       <button class="action-btn" onclick="exportMarkdown()">Export</button>
@@ -897,7 +906,7 @@
   <div class="main">
     <div class="tab-bar">
       <div class="tab on" onclick="setReconTab('results')">Results</div>
-      <div class="tab" onclick="setReconTab('graph')">Graph</div>
+      <div class="tab" onclick="setReconTab('graph')">Graph<span class="tab-dot" id="graphDot" style="background:#a855f7;"></span></div>
       <div class="tab-spacer"></div>
       <button class="action-btn" onclick="exportReconMarkdown()">Export</button>
     </div>
@@ -940,9 +949,13 @@
   </div>
 </div>
 
-<div class="workspace" id="settingsWorkspace" style="display:none;grid-template-columns:1fr;">
-  <div class="main" style="max-width:700px;margin:0 auto;padding:30px 20px;overflow-y:auto;">
-    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin-bottom:24px;">// Settings</div>
+<div class="settings-backdrop" id="settingsBackdrop" onclick="toggleSettingsPanel()"></div>
+<div class="settings-overlay" id="settingsPanel">
+  <div style="padding:24px 20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;">// Settings</div>
+      <div style="cursor:pointer;color:var(--text-dim);font-size:18px;padding:4px 8px;" onclick="toggleSettingsPanel()" title="Close">✕</div>
+    </div>
 
     <div class="rcard" style="margin-bottom:16px;">
       <div class="rcard-head"><div class="rcard-title">API Keys</div><div class="badge b-hit" style="font-size:8px;">STORED LOCALLY</div></div>
@@ -1949,7 +1962,7 @@
     runBtn.style.pointerEvents = 'none';
 
     document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('aiReportTab').style.display = 'none';
+    document.getElementById('aiReportTab').style.display = 'none'; document.getElementById('aiReportDot').classList.remove('visible');
     document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
     document.getElementById('deepDiveBtn').style.display = 'none';
     document.getElementById('deepDiveResults').style.display = 'none';
@@ -1981,7 +1994,7 @@
 
       if (result.aiData) {
         updateAIProgress();
-        document.getElementById('aiReportTab').style.display = '';
+        document.getElementById('aiReportTab').style.display = ''; document.getElementById('aiReportDot').classList.add('visible');
         document.getElementById('aiReportContent').innerHTML = renderAIBlock(result.aiData);
         const ddBtn = document.getElementById('deepDiveBtn');
         const ddResults = document.getElementById('deepDiveResults');
@@ -2114,7 +2127,7 @@
               const corrData = await corrResp.json();
               btn.style.display = 'none';
               resultsDiv.innerHTML = renderCorrelationBlock(corrData);
-              document.getElementById('aiReportTab').style.display = '';
+              document.getElementById('aiReportTab').style.display = ''; document.getElementById('aiReportDot').classList.add('visible');
               document.getElementById('aiReportContent').innerHTML = renderCorrelationBlock(corrData);
             }
           } catch (e) {
@@ -2803,7 +2816,7 @@
     document.getElementById('emptyState').style.display = '';
     document.getElementById('results').style.display = 'none';
     document.getElementById('results').innerHTML = '';
-    document.getElementById('aiReportTab').style.display = 'none';
+    document.getElementById('aiReportTab').style.display = 'none'; document.getElementById('aiReportDot').classList.remove('visible');
     document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
     document.getElementById('deepDiveBtn').style.display = 'none';
     document.getElementById('deepDiveResults').style.display = 'none';
@@ -2826,7 +2839,6 @@
     document.getElementById('investigateWorkspace').style.display = 'none';
     document.getElementById('reconWorkspace').style.display = 'none';
     document.getElementById('historyWorkspace').style.display = 'none';
-    document.getElementById('settingsWorkspace').style.display = 'none';
     if (mode === 'recon') {
       document.querySelectorAll('.hnav')[1].classList.add('active');
       document.getElementById('reconWorkspace').style.display = 'grid';
@@ -2834,13 +2846,23 @@
       document.querySelectorAll('.hnav')[2].classList.add('active');
       document.getElementById('historyWorkspace').style.display = 'grid';
       renderHistory();
-    } else if (mode === 'settings') {
-      document.querySelectorAll('.hnav')[3].classList.add('active');
-      document.getElementById('settingsWorkspace').style.display = 'grid';
-      renderSettings();
     } else {
       document.querySelectorAll('.hnav')[0].classList.add('active');
       document.getElementById('investigateWorkspace').style.display = 'grid';
+    }
+  }
+
+  function toggleSettingsPanel() {
+    const panel = document.getElementById('settingsPanel');
+    const backdrop = document.getElementById('settingsBackdrop');
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+      panel.classList.remove('open');
+      backdrop.classList.remove('open');
+    } else {
+      renderSettings();
+      panel.classList.add('open');
+      backdrop.classList.add('open');
     }
   }
 
@@ -3091,6 +3113,7 @@
     reconScanning = true;
     reconCollected = {};
     reconAISummary = '';
+    document.getElementById('graphDot').classList.remove('visible');
     const runBtn = document.getElementById('reconRunBtn');
     runBtn.textContent = '⏳ SCANNING...';
     runBtn.style.pointerEvents = 'none';
@@ -3215,6 +3238,10 @@
     runBtn.textContent = '▶ Run Recon';
     runBtn.style.pointerEvents = '';
     reconScanning = false;
+    // Light up Graph tab dot
+    if (Object.keys(reconCollected).length > 0) {
+      document.getElementById('graphDot').classList.add('visible');
+    }
   }
 
   function exportReconMarkdown() {
@@ -3476,7 +3503,7 @@
         const aiBlock = document.createElement('div');
         aiBlock.innerHTML = renderAIBlock({ summary: entry.aiSummary });
         res.insertBefore(aiBlock, cardsEl);
-        document.getElementById('aiReportTab').style.display = '';
+        document.getElementById('aiReportTab').style.display = ''; document.getElementById('aiReportDot').classList.add('visible');
         document.getElementById('aiReportContent').innerHTML = renderAIBlock({ summary: entry.aiSummary });
         // Show Deep Dive button if profiles available
         const ddBtn = document.getElementById('deepDiveBtn');
@@ -3506,6 +3533,7 @@
       const aiEl = document.getElementById('reconAiBlock');
       const d = entry.results;
       reconCollected = d;
+      document.getElementById('graphDot').classList.add('visible');
       if (d.dns) cardsEl.innerHTML += renderDnsCard(d.dns);
       if (d.whois) cardsEl.innerHTML += renderWhoisCard(d.whois);
       if (d.ssl) cardsEl.innerHTML += renderSslCard(d.ssl);
