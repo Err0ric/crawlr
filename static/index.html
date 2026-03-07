@@ -179,8 +179,8 @@
   .hnav.active { color: var(--text-bright); border-bottom-color: var(--red); }
 
   .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-  .gear-btn { font-size: 18px; cursor: pointer; color: var(--text-dim); transition: color 0.15s, transform 0.15s; padding: 2px 4px; }
-  .gear-btn:hover { color: var(--text-bright); transform: rotate(30deg); }
+  .gear-btn { font-size: 18px; cursor: pointer; color: #7c3aed; transition: color 0.15s, transform 0.15s; padding: 2px 4px; }
+  .gear-btn:hover { color: #a855f7; transform: rotate(30deg); }
   .settings-overlay { position: fixed; top: 0; right: -420px; width: 400px; height: 100vh; background: var(--bg); border-left: 1px solid var(--border-hi); z-index: 9998; overflow-y: auto; transition: right 0.25s ease; box-shadow: -4px 0 30px rgba(0,0,0,0.4); }
   .settings-overlay.open { right: 0; }
   .settings-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 9997; display: none; }
@@ -756,11 +756,11 @@
     <div class="hnav" onclick="switchMode('history')">History</div>
   </div>
   <div class="header-right">
+    <div class="gear-btn" onclick="toggleSettingsPanel()" title="Settings">⚙</div>
     <div class="key-pill" onclick="openModal()">
       <div class="key-dot" id="keyDot"></div>
       <span id="keyLabel">NO KEY</span>
     </div>
-    <div class="gear-btn" onclick="toggleSettingsPanel()" title="Settings">⚙</div>
   </div>
 </header>
 
