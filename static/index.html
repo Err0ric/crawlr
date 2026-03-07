@@ -3482,6 +3482,8 @@
     const target = document.getElementById('reconTargetInput').value.trim();
     if (!target || !Object.keys(reconCollected).length) { showToast('Run a recon scan first'); return; }
 
+    if (!confirm('// DEEP ANALYSIS\n\nThis will send all recon data to Claude (~2,000-3,000 tokens).\n\nContinue?')) return;
+
     const btn = document.getElementById('reconDeepAnalysisBtn');
     const resultEl = document.getElementById('deepAnalysisResult');
     btn.textContent = '⏳ ANALYZING...';
@@ -3509,12 +3511,12 @@
         throw new Error(err.detail || resp.statusText);
       }
       const data = await resp.json();
-      resultEl.innerHTML = `<div class="ai-block" style="border-color:rgba(245,158,11,0.3);border-left:3px solid #f59e0b;">
-        <div class="ai-head" style="border-color:rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);">
+      resultEl.innerHTML = `<div class="ai-block" style="margin-top:12px;border-color:rgba(245,158,11,0.3);">
+        <div class="ai-head" style="padding:5px 10px;border-color:rgba(245,158,11,0.2);">
           <div class="ai-tag" style="color:#f59e0b;">// DEEP ANALYSIS</div>
           <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
         </div>
-        <div class="ai-body">${_renderMarkdownReport(data.summary)}</div>
+        <div class="ai-body" style="font-size:12px;line-height:1.7;">${_renderMarkdownReport(data.summary)}</div>
       </div>`;
       btn.textContent = '// REGENERATE DEEP ANALYSIS';
       btn.style.pointerEvents = '';
