@@ -677,6 +677,208 @@
 
   .modal-secondary { padding: 9px 14px; background: transparent; border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; font-size: 10px; cursor: pointer; transition: all 0.15s; }
   .modal-secondary:hover { border-color: var(--border-hi); color: var(--text-mid); }
+
+  /* ── Mobile modules drawer toggle ── */
+  .mobile-modules-toggle {
+    display: none;
+    position: fixed;
+    bottom: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 150;
+    padding: 8px 20px;
+    background: var(--bg2);
+    border: 1px solid var(--red-dim);
+    border-radius: 20px;
+    color: var(--red-bright);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .mobile-modules-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 139;
+  }
+
+  /* ── Tablet: 1024px ── */
+  @media (max-width: 1024px) {
+    .workspace { grid-template-columns: 240px 1fr; }
+    .content { padding: 16px 18px; }
+    .mod { padding: 10px 14px; min-height: 44px; }
+    .pane { padding: 12px 14px; }
+    .modal { width: 360px; padding: 22px; }
+    .settings-overlay { width: 340px; }
+    #dorksWorkspace > .main { padding: 22px 30px; }
+  }
+
+  /* ── Mobile: 768px ── */
+  @media (max-width: 768px) {
+    /* Touch optimization */
+    button, .chip, .mod-toggle, .hnav, .tab, .action-btn, .run-btn, .key-pill, .chk, .hist-entry, .rmore, .copy-to-notes, .gear-btn {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body { overflow: hidden; height: 100%; }
+    body { font-size: 14px; }
+
+    /* Header */
+    header { height: 44px; padding: 0 10px; }
+    .logo-wordmark { font-size: 15px; letter-spacing: 2px; }
+    .logo svg { width: 22px; height: 22px; }
+    .header-divider { margin: 0 10px; }
+    .header-nav { flex: 1; }
+    .hnav { padding: 0 8px; font-size: 11px; min-height: 44px; }
+    .header-right .hnav { font-size: 0; width: 32px; padding: 0; justify-content: center; }
+    .header-right .hnav::before { content: '⏱'; font-size: 16px; }
+    .key-pill { padding: 4px 8px; }
+    .key-pill span { display: none; }
+
+    /* Workspace — stack vertically, sidebar hidden by default */
+    #investigateWorkspace, #reconWorkspace, #historyWorkspace {
+      flex-direction: column !important;
+      overflow: hidden;
+    }
+    #investigateWorkspace[style*="display: grid"], #investigateWorkspace[style*="display:grid"],
+    #reconWorkspace[style*="display: grid"], #reconWorkspace[style*="display:grid"],
+    #historyWorkspace[style*="display: grid"], #historyWorkspace[style*="display:grid"] {
+      display: flex !important;
+    }
+
+    .sidebar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 70vh;
+      max-height: 70vh;
+      z-index: 140;
+      border-right: none;
+      border-top: 1px solid var(--border-hi);
+      border-radius: 12px 12px 0 0;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sidebar.mobile-open { transform: translateY(0); }
+
+    /* Hide desktop sidebar toggle */
+    .sb-toggle { display: none; }
+    .sb-mini { display: none !important; }
+
+    /* Show mobile modules toggle */
+    .mobile-modules-toggle { display: block; }
+    .mobile-modules-backdrop.open { display: block; }
+
+    /* Main panel full width */
+    .main { flex: 1; overflow: hidden; width: 100%; }
+
+    /* Sidebar internals */
+    .pane { padding: 12px 16px; }
+    .target-input { font-size: 16px; padding: 12px 14px; }
+    .target-input:focus { padding: 11px 13px; }
+    .chips { gap: 6px; }
+    .chip { padding: 6px 12px; font-size: 11px; min-height: 32px; display: flex; align-items: center; }
+    .mod { padding: 10px 16px; min-height: 44px; }
+    .mod-name { font-size: 14px; }
+    .mod-sub { font-size: 10px; }
+    .mod-toggle { width: 32px; height: 18px; }
+    .mod-toggle::after { width: 12px; height: 12px; }
+    .mod-toggle.on::after { left: 17px; }
+    .mod-tag { font-size: 10px; padding: 3px 8px; }
+
+    /* Run button — fixed bottom */
+    .run-wrap {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 130;
+      padding: 10px 16px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+    }
+    .run-btn { padding: 14px; font-size: 15px; min-height: 48px; }
+
+    /* Tab bar */
+    .tab-bar { height: 36px; padding-right: 6px; }
+    .tab { padding: 0 10px; font-size: 10px; letter-spacing: 1px; min-height: 36px; }
+    .action-btn { font-size: 9px; padding: 4px 8px; margin-left: 4px; }
+
+    /* Content area */
+    .content { padding: 14px 12px; padding-bottom: 80px; -webkit-overflow-scrolling: touch; }
+
+    /* Result grid — single column */
+    .result-grid { grid-template-columns: 1fr !important; gap: 8px; }
+
+    /* Cards */
+    .rcard-head { padding: 10px 12px; }
+    .rcard-title { font-size: 10px; }
+    .rcard-body { padding: 8px 10px; }
+    .rcard-body.scrollable-card { max-height: 300px; -webkit-overflow-scrolling: touch; }
+    .ritem { font-size: 11px; gap: 6px; padding: 5px 0; }
+    .copy-to-notes { font-size: 9px; padding: 3px 8px; }
+
+    /* Badges */
+    .badge { font-size: 9px; }
+
+    /* AI blocks */
+    .ai-body { padding: 12px 14px; font-size: 13px; line-height: 1.6; }
+    .ai-body h2, .ai-body h3 { font-size: 11px; }
+    .ai-head { padding: 8px 12px; }
+    .lead { font-size: 12px; padding: 6px 8px; }
+
+    /* Agent log */
+    .log-row { font-size: 11px; padding: 8px 12px; gap: 8px; }
+    .log-summary { font-size: 11px; padding: 8px 12px; }
+
+    /* History entries */
+    .hist-entry { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+    .hist-summary { white-space: normal; min-width: 0; }
+    .hist-time { font-size: 10px; }
+
+    /* Modals */
+    .modal { width: calc(100vw - 32px); max-width: 400px; padding: 20px; }
+    .settings-overlay { width: 100vw; right: -100vw; }
+    .settings-overlay.open { right: 0; }
+
+    /* Toast */
+    .toast { font-size: 11px; padding: 8px 16px; max-width: calc(100vw - 40px); white-space: normal; bottom: 80px; }
+
+    /* Notes */
+    #notesArea, #reconNotesArea { font-size: 13px; padding: 14px 12px; padding-bottom: 80px; -webkit-overflow-scrolling: touch; }
+
+    /* Dorks page */
+    #dorksWorkspace > .main { padding: 16px 14px; }
+    #dorksWorkspace .dork-builder { max-width: 100% !important; }
+    #dorksWorkspace [style*="grid-template-columns"] {
+      grid-template-columns: 1fr !important;
+    }
+    #dorksWorkspace input { font-size: 14px !important; }
+    #dorksWorkspace label { font-size: 11px !important; }
+    #dbPlatforms { gap: 8px !important; }
+    #dbPlatforms > div, #dbPlatforms > span { padding: 8px 14px !important; min-height: 36px !important; font-size: 12px !important; }
+
+    /* Status bar */
+    .statusbar { height: 20px; font-size: 8px; padding: 0 10px; gap: 10px; }
+
+    /* Prevent horizontal overflow */
+    * { max-width: 100vw; }
+    .ritem a { word-break: break-all; }
+
+    /* Empty state */
+    .empty-glyph { font-size: 24px; }
+    .empty-title { font-size: 10px; }
+    .empty-sub { font-size: 12px; max-width: 240px; }
+  }
 </style>
 </head>
 <body>
@@ -792,6 +994,9 @@
     </div>
   </div>
 </header>
+
+<div class="mobile-modules-backdrop" id="mobileModulesBackdrop" onclick="closeMobileModules()"></div>
+<button class="mobile-modules-toggle" id="mobileModulesBtn" onclick="toggleMobileModules()">// MODULES</button>
 
 <div class="workspace" id="investigateWorkspace">
   <div class="sidebar">
@@ -2321,6 +2526,7 @@
     }
 
     scanning = true;
+    closeMobileModules();
     const isBulk = targets.length > 1;
     currentTarget = isBulk ? targets.join(', ') : targets[0];
     localStorage.removeItem('crawlr_checked_' + currentTarget);
@@ -2521,6 +2727,23 @@
     // Sync mini target text
     const target = document.getElementById('targetInput').value.trim();
     document.getElementById('sbMiniTarget').textContent = target || '—';
+  }
+
+  function toggleMobileModules() {
+    const visible = document.querySelector('.workspace[style*="display: grid"], .workspace[style*="display:grid"]') || document.getElementById('investigateWorkspace');
+    const sidebar = visible ? visible.querySelector('.sidebar') : null;
+    if (!sidebar) return;
+    const isOpen = sidebar.classList.contains('mobile-open');
+    if (isOpen) { closeMobileModules(); } else {
+      sidebar.classList.add('mobile-open');
+      document.getElementById('mobileModulesBackdrop').classList.add('open');
+      document.getElementById('mobileModulesBtn').textContent = '// CLOSE';
+    }
+  }
+  function closeMobileModules() {
+    document.querySelectorAll('.sidebar.mobile-open').forEach(s => s.classList.remove('mobile-open'));
+    document.getElementById('mobileModulesBackdrop').classList.remove('open');
+    document.getElementById('mobileModulesBtn').textContent = '// MODULES';
   }
 
   function renderNameSearchCard(name) {
@@ -3218,25 +3441,31 @@
   }
 
   function switchMode(mode) {
+    closeMobileModules();
     document.querySelectorAll('.hnav').forEach(n => n.classList.remove('active'));
     document.getElementById('investigateWorkspace').style.display = 'none';
     document.getElementById('reconWorkspace').style.display = 'none';
     document.getElementById('dorksWorkspace').style.display = 'none';
     document.getElementById('historyWorkspace').style.display = 'none';
+    const mobileBtn = document.getElementById('mobileModulesBtn');
     if (mode === 'recon') {
       document.querySelectorAll('.hnav')[1].classList.add('active');
       document.getElementById('reconWorkspace').style.display = 'grid';
+      if (mobileBtn) mobileBtn.style.removeProperty('display');
     } else if (mode === 'dorks') {
       document.querySelectorAll('.hnav')[2].classList.add('active');
       document.getElementById('dorksWorkspace').style.display = 'flex';
       _initDorkPlatforms();
+      if (mobileBtn) mobileBtn.style.display = 'none';
     } else if (mode === 'history') {
       document.querySelectorAll('.hnav')[3].classList.add('active');
       document.getElementById('historyWorkspace').style.display = 'grid';
       renderHistory();
+      if (mobileBtn) mobileBtn.style.display = 'none';
     } else {
       document.querySelectorAll('.hnav')[0].classList.add('active');
       document.getElementById('investigateWorkspace').style.display = 'grid';
+      if (mobileBtn) mobileBtn.style.removeProperty('display');
     }
   }
 
@@ -3499,6 +3728,7 @@
     if (!target) { document.getElementById('reconTargetInput').focus(); return; }
 
     reconScanning = true;
+    closeMobileModules();
     reconCollected = {};
     reconAISummary = '';
     document.getElementById('reconAiReportTab').style.display = 'none';
