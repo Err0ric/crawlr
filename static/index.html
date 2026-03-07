@@ -4062,17 +4062,25 @@
         chip.dataset.site = p.site;
         chip.dataset.brandColor = brandColor;
         chip.textContent = p.label;
-        chip.style.cssText = `padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:${brandColor}; font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:all .15s;`;
+        chip.style.cssText = 'padding:6px 14px; border-radius:16px; border:1px solid var(--border-hi); background:var(--bg2); color:var(--text-mid); font-family:"Share Tech Mono",monospace; font-size:11px; cursor:pointer; user-select:none; transition:all .15s;';
+        chip.onmouseenter = () => {
+          if (!chip.classList.contains('active')) chip.style.color = brandColor;
+        };
+        chip.onmouseleave = () => {
+          if (!chip.classList.contains('active')) chip.style.color = '';
+        };
         chip.onclick = () => {
           if (window._dbPlatformActive.has(i)) {
             window._dbPlatformActive.delete(i);
-            chip.style.borderColor = 'var(--border-hi)';
-            chip.style.background = 'var(--bg2)';
-            chip.style.color = brandColor;
+            chip.classList.remove('active');
+            chip.style.borderColor = '';
+            chip.style.background = '';
+            chip.style.color = '';
           } else {
             window._dbPlatformActive.add(i);
+            chip.classList.add('active');
             chip.style.borderColor = brandColor;
-            chip.style.background = 'var(--bg3)';
+            chip.style.background = brandColor.startsWith('#') ? brandColor + '14' : 'var(--bg3)';
             chip.style.color = brandColor;
           }
           dorkBuild();
