@@ -1612,7 +1612,7 @@
       ? "setReconTab('aiReport')"
       : "setTab(document.getElementById('aiReportTab'),'aiReport')";
     if (mode === 'recon') {
-      let html = `<div style="grid-column:1/-1;border:1px solid var(--red-bright);border-radius:6px;padding:20px 24px;margin-bottom:4px;background:linear-gradient(135deg,rgba(10,10,40,0.9),rgba(5,15,30,0.95));box-shadow:0 0 24px rgba(180,0,80,0.15);">
+      let html = `<div style="grid-column:1/-1;border:1px solid var(--red-bright);border-radius:6px;padding:20px 24px;margin-bottom:4px;background:var(--bg-card, rgba(255,255,255,0.03));box-shadow:0 0 24px rgba(180,0,80,0.15);">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
           <span style="color:var(--red-bright);font-size:11px;font-weight:700;letter-spacing:2px;">// AI SUMMARY</span>
           <span style="color:var(--text-mid);font-size:11px;margin-left:auto;">${data.model ? data.model + ' · ' : ''}${data.tokens} tokens · ${data.elapsed}s</span>
@@ -1621,7 +1621,7 @@
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">`;
       bullets.forEach(b => {
         html += `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:4px;background:rgba(180,0,80,0.08);border-left:3px solid var(--red-dim);font-size:12px;line-height:1.6;color:var(--text-bright);">
-          <span style="color:var(--red-bright);flex-shrink:0;">→</span>
+          <span style="color:var(--red-bright);flex-shrink:0;">✓</span>
           <span>${typeof b === 'string' ? b.replace(/^→\s*/, '').trim() : b}</span>
         </div>`;
       });
