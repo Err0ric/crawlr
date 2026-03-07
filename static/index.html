@@ -564,8 +564,6 @@
   .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 
   .rcard { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; transition: border-color 0.15s; }
-  .rcard-compact { display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:4px; opacity:0.5; }
-  .rcard-compact .rcard-compact-label { font-size:10px; font-family:'Share Tech Mono',monospace; color:var(--text-dim); letter-spacing:0.5px; }
   .rcard:hover { border-color: var(--border-mid); }
 
   .rcard-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg3); }
@@ -1172,9 +1170,7 @@
   function renderHoleheCard(data) {
     const count = data.total || 0;
     const items = data.results || [];
-    if (count === 0) {
-      return `<div class="rcard-compact"><span class="rcard-compact-label">Holehe · Email Accounts</span><span class="badge b-none" style="font-size:8px;">NO HITS</span></div>`;
-    }
+    if (count === 0) return '';
     const visible = items.slice(0, 6);
     const remaining = items.length - visible.length;
 
@@ -1208,19 +1204,18 @@
     const hosts = data.hosts || [];
     const emails = data.emails || [];
     const total = hosts.length + emails.length;
+    if (total === 0) return '';
     const visible = hosts.slice(0, 6);
     const remaining = hosts.length - visible.length;
 
     let html = `<div class="rcard">
       <div class="rcard-head">
         <div class="rcard-title">theHarvester · Domain</div>
-        <div class="badge ${total > 0 ? 'b-hit' : 'b-none'}">${hosts.length} HOST${hosts.length !== 1 ? 'S' : ''}${emails.length ? ' · ' + emails.length + ' EMAIL' + (emails.length !== 1 ? 'S' : '') : ''}</div>
+        <div class="badge b-hit">${hosts.length} HOST${hosts.length !== 1 ? 'S' : ''}${emails.length ? ' · ' + emails.length + ' EMAIL' + (emails.length !== 1 ? 'S' : '') : ''}</div>
       </div>
       <div class="rcard-body">`;
 
-    if (total === 0) {
-      html += `<div class="ritem"><div class="dot dd"></div>No results found</div>`;
-    } else {
+    {
       for (const h of visible) {
         html += `<div class="ritem"><div class="dot dg"></div>${h}</div>`;
       }
@@ -1243,9 +1238,7 @@
   function renderHibpCard(data) {
     const breaches = data.breaches || [];
     const count = breaches.length;
-    if (count === 0) {
-      return `<div class="rcard-compact"><span class="rcard-compact-label">Breaches · XposedOrNot</span><span class="badge b-none" style="font-size:8px;">CLEAN</span></div>`;
-    }
+    if (count === 0) return '';
     const visible = breaches.slice(0, 6);
     const remaining = breaches.length - visible.length;
 
@@ -1275,9 +1268,7 @@
 
   /* ── Gravatar results renderer ── */
   function renderGravatarCard(data) {
-    if (!data.found) {
-      return `<div class="rcard-compact"><span class="rcard-compact-label">Gravatar</span><span class="badge b-none" style="font-size:8px;">NOT FOUND</span></div>`;
-    }
+    if (!data.found) return '';
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">Gravatar · Profile</div><div class="badge b-hit">FOUND</div></div>
       <div class="rcard-body">`;
@@ -1291,9 +1282,7 @@
 
   /* ── GitHub results renderer ── */
   function renderGithubCard(data) {
-    if (!data.found) {
-      return `<div class="rcard-compact"><span class="rcard-compact-label">GitHub</span><span class="badge b-none" style="font-size:8px;">NOT FOUND</span></div>`;
-    }
+    if (!data.found) return '';
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">GitHub · Profile</div><div class="badge b-hit">FOUND</div></div>
       <div class="rcard-body">`;
@@ -1312,9 +1301,7 @@
   /* ── Enricher results renderer ── */
   function renderEnricherCard(data) {
     const profiles = data.profiles || [];
-    if (profiles.length === 0) {
-      return `<div class="rcard-compact"><span class="rcard-compact-label">Profile Scraper</span><span class="badge b-none" style="font-size:8px;">NO DATA</span></div>`;
-    }
+    if (profiles.length === 0) return '';
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">Profile Scraper</div><div class="badge b-hit">${profiles.length} PROFILE${profiles.length !== 1 ? 'S' : ''}</div></div>
       <div class="rcard-body">`;
@@ -1335,12 +1322,7 @@
   /* ── Deep Dive Profile Scrape renderer ── */
   function renderProfileScrapeCard(data) {
     const results = (data.results || []).filter(r => !r.error);
-    if (results.length === 0) {
-      return `<div class="rcard">
-        <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-none">NO DATA</div></div>
-        <div class="rcard-body"><div class="ritem"><div class="dot dd"></div>Could not scrape any profile pages</div></div>
-      </div>`;
-    }
+    if (results.length === 0) return '';
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">⚠ Deep Dive · Profile Correlation</div><div class="badge b-hit">${results.length} SCRAPED</div></div>
       <div class="rcard-body">`;
@@ -1431,7 +1413,8 @@
           summary = `${count} result${count !== 1 ? 's' : ''} found`;
         }
         updateLogRow(row, `${label} complete — ${summary}`, 'done');
-        cardsEl.innerHTML += renderFn(data);
+        const html = renderFn(data);
+        if (html) cardsEl.innerHTML += html;
         return data;
       }
     } catch (e) {
@@ -1465,7 +1448,8 @@
           ? (data.found ? 'data found' : 'not found')
           : `${count} result${count !== 1 ? 's' : ''} found`;
         updateLogRow(row, `${label} complete — ${summary}`, 'done');
-        cardsEl.innerHTML += renderFn(data);
+        const html = renderFn(data);
+        if (html) cardsEl.innerHTML += html;
         return data;
       }
     } catch (e) {
@@ -1918,6 +1902,11 @@
       }
     } else if (!apiKey) {
       addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
+    }
+
+    // If no cards rendered at all, show empty state
+    if (cardsEl && !cardsEl.querySelector('.rcard')) {
+      cardsEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--text-dim);font-family:Share Tech Mono,monospace;font-size:12px;">No results found for this target</div>';
     }
 
     return { collected, aiSummary, aiData, scanTokens };
@@ -3698,12 +3687,10 @@
   function renderHunterCard(data) {
     const emails = data.emails || [];
     const count = emails.length;
-    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Hunter.io · Emails</div><div class="badge ${count > 0 ? 'b-hit' : 'b-none'}">${count} EMAIL${count !== 1 ? 'S' : ''}</div></div><div class="rcard-body">`;
-    if (data.error) {
-      html += `<div class="ritem"><div class="dot dd"></div>${data.error}</div>`;
-    } else if (count === 0) {
-      html += `<div class="ritem"><div class="dot dd"></div>No emails found</div>`;
-    } else {
+    if (count === 0 && !data.error) return '';
+    if (data.error) return '';
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Hunter.io · Emails</div><div class="badge b-hit">${count} EMAIL${count !== 1 ? 'S' : ''}</div></div><div class="rcard-body">`;
+    {
       if (data.pattern) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Pattern:</strong> ${data.pattern}</div>`;
       const visible = emails.slice(0, 8);
       for (const e of visible) {
