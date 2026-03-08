@@ -1214,8 +1214,8 @@
 </div>
 
 <div id="landingPage" style="position:fixed;inset:0;top:56px;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
-  <div style="pointer-events:none;user-select:none;margin-bottom:24px;">
-    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:clamp(100px,15vw,220px);letter-spacing:0.04em;color:var(--text-bright);opacity:0.05;line-height:1;">Crawl</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:clamp(100px,15vw,220px);letter-spacing:0.04em;color:var(--red-bright);opacity:0.09;line-height:1;">R</span>
+  <div style="pointer-events:none;user-select:none;margin-bottom:60px;">
+    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(100px,15vw,220px);letter-spacing:0.18em;text-transform:uppercase;color:var(--text-bright);opacity:0.05;line-height:1;">Crawl</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(100px,15vw,220px);letter-spacing:0.18em;text-transform:uppercase;color:var(--red-bright);opacity:0.07;line-height:1;">R</span>
   </div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:16px;width:100%;max-width:720px;padding:0 24px;">
     <div style="display:flex;width:100%;gap:0;">
@@ -5166,6 +5166,12 @@
         } else {
           ddBtn.style.display = 'none';
         }
+      }
+    } else if (entry.type === 'email_headers') {
+      switchMode('headers', { prefill: '' });
+      const resultsEl = document.getElementById('headersResults');
+      if (entry.html) {
+        resultsEl.innerHTML = entry.html;
       }
     } else {
       switchMode('recon');
