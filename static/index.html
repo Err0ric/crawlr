@@ -701,7 +701,10 @@
   .mobile-modules-backdrop {
     display: none;
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 70vh;
     background: rgba(0,0,0,0.5);
     z-index: 139;
   }
@@ -794,13 +797,13 @@
     .mod-toggle.on::after { left: 17px; }
     .mod-tag { font-size: 10px; padding: 3px 8px; }
 
-    /* Run button — fixed bottom */
+    /* Run button — fixed bottom, above backdrop */
     .run-wrap {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
-      z-index: 130;
+      z-index: 141;
       padding: 10px 16px;
       background: var(--bg2);
       border-top: 1px solid var(--border);
@@ -1010,7 +1013,7 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="targetInput" type="text" placeholder="username, email, domain, or IP..." onkeydown="if(event.key==='Enter')runScan()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+      <input class="target-input" id="targetInput" type="text" placeholder="username, email, domain, or IP..." onkeydown="if(event.key==='Enter')runScan()" onclick="event.stopPropagation()" onfocus="event.stopPropagation()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
       <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);opacity:0.4;margin-top:4px;">tip: separate multiple targets with commas</div>
       <div class="chips">
         <div class="chip on"  onclick="pickChip(this)">Auto</div>
@@ -1105,7 +1108,7 @@
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
       </div>
-      <input class="target-input" id="reconTargetInput" type="text" placeholder="domain, IP, or ASN (e.g. AS15169)..." onkeydown="if(event.key==='Enter')runRecon()" oninput="updateReconChip()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+      <input class="target-input" id="reconTargetInput" type="text" placeholder="domain, IP, or ASN (e.g. AS15169)..." onkeydown="if(event.key==='Enter')runRecon()" oninput="updateReconChip()" onclick="event.stopPropagation()" onfocus="event.stopPropagation()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
       <div id="reconTypeChip" style="display:none;margin-top:6px;font-size:11px;padding:3px 8px;border-radius:3px;background:rgba(20,184,166,0.08);color:#14b8a6;border:1px solid rgba(20,184,166,0.25);font-family:'Share Tech Mono',monospace;letter-spacing:1px;"></div>
     </div>
 
