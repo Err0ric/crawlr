@@ -56,7 +56,7 @@
     font-size: clamp(14px, 0.78vw, 16px);
     line-height: 1.85;
     padding: 1.5rem;
-    max-width: 90ch;
+    max-width: min(1400px, 90vw);
     opacity: 1;
   }
   :root:not([data-theme]) .dd-body > .dd-section-head:nth-of-type(even) ~ .dd-prose,
@@ -84,7 +84,6 @@
     font-size: clamp(14px, 0.78vw, 16px);
     line-height: 1.85;
     margin-bottom: 0.85rem;
-    max-width: 90ch;
   }
   :root:not([data-theme]) .dd-table {
     width: 100%;
@@ -3043,9 +3042,12 @@
       if (type === 'name') {
         // Extract name from "Handle (Real Name)" format
         const paren = e.match(/\(([^)]+)\)/); if (paren) return paren[1].trim();
-        // Extract quoted name or name before dash/comma
+        // Extract quoted name
         const q = e.match(/["']([^"']+)["']/); if (q) return q[1];
-        const d = e.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/); if (d) return d[1];
+        // Find a "First Last" capitalized name anywhere in the string
+        const fullName = e.match(/([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
+        if (fullName) return fullName[1];
+        // Fallback: text before dash/comma
         const pre = e.split(/\s*[-–—,·]/)[0].trim();
         return pre.split(/\s+/).length <= 4 ? pre : e.split(/\s+/).slice(0, 3).join(' ');
       }
@@ -3062,7 +3064,7 @@
         return pre.split(/\s+/).length <= 6 ? pre : e.split(/\s+/).slice(0, 6).join(' ');
       }
       if (type === 'age') {
-        if (/no\s+specific|unknown|unclear|insufficient|not\s+enough|indeterminate/i.test(e)) return null;
+        if (/no\s+(specific|direct|clear|reliable|strong)|unknown|unclear|insufficient|not\s+(enough|available|determined)|indeterminate|cannot\s+be/i.test(e)) return null;
         const m = e.match(/\d+\s*[-–]\s*\d+/); return m ? m[0].replace(/\s/g, '') : null;
       }
       return e;
@@ -3088,9 +3090,18 @@
       }
     }
 
-    // 2. OPSEC Rating — find first occurrence of rating keyword in the full text
-    const opsecMatch = text.match(/\b(POOR|FAIR|MODERATE|STRONG)\b/);
-    if (opsecMatch) fields['OPSEC Rating'] = opsecMatch[1].toUpperCase();
+    // 2. OPSEC Rating — search the OPSEC ASSESSMENT section for the rating keyword
+    const opsecSecIdx = text.search(/\*\*OPSEC\s+ASSESSMENT\*\*/i);
+    if (opsecSecIdx !== -1) {
+      const opsecSlice = text.slice(opsecSecIdx);
+      const om = opsecSlice.match(/\b(POOR|FAIR|MODERATE|STRONG)\b/i);
+      if (om) fields['OPSEC Rating'] = om[1].toUpperCase();
+    }
+    // Fallback: search full text
+    if (!fields['OPSEC Rating']) {
+      const om2 = text.match(/\b(POOR|FAIR|MODERATE|STRONG)\b/i);
+      if (om2) fields['OPSEC Rating'] = om2[1].toUpperCase();
+    }
 
     // 3. Platforms Confirmed — pull from collected data (sherlock confirmed count)
     if (collected) {
@@ -3109,10 +3120,13 @@
       const sentences = opsecText.split(/\.\s+/);
       for (let si = 1; si < sentences.length; si++) {
         const s = sentences[si].trim();
-        if (/expos|reveal|bridge|weakness|links|leak|same.*handle|real\s*name|vulnerab/i.test(s)) {
-          let phrase = s.replace(/^[^a-zA-Z]+/, '').split('.')[0].trim();
+        if (/expos|reveal|bridge|weakness|links\s+\w+\s+to|leak|same.*handle|real\s*name|vulnerab|identit/i.test(s)) {
+          let phrase = s.replace(/^[^a-zA-Z]+/, '');
+          // Take up to the first period for a complete sentence
+          const periodIdx = phrase.indexOf('.');
+          if (periodIdx > 0) phrase = phrase.slice(0, periodIdx);
           const words = phrase.split(/\s+/);
-          if (words.length > 20) phrase = words.slice(0, 20).join(' ') + '…';
+          if (words.length > 20) phrase = words.slice(0, 20).join(' ');
           fields['Key Risk'] = phrase;
           break;
         }
@@ -3129,7 +3143,7 @@
     for (const label of allLabels) merged[label] = fields[label] || 'Unknown';
     // Also include Age Range if found
     if (fields['Age Range']) merged['Age Range'] = fields['Age Range'];
-    let html = `<div style="background:var(--bg2);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:14px 18px;margin:10px 0 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;">
+    let html = `<div style="background:var(--bg2);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:14px 18px;margin:10px 0 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;width:100%;box-sizing:border-box;">
       <div style="grid-column:1/-1;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;color:#f59e0b;text-transform:uppercase;margin-bottom:4px;">// Quick Intel Summary</div>`;
     for (const [label, val] of Object.entries(merged)) {
       const dimmed = val === 'Unknown' ? 'opacity:0.4;' : '';
