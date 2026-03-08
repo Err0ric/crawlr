@@ -1212,8 +1212,10 @@
         <div class="chip"     onclick="pickChip(this)">IP</div>
         <div class="chip"     onclick="pickChip(this)">ASN</div>
         <div class="chip"     onclick="pickChip(this)">Hash</div>
+        <div class="chip"     onclick="pickChip(this)">Email Headers</div>
       </div>
       <div id="hashHint" style="display:none;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--amber-bright);opacity:0.7;margin-top:4px;">MD5, SHA1, or SHA256</div>
+      <textarea id="emailHeadersInput" style="display:none;width:100%;height:160px;margin-top:8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:'Share Tech Mono',monospace;font-size:11px;resize:vertical;" placeholder="Paste full email headers here...&#10;&#10;In Gmail: Open email → ⋮ → Show original&#10;In Outlook: Open email → ⋯ → View message source" onclick="event.stopPropagation()" onfocus="event.stopPropagation()"></textarea>
     </div>
 
     <div class="pane" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
@@ -1228,6 +1230,7 @@
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">theHarvester</div><div class="mod-sub">domain · subdomain recon</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HIBP</div><div class="mod-sub">email · breach database</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Hunter.io','hunter')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Email Headers</div><div class="mod-sub">routing · auth · spoof detection</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Hash Lookup</div><div class="mod-sub">md5/sha1/sha256 · malware check</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · interpret &amp; suggest leads</div></div><div class="mod-tag">KEY</div></div>
         <div class="mod mod-active"><div class="mod-toggle" id="activeTechToggle" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">⚠ Active Techniques</div><div class="mod-sub">account recovery · may notify target</div></div><div class="mod-tag warn">⚠</div></div>
@@ -1611,8 +1614,17 @@
   function pickChip(el) {
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
     el.classList.add('on');
+    const chip = el.textContent.trim().toLowerCase();
     const hint = document.getElementById('hashHint');
-    if (hint) hint.style.display = el.textContent.trim().toLowerCase() === 'hash' ? '' : 'none';
+    if (hint) hint.style.display = chip === 'hash' ? '' : 'none';
+    const ehInput = document.getElementById('emailHeadersInput');
+    const tInput = document.getElementById('targetInput');
+    if (ehInput) {
+      const isEH = chip === 'email headers';
+      ehInput.style.display = isEH ? '' : 'none';
+      tInput.style.display = isEH ? 'none' : '';
+      if (isEH) ehInput.focus();
+    }
   }
 
   function setTab(el, panel) {
@@ -2103,6 +2115,95 @@
     return html;
   }
 
+  /* ── Email Header Analysis renderer ── */
+  function renderEmailHeadersCard(data) {
+    const r = data.security_rating;
+    const rColor = r === 'SUSPICIOUS' ? '#ef4444' : r === 'WARNING' ? '#f59e0b' : r === 'CAUTION' ? '#f59e0b' : r === 'AUTHENTICATED' ? 'var(--success)' : r === 'PARTIAL' ? '#60a5fa' : 'var(--text-dim)';
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Email Header Analysis</div>
+        <div class="badge" style="background:${rColor}22;color:${rColor};border-color:${rColor}44;">${r}</div>
+        ${copyBtn('Email Headers')}
+      </div>
+      <div class="rcard-body">`;
+
+    // Key headers summary
+    const kh = data.key_headers || {};
+    if (kh.From) html += `<div class="ritem"><div class="dot dg"></div><strong>From:</strong>&nbsp;${_esc(kh.From)}</div>`;
+    if (kh.To) html += `<div class="ritem"><div class="dot dg"></div><strong>To:</strong>&nbsp;${_esc(kh.To)}</div>`;
+    if (kh.Subject) html += `<div class="ritem"><div class="dot dg"></div><strong>Subject:</strong>&nbsp;${_esc(kh.Subject)}</div>`;
+    if (kh.Date) html += `<div class="ritem"><div class="dot dg"></div><strong>Date:</strong>&nbsp;${_esc(kh.Date)}</div>`;
+    if (kh['Return-Path']) html += `<div class="ritem"><div class="dot dy"></div><strong>Return-Path:</strong>&nbsp;${_esc(kh['Return-Path'])}</div>`;
+    if (kh['Reply-To']) html += `<div class="ritem"><div class="dot dy"></div><strong>Reply-To:</strong>&nbsp;${_esc(kh['Reply-To'])}</div>`;
+    if (kh['X-Mailer']) html += `<div class="ritem"><div class="dot dy"></div><strong>X-Mailer:</strong>&nbsp;${_esc(kh['X-Mailer'])}</div>`;
+    if (kh['User-Agent']) html += `<div class="ritem"><div class="dot dy"></div><strong>User-Agent:</strong>&nbsp;${_esc(kh['User-Agent'])}</div>`;
+    if (data.sender_ip) html += `<div class="ritem"><div class="dot dy"></div><strong>Sender IP:</strong>&nbsp;${data.sender_ip}</div>`;
+
+    // Authentication
+    html += _hashSectionHead('AUTHENTICATION');
+    const auth = data.authentication || {};
+    const authIcon = (val) => {
+      if (!val) return '<div class="dot dd"></div>';
+      if (val === 'pass') return '<div class="dot dg"></div>';
+      if (val === 'fail' || val === 'softfail') return '<div class="dot dr"></div>';
+      return '<div class="dot dy"></div>';
+    };
+    html += `<div class="ritem">${authIcon(auth.spf)}<strong>SPF:</strong>&nbsp;${auth.spf || 'not found'}</div>`;
+    html += `<div class="ritem">${authIcon(auth.dkim)}<strong>DKIM:</strong>&nbsp;${auth.dkim || 'not found'}</div>`;
+    html += `<div class="ritem">${authIcon(auth.dmarc)}<strong>DMARC:</strong>&nbsp;${auth.dmarc || 'not found'}</div>`;
+
+    // Anomalies
+    const anomalies = data.anomalies || [];
+    if (anomalies.length) {
+      html += _hashSectionHead('ANOMALIES & WARNINGS');
+      for (const a of anomalies) {
+        const dot = a.severity === 'high' ? 'dr' : a.severity === 'medium' ? 'dy' : 'dg';
+        const sev = a.severity.toUpperCase();
+        html += `<div class="ritem"><div class="dot ${dot}"></div><strong>[${sev}]</strong>&nbsp;${_esc(a.detail)}</div>`;
+      }
+    }
+
+    // Routing hops
+    const hops = data.hops || [];
+    if (hops.length) {
+      html += _hashSectionHead(`ROUTING · ${hops.length} HOP${hops.length !== 1 ? 'S' : ''}${data.total_delay_seconds != null ? ' · ' + _fmtDelay(data.total_delay_seconds) + ' total' : ''}`);
+      for (const hop of hops) {
+        let hopLine = `<strong>Hop ${hop.hop}:</strong>&nbsp;`;
+        if (hop.from) hopLine += `${_esc(hop.from)} → `;
+        if (hop.by) hopLine += `${_esc(hop.by)}`;
+        if (hop.ips && hop.ips.length) hopLine += ` [${hop.ips.join(', ')}]`;
+        if (hop.delay_seconds != null) hopLine += ` <span style="color:${hop.delay_seconds > 30 ? '#ef4444' : hop.delay_seconds > 5 ? '#f59e0b' : 'var(--success)'};font-size:11px;">+${_fmtDelay(hop.delay_seconds)}</span>`;
+        html += `<div class="ritem"><div class="dot dg"></div>${hopLine}</div>`;
+      }
+    }
+
+    // IP Geolocation
+    const geo = data.ip_geolocation || {};
+    const geoIps = Object.keys(geo);
+    if (geoIps.length) {
+      html += _hashSectionHead('IP GEOLOCATION');
+      for (const ip of geoIps) {
+        const g = geo[ip];
+        let loc = [g.city, g.region, g.country].filter(Boolean).join(', ');
+        html += `<div class="ritem"><div class="dot dg"></div><strong>${ip}:</strong>&nbsp;${loc}`;
+        if (g.org) html += ` · ${_esc(g.org)}`;
+        if (g.asn) html += ` · ${_esc(g.asn)}`;
+        html += `</div>`;
+      }
+    }
+
+    html += `</div></div>`;
+    return html;
+  }
+
+  function _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function _fmtDelay(sec) {
+    if (sec < 1) return '<1s';
+    if (sec < 60) return Math.round(sec) + 's';
+    if (sec < 3600) return Math.round(sec / 60) + 'm ' + Math.round(sec % 60) + 's';
+    return Math.round(sec / 3600) + 'h ' + Math.round((sec % 3600) / 60) + 'm';
+  }
+
   /* ── Gravatar results renderer ── */
   function renderGravatarCard(data) {
     if (!data.found) return '';
@@ -2222,6 +2323,7 @@
     if (chip === 'name') return 'name';
     if (chip === 'hash') return 'hash';
     if (chip === 'asn') return 'asn';
+    if (chip === 'email headers') return 'email_headers';
     // Auto-detect
     if (isEmail(target)) return 'email';
     if (isDomain(target)) return 'domain';
@@ -2871,8 +2973,66 @@
     return { collected, aiSummary, aiData, scanTokens };
   }
 
+  async function runEmailHeaderAnalysis(headerText) {
+    scanning = true;
+    closeMobileModules();
+    currentTarget = 'Email Header Analysis';
+    const runBtn = document.querySelector('.run-btn');
+    runBtn.textContent = '⏳ SCANNING...';
+    runBtn.style.pointerEvents = 'none';
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('aiReportTab').style.display = 'none';
+    document.getElementById('deepDiveBtn').style.display = 'none';
+    document.getElementById('deepDiveResults').style.display = 'none';
+
+    const res = document.getElementById('results');
+    res.style.display = 'block';
+    res.innerHTML = '<div class="agent-log" id="log"></div><div class="result-grid" id="resultCards"></div>';
+    document.getElementById('sbMiniTarget').textContent = 'Email Headers';
+
+    const logEl = document.getElementById('log');
+    const cardsEl = document.getElementById('resultCards');
+    const t0 = performance.now();
+
+    try {
+      await runModule(logEl, cardsEl, t0,
+        'Email header analysis',
+        '/api/email/analyze', { headers: headerText }, renderEmailHeadersCard);
+    } catch (e) {
+      addLogRow(logEl, 'Error: ' + e.message, 'err');
+    }
+
+    // Save to history
+    try {
+      const hist = JSON.parse(localStorage.getItem('crawlr_history') || '[]');
+      hist.unshift({
+        target: 'Email Headers',
+        type: 'email_headers',
+        date: new Date().toISOString(),
+        html: res.innerHTML,
+      });
+      if (hist.length > 50) hist.length = 50;
+      localStorage.setItem('crawlr_history', JSON.stringify(hist));
+    } catch (e) {}
+
+    runBtn.textContent = '▶ Run Investigation';
+    runBtn.style.pointerEvents = '';
+    scanning = false;
+  }
+
   async function runScan() {
     if (scanning) return;
+
+    // Email Headers mode — special flow
+    const activeChip = document.querySelector('.chip.on');
+    const chipMode = activeChip ? activeChip.textContent.trim().toLowerCase() : 'auto';
+    if (chipMode === 'email headers') {
+      const headerText = document.getElementById('emailHeadersInput').value.trim();
+      if (!headerText) { document.getElementById('emailHeadersInput').focus(); return; }
+      return runEmailHeaderAnalysis(headerText);
+    }
+
     const rawInput = document.getElementById('targetInput').value.trim();
     if (!rawInput) { document.getElementById('targetInput').focus(); return; }
 
