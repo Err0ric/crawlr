@@ -2635,6 +2635,14 @@
     return 'username';
   }
 
+  function _checkRateLimit(resp, logEl) {
+    const delayed = resp.headers.get('X-RateLimit-Delayed');
+    if (delayed) {
+      const row = addLogRow(logEl, `Rate limit reached — slowing requests... (${delayed}s delay)`, 'wait');
+      row.style.color = 'var(--amber-bright)';
+    }
+  }
+
   async function runModule(logEl, cardsEl, t0, label, url, body, renderFn) {
     const row = addLogRow(logEl, `Running ${label}...`, 'run');
     const timer = setInterval(() => setLogTime(row, (performance.now() - t0) / 1000), 200);
@@ -2646,6 +2654,7 @@
       });
       clearInterval(timer);
       setLogTime(row, (performance.now() - t0) / 1000);
+      _checkRateLimit(resp, logEl);
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
         updateLogRow(row, `${label} error: ${err.detail || resp.statusText}`, 'wait');
@@ -2686,6 +2695,7 @@
       });
       clearInterval(timer);
       setLogTime(row, (performance.now() - t0) / 1000);
+      _checkRateLimit(resp, logEl);
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
         updateLogRow(row, `${label} error: ${err.detail || resp.statusText}`, 'wait');
