@@ -359,8 +359,6 @@
   .sb-mini { display: none; padding: 12px 0; text-align: center; flex: 1; }
   .sb-collapsed .sb-mini { display: flex; flex-direction: column; align-items: center; gap: 8px; }
   .sb-mini-target { writing-mode: vertical-rl; text-orientation: mixed; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #991b1b; letter-spacing: 2px; max-height: 200px; overflow: hidden; text-overflow: ellipsis; }
-  .sb-mini-run { width: 28px; height: 28px; border-radius: 3px; border: 1px solid var(--red-dim); background: var(--red-glow); color: var(--red-bright); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.15s; }
-  .sb-mini-run:hover { background: var(--red-glow-hi); border-color: var(--red); }
 
   .pane { padding: 14px 16px; border-bottom: 1px solid var(--border); }
 
@@ -1238,7 +1236,6 @@
     <div class="sb-toggle" onclick="toggleSidebar()" title="Collapse sidebar">◀</div>
     <div class="sb-mini">
       <div class="sb-mini-target" id="sbMiniTarget"></div>
-      <div class="sb-mini-run" onclick="runScan()" title="Run Investigation">▶</div>
     </div>
     <div class="pane">
       <div class="pane-head">
@@ -1338,7 +1335,6 @@
     <div class="sb-toggle" onclick="toggleReconSidebar()" title="Collapse sidebar">◀</div>
     <div class="sb-mini">
       <div class="sb-mini-target" id="reconSbMiniTarget"></div>
-      <div class="sb-mini-run" onclick="runRecon()" title="Run Recon">▶</div>
     </div>
     <div class="pane">
       <div class="pane-head">
