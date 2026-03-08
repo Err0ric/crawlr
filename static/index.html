@@ -752,6 +752,10 @@
 
   .leads { margin-top: 4px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px; }
   .sec-hidden { display: none !important; }
+  .dd-more-wrap { display: none; }
+  .dd-more-wrap.expanded { display: contents; }
+  .dd-expand-btn { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #f59e0b; opacity: 0.7; cursor: pointer; padding: 4px 0; user-select: none; }
+  .dd-expand-btn:hover { opacity: 1; }
 
   .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Barlow', sans-serif; font-size: clamp(13px, 0.72vw, 15px); color: var(--text-bright); line-height: 1.6; position: relative; }
   .lead-arr { color: var(--red-dim); flex-shrink: 0; }
@@ -1775,6 +1779,15 @@
     }
   }
 
+  let ddMoreCounter = 0;
+  function toggleDDMore(id) {
+    const wrap = document.getElementById('ddmore_' + id);
+    const btn = document.getElementById('ddbtn_' + id);
+    if (!wrap || !btn) return;
+    const isExpanded = wrap.classList.toggle('expanded');
+    btn.textContent = isExpanded ? '▾ Show less' : '▸ Show more…';
+  }
+
   function copyLead(el) {
     const textEl = el.parentElement.querySelector('.lead-text');
     const text = textEl ? textEl.textContent : '';
@@ -2731,7 +2744,12 @@
     'digital footprint', 'notable findings', 'next steps', 'identity leads',
     'phone lookup strategies', 'phone lookup', 'investigative steps',
     'overview', 'findings', 'patterns', 'active techniques',
+    'subject profile', 'platform correlation', 'opsec assessment',
+    'confidence matrix', 'ready-to-use queries', 'ready-to-use',
+    'investigation queries', 'cross-platform',
   ];
+
+  const collapsedByDefault = ['subject profile', 'platform correlation', 'opsec assessment'];
 
   function isSectionHeading(line) {
     const clean = line.replace(/\*\*/g, '').replace(/[:(]/g, '').trim().toLowerCase();
@@ -2990,6 +3008,20 @@
       // Render Deep Dive AI block — insert at top of ddResults, above scrape card
       ddResults.insertAdjacentHTML('afterbegin', renderDeepDiveBlock(aiData));
 
+      // Save Deep Dive to history entry (own try/catch so UI isn't affected)
+      try {
+        if (currentHistoryId) {
+          const entries = getHistory();
+          const entry = entries.find(e => e.id === currentHistoryId);
+          if (entry) {
+            entry.deepDive = aiData;
+            saveHistory(entries);
+          }
+        }
+      } catch (saveErr) {
+        console.warn('Could not save Deep Dive to history:', saveErr.message);
+      }
+
       ddBtn.querySelector('button').textContent = '✓ Deep Dive Complete';
       ddBtn.querySelector('button').style.color = 'var(--green)';
       ddBtn.querySelector('button').style.borderColor = 'var(--green)';
@@ -3002,8 +3034,96 @@
     }
   }
 
+  function extractQuickIntel(text) {
+    // Parse the confidence matrix table (pipe-delimited rows)
+    const lines = text.split('\n');
+    const tableRows = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+        const cells = trimmed.split('|').filter(c => c.trim()).map(c => c.replace(/\*\*/g, '').trim());
+        if (cells.length >= 2 && !cells.every(c => /^[-:]+$/.test(c)) && !/Inference|Confidence/i.test(cells[0])) {
+          tableRows.push(cells);
+        }
+      }
+    }
+    // Map inference names to Quick Intel labels
+    const labelMap = [
+      [/real\s*name|probable.*name/i, 'Likely Real Name'],
+      [/location|city|region|geography/i, 'Location'],
+      [/occupation|industry|profession|job|career/i, 'Occupation/Industry'],
+      [/email/i, 'Primary Email'],
+      [/technical|skill|programming/i, 'Technical Skill Level'],
+      [/opsec|operational\s*sec/i, 'OPSEC Rating'],
+      [/platform|account/i, 'Platforms Confirmed'],
+      [/age|age\s*range/i, 'Age Range'],
+      [/risk/i, 'Key Risk'],
+    ];
+    const fields = {};
+    for (const row of tableRows) {
+      const inference = row[0];
+      const evidence = row.length >= 3 ? row[2] : row[1];
+      const confidence = row.length >= 3 ? row[1] : '';
+      for (const [re, label] of labelMap) {
+        if (!fields[label] && re.test(inference)) {
+          // For OPSEC Rating, use confidence level; for others, use evidence
+          if (label === 'OPSEC Rating') {
+            fields[label] = confidence || evidence;
+          } else {
+            fields[label] = evidence || inference;
+          }
+          break;
+        }
+      }
+    }
+    // Fallback: scan OPSEC ASSESSMENT prose for rating
+    if (!fields['OPSEC Rating']) {
+      const opsecMatch = text.match(/overall\s+OPSEC\s+(?:as|is|rating:?)\s+(POOR|FAIR|MODERATE|STRONG)/i);
+      if (opsecMatch) fields['OPSEC Rating'] = opsecMatch[1];
+    }
+    return fields;
+  }
+
+  function renderQuickIntelCard(fields) {
+    // Always show these labels, use "Unknown" for missing
+    const allLabels = ['Likely Real Name', 'Location', 'Occupation/Industry', 'Primary Email', 'Technical Skill Level', 'OPSEC Rating', 'Platforms Confirmed', 'Key Risk'];
+    const merged = {};
+    for (const label of allLabels) merged[label] = fields[label] || 'Unknown';
+    // Also include Age Range if found
+    if (fields['Age Range']) merged['Age Range'] = fields['Age Range'];
+    let html = `<div style="background:var(--bg2);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:14px 18px;margin:10px 0 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;">
+      <div style="grid-column:1/-1;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;color:#f59e0b;text-transform:uppercase;margin-bottom:4px;">// Quick Intel Summary</div>`;
+    for (const [label, val] of Object.entries(merged)) {
+      const dimmed = val === 'Unknown' ? 'opacity:0.4;' : '';
+      html += `<div style="display:flex;flex-direction:column;gap:1px;padding:2px 0;">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:1px;color:#f59e0b;text-transform:uppercase;opacity:0.8;">${label}</span>
+        <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);line-height:1.3;${dimmed}">${mdInline(val)}</span>
+      </div>`;
+    }
+    html += '</div>';
+    return html;
+  }
+
   function renderDeepDiveBlock(data) {
     const lines = data.summary.split('\n');
+    // First pass: group lines into sections
+    const sections = [];
+    let currentSection = { heading: null, headingLabel: '', lines: [] };
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (isSectionHeading(line)) {
+        if (currentSection.heading || currentSection.lines.length) sections.push(currentSection);
+        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
+        currentSection = { heading: line, headingLabel: label, lines: [] };
+      } else {
+        currentSection.lines.push(line);
+      }
+    }
+    if (currentSection.heading || currentSection.lines.length) sections.push(currentSection);
+
+    // Build HTML
     let html = `<div class="ai-block dd-dossier" style="margin-top:12px;border-color:rgba(245,158,11,0.3);">
       <div class="ai-head" style="border-color:rgba(245,158,11,0.2);">
         <div class="ai-tag" style="color:#f59e0b;">// DEEP DIVE — Intelligence Dossier</div>
@@ -3011,71 +3131,104 @@
       </div>
       <div class="ai-body dd-body">`;
 
-    let inTable = false;
-    let inQueries = false;
+    // Insert Quick Intel Summary card
+    const quickIntel = extractQuickIntel(data.summary);
+    html += renderQuickIntelCard(quickIntel);
+
     let queryCounter = 0;
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) {
-        if (inTable) { html += '</table></div>'; inTable = false; }
-        if (inQueries) { html += '</div>'; inQueries = false; }
-        continue;
+    for (const sec of sections) {
+      const labelLower = sec.headingLabel.toLowerCase().replace(/[:(]/g, '').trim();
+      const shouldCollapse = collapsedByDefault.some(h => labelLower === h || labelLower.startsWith(h));
+
+      // Render section header
+      if (sec.heading) {
+        const clickHandler = shouldCollapse ? 'toggleSection(this)' : 'toggleSection(this)';
+        html += `<div class="ai-section dd-section-head" onclick="${clickHandler}"><span class="sec-arrow">▼</span> // ${sec.headingLabel}</div>`;
       }
 
-      // Section headers
-      if (isSectionHeading(line)) {
-        if (inTable) { html += '</table></div>'; inTable = false; }
-        if (inQueries) { html += '</div>'; inQueries = false; }
-        const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
-        const isQuerySection = /READY.TO.USE|QUERIES/i.test(label);
-        if (isQuerySection) inQueries = false; // will start on next bullet
-        html += `<div class="ai-section dd-section-head" onclick="toggleSection(this)"><span class="sec-arrow">▼</span> // ${label}</div>`;
-        continue;
-      }
+      // Render section content
+      const contentLines = sec.lines;
+      const renderedLines = [];
+      let inTable = false;
+      let inQueries = false;
 
-      // Table rows (pipe-delimited)
-      if (line.startsWith('|') && line.endsWith('|')) {
-        const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
-        if (cells.every(c => /^[-:]+$/.test(c))) continue; // skip separator row
-        if (!inTable) {
-          html += '<div style="overflow-x:auto;margin:6px 0 10px;"><table class="dd-table">';
-          // Check if this is the header row
-          const isHeader = cells.some(c => /Inference|Confidence|Evidence/i.test(c));
-          const tag = isHeader ? 'th' : 'td';
-          const cls = isHeader ? 'dd-th' : 'dd-td';
-          html += '<tr>' + cells.map(c => `<${tag} class="${cls}">${mdInline(c)}</${tag}>`).join('') + '</tr>';
-          inTable = true;
-        } else {
-          html += '<tr>' + cells.map(c => {
-            let cls = 'dd-td';
-            if (/^HIGH$/i.test(c)) cls += ' dd-conf-high';
-            else if (/^MEDIUM$/i.test(c)) cls += ' dd-conf-med';
-            else if (/^LOW$/i.test(c)) cls += ' dd-conf-low';
-            else if (!/^(HIGH|MEDIUM|LOW)$/i.test(c) && cells.some(cc => /^(HIGH|MEDIUM|LOW)$/i.test(cc))) cls += ' dd-evidence';
-            return `<td class="${cls}">${mdInline(c)}</td>`;
-          }).join('') + '</tr>';
+      for (const line of contentLines) {
+        // Table rows
+        if (line.startsWith('|') && line.endsWith('|')) {
+          const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
+          if (cells.every(c => /^[-:]+$/.test(c))) continue;
+          if (!inTable) {
+            let tableHtml = '<div style="overflow-x:auto;margin:6px 0 10px;"><table class="dd-table">';
+            const isHeader = cells.some(c => /Inference|Confidence|Evidence/i.test(c));
+            const tag = isHeader ? 'th' : 'td';
+            const cls = isHeader ? 'dd-th' : 'dd-td';
+            tableHtml += '<tr>' + cells.map(c => `<${tag} class="${cls}">${mdInline(c)}</${tag}>`).join('') + '</tr>';
+            renderedLines.push({ html: tableHtml, isTableStart: true });
+            inTable = true;
+          } else {
+            renderedLines.push({ html: '<tr>' + cells.map(c => {
+              let cls = 'dd-td';
+              if (/^HIGH$/i.test(c)) cls += ' dd-conf-high';
+              else if (/^MEDIUM$/i.test(c)) cls += ' dd-conf-med';
+              else if (/^LOW$/i.test(c)) cls += ' dd-conf-low';
+              else if (!/^(HIGH|MEDIUM|LOW)$/i.test(c) && cells.some(cc => /^(HIGH|MEDIUM|LOW)$/i.test(cc))) cls += ' dd-evidence';
+              return `<td class="${cls}">${mdInline(c)}</td>`;
+            }).join('') + '</tr>', isTableRow: true });
+          }
+          continue;
         }
-        continue;
-      }
-      if (inTable) { html += '</table></div>'; inTable = false; }
+        if (inTable) {
+          renderedLines.push({ html: '</table></div>', isTableEnd: true });
+          inTable = false;
+        }
 
-      // Query lines (→ prefixed) — render as copyable
-      if (/^[→•]\s*/.test(line)) {
-        const queryText = line.replace(/^[→•]\s*/, '');
-        const qid = 'ddq_' + (queryCounter++);
-        if (!inQueries) { html += '<div class="leads">'; inQueries = true; }
-        html += `<div class="lead" style="align-items:flex-start;"><span class="lead-arr" style="color:#f59e0b;">→</span><span class="lead-text" style="font-family:Share Tech Mono,monospace;font-size:10px;word-break:break-all;">${mdInline(queryText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy" style="color:#f59e0b;">⧉</span></div>`;
-        continue;
-      }
-      if (inQueries) { html += '</div>'; inQueries = false; }
+        // Query lines
+        if (/^[→•]\s*/.test(line)) {
+          const queryText = line.replace(/^[→•]\s*/, '');
+          if (!inQueries) {
+            renderedLines.push({ html: '<div class="leads">', isLeadsStart: true });
+            inQueries = true;
+          }
+          renderedLines.push({ html: `<div class="lead" style="align-items:flex-start;"><span class="lead-arr" style="color:#f59e0b;">→</span><span class="lead-text" style="font-family:Share Tech Mono,monospace;font-size:10px;word-break:break-all;">${mdInline(queryText)}</span><span class="lead-copy" onclick="copyLead(this)" title="Copy" style="color:#f59e0b;">⧉</span></div>`, isQuery: true });
+          continue;
+        }
+        if (inQueries) {
+          renderedLines.push({ html: '</div>', isLeadsEnd: true });
+          inQueries = false;
+        }
 
-      // Prose paragraphs
-      html += `<div class="dd-prose">${mdInline(line)}</div>`;
+        // Prose
+        renderedLines.push({ html: `<div class="dd-prose">${mdInline(line)}</div>`, isProse: true });
+      }
+      if (inTable) renderedLines.push({ html: '</table></div>', isTableEnd: true });
+      if (inQueries) renderedLines.push({ html: '</div>', isLeadsEnd: true });
+
+      // If this section should be collapsible, show first 2 prose lines then wrap rest
+      if (shouldCollapse && renderedLines.filter(r => r.isProse).length > 2) {
+        let proseCount = 0;
+        let splitIdx = -1;
+        for (let i = 0; i < renderedLines.length; i++) {
+          if (renderedLines[i].isProse) {
+            proseCount++;
+            if (proseCount === 2) { splitIdx = i + 1; break; }
+          }
+        }
+        const moreId = ddMoreCounter++;
+        // Render visible portion
+        for (let i = 0; i < splitIdx; i++) html += renderedLines[i].html;
+        // Render hidden portion in wrapper
+        html += `<div class="dd-more-wrap" id="ddmore_${moreId}">`;
+        for (let i = splitIdx; i < renderedLines.length; i++) html += renderedLines[i].html;
+        html += `</div>`;
+        const hiddenCount = renderedLines.filter((r, i) => i >= splitIdx && r.isProse).length;
+        html += `<div class="dd-expand-btn" id="ddbtn_${moreId}" onclick="toggleDDMore(${moreId})">▸ Show more… (${hiddenCount} more lines)</div>`;
+      } else {
+        // Render all lines normally
+        for (const r of renderedLines) html += r.html;
+      }
     }
 
-    if (inTable) html += '</table></div>';
-    if (inQueries) html += '</div>';
     html += `</div></div>`;
     return html;
   }
@@ -5075,7 +5228,15 @@
   }
 
   function saveHistory(entries) {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, HISTORY_MAX)));
+    const trimmed = entries.slice(0, HISTORY_MAX);
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    } catch (e) {
+      // Quota exceeded — drop oldest entries and retry
+      const half = trimmed.slice(0, Math.floor(trimmed.length / 2));
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(half)); }
+      catch { /* give up silently */ }
+    }
   }
 
   let currentHistoryId = null;
@@ -5242,20 +5403,32 @@
         cardsEl.innerHTML += renderAISummaryCard(histData, 'investigate');
         document.getElementById('aiReportTab').style.display = '';
         document.getElementById('aiReportContent').innerHTML = renderAIBlock(histData);
-        // Show Deep Dive button if profiles available
+        // Restore Deep Dive results or show button
         const ddBtn = document.getElementById('deepDiveBtn');
         const ddResults = document.getElementById('deepDiveResults');
-        ddResults.style.display = 'none';
-        ddResults.innerHTML = '';
-        if (_collectProfileUrls().length > 0) {
+        if (entry.deepDive) {
+          // Restore saved Deep Dive
+          ddResults.style.display = '';
+          ddResults.innerHTML = renderDeepDiveBlock(entry.deepDive);
           ddBtn.style.display = '';
-          ddBtn.querySelector('button').textContent = '⚡ Run Deep Dive Analysis';
-          ddBtn.querySelector('button').style.pointerEvents = '';
-          ddBtn.querySelector('button').style.color = '#f59e0b';
-          ddBtn.querySelector('button').style.borderColor = 'rgba(245,158,11,0.4)';
-          ddBtn.querySelector('button').style.background = 'rgba(245,158,11,0.08)';
+          ddBtn.querySelector('button').textContent = '✓ Deep Dive Complete';
+          ddBtn.querySelector('button').style.pointerEvents = 'none';
+          ddBtn.querySelector('button').style.color = 'var(--green)';
+          ddBtn.querySelector('button').style.borderColor = 'var(--green)';
+          ddBtn.querySelector('button').style.background = 'rgba(16,185,129,0.08)';
         } else {
-          ddBtn.style.display = 'none';
+          ddResults.style.display = 'none';
+          ddResults.innerHTML = '';
+          if (_collectProfileUrls().length > 0) {
+            ddBtn.style.display = '';
+            ddBtn.querySelector('button').textContent = '⚡ Run Deep Dive Analysis';
+            ddBtn.querySelector('button').style.pointerEvents = '';
+            ddBtn.querySelector('button').style.color = '#f59e0b';
+            ddBtn.querySelector('button').style.borderColor = 'rgba(245,158,11,0.4)';
+            ddBtn.querySelector('button').style.background = 'rgba(245,158,11,0.08)';
+          } else {
+            ddBtn.style.display = 'none';
+          }
         }
       }
     } else if (entry.type === 'email_headers') {
