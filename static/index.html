@@ -888,9 +888,10 @@
 
 <div class="overlay" id="overlay">
   <div class="modal">
-    <div class="modal-eye">// Authentication</div>
+    <div class="modal-eye">// Claude API Key</div>
     <div class="modal-title">Set API Key</div>
-    <div class="modal-sub">Your key is stored locally in your browser only. It is never transmitted to or stored on this server.</div>
+    <div class="modal-sub">Used for AI Analysis, identity summaries, and Deep Dive reports.<br>Your key is stored in your browser only — never transmitted to this server.</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-mid);margin-bottom:18px;line-height:1.6;"><span style="color:var(--success);">✓</span> FREE modules always work · <span style="color:var(--amber-bright);">KEY</span> unlocks AI Analysis + Deep Dive</div>
     <input class="modal-input" type="password" id="keyInput" placeholder="sk-ant-api03-..." />
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);">
       <input type="checkbox" id="rememberKey" style="accent-color:var(--red);cursor:pointer;" />
@@ -902,7 +903,7 @@
     </div>
     <div class="modal-actions">
       <button class="modal-primary" onclick="saveKey()">Authenticate</button>
-      <button class="modal-secondary" onclick="closeModal()">Skip</button>
+      <button class="modal-secondary" onclick="closeModal()">Skip for now</button>
     </div>
   </div>
 </div>
