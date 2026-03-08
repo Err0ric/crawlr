@@ -1913,7 +1913,6 @@
   function parseASN(s) { return parseInt(s.trim().replace(/^AS/i, ''), 10); }
 
   function isHash(t) { return /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(t.trim()); }
-  function isASN(t) { return /^AS\d+$/i.test(t.trim()); }
 
   function getInputType(target) {
     const active = document.querySelector('.chip.on');
@@ -2418,7 +2417,7 @@
       collected.hash = await runModule(logEl, cardsEl, t0,
         `Hash lookup for "${target}"`,
         '/api/hash/hash', { hash: target }, renderHashCard);
-      return collected;
+      return { collected, aiSummary: '', aiData: null, scanTokens: 0 };
     }
 
     if (nameSearch) {
