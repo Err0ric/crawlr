@@ -2260,8 +2260,7 @@
     // AI Analysis button (only if API key configured)
     if (getApiKey()) {
       html += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
-        <button id="headerAiBtn" onclick="runHeaderAiAnalysis()" style="width:100%;padding:10px 16px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.35);border-radius:4px;color:#a855f7;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(168,85,247,0.15)'" onmouseout="this.style.background='rgba(168,85,247,0.08)'">// AI ANALYSIS</button>
-        <div id="headerAiResult"></div>
+        <button id="headerAiBtn" onclick="runHeaderAiAnalysis()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">// AI ANALYSIS</button>
       </div>`;
     }
 
@@ -2278,7 +2277,6 @@
     if (!apiKey) return;
 
     const btn = document.getElementById('headerAiBtn');
-    const resultEl = document.getElementById('headerAiResult');
     btn.textContent = '⏳ ANALYZING...';
     btn.style.pointerEvents = 'none';
 
@@ -2290,15 +2288,15 @@
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
-        resultEl.innerHTML = `<div style="margin-top:10px;padding:10px;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;font-size:12px;">${_esc(err.detail || 'AI analysis failed')}</div>`;
+        btn.insertAdjacentHTML('afterend', `<div style="margin-top:10px;padding:10px;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;font-size:12px;">${_esc(err.detail || 'AI analysis failed')}</div>`);
         return;
       }
       const ai = await resp.json();
       const vColor = ai.verdict === 'LEGITIMATE' ? 'var(--success)' : ai.verdict === 'LIKELY PHISHING' ? '#ef4444' : ai.verdict === 'BEC ATTEMPT' ? '#ef4444' : '#f59e0b';
 
-      let aiHtml = `<div class="ai-block" style="margin-top:12px;border-color:rgba(168,85,247,0.3);">
-        <div class="ai-head" style="border-color:rgba(168,85,247,0.2);">
-          <div class="ai-tag" style="color:#a855f7;font-size:12px;">// AI HEADER ANALYSIS</div>
+      let aiHtml = `<div class="ai-block" style="margin-bottom:14px;border-color:rgba(245,158,11,0.3);">
+        <div class="ai-head" style="border-color:rgba(245,158,11,0.2);">
+          <div class="ai-tag" style="color:#f59e0b;font-size:12px;">// AI HEADER ANALYSIS</div>
           <div class="ai-meta">${ai.model} · ${ai.tokens} tokens · ${ai.elapsed}s</div>
         </div>
         <div class="ai-body" style="font-size:13px;line-height:1.7;padding:14px 16px;">`;
@@ -2313,7 +2311,7 @@
       if (ai.reasons && ai.reasons.length) {
         aiHtml += `<div style="margin-bottom:10px;">`;
         for (const r of ai.reasons) {
-          aiHtml += `<div style="display:flex;gap:8px;margin-bottom:4px;"><span style="color:#a855f7;flex-shrink:0;">→</span><span style="color:var(--text-mid);">${_esc(r)}</span></div>`;
+          aiHtml += `<div style="display:flex;gap:8px;margin-bottom:4px;"><span style="color:#f59e0b;flex-shrink:0;">→</span><span style="color:var(--text-mid);">${_esc(r)}</span></div>`;
         }
         aiHtml += `</div>`;
       }
@@ -2327,9 +2325,19 @@
       }
 
       aiHtml += `</div></div>`;
-      resultEl.innerHTML = aiHtml;
+
+      // Insert at TOP of results, above the rcard
+      const cardsEl = document.getElementById('headersCards');
+      if (cardsEl) {
+        cardsEl.insertAdjacentHTML('afterbegin', aiHtml);
+        // Scroll to top of results
+        cardsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      // Hide the button after successful analysis
+      btn.style.display = 'none';
     } catch (e) {
-      resultEl.innerHTML = `<div style="margin-top:10px;padding:10px;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;font-size:12px;">Error: ${_esc(e.message)}</div>`;
+      btn.insertAdjacentHTML('afterend', `<div style="margin-top:10px;padding:10px;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;font-size:12px;">Error: ${_esc(e.message)}</div>`);
     } finally {
       btn.textContent = '// AI ANALYSIS';
       btn.style.pointerEvents = '';
@@ -4123,6 +4131,10 @@
       document.querySelectorAll('.hnav')[3].classList.add('active');
       document.getElementById('headersWorkspace').style.display = 'flex';
       if (mobileBtn) mobileBtn.style.display = 'none';
+      // Fresh state every time
+      document.getElementById('headersInput').value = '';
+      document.getElementById('headersResults').innerHTML = '<div class="empty"><div class="empty-glyph">[✉]</div><div class="empty-title">No Headers Analyzed</div><div class="empty-sub">Paste email headers above and click Analyze to check for spoofing, authentication, and routing anomalies.</div></div>';
+      window._lastHeaderAnalysis = null;
       setTimeout(() => document.getElementById('headersInput').focus(), 50);
     } else if (mode === 'history') {
       document.querySelectorAll('.hnav')[4].classList.add('active');
