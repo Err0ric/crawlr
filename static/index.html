@@ -31,6 +31,25 @@
     --success:     #16a34a;
   }
 
+  /* ── Dark Purple readability overrides ── */
+  :root:not([data-theme]) .rcard-body,
+  :root:not([data-theme]) .ritem,
+  :root:not([data-theme]) .ai-body p,
+  :root:not([data-theme]) .ai-body li,
+  :root:not([data-theme]) .ai-body td { color: #d0d0e0; }
+
+  :root:not([data-theme]) .ritem a { color: #9090b0; }
+
+  :root:not([data-theme]) .mod-sub { color: #8080a0; }
+
+  :root:not([data-theme]) .ai-body p { line-height: 1.8; margin-bottom: 0.75rem; }
+  :root:not([data-theme]) .ai-body li { line-height: 1.8; }
+
+  :root:not([data-theme]) .ai-body table tr + tr { border-top: 1px solid rgba(255,255,255,0.05); }
+  :root:not([data-theme]) .ai-body td { border-color: rgba(255,255,255,0.05); }
+
+  :root:not([data-theme]) .rcard-body { font-size: 14px; }
+
   [data-theme="midnight"] {
     --bg: #0a0e1a; --bg2: #0e1322; --bg3: #121828; --bg4: #161d30;
     --border: #1c2540; --border-mid: #263050; --border-hi: #3a4a70;
@@ -688,6 +707,90 @@
   .modal-secondary { padding: 9px 14px; background: transparent; border: 1px solid var(--border-mid); border-radius: 3px; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; font-size: 10px; cursor: pointer; transition: all 0.15s; }
   .modal-secondary:hover { border-color: var(--border-hi); color: var(--text-mid); }
 
+  /* ── Floating Notes Panel ── */
+  .floating-notes {
+    display: none;
+    position: fixed;
+    z-index: 9000;
+    width: 420px;
+    height: 380px;
+    min-width: 280px;
+    min-height: 180px;
+    background: var(--bg2);
+    border: 1px solid var(--border-hi);
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .floating-notes.open { display: flex; }
+  .floating-notes.minimized { height: auto; width: 260px; min-height: 0; bottom: 0; border-radius: 6px 6px 0 0; resize: none; }
+  .floating-notes.minimized .fn-body { display: none; }
+  .floating-notes .fn-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .floating-notes .fn-header:active { cursor: grabbing; }
+  .floating-notes .fn-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-mid);
+    text-transform: uppercase;
+    flex: 1;
+  }
+  .floating-notes .fn-btn {
+    background: none;
+    border: 1px solid var(--border-mid);
+    border-radius: 3px;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .floating-notes .fn-btn:hover { border-color: var(--border-hi); color: var(--text-mid); }
+  .floating-notes .fn-body { flex: 1; overflow: hidden; display: flex; }
+  .floating-notes .fn-body textarea {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text-bright);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 14px 16px;
+  }
+  .floating-notes .fn-body textarea::placeholder { color: var(--text-dim); }
+  .notes-detach-btn {
+    background: none;
+    border: 1px solid var(--border-mid);
+    border-radius: 3px;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+  }
+  .notes-detach-btn:hover { border-color: var(--border-hi); color: var(--text-mid); }
+
   /* ── Mobile modules drawer toggle ── */
   .mobile-modules-toggle {
     display: none;
@@ -1014,6 +1117,15 @@
 <div class="mobile-modules-backdrop" id="mobileModulesBackdrop" onclick="closeMobileModules()"></div>
 <button class="mobile-modules-toggle" id="mobileModulesBtn" onclick="toggleMobileModules()">// MODULES</button>
 
+<div class="floating-notes" id="floatingNotes">
+  <div class="fn-header" id="fnHeader">
+    <div class="fn-title">// Notes</div>
+    <button class="fn-btn" onclick="minimizeNotes()">—</button>
+    <button class="fn-btn" onclick="reattachNotes()">⇲ Dock</button>
+  </div>
+  <div class="fn-body"><textarea id="fnTextarea" spellcheck="false" placeholder="// case notes, leads, observations..."></textarea></div>
+</div>
+
 <div class="workspace" id="investigateWorkspace">
   <div class="sidebar">
     <div class="sb-toggle" onclick="toggleSidebar()" title="Collapse sidebar">◀</div>
@@ -1085,6 +1197,7 @@
     </div>
 
     <div class="content" id="notesPanel" style="display:none;padding:0;position:relative;">
+      <button class="notes-detach-btn" onclick="detachNotes()">⇱ DETACH</button>
       <textarea id="notesArea" spellcheck="false" placeholder="// case notes, leads, observations..."></textarea>
       <div id="notesCount"></div>
     </div>
@@ -1542,6 +1655,10 @@
     const entry = `\n--- ${titleText} ---\n${contentText}\n`;
     area.value += entry;
     area.dispatchEvent(new Event('input'));
+    // Sync to floating notes if detached
+    if (notesDetached && !isRecon) {
+      document.getElementById('fnTextarea').value = area.value;
+    }
     btn.textContent = '// COPIED';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = '// COPY TO NOTES'; btn.classList.remove('copied'); }, 1500);
@@ -1550,6 +1667,84 @@
   function copyBtn(title) {
     return `<button class="copy-to-notes" onclick="copyCardToNotes('${title.replace(/'/g, "\\'")}', this)">// COPY TO NOTES</button>`;
   }
+
+  /* ── Floating Notes (detach / reattach / minimize / drag) ── */
+  let notesDetached = false;
+
+  function detachNotes() {
+    const src = document.getElementById('notesArea');
+    const dst = document.getElementById('fnTextarea');
+    dst.value = src.value;
+    const panel = document.getElementById('floatingNotes');
+    panel.classList.add('open');
+    panel.classList.remove('minimized');
+    // Position center-right if not already positioned
+    if (!panel.style.top) {
+      panel.style.top = '80px';
+      panel.style.right = '24px';
+      panel.style.left = '';
+    }
+    notesDetached = true;
+    // Sync typing from floating back to main
+    dst.oninput = () => { src.value = dst.value; src.dispatchEvent(new Event('input')); };
+    document.querySelector('.notes-detach-btn').textContent = '⇱ DETACHED';
+    document.querySelector('.notes-detach-btn').style.opacity = '0.4';
+    document.querySelector('.notes-detach-btn').style.pointerEvents = 'none';
+  }
+
+  function reattachNotes() {
+    const src = document.getElementById('fnTextarea');
+    const dst = document.getElementById('notesArea');
+    dst.value = src.value;
+    dst.dispatchEvent(new Event('input'));
+    const panel = document.getElementById('floatingNotes');
+    panel.classList.remove('open', 'minimized');
+    notesDetached = false;
+    const btn = document.querySelector('.notes-detach-btn');
+    btn.textContent = '⇱ DETACH';
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+  }
+
+  function minimizeNotes() {
+    const panel = document.getElementById('floatingNotes');
+    if (panel.classList.contains('minimized')) {
+      panel.classList.remove('minimized');
+    } else {
+      panel.classList.add('minimized');
+      // Pin to bottom-right
+      panel.style.bottom = '0';
+      panel.style.top = '';
+      panel.style.right = '24px';
+      panel.style.left = '';
+    }
+  }
+
+  // Drag logic for floating notes header
+  (function() {
+    let dragging = false, dx = 0, dy = 0;
+    document.addEventListener('mousedown', function(e) {
+      const header = e.target.closest('#fnHeader');
+      if (!header || e.target.closest('.fn-btn')) return;
+      const panel = document.getElementById('floatingNotes');
+      if (panel.classList.contains('minimized')) return;
+      dragging = true;
+      const rect = panel.getBoundingClientRect();
+      dx = e.clientX - rect.left;
+      dy = e.clientY - rect.top;
+      panel.style.right = '';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      const panel = document.getElementById('floatingNotes');
+      panel.style.left = Math.max(0, e.clientX - dx) + 'px';
+      panel.style.top = Math.max(0, e.clientY - dy) + 'px';
+      panel.style.right = '';
+      panel.style.bottom = '';
+    });
+    document.addEventListener('mouseup', function() { dragging = false; });
+  })();
 
   /* ── Sherlock results renderer ── */
   function renderSherlockCard(data) {
