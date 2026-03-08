@@ -135,7 +135,7 @@
   header {
     position: relative;
     z-index: 100;
-    height: 48px;
+    height: 56px;
     display: flex;
     align-items: center;
     padding: 0 20px;
@@ -163,19 +163,25 @@
 
   .hnav {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    padding: 0 14px;
+    justify-content: center;
+    padding: 4px 24px 6px;
     height: 100%;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     letter-spacing: 0.5px;
     color: rgba(255,255,255,0.6);
     cursor: pointer;
-    border-bottom: 2px solid transparent;
+    border-bottom: 3px solid transparent;
     margin-bottom: -1px;
     transition: all 0.15s;
     text-transform: uppercase;
+    position: relative;
   }
+  .hnav-sub { display: block; font-size: 10px; font-weight: 400; color: var(--text-mid); letter-spacing: 0.5px; text-transform: lowercase; opacity: 0.7; margin-top: 1px; }
+  .hnav.active .hnav-sub { opacity: 1; }
+  .hnav + .hnav::before { content: ''; position: absolute; left: 0; top: 25%; height: 50%; width: 1px; background: var(--border-hi); opacity: 0.4; }
 
   .hnav:hover { color: rgba(255,255,255,0.85); }
   .hnav.active { color: #ffffff; border-bottom-color: var(--red); }
@@ -620,13 +626,17 @@
   .ai-tag { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: #e879f9; }
   .ai-meta { margin-left: auto; font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-mid); }
 
-  .ai-body { padding: 14px 16px; font-family: 'Barlow', sans-serif; font-size: 14px; line-height: 1.7; color: var(--text-bright); }
-  .ai-body strong { color: var(--amber-bright); font-weight: 600; }
-  .ai-body p { margin-bottom: 12px; }
+  .ai-body { padding: 14px 16px; font-family: 'Barlow', sans-serif; font-size: 14px; line-height: 1.75; color: var(--text-bright); opacity: 0.88; }
+  .ai-body strong { color: var(--amber-bright); font-weight: 600; opacity: 1; }
+  .ai-body p { margin-bottom: 12px; font-size: 13px; min-height: 0; }
   .ai-body ul, .ai-body ol { margin-bottom: 12px; padding-left: 20px; }
-  .ai-body li { margin-bottom: 6px; line-height: 1.6; }
-  .ai-body h2, .ai-body h3 { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-mid); margin: 20px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .ai-body li { margin-bottom: 6px; line-height: 1.7; font-size: 13px; }
+  .ai-body h2, .ai-body h3 { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-bright); opacity: 1; margin: 20px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
   .ai-body h2:first-child, .ai-body h3:first-child { margin-top: 0; }
+  .ai-body table { font-size: 12px; border-collapse: collapse; width: 100%; margin-bottom: 12px; }
+  .ai-body td, .ai-body th { padding: 8px 12px; border: 1px solid var(--border); text-align: left; }
+  .ai-body code { font-size: 12px; opacity: 0.85; line-height: 1.6; }
+  .ai-body blockquote { font-size: 12px; opacity: 0.85; line-height: 1.6; border-left: 2px solid var(--border-hi); padding-left: 12px; margin: 8px 0; }
 
   .ai-section { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-bright); margin: 16px 0 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
   .ai-section:first-child { margin-top: 0; }
@@ -737,7 +747,9 @@
     .logo svg { width: 22px; height: 22px; }
     .header-divider { margin: 0 10px; }
     .header-nav { flex: 1; }
-    .hnav { padding: 0 8px; font-size: 11px; min-height: 44px; }
+    .hnav { padding: 0 8px; font-size: 11px; min-height: 44px; flex-direction: row; }
+    .hnav-sub { display: none; }
+    .hnav + .hnav::before { display: none; }
     .header-right .hnav { font-size: 0; width: 32px; padding: 0; justify-content: center; }
     .header-right .hnav::before { content: '⏱'; font-size: 16px; }
     .key-pill { padding: 4px 8px; }
@@ -834,8 +846,8 @@
     .badge { font-size: 9px; }
 
     /* AI blocks */
-    .ai-body { padding: 12px 14px; font-size: 13px; line-height: 1.6; }
-    .ai-body h2, .ai-body h3 { font-size: 11px; }
+    .ai-body { padding: 12px 14px; font-size: 13px; line-height: 1.7; }
+    .ai-body h2, .ai-body h3 { font-size: 12px; }
     .ai-head { padding: 8px 12px; }
     .lead { font-size: 12px; padding: 6px 8px; }
 
@@ -985,9 +997,9 @@
   </div>
   <div class="header-divider"></div>
   <div class="header-nav">
-    <div class="hnav active" onclick="switchMode('investigate')">Investigate</div>
-    <div class="hnav" onclick="switchMode('recon')">Recon</div>
-    <div class="hnav" onclick="switchMode('dorks')">Dorks</div>
+    <div class="hnav active" onclick="switchMode('investigate')">Investigate<span class="hnav-sub">people &amp; identity</span></div>
+    <div class="hnav" onclick="switchMode('recon')">Recon<span class="hnav-sub">infrastructure</span></div>
+    <div class="hnav" onclick="switchMode('dorks')">Dorks<span class="hnav-sub">search builder</span></div>
   </div>
   <div class="header-right">
     <div class="hnav" onclick="switchMode('history')">History</div>
@@ -1024,7 +1036,10 @@
         <div class="chip"     onclick="pickChip(this)">Name</div>
         <div class="chip"     onclick="pickChip(this)">Phone</div>
         <div class="chip"     onclick="pickChip(this)">IP</div>
+        <div class="chip"     onclick="pickChip(this)">ASN</div>
+        <div class="chip"     onclick="pickChip(this)">Hash</div>
       </div>
+      <div id="hashHint" style="display:none;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--amber-bright);opacity:0.7;margin-top:4px;">MD5, SHA1, or SHA256</div>
     </div>
 
     <div class="pane" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
@@ -1039,6 +1054,7 @@
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">theHarvester</div><div class="mod-sub">domain · subdomain recon</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HIBP</div><div class="mod-sub">email · breach database</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Hunter.io','hunter')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Hash Lookup</div><div class="mod-sub">md5/sha1/sha256 · malware check</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · interpret &amp; suggest leads</div></div><div class="mod-tag">KEY</div></div>
         <div class="mod mod-active"><div class="mod-toggle" id="activeTechToggle" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">⚠ Active Techniques</div><div class="mod-sub">account recovery · may notify target</div></div><div class="mod-tag warn">⚠</div></div>
       </div>
@@ -1198,7 +1214,7 @@
   </div>
 </div>
 
-<div id="dorksWorkspace" class="workspace" style="display:none; flex-direction:column; height:calc(100vh - 48px); overflow:hidden;">
+<div id="dorksWorkspace" class="workspace" style="display:none; flex-direction:column; height:calc(100vh - 56px); overflow:hidden;">
   <div class="main" style="flex:1; overflow-y:auto; padding:28px 60px;">
     <div class="dork-builder" style="max-width:960px; margin:0 auto;">
 
@@ -1420,6 +1436,8 @@
   function pickChip(el) {
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
     el.classList.add('on');
+    const hint = document.getElementById('hashHint');
+    if (hint) hint.style.display = el.textContent.trim().toLowerCase() === 'hash' ? '' : 'none';
   }
 
   function setTab(el, panel) {
@@ -1745,6 +1763,47 @@
     return html;
   }
 
+  /* ── Hash Lookup results renderer ── */
+  function renderHashCard(data) {
+    const v = data.verdict;
+    const vClass = v === 'MALICIOUS' ? 'b-warn' : v === 'CLEAN' ? 'b-hit' : 'b-miss';
+    const vColor = v === 'MALICIOUS' ? '#ef4444' : v === 'CLEAN' ? 'var(--success)' : 'var(--amber-bright)';
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Hash Lookup · ${data.hash_type}</div>
+        <div class="badge" style="background:${vColor}22;color:${vColor};border-color:${vColor}44;">${v}</div>
+        ${copyBtn('Hash Lookup')}
+      </div>
+      <div class="rcard-body">`;
+    html += `<div class="ritem"><div class="dot dg"></div><strong>Hash:</strong>&nbsp;<span style="font-family:'Share Tech Mono',monospace;font-size:11px;word-break:break-all;">${data.hash}</span></div>`;
+    html += `<div class="ritem"><div class="dot dg"></div><strong>Type:</strong>&nbsp;${data.hash_type}</div>`;
+
+    const mb = data.malware_bazaar;
+    if (mb && mb.found) {
+      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">MALWAREBAZAAR</div>`;
+      if (mb.file_name) html += `<div class="ritem"><div class="dot dy"></div><strong>File:</strong>&nbsp;${mb.file_name}</div>`;
+      if (mb.file_type) html += `<div class="ritem"><div class="dot dy"></div><strong>Type:</strong>&nbsp;${mb.file_type}</div>`;
+      if (mb.signature) html += `<div class="ritem"><div class="dot dr"></div><strong>Signature:</strong>&nbsp;${mb.signature}</div>`;
+      if (mb.tags && mb.tags.length) html += `<div class="ritem"><div class="dot dy"></div><strong>Tags:</strong>&nbsp;${mb.tags.join(', ')}</div>`;
+      if (mb.first_seen) html += `<div class="ritem"><div class="dot dg"></div><strong>First seen:</strong>&nbsp;${mb.first_seen}</div>`;
+    }
+
+    const ci = data.circl;
+    if (ci && ci.found) {
+      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">CIRCL HASHLOOKUP</div>`;
+      if (ci.file_name) html += `<div class="ritem"><div class="dot dg"></div><strong>File:</strong>&nbsp;${ci.file_name}</div>`;
+      if (ci.file_size) html += `<div class="ritem"><div class="dot dg"></div><strong>Size:</strong>&nbsp;${ci.file_size} bytes</div>`;
+      html += `<div class="ritem"><div class="dot d${ci.known_malicious ? 'r' : 'g'}"></div><strong>Status:</strong>&nbsp;${ci.known_malicious ? 'Known malicious' : 'Known file (not flagged)'}</div>`;
+    }
+
+    if (!mb?.found && !ci?.found) {
+      html += `<div class="ritem" style="opacity:0.6;"><div class="dot dy"></div>No threat intelligence found for this hash</div>`;
+    }
+
+    html += `</div></div>`;
+    return html;
+  }
+
   /* ── Gravatar results renderer ── */
   function renderGravatarCard(data) {
     if (!data.found) return '';
@@ -1853,6 +1912,9 @@
   function isASN(s) { return /^AS\d+$/i.test(s.trim()); }
   function parseASN(s) { return parseInt(s.trim().replace(/^AS/i, ''), 10); }
 
+  function isHash(t) { return /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(t.trim()); }
+  function isASN(t) { return /^AS\d+$/i.test(t.trim()); }
+
   function getInputType(target) {
     const active = document.querySelector('.chip.on');
     const chip = active ? active.textContent.trim().toLowerCase() : 'auto';
@@ -1860,10 +1922,14 @@
     if (chip === 'username') return 'username';
     if (chip === 'domain') return 'domain';
     if (chip === 'name') return 'name';
+    if (chip === 'hash') return 'hash';
+    if (chip === 'asn') return 'asn';
     // Auto-detect
     if (isEmail(target)) return 'email';
     if (isDomain(target)) return 'domain';
     if (isName(target)) return 'name';
+    if (isHash(target)) return 'hash';
+    if (isASN(target)) return 'asn';
     return 'username';
   }
 
@@ -2342,9 +2408,18 @@
     const email = inputType === 'email';
     const domain = inputType === 'domain';
     const nameSearch = inputType === 'name';
+    const hashLookup = inputType === 'hash';
 
     const collected = {};
     const username = email ? target.split('@')[0] : target;
+
+    // Hash lookup — run only hash module and return early
+    if (hashLookup && isModOn('Hash Lookup')) {
+      collected.hash = await runModule(logEl, cardsEl, t0,
+        `Hash lookup for "${target}"`,
+        '/api/hash/hash', { hash: target }, renderHashCard);
+      return collected;
+    }
 
     if (nameSearch) {
       const row = addLogRow(logEl, `Name search for "${target}"`, 'done');
