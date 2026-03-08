@@ -1788,6 +1788,27 @@
     btn.textContent = isExpanded ? '▾ Show less' : '▸ Show more…';
   }
 
+  function toggleDDSection(el) {
+    // For collapsible DD sections: toggle between fully collapsed (header only)
+    // and preview mode (header + 2 lines + expand button)
+    const wasCollapsed = el.classList.toggle('collapsed');
+    // Toggle visibility of ALL following siblings until next ai-section
+    let next = el.nextElementSibling;
+    while (next && !next.classList.contains('ai-section')) {
+      if (wasCollapsed) {
+        next.style.display = 'none';
+      } else {
+        // Restore: prose and expand-btn visible, dd-more-wrap stays hidden unless expanded
+        if (next.classList.contains('dd-more-wrap') && !next.classList.contains('expanded')) {
+          next.style.display = '';  // let CSS handle it (display:none by default)
+        } else {
+          next.style.display = '';
+        }
+      }
+      next = next.nextElementSibling;
+    }
+  }
+
   function copyLead(el) {
     const textEl = el.parentElement.querySelector('.lead-text');
     const text = textEl ? textEl.textContent : '';
@@ -2752,7 +2773,9 @@
   const collapsedByDefault = ['subject profile', 'platform correlation', 'opsec assessment'];
 
   function isSectionHeading(line) {
-    const clean = line.replace(/\*\*/g, '').replace(/[:(]/g, '').trim().toLowerCase();
+    const clean = line.replace(/\*\*/g, '').replace(/[#:(]/g, '').trim().toLowerCase();
+    // Must be a short heading-like line, not a prose sentence
+    if (clean.split(/\s+/).length > 6) return false;
     return sectionHeadings.some(h => clean === h || clean.startsWith(h));
   }
 
@@ -3035,8 +3058,10 @@
   }
 
   function extractQuickIntel(text) {
-    // Parse the confidence matrix table (pipe-delimited rows)
+    const fields = {};
     const lines = text.split('\n');
+
+    // 1. Parse confidence matrix table rows for structured fields
     const tableRows = [];
     for (const line of lines) {
       const trimmed = line.trim();
@@ -3047,40 +3072,78 @@
         }
       }
     }
-    // Map inference names to Quick Intel labels
-    const labelMap = [
-      [/real\s*name|probable.*name/i, 'Likely Real Name'],
+    const tableMap = [
+      [/real\s*name|probable.*name|name/i, 'Likely Real Name'],
       [/location|city|region|geography/i, 'Location'],
-      [/occupation|industry|profession|job|career/i, 'Occupation/Industry'],
+      [/occupation|industry|profession|job|career|employment/i, 'Occupation/Industry'],
       [/email/i, 'Primary Email'],
       [/technical|skill|programming/i, 'Technical Skill Level'],
-      [/opsec|operational\s*sec/i, 'OPSEC Rating'],
-      [/platform|account/i, 'Platforms Confirmed'],
       [/age|age\s*range/i, 'Age Range'],
-      [/risk/i, 'Key Risk'],
     ];
-    const fields = {};
     for (const row of tableRows) {
       const inference = row[0];
       const evidence = row.length >= 3 ? row[2] : row[1];
-      const confidence = row.length >= 3 ? row[1] : '';
-      for (const [re, label] of labelMap) {
+      for (const [re, label] of tableMap) {
         if (!fields[label] && re.test(inference)) {
-          // For OPSEC Rating, use confidence level; for others, use evidence
-          if (label === 'OPSEC Rating') {
-            fields[label] = confidence || evidence;
-          } else {
-            fields[label] = evidence || inference;
-          }
+          fields[label] = evidence || inference;
           break;
         }
       }
     }
-    // Fallback: scan OPSEC ASSESSMENT prose for rating
-    if (!fields['OPSEC Rating']) {
-      const opsecMatch = text.match(/overall\s+OPSEC\s+(?:as|is|rating:?)\s+(POOR|FAIR|MODERATE|STRONG)/i);
-      if (opsecMatch) fields['OPSEC Rating'] = opsecMatch[1];
+
+    // 2. OPSEC Rating — scan the OPSEC ASSESSMENT section for the rating keyword
+    const opsecPatterns = [
+      /OPSEC\s*(?:as|is|:|rating[:\s]*)\s*(POOR|FAIR|MODERATE|STRONG)/i,
+      /(?:rated?|assessed?|overall)\s+(?:their\s+)?(?:overall\s+)?OPSEC\s+(?:as\s+)?(POOR|FAIR|MODERATE|STRONG)/i,
+      /\b(POOR|FAIR|MODERATE|STRONG)\b[^.]*OPSEC/i,
+      /OPSEC[^.]*\b(POOR|FAIR|MODERATE|STRONG)\b/i,
+    ];
+    for (const re of opsecPatterns) {
+      const m = text.match(re);
+      if (m) { fields['OPSEC Rating'] = m[1].toUpperCase(); break; }
     }
+
+    // 3. Platforms Confirmed — count from sherlock/holehe data or extract from text
+    const platformPatterns = [
+      /confirmed\s+(?:on\s+)?(\d+)\s+platform/i,
+      /(\d+)\s+(?:confirmed\s+)?platform/i,
+      /(?:present|active|found)\s+(?:on|across)\s+(\d+)\s+/i,
+      /(\d+)\s+(?:online\s+)?(?:accounts?|profiles?|services?)\s+(?:confirmed|found|detected)/i,
+    ];
+    for (const re of platformPatterns) {
+      const m = text.match(re);
+      if (m) { fields['Platforms Confirmed'] = m[1] + ' platforms'; break; }
+    }
+
+    // 4. Key Risk — extract biggest vulnerability from OPSEC section
+    // Find OPSEC section content
+    const opsecIdx = text.search(/\*\*OPSEC\s+ASSESSMENT\*\*/i);
+    if (opsecIdx !== -1) {
+      const nextSectionIdx = text.indexOf('**READY-TO-USE', opsecIdx + 20);
+      const opsecText = nextSectionIdx !== -1 ? text.slice(opsecIdx, nextSectionIdx) : text.slice(opsecIdx);
+      // Look for risk/vulnerability/mistake sentences
+      const riskPatterns = [
+        /(?:biggest|primary|main|most\s+significant|greatest|critical)\s+(?:risk|vulnerability|exposure|weakness|mistake)[:\s]+([^.]+\.)/i,
+        /(?:most\s+notable|key)\s+(?:risk|vulnerability|exposure|leak)[:\s]+([^.]+\.)/i,
+        /(?:leaked|exposed|visible)[^.]*(?:real\s+name|email|location|employer|phone)[^.]*\./i,
+      ];
+      for (const re of riskPatterns) {
+        const m = opsecText.match(re);
+        if (m) { fields['Key Risk'] = (m[1] || m[0]).replace(/\*\*/g, '').trim(); break; }
+      }
+      // Fallback: grab the first sentence mentioning a specific mistake
+      if (!fields['Key Risk']) {
+        const sentences = opsecText.replace(/\*\*/g, '').split(/\.\s+/);
+        for (const s of sentences) {
+          if (/mistake|leak|expos|vulnerab|weak|risk|real name.*username|same.*handle|email.*breach/i.test(s)) {
+            fields['Key Risk'] = s.trim().replace(/^[^a-zA-Z]+/, '') + '.';
+            if (fields['Key Risk'].length > 120) fields['Key Risk'] = fields['Key Risk'].slice(0, 117) + '...';
+            break;
+          }
+        }
+      }
+    }
+
     return fields;
   }
 
@@ -3143,7 +3206,7 @@
 
       // Render section header
       if (sec.heading) {
-        const clickHandler = shouldCollapse ? 'toggleSection(this)' : 'toggleSection(this)';
+        const clickHandler = shouldCollapse ? 'toggleDDSection(this)' : 'toggleSection(this)';
         html += `<div class="ai-section dd-section-head" onclick="${clickHandler}"><span class="sec-arrow">▼</span> // ${sec.headingLabel}</div>`;
       }
 
@@ -3205,7 +3268,8 @@
       if (inQueries) renderedLines.push({ html: '</div>', isLeadsEnd: true });
 
       // If this section should be collapsible, show first 2 prose lines then wrap rest
-      if (shouldCollapse && renderedLines.filter(r => r.isProse).length > 2) {
+      const proseTotal = renderedLines.filter(r => r.isProse).length;
+      if (shouldCollapse && proseTotal > 2) {
         let proseCount = 0;
         let splitIdx = -1;
         for (let i = 0; i < renderedLines.length; i++) {
@@ -3215,14 +3279,17 @@
           }
         }
         const moreId = ddMoreCounter++;
-        // Render visible portion
+        // Render visible portion (first 2 prose lines)
         for (let i = 0; i < splitIdx; i++) html += renderedLines[i].html;
         // Render hidden portion in wrapper
         html += `<div class="dd-more-wrap" id="ddmore_${moreId}">`;
         for (let i = splitIdx; i < renderedLines.length; i++) html += renderedLines[i].html;
         html += `</div>`;
-        const hiddenCount = renderedLines.filter((r, i) => i >= splitIdx && r.isProse).length;
+        const hiddenCount = proseTotal - 2;
         html += `<div class="dd-expand-btn" id="ddbtn_${moreId}" onclick="toggleDDMore(${moreId})">▸ Show more… (${hiddenCount} more lines)</div>`;
+      } else if (shouldCollapse && proseTotal > 0) {
+        // 2 or fewer prose lines — show all but still support header collapse
+        for (const r of renderedLines) html += r.html;
       } else {
         // Render all lines normally
         for (const r of renderedLines) html += r.html;
