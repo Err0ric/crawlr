@@ -2048,6 +2048,7 @@
       }
     }
 
+    if (count > 0) html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;font-style:italic;color:rgba(255,255,255,0.35);">⚠ Results may include false positives. Verify links before drawing conclusions.</div>`;
     html += `</div></div>`;
     return html;
   }
@@ -2075,9 +2076,14 @@
       confirmedItems.sort((a, b) => (b.url ? 1 : 0) - (a.url ? 1 : 0));
       const fpItems = items.filter(r => r.confidence === 'false_positive');
 
+      function _mgBadge(conf) {
+        if (conf === 'high_confidence') return '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);margin-left:6px;">confirmed</span>';
+        if (conf === 'normal') return '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);margin-left:6px;">likely</span>';
+        return '<span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(107,114,128,0.1);color:#6b7280;border:1px solid rgba(107,114,128,0.25);margin-left:6px;">unverified</span>';
+      }
       function maigretRow(r) {
         const id = 'mg_' + r.site;
-        return `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<span>${r.site}</span>${r.category ? ` <span style="color:var(--text-dim);font-size:9px;margin-left:4px;">(${r.category})</span>` : ''} <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
+        return `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<span>${r.site}</span>${_mgBadge(r.confidence)}${r.category ? ` <span style="color:var(--text-dim);font-size:9px;margin-left:4px;">(${r.category})</span>` : ''} <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
       }
 
       const visibleConfirmed = confirmedItems.slice(0, 6);
@@ -2097,12 +2103,13 @@
         for (const r of fpItems) {
           const id = 'mg_' + r.site;
           const mgFpLink = r.url ? ` <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a>` : '';
-          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.4;">${chkHtml(id)}<span>${r.site}</span>${mgFpLink}</div>`;
+          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.5;text-decoration:line-through;">${chkHtml(id)}<span>${r.site}</span>${_mgBadge('false_positive')}${mgFpLink}</div>`;
         }
         html += `</div></div>`;
       }
     }
 
+    if (count > 0) html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;font-style:italic;color:rgba(255,255,255,0.35);">⚠ Results may include false positives. Verify links before drawing conclusions.</div>`;
     html += `</div></div>`;
     return html;
   }
