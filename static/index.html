@@ -3041,10 +3041,12 @@
     function cleanEvidence(evidence, type) {
       const e = evidence.replace(/\*\*/g, '').trim();
       if (type === 'name') {
+        // Extract name from "Handle (Real Name)" format
+        const paren = e.match(/\(([^)]+)\)/); if (paren) return paren[1].trim();
         // Extract quoted name or name before dash/comma
         const q = e.match(/["']([^"']+)["']/); if (q) return q[1];
         const d = e.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/); if (d) return d[1];
-        const pre = e.split(/\s*[-–—(,·]/)[0].trim();
+        const pre = e.split(/\s*[-–—,·]/)[0].trim();
         return pre.split(/\s+/).length <= 4 ? pre : e.split(/\s+/).slice(0, 3).join(' ');
       }
       if (type === 'location') {
@@ -3060,7 +3062,8 @@
         return pre.split(/\s+/).length <= 6 ? pre : e.split(/\s+/).slice(0, 6).join(' ');
       }
       if (type === 'age') {
-        const m = e.match(/\d+\s*[-–]\s*\d+/); return m ? m[0].replace(/\s/g, '') : e.split(/\s+/).slice(0, 3).join(' ');
+        if (/no\s+specific|unknown|unclear|insufficient|not\s+enough|indeterminate/i.test(e)) return null;
+        const m = e.match(/\d+\s*[-–]\s*\d+/); return m ? m[0].replace(/\s/g, '') : null;
       }
       return e;
     }
@@ -3078,23 +3081,16 @@
       const evidence = row.length >= 3 ? row[2] : row[1];
       for (const [re, label, type] of tableMap) {
         if (!fields[label] && re.test(inference)) {
-          fields[label] = cleanEvidence(evidence || inference, type);
+          const cleaned = cleanEvidence(evidence || inference, type);
+          if (cleaned) fields[label] = cleaned;
           break;
         }
       }
     }
 
-    // 2. OPSEC Rating — single word only
-    const opsecPatterns = [
-      /OPSEC\s*(?:as|is|:|rating[:\s]*)\s*(POOR|FAIR|MODERATE|STRONG)/i,
-      /(?:rated?|assessed?|overall)\s+(?:their\s+)?(?:overall\s+)?OPSEC\s+(?:as\s+)?(POOR|FAIR|MODERATE|STRONG)/i,
-      /OPSEC[^.]{0,40}\b(POOR|FAIR|MODERATE|STRONG)\b/i,
-      /\b(POOR|FAIR|MODERATE|STRONG)\b[^.]{0,40}OPSEC/i,
-    ];
-    for (const re of opsecPatterns) {
-      const m = text.match(re);
-      if (m) { fields['OPSEC Rating'] = m[1].toUpperCase(); break; }
-    }
+    // 2. OPSEC Rating — find first occurrence of rating keyword in the full text
+    const opsecMatch = text.match(/\b(POOR|FAIR|MODERATE|STRONG)\b/);
+    if (opsecMatch) fields['OPSEC Rating'] = opsecMatch[1].toUpperCase();
 
     // 3. Platforms Confirmed — pull from collected data (sherlock confirmed count)
     if (collected) {
@@ -3105,35 +3101,20 @@
       if (count > 0) fields['Platforms Confirmed'] = String(count);
     }
 
-    // 4. Key Risk — short phrase, max ~10 words, from OPSEC section
+    // 4. Key Risk — first complete sentence describing a concrete vulnerability, max 20 words
     const opsecIdx = text.search(/\*\*OPSEC\s+ASSESSMENT\*\*/i);
     if (opsecIdx !== -1) {
       const nextSectionIdx = text.indexOf('**READY-TO-USE', opsecIdx + 20);
       const opsecText = (nextSectionIdx !== -1 ? text.slice(opsecIdx, nextSectionIdx) : text.slice(opsecIdx)).replace(/\*\*/g, '');
       const sentences = opsecText.split(/\.\s+/);
-      // Look for concrete negative findings, skip the opening summary sentence
       for (let si = 1; si < sentences.length; si++) {
         const s = sentences[si].trim();
-        if (/real\s*name\s*(expos|in\s*username|visib|linked|reveal)|identity\s*bridge|same\s*(handle|username)\s*everywhere|email.*breach|location.*expos|employer.*visib|most\s*significant|biggest\s*weakness|critical\s*leak/i.test(s)) {
-          // Extract a short phrase
-          let phrase = s.replace(/^[^a-zA-Z]+/, '');
+        if (/expos|reveal|bridge|weakness|links|leak|same.*handle|real\s*name|vulnerab/i.test(s)) {
+          let phrase = s.replace(/^[^a-zA-Z]+/, '').split('.')[0].trim();
           const words = phrase.split(/\s+/);
-          if (words.length > 10) phrase = words.slice(0, 10).join(' ') + '…';
+          if (words.length > 20) phrase = words.slice(0, 20).join(' ') + '…';
           fields['Key Risk'] = phrase;
           break;
-        }
-      }
-      // Fallback: any sentence with leak/expos/mistake
-      if (!fields['Key Risk']) {
-        for (let si = 1; si < sentences.length; si++) {
-          const s = sentences[si].trim();
-          if (/leak|expos|mistake|vulnerab|weak/i.test(s)) {
-            let phrase = s.replace(/^[^a-zA-Z]+/, '');
-            const words = phrase.split(/\s+/);
-            if (words.length > 10) phrase = words.slice(0, 10).join(' ') + '…';
-            fields['Key Risk'] = phrase;
-            break;
-          }
         }
       }
     }
