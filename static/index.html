@@ -275,6 +275,20 @@
   .settings-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 9997; display: none; }
   .settings-backdrop.open { display: block; }
 
+  .history-overlay { position: fixed; top: 0; right: -420px; width: 400px; height: 100vh; background: var(--bg); border-left: 1px solid var(--border-hi); z-index: 9996; overflow-y: auto; transition: right 0.25s ease; box-shadow: -4px 0 30px rgba(0,0,0,0.4); }
+  .history-overlay.open { right: 0; }
+  .history-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 9995; display: none; }
+  .history-backdrop.open { display: block; }
+  .hp-entry { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; margin-bottom: 6px; cursor: pointer; transition: all 0.15s; }
+  .hp-entry:hover { border-color: var(--border-hi); background: var(--bg3); }
+  .hp-target { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text-bright); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hp-meta { display: flex; align-items: center; gap: 10px; }
+  .hp-badge { font-family: 'Share Tech Mono', monospace; font-size: 9px; padding: 1px 6px; border-radius: 3px; letter-spacing: 1px; }
+  .hp-badge.inv { background: rgba(124,58,237,0.15); color: #a855f7; border: 1px solid rgba(124,58,237,0.3); }
+  .hp-badge.rec { background: rgba(20,184,166,0.15); color: #14b8a6; border: 1px solid rgba(20,184,166,0.3); }
+  .hp-badge.hdr { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+  .hp-time { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); }
+
   .key-pill {
     display: flex;
     align-items: center;
@@ -1028,6 +1042,7 @@
     /* Modals */
     .modal { width: calc(100vw - 32px); max-width: 400px; padding: 20px; }
     .settings-overlay { width: 100vw; right: -100vw; }
+    .history-overlay { width: 100vw; right: -100vw; }
     .settings-overlay.open { right: 0; }
 
     /* Toast */
@@ -1168,7 +1183,7 @@
     <div class="hnav" onclick="switchMode('headers')">Headers<span class="hnav-sub">email analyzer</span></div>
   </div>
   <div class="header-right">
-    <div class="hnav" onclick="switchMode('history')">History</div>
+    <div class="hnav" onclick="toggleHistoryPanel()">History</div>
     <div class="gear-btn" onclick="toggleSettingsPanel()" title="Settings">⚙</div>
     <div class="key-pill" onclick="openModal()">
       <div class="key-dot" id="keyDot"></div>
@@ -1194,13 +1209,6 @@
     <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:clamp(120px,18vw,260px);letter-spacing:0.04em;color:var(--text-bright);opacity:0.06;white-space:nowrap;">CRAWLR</div>
   </div>
   <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:20px;width:100%;max-width:720px;padding:0 24px;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-      <svg width="30" height="30" viewBox="0 0 26 26" fill="none">
-        <rect x="0.75" y="0.75" width="24.5" height="24.5" rx="3" stroke="var(--red-bright)" stroke-width="1.2"/>
-        <path d="M6 13h3.5l2.5-5.5 3 11 2.5-5.5H20" stroke="var(--red-bright)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;letter-spacing:0.08em;color:var(--text-bright);">CRAWL<em style="color:var(--red-bright);font-style:normal;">R</em></div>
-    </div>
     <div style="display:flex;width:100%;gap:0;">
       <input id="landingInput" type="text" placeholder="target, hash, domain, or paste headers..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="flex:1;background:var(--bg3);border:1px solid var(--border-mid);border-right:none;border-radius:4px 0 0 4px;padding:14px 18px;font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--text-bright);outline:none;"
@@ -1210,6 +1218,9 @@
       <button onclick="landingSubmit()" style="background:var(--red);border:none;border-radius:0 4px 4px 0;padding:14px 28px;font-family:'Share Tech Mono',monospace;font-size:13px;font-weight:600;letter-spacing:0.08em;color:#fff;cursor:pointer;white-space:nowrap;transition:background 0.15s;" onmouseenter="this.style.background='var(--red-bright)'" onmouseleave="this.style.background='var(--red)'">RUN</button>
     </div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-mid);letter-spacing:0.06em;opacity:0.6;">OSINT investigation platform</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:4px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.08em;color:var(--text-bright);opacity:0.06;">
+      <span>USERNAME</span><span>EMAIL</span><span>DOMAIN</span><span>IP</span><span>ASN</span><span>HASH</span><span>EMAIL HEADERS</span>
+    </div>
   </div>
 </div>
 
@@ -1575,6 +1586,20 @@
         <div id="themeList" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="history-backdrop" id="historyBackdrop" onclick="toggleHistoryPanel()"></div>
+<div class="history-overlay" id="historyPanel">
+  <div style="padding:24px 20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;">// Recent History</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);padding:4px 8px;border:1px solid var(--border);border-radius:3px;transition:all 0.15s;" onclick="switchMode('history');toggleHistoryPanel()" onmouseenter="this.style.borderColor='var(--border-hi)'" onmouseleave="this.style.borderColor='var(--border)'">View All</div>
+        <div style="cursor:pointer;color:var(--text-dim);font-size:18px;padding:4px 8px;" onclick="toggleHistoryPanel()" title="Close">&#10005;</div>
+      </div>
+    </div>
+    <div id="historyPanelList"></div>
   </div>
 </div>
 
@@ -4208,8 +4233,23 @@
     scanning = false;
     const runBtn = document.querySelector('.run-btn');
     if (runBtn) { runBtn.textContent = '\u25b6 Run Investigation'; runBtn.style.pointerEvents = ''; }
-    switchMode('investigate');
-    document.getElementById('targetInput').focus();
+    showLanding();
+  }
+
+  function showLanding() {
+    closeMobileModules();
+    document.querySelectorAll('.hnav').forEach(n => n.classList.remove('active'));
+    document.getElementById('investigateWorkspace').style.display = 'none';
+    document.getElementById('reconWorkspace').style.display = 'none';
+    document.getElementById('dorksWorkspace').style.display = 'none';
+    document.getElementById('headersWorkspace').style.display = 'none';
+    document.getElementById('historyWorkspace').style.display = 'none';
+    const lp = document.getElementById('landingPage');
+    if (lp) {
+      lp.style.display = 'flex';
+      const li = document.getElementById('landingInput');
+      if (li) { li.value = ''; setTimeout(() => li.focus(), 50); }
+    }
   }
 
   function switchMode(mode, opts) {
@@ -4266,6 +4306,47 @@
       panel.classList.add('open');
       backdrop.classList.add('open');
     }
+  }
+
+  function toggleHistoryPanel() {
+    const panel = document.getElementById('historyPanel');
+    const backdrop = document.getElementById('historyBackdrop');
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+      panel.classList.remove('open');
+      backdrop.classList.remove('open');
+    } else {
+      renderHistoryPanel();
+      panel.classList.add('open');
+      backdrop.classList.add('open');
+    }
+  }
+
+  function renderHistoryPanel() {
+    const entries = getHistory();
+    const list = document.getElementById('historyPanelList');
+    if (!entries.length) {
+      list.innerHTML = '<div style="font-family:\'Share Tech Mono\',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:40px 0;">No history yet</div>';
+      return;
+    }
+    let html = '';
+    for (const e of entries) {
+      const d = new Date(e.timestamp);
+      const time = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      let badgeClass = 'inv';
+      let badgeText = 'INVESTIGATE';
+      if (e.type === 'RECON') { badgeClass = 'rec'; badgeText = 'RECON'; }
+      else if (e.type === 'email_headers') { badgeClass = 'hdr'; badgeText = 'HEADERS'; }
+      html += `<div class="hp-entry" onclick="loadHistoryEntry('${e.id}');toggleHistoryPanel()">
+        <div class="hp-target">${e.target}</div>
+        <div class="hp-meta">
+          <span class="hp-badge ${badgeClass}">${badgeText}</span>
+          <span class="hp-time">${time}</span>
+        </div>
+      </div>`;
+    }
+    list.innerHTML = html;
   }
 
   let reconScanning = false;
