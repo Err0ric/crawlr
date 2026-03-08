@@ -2179,6 +2179,16 @@
       ${authChip('DMARC', auth.dmarc)}
     </div>`;
 
+    // AI Analysis slot (inserted here so it appears above technical details)
+    html += `<div id="headerAiSlot"></div>`;
+
+    // AI Analysis button (only if API key configured)
+    if (getApiKey()) {
+      html += `<div id="headerAiBtnWrap" style="margin-bottom:14px;">
+        <button id="headerAiBtn" onclick="runHeaderAiAnalysis()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">// AI ANALYSIS</button>
+      </div>`;
+    }
+
     // Key headers summary
     const kh = data.key_headers || {};
     html += _hashSectionHead('MESSAGE INFO');
@@ -2257,13 +2267,6 @@
       }
     }
 
-    // AI Analysis button (only if API key configured)
-    if (getApiKey()) {
-      html += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
-        <button id="headerAiBtn" onclick="runHeaderAiAnalysis()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">// AI ANALYSIS</button>
-      </div>`;
-    }
-
     html += `</div></div>`;
     // Store analysis data for AI
     window._lastHeaderAnalysis = data;
@@ -2326,16 +2329,16 @@
 
       aiHtml += `</div></div>`;
 
-      // Insert at TOP of results, above the rcard
-      const cardsEl = document.getElementById('headersCards');
-      if (cardsEl) {
-        cardsEl.insertAdjacentHTML('afterbegin', aiHtml);
-        // Scroll to top of results
-        cardsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      // Insert into the AI slot (between auth chips and MESSAGE INFO)
+      const slot = document.getElementById('headerAiSlot');
+      if (slot) slot.innerHTML = aiHtml;
 
-      // Hide the button after successful analysis
-      btn.style.display = 'none';
+      // Hide the button
+      const btnWrap = document.getElementById('headerAiBtnWrap');
+      if (btnWrap) btnWrap.style.display = 'none';
+
+      // Scroll to top of results
+      slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
       btn.insertAdjacentHTML('afterend', `<div style="margin-top:10px;padding:10px;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;font-size:12px;">Error: ${_esc(e.message)}</div>`);
     } finally {
