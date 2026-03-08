@@ -1213,11 +1213,11 @@
   <div class="fn-body"><textarea id="fnTextarea" spellcheck="false" placeholder="// case notes, leads, observations..."></textarea></div>
 </div>
 
-<div id="landingPage" style="position:fixed;inset:0;top:56px;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
-  <div style="pointer-events:none;user-select:none;margin-bottom:60px;">
-    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(100px,15vw,220px);letter-spacing:0.18em;text-transform:uppercase;color:var(--text-bright);opacity:0.05;line-height:1;">Crawl</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(100px,15vw,220px);letter-spacing:0.18em;text-transform:uppercase;color:var(--red-bright);opacity:0.07;line-height:1;">R</span>
+<div id="landingPage" style="position:fixed;inset:0;top:56px;z-index:50;background:var(--bg);overflow:hidden;">
+  <div style="position:absolute;top:28%;left:50%;transform:translate(-50%,-50%);pointer-events:none;user-select:none;white-space:nowrap;">
+    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(80px,12vw,180px);letter-spacing:0.15em;color:var(--text-bright);opacity:0.04;line-height:1;">Crawl</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(80px,12vw,180px);letter-spacing:0.15em;color:var(--red);opacity:0.06;line-height:1;">R</span>
   </div>
-  <div style="display:flex;flex-direction:column;align-items:center;gap:16px;width:100%;max-width:720px;padding:0 24px;">
+  <div style="position:absolute;top:52%;left:50%;transform:translate(-50%,0);display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:720px;padding:0 24px;">
     <div style="display:flex;width:100%;gap:0;">
       <input id="landingInput" type="text" placeholder="target, hash, domain, or paste headers..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="flex:1;background:var(--bg3);border:1px solid var(--border-mid);border-right:none;border-radius:4px 0 0 4px;padding:14px 18px;font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--text-bright);outline:none;"
@@ -1226,8 +1226,8 @@
       />
       <button onclick="landingSubmit()" style="background:var(--red);border:none;border-radius:0 4px 4px 0;padding:14px 28px;font-family:'Share Tech Mono',monospace;font-size:13px;font-weight:600;letter-spacing:0.08em;color:#fff;cursor:pointer;white-space:nowrap;transition:background 0.15s;" onmouseenter="this.style.background='var(--red-bright)'" onmouseleave="this.style.background='var(--red)'">RUN</button>
     </div>
-    <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-mid);letter-spacing:0.06em;opacity:0.6;">OSINT investigation platform</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:2px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.08em;color:var(--text-mid);opacity:0.6;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-mid);letter-spacing:0.06em;opacity:0.5;">OSINT investigation platform</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:2px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.08em;color:var(--text-mid);opacity:0.5;">
       <span>USERNAME</span><span>EMAIL</span><span>DOMAIN</span><span>IP</span><span>ASN</span><span>HASH</span><span>EMAIL HEADERS</span>
     </div>
   </div>
@@ -1601,22 +1601,29 @@
 <div class="history-edge-tab" id="historyEdgeTab" onclick="toggleHistoryPanel()" style="display:none;">HISTORY</div>
 <div class="history-backdrop" id="historyBackdrop" onclick="toggleHistoryPanel()"></div>
 <div class="history-overlay" id="historyPanel">
-  <div style="padding:24px 20px;">
+  <div style="padding:24px 20px;display:flex;flex-direction:column;height:100%;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;">// Recent History</div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <div style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);padding:4px 8px;border:1px solid var(--border);border-radius:3px;transition:all 0.15s;" onclick="switchMode('history');toggleHistoryPanel()" onmouseenter="this.style.borderColor='var(--border-hi)'" onmouseleave="this.style.borderColor='var(--border)'">View All</div>
-        <div style="cursor:pointer;color:var(--text-dim);font-size:18px;padding:4px 8px;" onclick="toggleHistoryPanel()" title="Close">&#10005;</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;">// History</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <div id="hpSelectBtn" style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);padding:4px 8px;border:1px solid var(--border);border-radius:3px;transition:all 0.15s;letter-spacing:0.5px;" onclick="toggleHistorySelect()" onmouseenter="this.style.borderColor='var(--border-hi)'" onmouseleave="this.style.borderColor='var(--border)'">SELECT &amp; CLEAR</div>
+        <div id="hpClearAllBtn" style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);padding:4px 8px;border:1px solid var(--border);border-radius:3px;transition:all 0.15s;letter-spacing:0.5px;" onclick="showClearAllConfirm()" onmouseenter="this.style.borderColor='var(--border-hi)';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">CLEAR ALL</div>
       </div>
     </div>
-    <div id="historyPanelList"></div>
-    <div id="historyPanelClear" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
-      <div id="hpClearBtn" style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;padding:8px;border:1px solid var(--border);border-radius:3px;transition:all 0.15s;" onclick="showClearHistoryConfirm()" onmouseenter="this.style.borderColor='var(--border-hi)';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">Clear All History</div>
-      <div id="hpClearConfirm" style="display:none;text-align:center;">
-        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);margin-bottom:10px;">Clear all history? This cannot be undone.</div>
+    <div id="hpClearAllConfirm" style="display:none;text-align:center;margin-bottom:16px;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);margin-bottom:10px;">Clear all history? This cannot be undone.</div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button onclick="hideClearAllConfirm()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer;">Cancel</button>
+        <button onclick="confirmClearAll()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:3px;color:#ef4444;cursor:pointer;">Confirm</button>
+      </div>
+    </div>
+    <div id="historyPanelList" style="flex:1;overflow-y:auto;"></div>
+    <div id="hpDeleteSelectedWrap" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <div id="hpDeleteSelectedBtn" style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:#ef4444;text-align:center;padding:8px;border:1px solid rgba(239,68,68,0.4);border-radius:3px;background:rgba(239,68,68,0.08);transition:all 0.15s;" onclick="confirmDeleteSelected()">DELETE SELECTED (<span id="hpSelectedCount">0</span>)</div>
+      <div id="hpDeleteConfirm" style="display:none;text-align:center;margin-top:8px;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);margin-bottom:10px;">Delete selected entries?</div>
         <div style="display:flex;gap:8px;justify-content:center;">
-          <button onclick="hideClearHistoryConfirm()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer;">Cancel</button>
-          <button onclick="confirmClearHistory()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:3px;color:#ef4444;cursor:pointer;">Confirm</button>
+          <button onclick="cancelDeleteSelected()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer;">Cancel</button>
+          <button onclick="executeDeleteSelected()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:3px;color:#ef4444;cursor:pointer;">Confirm</button>
         </div>
       </div>
     </div>
@@ -4341,7 +4348,16 @@
       panel.classList.remove('open');
       backdrop.classList.remove('open');
       if (tab) tab.style.display = '';
+      // Reset select mode on close
+      _hpSelectMode = false;
+      _hpSelected.clear();
+      document.getElementById('hpSelectBtn').style.color = '';
+      document.getElementById('hpSelectBtn').style.borderColor = '';
     } else {
+      _hpSelectMode = false;
+      _hpSelected.clear();
+      document.getElementById('hpSelectBtn').style.color = '';
+      document.getElementById('hpSelectBtn').style.borderColor = '';
       renderHistoryPanel();
       panel.classList.add('open');
       backdrop.classList.add('open');
@@ -4349,54 +4365,119 @@
     }
   }
 
+  let _hpSelectMode = false;
+  let _hpSelected = new Set();
+
   function renderHistoryPanel() {
     const entries = getHistory();
     const list = document.getElementById('historyPanelList');
-    const clearWrap = document.getElementById('historyPanelClear');
+    const headerBtns = document.getElementById('hpSelectBtn').parentElement;
     if (!entries.length) {
       list.innerHTML = '<div style="font-family:\'Share Tech Mono\',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:40px 0;">No history yet</div>';
-      clearWrap.style.display = 'none';
+      headerBtns.style.display = 'none';
+      document.getElementById('hpDeleteSelectedWrap').style.display = 'none';
       return;
     }
-    clearWrap.style.display = '';
-    hideClearHistoryConfirm();
+    headerBtns.style.display = '';
+    hideClearAllConfirm();
     let html = '';
     for (const e of entries) {
-      const ts = e.timestamp || e.date;
-      const d = ts ? new Date(ts) : null;
-      const time = d && !isNaN(d) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
-                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
       let badgeClass = 'inv';
       let badgeText = 'INVESTIGATE';
       if (e.type === 'RECON') { badgeClass = 'rec'; badgeText = 'RECON'; }
       else if (e.type === 'email_headers') { badgeClass = 'hdr'; badgeText = 'HEADERS'; }
       const eid = e.id || '';
-      html += `<div class="hp-entry" onclick="loadHistoryEntry('${eid}');toggleHistoryPanel()">
-        <div class="hp-target">${e.target}</div>
-        <div class="hp-meta">
-          <span class="hp-badge ${badgeClass}">${badgeText}</span>
-          <span class="hp-time">${time}</span>
-        </div>
-      </div>`;
+      const checked = _hpSelected.has(eid) ? 'checked' : '';
+      if (_hpSelectMode) {
+        html += `<div class="hp-entry" style="display:flex;align-items:center;gap:10px;" onclick="hpToggleCheck('${eid}')">
+          <input type="checkbox" ${checked} style="accent-color:var(--red);cursor:pointer;flex-shrink:0;" onclick="event.stopPropagation();hpToggleCheck('${eid}')"/>
+          <div style="flex:1;min-width:0;">
+            <div class="hp-target">${e.target}</div>
+            <div class="hp-meta"><span class="hp-badge ${badgeClass}">${badgeText}</span></div>
+          </div>
+        </div>`;
+      } else {
+        html += `<div class="hp-entry" onclick="loadHistoryEntry('${eid}');toggleHistoryPanel()">
+          <div class="hp-target">${e.target}</div>
+          <div class="hp-meta"><span class="hp-badge ${badgeClass}">${badgeText}</span></div>
+        </div>`;
+      }
     }
     list.innerHTML = html;
+    updateDeleteSelectedBtn();
   }
 
-  function showClearHistoryConfirm() {
-    document.getElementById('hpClearBtn').style.display = 'none';
-    document.getElementById('hpClearConfirm').style.display = '';
+  function toggleHistorySelect() {
+    _hpSelectMode = !_hpSelectMode;
+    _hpSelected.clear();
+    const btn = document.getElementById('hpSelectBtn');
+    btn.style.color = _hpSelectMode ? 'var(--red-bright)' : '';
+    btn.style.borderColor = _hpSelectMode ? 'var(--red-dim)' : '';
+    renderHistoryPanel();
   }
 
-  function hideClearHistoryConfirm() {
-    document.getElementById('hpClearBtn').style.display = '';
-    document.getElementById('hpClearConfirm').style.display = 'none';
+  function hpToggleCheck(eid) {
+    if (_hpSelected.has(eid)) _hpSelected.delete(eid);
+    else _hpSelected.add(eid);
+    // Update checkbox without full re-render
+    const list = document.getElementById('historyPanelList');
+    const entries = list.querySelectorAll('.hp-entry');
+    const allIds = getHistory().map(e => e.id || '');
+    entries.forEach((el, i) => {
+      const cb = el.querySelector('input[type="checkbox"]');
+      if (cb && allIds[i]) cb.checked = _hpSelected.has(allIds[i]);
+    });
+    updateDeleteSelectedBtn();
   }
 
-  function confirmClearHistory() {
+  function updateDeleteSelectedBtn() {
+    const wrap = document.getElementById('hpDeleteSelectedWrap');
+    const count = document.getElementById('hpSelectedCount');
+    if (_hpSelectMode && _hpSelected.size > 0) {
+      wrap.style.display = '';
+      count.textContent = _hpSelected.size;
+      document.getElementById('hpDeleteConfirm').style.display = 'none';
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
+
+  function confirmDeleteSelected() {
+    document.getElementById('hpDeleteConfirm').style.display = '';
+  }
+
+  function cancelDeleteSelected() {
+    document.getElementById('hpDeleteConfirm').style.display = 'none';
+  }
+
+  function executeDeleteSelected() {
+    let entries = getHistory();
+    entries = entries.filter(e => !_hpSelected.has(e.id || ''));
+    saveHistory(entries);
+    _hpSelected.clear();
+    renderHistoryPanel();
+    renderHistory();
+    showToast(`Deleted ${_hpSelected.size || 'selected'} entries`, 2000);
+  }
+
+  function showClearAllConfirm() {
+    document.getElementById('hpClearAllConfirm').style.display = '';
+  }
+
+  function hideClearAllConfirm() {
+    document.getElementById('hpClearAllConfirm').style.display = 'none';
+  }
+
+  function confirmClearAll() {
     localStorage.removeItem(HISTORY_KEY);
+    _hpSelectMode = false;
+    _hpSelected.clear();
+    document.getElementById('hpSelectBtn').style.color = '';
+    document.getElementById('hpSelectBtn').style.borderColor = '';
     renderHistoryPanel();
     renderHistory();
     showToast('History cleared', 2000);
+    hideClearAllConfirm();
   }
 
   let reconScanning = false;
