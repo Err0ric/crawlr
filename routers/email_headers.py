@@ -37,9 +37,7 @@ def parse_received_chain(raw: str) -> list[dict]:
         ips = []
         for match in ip_re.finditer(hdr_clean):
             ip = match.group(1) or match.group(2) or match.group(3)
-            if ip and not ip.startswith(("10.", "192.168.", "127.")) and not ip.startswith("172."):
-                ips.append(ip)
-            elif ip:
+            if ip:
                 ips.append(ip)
         hop["ips"] = ips
 
@@ -109,7 +107,7 @@ def parse_auth_results(raw: str) -> dict:
     if not auth["dkim"]:
         dkim_sig = msg.get("DKIM-Signature", "")
         if dkim_sig:
-            auth["dkim"] = "present (signature found)"
+            auth["dkim"] = "present"
 
     return auth
 
@@ -137,30 +135,83 @@ def extract_key_headers(raw: str) -> dict:
     return headers
 
 
-def detect_anomalies(raw: str, key_headers: dict, auth: dict) -> list[dict]:
+def _is_private_ip(ip: str) -> bool:
+    """Check if an IP is private/reserved."""
+    if ip.startswith(("10.", "192.168.", "127.", "0.")):
+        return True
+    if ip.startswith("172."):
+        parts = ip.split(".")
+        if len(parts) == 4:
+            try:
+                if 16 <= int(parts[1]) <= 31:
+                    return True
+            except ValueError:
+                pass
+    return False
+
+
+def detect_anomalies(raw: str, key_headers: dict, auth: dict, ip_geo: dict, hops: list) -> list[dict]:
     """Detect potential spoofing and suspicious indicators."""
-    msg = email.message_from_string(raw)
     anomalies = []
 
-    # Envelope vs header From mismatch
-    return_path = key_headers.get("Return-Path", "").strip("<>").lower()
+    # Parse From header into display name and email address
+    from_header = key_headers.get("From", "")
     from_addr = ""
-    if key_headers.get("From"):
-        m = re.search(r'[\w.\-+]+@[\w.\-]+', key_headers["From"])
+    from_display = ""
+    if from_header:
+        m = re.search(r'[\w.\-+]+@[\w.\-]+', from_header)
         if m:
             from_addr = m.group(0).lower()
+        # Extract display name (text before <email>)
+        dm = re.match(r'^"?([^"<]+)"?\s*<', from_header)
+        if dm:
+            from_display = dm.group(1).strip().strip('"')
 
+    # 1. Display name vs email address mismatch
+    if from_display and from_addr:
+        # Check if display name contains an email that differs from actual address
+        display_email_m = re.search(r'[\w.\-+]+@[\w.\-]+', from_display)
+        if display_email_m:
+            display_email = display_email_m.group(0).lower()
+            if display_email != from_addr:
+                anomalies.append({
+                    "severity": "high",
+                    "type": "display_name_email_spoof",
+                    "detail": f"Display name contains email '{display_email}' but actual sender is '{from_addr}'. Classic spoofing technique.",
+                })
+        # Check if display name looks like a well-known company but domain doesn't match
+        known_brands = {
+            "paypal": "paypal.com", "google": "google.com", "apple": "apple.com",
+            "microsoft": "microsoft.com", "amazon": "amazon.com", "netflix": "netflix.com",
+            "facebook": "facebook.com", "meta": "meta.com", "instagram": "instagram.com",
+            "twitter": "twitter.com", "linkedin": "linkedin.com", "bank": None,
+            "wells fargo": "wellsfargo.com", "chase": "chase.com",
+        }
+        display_lower = from_display.lower()
+        from_domain = from_addr.split("@")[-1] if "@" in from_addr else ""
+        for brand, expected_domain in known_brands.items():
+            if brand in display_lower:
+                if expected_domain and expected_domain not in from_domain:
+                    anomalies.append({
+                        "severity": "high",
+                        "type": "brand_impersonation",
+                        "detail": f"Display name mentions '{brand}' but email domain is '{from_domain}', not '{expected_domain}'.",
+                    })
+                    break
+
+    # 2. Envelope vs header From mismatch
+    return_path = key_headers.get("Return-Path", "").strip("<>").lower()
     if return_path and from_addr and return_path != from_addr:
         rp_domain = return_path.split("@")[-1] if "@" in return_path else ""
         from_domain = from_addr.split("@")[-1] if "@" in from_addr else ""
-        if rp_domain != from_domain:
+        if rp_domain and from_domain and rp_domain != from_domain:
             anomalies.append({
                 "severity": "high",
                 "type": "envelope_mismatch",
                 "detail": f"Return-Path domain ({rp_domain}) differs from From domain ({from_domain}). Possible spoofing.",
             })
 
-    # Reply-To mismatch
+    # 3. Reply-To mismatch
     reply_to = key_headers.get("Reply-To", "")
     if reply_to and from_addr:
         m = re.search(r'[\w.\-+]+@[\w.\-]+', reply_to)
@@ -170,10 +221,10 @@ def detect_anomalies(raw: str, key_headers: dict, auth: dict) -> list[dict]:
                 anomalies.append({
                     "severity": "medium",
                     "type": "reply_to_mismatch",
-                    "detail": f"Reply-To ({reply_addr}) domain differs from From ({from_addr}). Could be phishing.",
+                    "detail": f"Reply-To ({reply_addr}) domain differs from From ({from_addr}). Replies go to a different domain.",
                 })
 
-    # Auth failures
+    # 4. Auth failures
     if auth.get("spf") in ("fail", "softfail"):
         anomalies.append({
             "severity": "high",
@@ -193,7 +244,7 @@ def detect_anomalies(raw: str, key_headers: dict, auth: dict) -> list[dict]:
             "detail": "DMARC check failed. Both SPF and DKIM alignment failed.",
         })
 
-    # X-Spam flags
+    # 5. X-Spam flags
     spam_status = key_headers.get("X-Spam-Status", "").lower()
     spam_flag = key_headers.get("X-Spam-Flag", "").lower()
     if "yes" in spam_status or "yes" in spam_flag:
@@ -203,7 +254,7 @@ def detect_anomalies(raw: str, key_headers: dict, auth: dict) -> list[dict]:
             "detail": "Email was flagged as spam by the receiving server.",
         })
 
-    # X-Originating-IP present (webmail)
+    # 6. X-Originating-IP present (webmail)
     orig_ip = key_headers.get("X-Originating-IP", "")
     if orig_ip:
         anomalies.append({
@@ -212,13 +263,44 @@ def detect_anomalies(raw: str, key_headers: dict, auth: dict) -> list[dict]:
             "detail": f"Sender's IP exposed via X-Originating-IP: {orig_ip}",
         })
 
-    # No authentication at all
+    # 7. No authentication at all
     if not auth.get("spf") and not auth.get("dkim") and not auth.get("dmarc"):
         anomalies.append({
             "severity": "medium",
             "type": "no_auth",
             "detail": "No SPF, DKIM, or DMARC results found. Cannot verify sender authenticity.",
         })
+
+    # 8. Sending IP doesn't match claimed domain (check first hop's country vs expected)
+    if from_addr and ip_geo:
+        from_domain = from_addr.split("@")[-1] if "@" in from_addr else ""
+        # Check first public IP in hops
+        for hop in hops:
+            for ip in hop.get("ips", []):
+                if not _is_private_ip(ip) and ip in ip_geo:
+                    geo = ip_geo[ip]
+                    hop["geo"] = geo  # Annotate hop with geo for frontend
+                    break
+
+    # 9. Unusual hop delays (> 5 minutes between hops)
+    for hop in hops:
+        delay = hop.get("delay_seconds")
+        if delay is not None and delay > 300:
+            anomalies.append({
+                "severity": "medium",
+                "type": "unusual_delay",
+                "detail": f"Hop {hop['hop']} had a {round(delay/60, 1)} minute delay. May indicate greylisting, spam filtering, or relay issues.",
+            })
+
+    # 10. Negative delay (time travel = clock skew or manipulation)
+    for hop in hops:
+        delay = hop.get("delay_seconds")
+        if delay is not None and delay < -60:
+            anomalies.append({
+                "severity": "medium",
+                "type": "time_anomaly",
+                "detail": f"Hop {hop['hop']} shows negative delay ({round(delay)}s). Clock skew between servers or possible header manipulation.",
+            })
 
     return anomalies
 
@@ -229,27 +311,15 @@ async def geolocate_ips(ips: list[str]) -> dict:
         return {}
 
     # Filter to public IPs only
-    public_ips = []
-    for ip in ips:
-        if not (ip.startswith("10.") or ip.startswith("192.168.") or
-                ip.startswith("127.") or ip == "::1"):
-            # Basic check for 172.16-31.x.x
-            parts = ip.split(".")
-            if len(parts) == 4 and parts[0] == "172":
-                second = int(parts[1])
-                if 16 <= second <= 31:
-                    continue
-            public_ips.append(ip)
-
+    public_ips = [ip for ip in ips if not _is_private_ip(ip)]
     if not public_ips:
         return {}
 
     results = {}
     async with httpx.AsyncClient(timeout=10) as client:
-        # ip-api.com batch (free, up to 100 IPs, 45 req/min)
         try:
             resp = await client.post(
-                "http://ip-api.com/batch?fields=status,message,country,regionName,city,isp,org,as,query",
+                "http://ip-api.com/batch?fields=status,message,country,countryCode,regionName,city,isp,org,as,query",
                 json=[{"query": ip} for ip in public_ips[:15]],
             )
             if resp.status_code == 200:
@@ -257,6 +327,7 @@ async def geolocate_ips(ips: list[str]) -> dict:
                     if entry.get("status") == "success":
                         results[entry["query"]] = {
                             "country": entry.get("country"),
+                            "country_code": entry.get("countryCode"),
                             "region": entry.get("regionName"),
                             "city": entry.get("city"),
                             "isp": entry.get("isp"),
@@ -279,7 +350,6 @@ async def analyze_headers(req: HeaderRequest):
     hops = parse_received_chain(raw)
     auth = parse_auth_results(raw)
     key_headers = extract_key_headers(raw)
-    anomalies = detect_anomalies(raw, key_headers, auth)
 
     # Collect all unique public IPs from hops
     all_ips = []
@@ -293,8 +363,11 @@ async def analyze_headers(req: HeaderRequest):
     if orig_ip and re.match(r'\d+\.\d+\.\d+\.\d+', orig_ip) and orig_ip not in all_ips:
         all_ips.append(orig_ip)
 
-    # Geolocate IPs
+    # Geolocate IPs first (anomalies need geo data)
     ip_geo = await geolocate_ips(all_ips)
+
+    # Detect anomalies (now with geo and hop data)
+    anomalies = detect_anomalies(raw, key_headers, auth, ip_geo, hops)
 
     # Calculate total transit time
     total_delay = None
@@ -306,25 +379,40 @@ async def analyze_headers(req: HeaderRequest):
         except Exception:
             pass
 
-    # Determine overall security rating
+    # Determine verdict: LEGITIMATE / SUSPICIOUS / SPOOFED
     high_count = sum(1 for a in anomalies if a["severity"] == "high")
     med_count = sum(1 for a in anomalies if a["severity"] == "medium")
 
-    if high_count >= 2:
-        security_rating = "SUSPICIOUS"
-    elif high_count == 1:
-        security_rating = "WARNING"
+    spoofing_types = {"envelope_mismatch", "display_name_email_spoof", "brand_impersonation"}
+    has_spoofing = any(a["type"] in spoofing_types for a in anomalies)
+    auth_failed = auth.get("spf") in ("fail",) or auth.get("dmarc") in ("fail",)
+
+    if (has_spoofing and auth_failed) or high_count >= 3:
+        verdict = "SPOOFED"
+    elif high_count >= 1 or (has_spoofing or auth_failed):
+        verdict = "SUSPICIOUS"
     elif med_count >= 2:
-        security_rating = "CAUTION"
-    elif auth.get("spf") == "pass" and auth.get("dkim") == "pass" and auth.get("dmarc") == "pass":
-        security_rating = "AUTHENTICATED"
+        verdict = "SUSPICIOUS"
+    elif auth.get("spf") == "pass" and auth.get("dkim") == "pass":
+        verdict = "LEGITIMATE"
     elif auth.get("spf") == "pass" or auth.get("dkim") == "pass":
-        security_rating = "PARTIAL"
+        verdict = "LEGITIMATE"
     else:
-        security_rating = "UNKNOWN"
+        verdict = "SUSPICIOUS"
+
+    # Extract sender info
+    sender_ip = orig_ip or None
+    if not sender_ip:
+        for hop in hops:
+            for ip in hop.get("ips", []):
+                if not _is_private_ip(ip):
+                    sender_ip = ip
+                    break
+            if sender_ip:
+                break
 
     return {
-        "security_rating": security_rating,
+        "verdict": verdict,
         "hops": hops,
         "total_hops": len(hops),
         "total_delay_seconds": total_delay,
@@ -332,5 +420,5 @@ async def analyze_headers(req: HeaderRequest):
         "key_headers": key_headers,
         "anomalies": anomalies,
         "ip_geolocation": ip_geo,
-        "sender_ip": orig_ip or (hops[0]["ips"][0] if hops and hops[0].get("ips") else None),
+        "sender_ip": sender_ip,
     }
