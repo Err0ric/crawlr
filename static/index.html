@@ -277,6 +277,16 @@
 
   .history-overlay { position: fixed; top: 0; right: -420px; width: 400px; height: 100vh; background: var(--bg); border-left: 1px solid var(--border-hi); z-index: 9996; overflow-y: auto; transition: right 0.25s ease; box-shadow: -4px 0 30px rgba(0,0,0,0.4); }
   .history-overlay.open { right: 0; }
+  .history-edge-tab {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+    z-index: 9994; cursor: pointer; transition: all 0.2s;
+    background: rgba(20,184,166,0.12); border: 1px solid rgba(20,184,166,0.3);
+    border-right: none; border-radius: 6px 0 0 6px;
+    padding: 14px 7px; writing-mode: vertical-rl; text-orientation: mixed;
+    font-family: 'Share Tech Mono', monospace; font-size: 10px;
+    letter-spacing: 2px; color: #14b8a6;
+  }
+  .history-edge-tab:hover { background: rgba(20,184,166,0.22); color: #2dd4bf; }
   .history-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 9995; display: none; }
   .history-backdrop.open { display: block; }
   .hp-entry { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; margin-bottom: 6px; cursor: pointer; transition: all 0.15s; }
@@ -1183,7 +1193,6 @@
     <div class="hnav" onclick="switchMode('headers')">Headers<span class="hnav-sub">email analyzer</span></div>
   </div>
   <div class="header-right">
-    <div class="hnav" onclick="toggleHistoryPanel()">History</div>
     <div class="gear-btn" onclick="toggleSettingsPanel()" title="Settings">⚙</div>
     <div class="key-pill" onclick="openModal()">
       <div class="key-dot" id="keyDot"></div>
@@ -1206,9 +1215,12 @@
 
 <div id="landingPage" style="position:fixed;inset:0;top:56px;z-index:50;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;">
   <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;user-select:none;">
-    <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:clamp(120px,18vw,260px);letter-spacing:0.04em;color:var(--text-bright);opacity:0.06;white-space:nowrap;">CRAWLR</div>
+    <svg width="clamp(280px,40vw,480px)" height="clamp(280px,40vw,480px)" viewBox="0 0 26 26" fill="none" style="opacity:0.06;">
+      <rect x="0.75" y="0.75" width="24.5" height="24.5" rx="3" stroke="var(--text-bright)" stroke-width="0.5"/>
+      <path d="M6 13h3.5l2.5-5.5 3 11 2.5-5.5H20" stroke="var(--text-bright)" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
   </div>
-  <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:20px;width:100%;max-width:720px;padding:0 24px;">
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:20px;width:100%;max-width:720px;padding:0 24px;margin-top:8vh;">
     <div style="display:flex;width:100%;gap:0;">
       <input id="landingInput" type="text" placeholder="target, hash, domain, or paste headers..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="flex:1;background:var(--bg3);border:1px solid var(--border-mid);border-right:none;border-radius:4px 0 0 4px;padding:14px 18px;font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--text-bright);outline:none;"
@@ -1589,6 +1601,7 @@
   </div>
 </div>
 
+<div class="history-edge-tab" id="historyEdgeTab" onclick="toggleHistoryPanel()">HISTORY</div>
 <div class="history-backdrop" id="historyBackdrop" onclick="toggleHistoryPanel()"></div>
 <div class="history-overlay" id="historyPanel">
   <div style="padding:24px 20px;">
@@ -1600,6 +1613,16 @@
       </div>
     </div>
     <div id="historyPanelList"></div>
+    <div id="historyPanelClear" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <div id="hpClearBtn" style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;padding:8px;border:1px solid var(--border);border-radius:3px;transition:all 0.15s;" onclick="showClearHistoryConfirm()" onmouseenter="this.style.borderColor='var(--border-hi)';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">Clear All History</div>
+      <div id="hpClearConfirm" style="display:none;text-align:center;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);margin-bottom:10px;">Clear all history? This cannot be undone.</div>
+        <div style="display:flex;gap:8px;justify-content:center;">
+          <button onclick="hideClearHistoryConfirm()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer;">Cancel</button>
+          <button onclick="confirmClearHistory()" style="font-family:'Share Tech Mono',monospace;font-size:10px;padding:6px 16px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:3px;color:#ef4444;cursor:pointer;">Confirm</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3279,9 +3302,10 @@
     try {
       const hist = JSON.parse(localStorage.getItem('crawlr_history') || '[]');
       hist.unshift({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         target: 'Email Headers',
         type: 'email_headers',
-        date: new Date().toISOString(),
+        timestamp: new Date().toISOString(),
         html: resultsEl.innerHTML,
       });
       if (hist.length > 50) hist.length = 50;
@@ -4283,7 +4307,6 @@
       window._lastHeaderAnalysis = null;
       setTimeout(() => document.getElementById('headersInput').focus(), 50);
     } else if (mode === 'history') {
-      document.querySelectorAll('.hnav')[4].classList.add('active');
       document.getElementById('historyWorkspace').style.display = 'grid';
       renderHistory();
       if (mobileBtn) mobileBtn.style.display = 'none';
@@ -4311,34 +4334,43 @@
   function toggleHistoryPanel() {
     const panel = document.getElementById('historyPanel');
     const backdrop = document.getElementById('historyBackdrop');
+    const tab = document.getElementById('historyEdgeTab');
     const isOpen = panel.classList.contains('open');
     if (isOpen) {
       panel.classList.remove('open');
       backdrop.classList.remove('open');
+      if (tab) tab.style.display = '';
     } else {
       renderHistoryPanel();
       panel.classList.add('open');
       backdrop.classList.add('open');
+      if (tab) tab.style.display = 'none';
     }
   }
 
   function renderHistoryPanel() {
     const entries = getHistory();
     const list = document.getElementById('historyPanelList');
+    const clearWrap = document.getElementById('historyPanelClear');
     if (!entries.length) {
       list.innerHTML = '<div style="font-family:\'Share Tech Mono\',monospace;font-size:11px;color:var(--text-dim);text-align:center;padding:40px 0;">No history yet</div>';
+      clearWrap.style.display = 'none';
       return;
     }
+    clearWrap.style.display = '';
+    hideClearHistoryConfirm();
     let html = '';
     for (const e of entries) {
-      const d = new Date(e.timestamp);
-      const time = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
-                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const ts = e.timestamp || e.date;
+      const d = ts ? new Date(ts) : null;
+      const time = d && !isNaN(d) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
       let badgeClass = 'inv';
       let badgeText = 'INVESTIGATE';
       if (e.type === 'RECON') { badgeClass = 'rec'; badgeText = 'RECON'; }
       else if (e.type === 'email_headers') { badgeClass = 'hdr'; badgeText = 'HEADERS'; }
-      html += `<div class="hp-entry" onclick="loadHistoryEntry('${e.id}');toggleHistoryPanel()">
+      const eid = e.id || '';
+      html += `<div class="hp-entry" onclick="loadHistoryEntry('${eid}');toggleHistoryPanel()">
         <div class="hp-target">${e.target}</div>
         <div class="hp-meta">
           <span class="hp-badge ${badgeClass}">${badgeText}</span>
@@ -4347,6 +4379,23 @@
       </div>`;
     }
     list.innerHTML = html;
+  }
+
+  function showClearHistoryConfirm() {
+    document.getElementById('hpClearBtn').style.display = 'none';
+    document.getElementById('hpClearConfirm').style.display = '';
+  }
+
+  function hideClearHistoryConfirm() {
+    document.getElementById('hpClearBtn').style.display = '';
+    document.getElementById('hpClearConfirm').style.display = 'none';
+  }
+
+  function confirmClearHistory() {
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistoryPanel();
+    renderHistory();
+    showToast('History cleared', 2000);
   }
 
   let reconScanning = false;
@@ -5028,17 +5077,22 @@
     clearBtn.style.display = '';
     let html = '';
     for (const e of entries) {
-      const d = new Date(e.timestamp);
-      const time = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
-                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-      const badge = e.type === 'RECON' ? '<span class="hist-badge rec">RECON</span>' : '<span class="hist-badge inv">INVESTIGATE</span>';
-      const summary = e.type === 'RECON' ? histSummaryRecon(e.results) : histSummaryInvestigate(e.results);
-      html += `<div class="hist-entry" onclick="loadHistoryEntry('${e.id}')">
+      const ts = e.timestamp || e.date;
+      const d = ts ? new Date(ts) : null;
+      const time = d && !isNaN(d) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+      let badge;
+      if (e.type === 'RECON') badge = '<span class="hist-badge rec">RECON</span>';
+      else if (e.type === 'email_headers') badge = '<span class="hist-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);">HEADERS</span>';
+      else badge = '<span class="hist-badge inv">INVESTIGATE</span>';
+      const summary = e.type === 'RECON' ? histSummaryRecon(e.results) : (e.type === 'email_headers' ? '' : histSummaryInvestigate(e.results));
+      const eid = e.id || '';
+      html += `<div class="hist-entry" onclick="loadHistoryEntry('${eid}')">
         <div class="hist-target">${e.target}</div>
         ${badge}
         <div class="hist-summary">${summary}</div>
         <div class="hist-time">${time}</div>
-        <button class="hist-del" onclick="event.stopPropagation();deleteHistoryEntry('${e.id}')" title="Delete">✕</button>
+        <button class="hist-del" onclick="event.stopPropagation();deleteHistoryEntry('${eid}')" title="Delete">✕</button>
       </div>`;
     }
     list.innerHTML = html;
