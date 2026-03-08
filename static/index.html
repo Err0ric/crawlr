@@ -1237,7 +1237,7 @@
     <div class="sb-mini">
       <div class="sb-mini-target" id="sbMiniTarget"></div>
     </div>
-    <div class="pane">
+    <div class="pane" style="padding-top:16px;">
       <div class="pane-head">
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
@@ -1338,7 +1338,7 @@
     <div class="sb-mini">
       <div class="sb-mini-target" id="reconSbMiniTarget"></div>
     </div>
-    <div class="pane">
+    <div class="pane" style="padding-top:16px;">
       <div class="pane-head">
         <div class="pane-label">// <span>Target</span></div>
         <div class="pane-rule"></div>
@@ -3176,19 +3176,23 @@
       if (count > 0) fields['Platforms Confirmed'] = String(count);
     }
 
-    // 4. Key Risk — find a complete sentence describing a concrete vulnerability
+    // 4. Key Risk — find a concrete vulnerability sentence from OPSEC section
     const opsecIdx = text.search(/\*\*OPSEC\s+ASSESSMENT\*\*/i);
     if (opsecIdx !== -1) {
       const nextSectionIdx = text.indexOf('**READY-TO-USE', opsecIdx + 20);
       const opsecText = (nextSectionIdx !== -1 ? text.slice(opsecIdx, nextSectionIdx) : text.slice(opsecIdx)).replace(/\*\*/g, '');
-      // Match complete sentences (text ending with a period)
-      const sentenceRe = /[A-Z][^.]*(?:expos|reveal|bridge|weakness|links?\b[^.]*\bto|leak|same\s+handle|real\s+name|vulnerab|identit)[^.]*\./gi;
-      const match = sentenceRe.exec(opsecText);
-      if (match) {
-        let phrase = match[0].trim();
-        const words = phrase.split(/\s+/);
-        if (words.length > 20) phrase = words.slice(0, 20).join(' ') + '.';
-        fields['Key Risk'] = phrase;
+      // Split into sentences, skip first sentence and generic openers
+      const sentences = opsecText.match(/[A-Z][^.]*\./g) || [];
+      const skipRe = /demonstrates\s+(MODERATE|HIGH|LOW|POOR|FAIR|STRONG)|operational security with/i;
+      const vulnRe = /expos|reveal|links|real\s*name|identity|directly|compromis|enables|bridge|weakness/i;
+      for (let i = 1; i < sentences.length; i++) {
+        const s = sentences[i].trim();
+        if (skipRe.test(s)) continue;
+        if (vulnRe.test(s)) {
+          const words = s.split(/\s+/);
+          fields['Key Risk'] = words.length > 25 ? words.slice(0, 25).join(' ') + '.' : s;
+          break;
+        }
       }
     }
 
