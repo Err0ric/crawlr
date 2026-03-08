@@ -442,6 +442,131 @@ async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...)):
     }
 
 
+class EmailHeaderAnalyzeRequest(BaseModel):
+    header_analysis: dict
+
+
+@router.post("/email-headers")
+async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: str = Header(...)):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API key is required")
+
+    data = req.header_analysis
+    prompt_parts = []
+
+    # Key headers
+    kh = data.get("key_headers", {})
+    if kh.get("From"):
+        prompt_parts.append(f"From: {kh['From']}")
+    if kh.get("To"):
+        prompt_parts.append(f"To: {kh['To']}")
+    if kh.get("Subject"):
+        prompt_parts.append(f"Subject: {kh['Subject']}")
+    if kh.get("Date"):
+        prompt_parts.append(f"Date: {kh['Date']}")
+    if kh.get("Return-Path"):
+        prompt_parts.append(f"Return-Path: {kh['Return-Path']}")
+    if kh.get("Reply-To"):
+        prompt_parts.append(f"Reply-To: {kh['Reply-To']}")
+    if kh.get("X-Mailer"):
+        prompt_parts.append(f"X-Mailer: {kh['X-Mailer']}")
+    if kh.get("Message-ID"):
+        prompt_parts.append(f"Message-ID: {kh['Message-ID']}")
+
+    # Authentication
+    auth = data.get("authentication", {})
+    prompt_parts.append(f"\nAuthentication: SPF={auth.get('spf', 'missing')}, DKIM={auth.get('dkim', 'missing')}, DMARC={auth.get('dmarc', 'missing')}")
+
+    # Automated verdict
+    prompt_parts.append(f"Automated verdict: {data.get('verdict', 'UNKNOWN')}")
+
+    # Sender IP and geo
+    if data.get("sender_ip"):
+        prompt_parts.append(f"Sender IP: {data['sender_ip']}")
+    geo = data.get("ip_geolocation", {})
+    for ip, g in geo.items():
+        loc = ", ".join(filter(None, [g.get("city"), g.get("region"), g.get("country")]))
+        prompt_parts.append(f"IP {ip}: {loc} | ISP: {g.get('isp', '?')} | Org: {g.get('org', '?')} | ASN: {g.get('asn', '?')}")
+
+    # Anomalies
+    anomalies = data.get("anomalies", [])
+    if anomalies:
+        prompt_parts.append(f"\nDetected anomalies ({len(anomalies)}):")
+        for a in anomalies:
+            prompt_parts.append(f"  [{a['severity'].upper()}] {a['type']}: {a['detail']}")
+
+    # Hops
+    hops = data.get("hops", [])
+    if hops:
+        prompt_parts.append(f"\nRouting: {len(hops)} hops, total delay: {data.get('total_delay_seconds', '?')}s")
+        for h in hops:
+            hop_desc = f"  Hop {h['hop']}: {h.get('from', '?')} -> {h.get('by', '?')}"
+            if h.get("ips"):
+                hop_desc += f" [{', '.join(h['ips'])}]"
+            if h.get("delay_seconds") is not None:
+                hop_desc += f" (+{h['delay_seconds']}s)"
+            prompt_parts.append(hop_desc)
+
+    header_data = "\n".join(prompt_parts)
+
+    client = anthropic.Anthropic(api_key=x_api_key)
+    t0 = time.time()
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1500,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "You are a senior email security analyst. Analyze the following parsed email header data "
+                    "and provide your expert assessment.\n\n"
+                    "Respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly these keys:\n\n"
+                    '{\n'
+                    '  "summary": "One paragraph natural language summary of what the headers reveal about this email\'s origin, routing, and legitimacy.",\n'
+                    '  "verdict": "LEGITIMATE | SUSPICIOUS | LIKELY PHISHING | BEC ATTEMPT",\n'
+                    '  "reasons": ["reason 1", "reason 2", "reason 3"],\n'
+                    '  "next_steps": ["step 1", "step 2", "step 3"]\n'
+                    '}\n\n'
+                    "RULES:\n"
+                    "- verdict must be exactly one of: LEGITIMATE, SUSPICIOUS, LIKELY PHISHING, BEC ATTEMPT\n"
+                    "- reasons: 2-3 specific reasons supporting your verdict, citing actual header data\n"
+                    "- next_steps: 2-3 actionable steps for a security analyst to take\n"
+                    "- summary should be 3-5 sentences, mentioning specific IPs, domains, and auth results\n"
+                    "- Be decisive. If auth passes and no anomalies, say LEGITIMATE. Don't hedge.\n"
+                    "- BEC ATTEMPT is for business email compromise patterns (display name spoofing of executives, "
+                    "urgency in subject, reply-to redirects)\n\n"
+                    f"Email header analysis data:\n{header_data}"
+                ),
+            }
+        ],
+    )
+
+    elapsed = round(time.time() - t0, 1)
+    text = message.content[0].text
+    tokens = message.usage.input_tokens + message.usage.output_tokens
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = {
+            "summary": text,
+            "verdict": "UNKNOWN",
+            "reasons": [],
+            "next_steps": [],
+        }
+
+    return {
+        "summary": parsed.get("summary", ""),
+        "verdict": parsed.get("verdict", "UNKNOWN"),
+        "reasons": parsed.get("reasons", []),
+        "next_steps": parsed.get("next_steps", []),
+        "model": message.model,
+        "tokens": tokens,
+        "elapsed": elapsed,
+    }
+
+
 class DeepAnalysisRequest(BaseModel):
     target: str
     dns: Optional[dict] = None

@@ -2257,8 +2257,83 @@
       }
     }
 
+    // AI Analysis button (only if API key configured)
+    if (getApiKey()) {
+      html += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+        <button id="headerAiBtn" onclick="runHeaderAiAnalysis()" style="width:100%;padding:10px 16px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.35);border-radius:4px;color:#a855f7;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(168,85,247,0.15)'" onmouseout="this.style.background='rgba(168,85,247,0.08)'">// AI ANALYSIS</button>
+        <div id="headerAiResult"></div>
+      </div>`;
+    }
+
     html += `</div></div>`;
+    // Store analysis data for AI
+    window._lastHeaderAnalysis = data;
     return html;
+  }
+
+  async function runHeaderAiAnalysis() {
+    const data = window._lastHeaderAnalysis;
+    if (!data) return;
+    const apiKey = getApiKey();
+    if (!apiKey) return;
+
+    const btn = document.getElementById('headerAiBtn');
+    const resultEl = document.getElementById('headerAiResult');
+    btn.textContent = '⏳ ANALYZING...';
+    btn.style.pointerEvents = 'none';
+
+    try {
+      const resp = await fetch('/api/analyze/email-headers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+        body: JSON.stringify({ header_analysis: data }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
+        resultEl.innerHTML = `<div style="margin-top:10px;padding:10px;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;font-size:12px;">${_esc(err.detail || 'AI analysis failed')}</div>`;
+        return;
+      }
+      const ai = await resp.json();
+      const vColor = ai.verdict === 'LEGITIMATE' ? 'var(--success)' : ai.verdict === 'LIKELY PHISHING' ? '#ef4444' : ai.verdict === 'BEC ATTEMPT' ? '#ef4444' : '#f59e0b';
+
+      let aiHtml = `<div class="ai-block" style="margin-top:12px;border-color:rgba(168,85,247,0.3);">
+        <div class="ai-head" style="border-color:rgba(168,85,247,0.2);">
+          <div class="ai-tag" style="color:#a855f7;font-size:12px;">// AI HEADER ANALYSIS</div>
+          <div class="ai-meta">${ai.model} · ${ai.tokens} tokens · ${ai.elapsed}s</div>
+        </div>
+        <div class="ai-body" style="font-size:13px;line-height:1.7;padding:14px 16px;">`;
+
+      // Verdict
+      aiHtml += `<div style="display:inline-block;padding:5px 12px;border-radius:4px;background:${vColor}18;color:${vColor};font-family:'Share Tech Mono',monospace;font-size:13px;font-weight:700;letter-spacing:1px;border:1px solid ${vColor}44;margin-bottom:12px;">${_esc(ai.verdict)}</div>`;
+
+      // Summary
+      if (ai.summary) aiHtml += `<p style="color:var(--text-mid);margin-bottom:12px;">${_esc(ai.summary)}</p>`;
+
+      // Reasons
+      if (ai.reasons && ai.reasons.length) {
+        aiHtml += `<div style="margin-bottom:10px;">`;
+        for (const r of ai.reasons) {
+          aiHtml += `<div style="display:flex;gap:8px;margin-bottom:4px;"><span style="color:#a855f7;flex-shrink:0;">→</span><span style="color:var(--text-mid);">${_esc(r)}</span></div>`;
+        }
+        aiHtml += `</div>`;
+      }
+
+      // Next steps
+      if (ai.next_steps && ai.next_steps.length) {
+        aiHtml += `<div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text-dim);margin:10px 0 6px;">SUGGESTED NEXT STEPS</div>`;
+        for (const s of ai.next_steps) {
+          aiHtml += `<div style="display:flex;gap:8px;margin-bottom:4px;"><span style="color:var(--success);flex-shrink:0;">→</span><span style="color:var(--text-mid);">${_esc(s)}</span></div>`;
+        }
+      }
+
+      aiHtml += `</div></div>`;
+      resultEl.innerHTML = aiHtml;
+    } catch (e) {
+      resultEl.innerHTML = `<div style="margin-top:10px;padding:10px;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;font-size:12px;">Error: ${_esc(e.message)}</div>`;
+    } finally {
+      btn.textContent = '// AI ANALYSIS';
+      btn.style.pointerEvents = '';
+    }
   }
 
   function _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -2415,7 +2490,9 @@
       } else {
         const data = await resp.json();
         let summary;
-        if (data.found !== undefined) {
+        if (data.verdict !== undefined) {
+          summary = `verdict: ${data.verdict}`;
+        } else if (data.found !== undefined) {
           summary = data.found ? 'profile found' : 'not found';
         } else {
           const count = data.total ?? ((data.total_hosts || 0) + (data.total_emails || 0));
@@ -3048,7 +3125,7 @@
     runBtn.style.pointerEvents = 'none';
 
     const resultsEl = document.getElementById('headersResults');
-    resultsEl.innerHTML = '<div class="agent-log" id="headersLog"></div><div class="result-grid" id="headersCards"></div>';
+    resultsEl.innerHTML = '<div class="agent-log" id="headersLog"></div><div class="result-grid" id="headersCards" style="grid-template-columns:1fr;"></div>';
 
     const logEl = document.getElementById('headersLog');
     const cardsEl = document.getElementById('headersCards');
