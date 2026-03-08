@@ -50,6 +50,68 @@
 
   :root:not([data-theme]) .rcard-body { font-size: 14px; }
 
+  /* ── Deep Dive dossier (Dark Purple only) ── */
+  :root:not([data-theme]) .dd-dossier { padding: 0; }
+  :root:not([data-theme]) .dd-body {
+    font-size: 14px;
+    line-height: 1.85;
+    padding: 1.5rem;
+    max-width: 90ch;
+    opacity: 1;
+  }
+  :root:not([data-theme]) .dd-body > .dd-section-head:nth-of-type(even) ~ .dd-prose,
+  :root:not([data-theme]) .dd-body > .dd-section-head:nth-of-type(even) ~ .dd-table,
+  :root:not([data-theme]) .dd-body > .dd-section-head:nth-of-type(even) ~ div:not(.dd-section-head):not(.leads) {
+    background: rgba(255,255,255,0.02);
+  }
+  :root:not([data-theme]) .dd-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 1.5rem 0 0.5rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid rgba(168,85,247,0.25);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #f59e0b;
+    cursor: pointer;
+  }
+  :root:not([data-theme]) .dd-section-head:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  :root:not([data-theme]) .dd-prose {
+    color: #d0d0e0;
+    font-size: 14px;
+    line-height: 1.85;
+    margin-bottom: 0.85rem;
+    max-width: 90ch;
+  }
+  :root:not([data-theme]) .dd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+  }
+  :root:not([data-theme]) .dd-th {
+    padding: 8px 12px;
+    text-align: left;
+    color: #f59e0b;
+    border-bottom: 1px solid rgba(245,158,11,0.3);
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+  :root:not([data-theme]) .dd-td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    color: #d0d0e0;
+  }
+  :root:not([data-theme]) .dd-conf-high { color: var(--success) !important; font-weight: 600; }
+  :root:not([data-theme]) .dd-conf-med { color: #f59e0b !important; font-weight: 600; }
+  :root:not([data-theme]) .dd-conf-low { color: var(--red-bright) !important; font-weight: 600; }
+  :root:not([data-theme]) .dd-evidence { color: #9090b0; font-size: 13px; }
+
   [data-theme="midnight"] {
     --bg: #0a0e1a; --bg2: #0e1322; --bg3: #121828; --bg4: #161d30;
     --border: #1c2540; --border-mid: #263050; --border-hi: #3a4a70;
@@ -2484,12 +2546,12 @@
 
   function renderDeepDiveBlock(data) {
     const lines = data.summary.split('\n');
-    let html = `<div class="ai-block" style="margin-top:12px;border-color:rgba(245,158,11,0.3);">
+    let html = `<div class="ai-block dd-dossier" style="margin-top:12px;border-color:rgba(245,158,11,0.3);">
       <div class="ai-head" style="border-color:rgba(245,158,11,0.2);">
         <div class="ai-tag" style="color:#f59e0b;">// DEEP DIVE — Intelligence Dossier</div>
         <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
       </div>
-      <div class="ai-body" style="font-size:12px;line-height:1.7;">`;
+      <div class="ai-body dd-body">`;
 
     let inTable = false;
     let inQueries = false;
@@ -2510,7 +2572,7 @@
         const label = line.replace(/\*\*/g, '').replace(/:$/, '').trim();
         const isQuerySection = /READY.TO.USE|QUERIES/i.test(label);
         if (isQuerySection) inQueries = false; // will start on next bullet
-        html += `<div class="ai-section" onclick="toggleSection(this)" style="color:#f59e0b;border-color:rgba(245,158,11,0.15);"><span class="sec-arrow">▼</span> // ${label}</div>`;
+        html += `<div class="ai-section dd-section-head" onclick="toggleSection(this)"><span class="sec-arrow">▼</span> // ${label}</div>`;
         continue;
       }
 
@@ -2519,23 +2581,21 @@
         const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
         if (cells.every(c => /^[-:]+$/.test(c))) continue; // skip separator row
         if (!inTable) {
-          html += '<div style="overflow-x:auto;margin:6px 0 10px;"><table style="width:100%;border-collapse:collapse;font-family:Share Tech Mono,monospace;font-size:10px;">';
+          html += '<div style="overflow-x:auto;margin:6px 0 10px;"><table class="dd-table">';
           // Check if this is the header row
           const isHeader = cells.some(c => /Inference|Confidence|Evidence/i.test(c));
           const tag = isHeader ? 'th' : 'td';
-          const style = isHeader
-            ? 'padding:6px 10px;text-align:left;color:#f59e0b;border-bottom:1px solid rgba(245,158,11,0.3);font-weight:600;letter-spacing:1px;text-transform:uppercase;font-size:9px;'
-            : 'padding:5px 10px;border-bottom:1px solid var(--border-lo);color:var(--text-mid);';
-          html += '<tr>' + cells.map(c => `<${tag} style="${style}">${mdInline(c)}</${tag}>`).join('') + '</tr>';
+          const cls = isHeader ? 'dd-th' : 'dd-td';
+          html += '<tr>' + cells.map(c => `<${tag} class="${cls}">${mdInline(c)}</${tag}>`).join('') + '</tr>';
           inTable = true;
         } else {
-          const confCell = cells.find(c => /^(HIGH|MEDIUM|LOW)$/i.test(c));
           html += '<tr>' + cells.map(c => {
-            let cs = 'padding:5px 10px;border-bottom:1px solid var(--border-lo);color:var(--text-mid);';
-            if (/^HIGH$/i.test(c)) cs += 'color:var(--green);font-weight:600;';
-            else if (/^MEDIUM$/i.test(c)) cs += 'color:#f59e0b;font-weight:600;';
-            else if (/^LOW$/i.test(c)) cs += 'color:var(--red-bright);font-weight:600;';
-            return `<td style="${cs}">${mdInline(c)}</td>`;
+            let cls = 'dd-td';
+            if (/^HIGH$/i.test(c)) cls += ' dd-conf-high';
+            else if (/^MEDIUM$/i.test(c)) cls += ' dd-conf-med';
+            else if (/^LOW$/i.test(c)) cls += ' dd-conf-low';
+            else if (!/^(HIGH|MEDIUM|LOW)$/i.test(c) && cells.some(cc => /^(HIGH|MEDIUM|LOW)$/i.test(cc))) cls += ' dd-evidence';
+            return `<td class="${cls}">${mdInline(c)}</td>`;
           }).join('') + '</tr>';
         }
         continue;
@@ -2553,7 +2613,7 @@
       if (inQueries) { html += '</div>'; inQueries = false; }
 
       // Prose paragraphs
-      html += `<div style="margin-bottom:6px;color:var(--text-mid);">${mdInline(line)}</div>`;
+      html += `<div class="dd-prose">${mdInline(line)}</div>`;
     }
 
     if (inTable) html += '</table></div>';
