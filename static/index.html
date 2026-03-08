@@ -2021,10 +2021,14 @@
   }
 
   /* ── Hash Lookup results renderer ── */
+  function _hashSectionHead(label) {
+    return `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">${label}</div>`;
+  }
+
   function renderHashCard(data) {
     const v = data.verdict;
-    const vClass = v === 'MALICIOUS' ? 'b-warn' : v === 'CLEAN' ? 'b-hit' : 'b-miss';
     const vColor = v === 'MALICIOUS' ? '#ef4444' : v === 'CLEAN' ? 'var(--success)' : 'var(--amber-bright)';
+    const families = data.malware_families || [];
     let html = `<div class="rcard">
       <div class="rcard-head">
         <div class="rcard-title">Hash Lookup · ${data.hash_type}</div>
@@ -2034,27 +2038,65 @@
       <div class="rcard-body">`;
     html += `<div class="ritem"><div class="dot dg"></div><strong>Hash:</strong>&nbsp;<span style="font-family:'Share Tech Mono',monospace;font-size:11px;word-break:break-all;">${data.hash}</span></div>`;
     html += `<div class="ritem"><div class="dot dg"></div><strong>Type:</strong>&nbsp;${data.hash_type}</div>`;
+    if (families.length) {
+      html += `<div class="ritem"><div class="dot dr"></div><strong>Malware:</strong>&nbsp;${families.join(', ')}</div>`;
+    }
 
+    // VirusTotal link (always shown)
+    if (data.virustotal_url) {
+      html += `<div class="ritem"><div class="dot dg"></div><a href="${data.virustotal_url}" target="_blank" rel="noopener" style="color:var(--red-bright);text-decoration:none;">View on VirusTotal →</a></div>`;
+    }
+
+    // MalwareBazaar
     const mb = data.malware_bazaar;
     if (mb && mb.found) {
-      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">MALWAREBAZAAR</div>`;
+      html += _hashSectionHead('MALWAREBAZAAR');
       if (mb.file_name) html += `<div class="ritem"><div class="dot dy"></div><strong>File:</strong>&nbsp;${mb.file_name}</div>`;
       if (mb.file_type) html += `<div class="ritem"><div class="dot dy"></div><strong>Type:</strong>&nbsp;${mb.file_type}</div>`;
       if (mb.signature) html += `<div class="ritem"><div class="dot dr"></div><strong>Signature:</strong>&nbsp;${mb.signature}</div>`;
       if (mb.tags && mb.tags.length) html += `<div class="ritem"><div class="dot dy"></div><strong>Tags:</strong>&nbsp;${mb.tags.join(', ')}</div>`;
       if (mb.first_seen) html += `<div class="ritem"><div class="dot dg"></div><strong>First seen:</strong>&nbsp;${mb.first_seen}</div>`;
+    } else {
+      html += _hashSectionHead('MALWAREBAZAAR');
+      html += `<div class="ritem" style="opacity:0.5;"><div class="dot dd"></div>Not found</div>`;
     }
 
+    // CIRCL
     const ci = data.circl;
     if (ci && ci.found) {
-      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">CIRCL HASHLOOKUP</div>`;
+      html += _hashSectionHead('CIRCL HASHLOOKUP');
       if (ci.file_name) html += `<div class="ritem"><div class="dot dg"></div><strong>File:</strong>&nbsp;${ci.file_name}</div>`;
       if (ci.file_size) html += `<div class="ritem"><div class="dot dg"></div><strong>Size:</strong>&nbsp;${ci.file_size} bytes</div>`;
       html += `<div class="ritem"><div class="dot d${ci.known_malicious ? 'r' : 'g'}"></div><strong>Status:</strong>&nbsp;${ci.known_malicious ? 'Known malicious' : 'Known file (not flagged)'}</div>`;
+    } else {
+      html += _hashSectionHead('CIRCL HASHLOOKUP');
+      html += `<div class="ritem" style="opacity:0.5;"><div class="dot dd"></div>Not found</div>`;
     }
 
-    if (!mb?.found && !ci?.found) {
-      html += `<div class="ritem" style="opacity:0.6;"><div class="dot dy"></div>No threat intelligence found for this hash</div>`;
+    // AlienVault OTX
+    const av = data.alienvault;
+    if (av && av.found) {
+      html += _hashSectionHead('ALIENVAULT OTX');
+      html += `<div class="ritem"><div class="dot dy"></div><strong>Pulses:</strong>&nbsp;${av.pulse_count} threat reports</div>`;
+      if (av.malware_families && av.malware_families.length) {
+        html += `<div class="ritem"><div class="dot dr"></div><strong>Families:</strong>&nbsp;${av.malware_families.join(', ')}</div>`;
+      }
+    } else {
+      html += _hashSectionHead('ALIENVAULT OTX');
+      html += `<div class="ritem" style="opacity:0.5;"><div class="dot dd"></div>Not found</div>`;
+    }
+
+    // ThreatFox
+    const tf = data.threatfox;
+    if (tf && tf.found) {
+      html += _hashSectionHead('THREATFOX');
+      html += `<div class="ritem"><div class="dot dr"></div><strong>IOCs:</strong>&nbsp;${tf.count} indicator${tf.count !== 1 ? 's' : ''}</div>`;
+      if (tf.malware_names && tf.malware_names.length) {
+        html += `<div class="ritem"><div class="dot dr"></div><strong>Malware:</strong>&nbsp;${tf.malware_names.join(', ')}</div>`;
+      }
+    } else {
+      html += _hashSectionHead('THREATFOX');
+      html += `<div class="ritem" style="opacity:0.5;"><div class="dot dd"></div>Not found</div>`;
     }
 
     html += `</div></div>`;
