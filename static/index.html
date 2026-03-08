@@ -106,9 +106,9 @@
     border-bottom: 1px solid rgba(255,255,255,0.05);
     color: #d0d0e0;
   }
-  :root:not([data-theme]) .dd-conf-high { color: var(--success) !important; font-weight: 600; }
-  :root:not([data-theme]) .dd-conf-med { color: #f59e0b !important; font-weight: 600; }
-  :root:not([data-theme]) .dd-conf-low { color: var(--red-bright) !important; font-weight: 600; }
+  :root:not([data-theme]) .dd-conf-high { color: #f59e0b !important; font-weight: 600; }
+  :root:not([data-theme]) .dd-conf-med { color: #7c3aed !important; font-weight: 600; }
+  :root:not([data-theme]) .dd-conf-low { color: #6b7280 !important; font-weight: 600; }
   :root:not([data-theme]) .dd-evidence { color: #9090b0; font-size: clamp(13px, 0.72vw, 15px); }
 
   [data-theme="midnight"] {
@@ -2995,6 +2995,9 @@
       // Render Deep Dive AI block — insert at top of ddResults, above scrape card
       ddResults.insertAdjacentHTML('afterbegin', renderDeepDiveBlock(aiData));
 
+      // Hide the AI Summary report so it doesn't stack below the dossier
+      document.getElementById('aiReportContent').style.display = 'none';
+
       // Save Deep Dive to history entry (own try/catch so UI isn't affected)
       try {
         if (currentHistoryId) {
@@ -3112,24 +3115,19 @@
       if (count > 0) fields['Platforms Confirmed'] = String(count);
     }
 
-    // 4. Key Risk — first complete sentence describing a concrete vulnerability, max 20 words
+    // 4. Key Risk — find a complete sentence describing a concrete vulnerability
     const opsecIdx = text.search(/\*\*OPSEC\s+ASSESSMENT\*\*/i);
     if (opsecIdx !== -1) {
       const nextSectionIdx = text.indexOf('**READY-TO-USE', opsecIdx + 20);
       const opsecText = (nextSectionIdx !== -1 ? text.slice(opsecIdx, nextSectionIdx) : text.slice(opsecIdx)).replace(/\*\*/g, '');
-      const sentences = opsecText.split(/\.\s+/);
-      for (let si = 1; si < sentences.length; si++) {
-        const s = sentences[si].trim();
-        if (/expos|reveal|bridge|weakness|links\s+\w+\s+to|leak|same.*handle|real\s*name|vulnerab|identit/i.test(s)) {
-          let phrase = s.replace(/^[^a-zA-Z]+/, '');
-          // Take up to the first period for a complete sentence
-          const periodIdx = phrase.indexOf('.');
-          if (periodIdx > 0) phrase = phrase.slice(0, periodIdx);
-          const words = phrase.split(/\s+/);
-          if (words.length > 20) phrase = words.slice(0, 20).join(' ');
-          fields['Key Risk'] = phrase;
-          break;
-        }
+      // Match complete sentences (text ending with a period)
+      const sentenceRe = /[A-Z][^.]*(?:expos|reveal|bridge|weakness|links?\b[^.]*\bto|leak|same\s+handle|real\s+name|vulnerab|identit)[^.]*\./gi;
+      const match = sentenceRe.exec(opsecText);
+      if (match) {
+        let phrase = match[0].trim();
+        const words = phrase.split(/\s+/);
+        if (words.length > 20) phrase = words.slice(0, 20).join(' ') + '.';
+        fields['Key Risk'] = phrase;
       }
     }
 
@@ -3145,11 +3143,14 @@
     if (fields['Age Range']) merged['Age Range'] = fields['Age Range'];
     let html = `<div style="background:var(--bg2);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:14px 18px;margin:10px 0 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;width:100%;box-sizing:border-box;">
       <div style="grid-column:1/-1;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;color:#f59e0b;text-transform:uppercase;margin-bottom:4px;">// Quick Intel Summary</div>`;
+    const opsecColors = { 'POOR': '#f59e0b', 'FAIR': '#f59e0b', 'MODERATE': '#7c3aed', 'STRONG': '#6b7280' };
     for (const [label, val] of Object.entries(merged)) {
       const dimmed = val === 'Unknown' ? 'opacity:0.4;' : '';
+      let valColor = 'var(--text-bright)';
+      if (label === 'OPSEC Rating' && opsecColors[val]) valColor = opsecColors[val];
       html += `<div style="display:flex;flex-direction:column;gap:1px;padding:2px 0;">
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:1px;color:#f59e0b;text-transform:uppercase;opacity:0.8;">${label}</span>
-        <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);line-height:1.3;${dimmed}">${mdInline(val)}</span>
+        <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:${valColor};line-height:1.3;font-weight:600;${dimmed}">${mdInline(val)}</span>
       </div>`;
     }
     html += '</div>';
@@ -3550,7 +3551,7 @@
     runBtn.style.pointerEvents = 'none';
 
     document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('aiReportTab').style.display = 'none';    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
+    document.getElementById('aiReportTab').style.display = 'none';    document.getElementById('aiReportContent').style.display = '';    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
     document.getElementById('deepDiveBtn').style.display = 'none';
     document.getElementById('deepDiveResults').style.display = 'none';
     document.getElementById('deepDiveResults').innerHTML = '';
@@ -4438,7 +4439,7 @@
     document.getElementById('emptyState').style.display = '';
     document.getElementById('results').style.display = 'none';
     document.getElementById('results').innerHTML = '';
-    document.getElementById('aiReportTab').style.display = 'none';    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
+    document.getElementById('aiReportTab').style.display = 'none';    document.getElementById('aiReportContent').style.display = '';    document.getElementById('aiReportContent').innerHTML = '<div class="empty"><div class="empty-glyph">[~]</div><div class="empty-title">No AI Report</div><div class="empty-sub">Run an investigation with AI Analysis enabled to generate a report.</div></div>';
     document.getElementById('deepDiveBtn').style.display = 'none';
     document.getElementById('deepDiveResults').style.display = 'none';
     document.getElementById('deepDiveResults').innerHTML = '';
@@ -5437,6 +5438,8 @@
           // Restore saved Deep Dive
           ddResults.style.display = '';
           ddResults.innerHTML = renderDeepDiveBlock(entry.deepDive);
+          // Hide AI Summary so it doesn't stack below the dossier
+          document.getElementById('aiReportContent').style.display = 'none';
           ddBtn.style.display = '';
           ddBtn.querySelector('button').textContent = '✓ Deep Dive Complete';
           ddBtn.querySelector('button').style.pointerEvents = 'none';
