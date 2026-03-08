@@ -752,10 +752,6 @@
 
   .leads { margin-top: 4px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px; }
   .sec-hidden { display: none !important; }
-  .dd-more-wrap { display: none; }
-  .dd-more-wrap.expanded { display: contents; }
-  .dd-expand-btn { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #f59e0b; opacity: 0.7; cursor: pointer; padding: 4px 0; user-select: none; }
-  .dd-expand-btn:hover { opacity: 1; }
 
   .lead { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: var(--bg3); border-left: 2px solid var(--border-hi); border-radius: 0 3px 3px 0; font-family: 'Barlow', sans-serif; font-size: clamp(13px, 0.72vw, 15px); color: var(--text-bright); line-height: 1.6; position: relative; }
   .lead-arr { color: var(--red-dim); flex-shrink: 0; }
@@ -1330,7 +1326,7 @@
     <div class="statusbar">
       <div class="sbi"><div class="sbd" style="background:var(--success)"></div><span>READY</span></div>
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>6 MODULES</span></div>
-      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0-dev</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0</span></div>
       <div class="sbi"><span style="cursor:pointer;text-decoration:underline;color:var(--text-dim)" onclick="showTerms()">Terms</span></div>
       <div class="sbi" style="margin-left:auto"><span id="clock"></span></div>
     </div>
@@ -1432,7 +1428,7 @@
     <div class="statusbar">
       <div class="sbi"><div class="sbd" style="background:var(--success)"></div><span>RECON READY</span></div>
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>9 MODULES</span></div>
-      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0-dev</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0</span></div>
       <div class="sbi" style="margin-left:auto"><span id="reconClock"></span></div>
     </div>
   </div>
@@ -1779,35 +1775,6 @@
     }
   }
 
-  let ddMoreCounter = 0;
-  function toggleDDMore(id) {
-    const wrap = document.getElementById('ddmore_' + id);
-    const btn = document.getElementById('ddbtn_' + id);
-    if (!wrap || !btn) return;
-    const isExpanded = wrap.classList.toggle('expanded');
-    btn.textContent = isExpanded ? '▾ Show less' : '▸ Show more…';
-  }
-
-  function toggleDDSection(el) {
-    // For collapsible DD sections: toggle between fully collapsed (header only)
-    // and preview mode (header + 2 lines + expand button)
-    const wasCollapsed = el.classList.toggle('collapsed');
-    // Toggle visibility of ALL following siblings until next ai-section
-    let next = el.nextElementSibling;
-    while (next && !next.classList.contains('ai-section')) {
-      if (wasCollapsed) {
-        next.style.display = 'none';
-      } else {
-        // Restore: prose and expand-btn visible, dd-more-wrap stays hidden unless expanded
-        if (next.classList.contains('dd-more-wrap') && !next.classList.contains('expanded')) {
-          next.style.display = '';  // let CSS handle it (display:none by default)
-        } else {
-          next.style.display = '';
-        }
-      }
-      next = next.nextElementSibling;
-    }
-  }
 
   function copyLead(el) {
     const textEl = el.parentElement.querySelector('.lead-text');
@@ -2054,7 +2021,8 @@
 
       function sherlockRow(r) {
         const id = 'sh_' + r.site;
-        return `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<span>${r.site}</span> <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
+        const link = r.url ? ` <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a>` : '';
+        return `<div class="ritem ${chkItemClass(id)}">${chkHtml(id)}<span>${r.site}</span>${link}</div>`;
       }
 
       const visibleConfirmed = confirmedItems.slice(0, 6);
@@ -2073,7 +2041,8 @@
           <div style="display:none;">`;
         for (const r of fpItems) {
           const id = 'sh_' + r.site;
-          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.4;">${chkHtml(id)}<span>${r.site}</span> <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
+          const fpLink = r.url ? ` <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a>` : '';
+          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.4;">${chkHtml(id)}<span>${r.site}</span>${fpLink}</div>`;
         }
         html += `</div></div>`;
       }
@@ -2127,7 +2096,8 @@
           <div style="display:none;">`;
         for (const r of fpItems) {
           const id = 'mg_' + r.site;
-          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.4;">${chkHtml(id)}<span>${r.site}</span> <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a></div>`;
+          const mgFpLink = r.url ? ` <a href="${r.url}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:none;margin-left:6px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${r.url} ↗</a>` : '';
+          html += `<div class="ritem ${chkItemClass(id)}" style="opacity:0.4;">${chkHtml(id)}<span>${r.site}</span>${mgFpLink}</div>`;
         }
         html += `</div></div>`;
       }
@@ -2624,7 +2594,7 @@
     const found = results.filter(r => r.found).length;
     let html = `<div class="rcard">
       <div class="rcard-head"><div class="rcard-title">Platform Check</div><div class="badge ${found > 0 ? 'b-hit' : 'b-none'}">${found}/${results.length} FOUND</div>${copyBtn('Platform Check')}</div>
-      <div class="rcard-body">`;
+      <div class="rcard-body"><div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);opacity:0.6;margin-bottom:6px;">email registration check via Holehe</div>`;
     for (const r of results) {
       if (r.manual) {
         html += `<div class="ritem"><div class="dot" style="background:#f59e0b"></div><a href="${r.url}" target="_blank" rel="noopener" title="OnlyFans blocks automated checks - click to verify manually" style="color:#f59e0b;text-decoration:none;">${r.platform} · check manually ↗</a></div>`;
@@ -2770,7 +2740,6 @@
     'investigation queries', 'cross-platform',
   ];
 
-  const collapsedByDefault = ['subject profile', 'platform correlation', 'opsec assessment'];
 
   function isSectionHeading(line) {
     const clean = line.replace(/\*\*/g, '').replace(/[#:(]/g, '').trim().toLowerCase();
@@ -3057,11 +3026,11 @@
     }
   }
 
-  function extractQuickIntel(text) {
+  function extractQuickIntel(text, collected) {
     const fields = {};
     const lines = text.split('\n');
 
-    // 1. Parse confidence matrix table rows for structured fields
+    // 1. Parse confidence matrix table rows — extract CLEAN short values
     const tableRows = [];
     for (const line of lines) {
       const trimmed = line.trim();
@@ -3072,72 +3041,101 @@
         }
       }
     }
+
+    function cleanEvidence(evidence, type) {
+      const e = evidence.replace(/\*\*/g, '').trim();
+      if (type === 'name') {
+        // Extract quoted name or name before dash/comma
+        const q = e.match(/["']([^"']+)["']/); if (q) return q[1];
+        const d = e.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/); if (d) return d[1];
+        const pre = e.split(/\s*[-–—(,·]/)[0].trim();
+        return pre.split(/\s+/).length <= 4 ? pre : e.split(/\s+/).slice(0, 3).join(' ');
+      }
+      if (type === 'location') {
+        const q = e.match(/["']([^"']+)["']/); if (q) return q[1];
+        const pre = e.split(/\s*[-–—(·]/)[0].trim();
+        return pre.split(/\s+/).length <= 5 ? pre : e.split(/\s+/).slice(0, 4).join(' ');
+      }
+      if (type === 'email') {
+        const m = e.match(/[\w.+-]+@[\w.-]+/); return m ? m[0] : e.split(/\s+/)[0];
+      }
+      if (type === 'skill') {
+        const pre = e.split(/\s*[-–—(,·]/)[0].trim();
+        return pre.split(/\s+/).length <= 6 ? pre : e.split(/\s+/).slice(0, 6).join(' ');
+      }
+      if (type === 'age') {
+        const m = e.match(/\d+\s*[-–]\s*\d+/); return m ? m[0].replace(/\s/g, '') : e.split(/\s+/).slice(0, 3).join(' ');
+      }
+      return e;
+    }
+
     const tableMap = [
-      [/real\s*name|probable.*name|name/i, 'Likely Real Name'],
-      [/location|city|region|geography/i, 'Location'],
-      [/occupation|industry|profession|job|career|employment/i, 'Occupation/Industry'],
-      [/email/i, 'Primary Email'],
-      [/technical|skill|programming/i, 'Technical Skill Level'],
-      [/age|age\s*range/i, 'Age Range'],
+      [/real\s*name|probable.*name|^name$/i, 'Likely Real Name', 'name'],
+      [/location|city|region|geography/i, 'Location', 'location'],
+      [/occupation|industry|profession|job|career|employment/i, 'Occupation/Industry', 'skill'],
+      [/email/i, 'Primary Email', 'email'],
+      [/technical|skill|programming/i, 'Technical Skill Level', 'skill'],
+      [/age|age\s*range/i, 'Age Range', 'age'],
     ];
     for (const row of tableRows) {
       const inference = row[0];
       const evidence = row.length >= 3 ? row[2] : row[1];
-      for (const [re, label] of tableMap) {
+      for (const [re, label, type] of tableMap) {
         if (!fields[label] && re.test(inference)) {
-          fields[label] = evidence || inference;
+          fields[label] = cleanEvidence(evidence || inference, type);
           break;
         }
       }
     }
 
-    // 2. OPSEC Rating — scan the OPSEC ASSESSMENT section for the rating keyword
+    // 2. OPSEC Rating — single word only
     const opsecPatterns = [
       /OPSEC\s*(?:as|is|:|rating[:\s]*)\s*(POOR|FAIR|MODERATE|STRONG)/i,
       /(?:rated?|assessed?|overall)\s+(?:their\s+)?(?:overall\s+)?OPSEC\s+(?:as\s+)?(POOR|FAIR|MODERATE|STRONG)/i,
-      /\b(POOR|FAIR|MODERATE|STRONG)\b[^.]*OPSEC/i,
-      /OPSEC[^.]*\b(POOR|FAIR|MODERATE|STRONG)\b/i,
+      /OPSEC[^.]{0,40}\b(POOR|FAIR|MODERATE|STRONG)\b/i,
+      /\b(POOR|FAIR|MODERATE|STRONG)\b[^.]{0,40}OPSEC/i,
     ];
     for (const re of opsecPatterns) {
       const m = text.match(re);
       if (m) { fields['OPSEC Rating'] = m[1].toUpperCase(); break; }
     }
 
-    // 3. Platforms Confirmed — count from sherlock/holehe data or extract from text
-    const platformPatterns = [
-      /confirmed\s+(?:on\s+)?(\d+)\s+platform/i,
-      /(\d+)\s+(?:confirmed\s+)?platform/i,
-      /(?:present|active|found)\s+(?:on|across)\s+(\d+)\s+/i,
-      /(\d+)\s+(?:online\s+)?(?:accounts?|profiles?|services?)\s+(?:confirmed|found|detected)/i,
-    ];
-    for (const re of platformPatterns) {
-      const m = text.match(re);
-      if (m) { fields['Platforms Confirmed'] = m[1] + ' platforms'; break; }
+    // 3. Platforms Confirmed — pull from collected data (sherlock confirmed count)
+    if (collected) {
+      let count = 0;
+      if (collected.sherlock?.confirmed) count += collected.sherlock.confirmed;
+      if (collected.holehe?.total) count += collected.holehe.total;
+      if (collected.platformCheck?.results) count += collected.platformCheck.results.filter(r => r.found).length;
+      if (count > 0) fields['Platforms Confirmed'] = String(count);
     }
 
-    // 4. Key Risk — extract biggest vulnerability from OPSEC section
-    // Find OPSEC section content
+    // 4. Key Risk — short phrase, max ~10 words, from OPSEC section
     const opsecIdx = text.search(/\*\*OPSEC\s+ASSESSMENT\*\*/i);
     if (opsecIdx !== -1) {
       const nextSectionIdx = text.indexOf('**READY-TO-USE', opsecIdx + 20);
-      const opsecText = nextSectionIdx !== -1 ? text.slice(opsecIdx, nextSectionIdx) : text.slice(opsecIdx);
-      // Look for risk/vulnerability/mistake sentences
-      const riskPatterns = [
-        /(?:biggest|primary|main|most\s+significant|greatest|critical)\s+(?:risk|vulnerability|exposure|weakness|mistake)[:\s]+([^.]+\.)/i,
-        /(?:most\s+notable|key)\s+(?:risk|vulnerability|exposure|leak)[:\s]+([^.]+\.)/i,
-        /(?:leaked|exposed|visible)[^.]*(?:real\s+name|email|location|employer|phone)[^.]*\./i,
-      ];
-      for (const re of riskPatterns) {
-        const m = opsecText.match(re);
-        if (m) { fields['Key Risk'] = (m[1] || m[0]).replace(/\*\*/g, '').trim(); break; }
+      const opsecText = (nextSectionIdx !== -1 ? text.slice(opsecIdx, nextSectionIdx) : text.slice(opsecIdx)).replace(/\*\*/g, '');
+      const sentences = opsecText.split(/\.\s+/);
+      // Look for concrete negative findings, skip the opening summary sentence
+      for (let si = 1; si < sentences.length; si++) {
+        const s = sentences[si].trim();
+        if (/real\s*name\s*(expos|in\s*username|visib|linked|reveal)|identity\s*bridge|same\s*(handle|username)\s*everywhere|email.*breach|location.*expos|employer.*visib|most\s*significant|biggest\s*weakness|critical\s*leak/i.test(s)) {
+          // Extract a short phrase
+          let phrase = s.replace(/^[^a-zA-Z]+/, '');
+          const words = phrase.split(/\s+/);
+          if (words.length > 10) phrase = words.slice(0, 10).join(' ') + '…';
+          fields['Key Risk'] = phrase;
+          break;
+        }
       }
-      // Fallback: grab the first sentence mentioning a specific mistake
+      // Fallback: any sentence with leak/expos/mistake
       if (!fields['Key Risk']) {
-        const sentences = opsecText.replace(/\*\*/g, '').split(/\.\s+/);
-        for (const s of sentences) {
-          if (/mistake|leak|expos|vulnerab|weak|risk|real name.*username|same.*handle|email.*breach/i.test(s)) {
-            fields['Key Risk'] = s.trim().replace(/^[^a-zA-Z]+/, '') + '.';
-            if (fields['Key Risk'].length > 120) fields['Key Risk'] = fields['Key Risk'].slice(0, 117) + '...';
+        for (let si = 1; si < sentences.length; si++) {
+          const s = sentences[si].trim();
+          if (/leak|expos|mistake|vulnerab|weak/i.test(s)) {
+            let phrase = s.replace(/^[^a-zA-Z]+/, '');
+            const words = phrase.split(/\s+/);
+            if (words.length > 10) phrase = words.slice(0, 10).join(' ') + '…';
+            fields['Key Risk'] = phrase;
             break;
           }
         }
@@ -3195,19 +3193,15 @@
       <div class="ai-body dd-body">`;
 
     // Insert Quick Intel Summary card
-    const quickIntel = extractQuickIntel(data.summary);
+    const quickIntel = extractQuickIntel(data.summary, lastCollected);
     html += renderQuickIntelCard(quickIntel);
 
     let queryCounter = 0;
 
     for (const sec of sections) {
-      const labelLower = sec.headingLabel.toLowerCase().replace(/[:(]/g, '').trim();
-      const shouldCollapse = collapsedByDefault.some(h => labelLower === h || labelLower.startsWith(h));
-
-      // Render section header
+      // Render section header — all sections expanded by default, toggleSection handles collapse
       if (sec.heading) {
-        const clickHandler = shouldCollapse ? 'toggleDDSection(this)' : 'toggleSection(this)';
-        html += `<div class="ai-section dd-section-head" onclick="${clickHandler}"><span class="sec-arrow">▼</span> // ${sec.headingLabel}</div>`;
+        html += `<div class="ai-section dd-section-head" onclick="toggleSection(this)"><span class="sec-arrow">▼</span> // ${sec.headingLabel}</div>`;
       }
 
       // Render section content
@@ -3267,33 +3261,8 @@
       if (inTable) renderedLines.push({ html: '</table></div>', isTableEnd: true });
       if (inQueries) renderedLines.push({ html: '</div>', isLeadsEnd: true });
 
-      // If this section should be collapsible, show first 2 prose lines then wrap rest
-      const proseTotal = renderedLines.filter(r => r.isProse).length;
-      if (shouldCollapse && proseTotal > 2) {
-        let proseCount = 0;
-        let splitIdx = -1;
-        for (let i = 0; i < renderedLines.length; i++) {
-          if (renderedLines[i].isProse) {
-            proseCount++;
-            if (proseCount === 2) { splitIdx = i + 1; break; }
-          }
-        }
-        const moreId = ddMoreCounter++;
-        // Render visible portion (first 2 prose lines)
-        for (let i = 0; i < splitIdx; i++) html += renderedLines[i].html;
-        // Render hidden portion in wrapper
-        html += `<div class="dd-more-wrap" id="ddmore_${moreId}">`;
-        for (let i = splitIdx; i < renderedLines.length; i++) html += renderedLines[i].html;
-        html += `</div>`;
-        const hiddenCount = proseTotal - 2;
-        html += `<div class="dd-expand-btn" id="ddbtn_${moreId}" onclick="toggleDDMore(${moreId})">▸ Show more… (${hiddenCount} more lines)</div>`;
-      } else if (shouldCollapse && proseTotal > 0) {
-        // 2 or fewer prose lines — show all but still support header collapse
-        for (const r of renderedLines) html += r.html;
-      } else {
-        // Render all lines normally
-        for (const r of renderedLines) html += r.html;
-      }
+      // Render all content — sections start expanded, toggleSection handles collapse
+      for (const r of renderedLines) html += r.html;
     }
 
     html += `</div></div>`;
@@ -5548,7 +5517,7 @@
     { id: 'hibp', label: 'HIBP (Have I Been Pwned)', storageKey: 'cs_hibp_key', placeholder: 'hibp-api-key...', hint: 'haveibeenpwned.com/API/Key' },
     { id: 'hunter', label: 'Hunter.io', storageKey: 'cs_hunter_key', placeholder: 'hunter-api-key...', hint: 'hunter.io/api-keys' },
     { id: 'shodan', label: 'Shodan', storageKey: 'cs_shodan_key', placeholder: 'shodan-api-key...', hint: 'account.shodan.io' },
-    { id: 'github', label: 'GitHub', storageKey: 'cs_github_key', placeholder: 'ghp_...', hint: 'github.com/settings/tokens' },
+    { id: 'github', label: 'GitHub', storageKey: 'cs_github_key', placeholder: 'ghp_...', hint: 'github.com/settings/tokens', helper: 'Increases GitHub API rate limits during username investigation' },
   ];
 
   function getKey(id) {
@@ -5868,6 +5837,7 @@
         <div style="flex:1;">
           <div style="font-size:11px;color:var(--text-bright);">${cfg.label}</div>
           <div style="font-size:9px;color:var(--text-dim);">${hasKey ? 'Key set ✓' : 'Not configured'}</div>
+          ${cfg.helper ? `<div style="font-size:8px;color:var(--text-dim);opacity:0.7;margin-top:2px;">${cfg.helper}</div>` : ''}
         </div>
         <input type="password" id="settings_key_${cfg.id}" placeholder="${cfg.placeholder}" value="${hasKey ? '••••••••' : ''}"
           style="width:200px;padding:4px 8px;background:var(--bg);border:1px solid var(--border-mid);border-radius:3px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:10px;"
