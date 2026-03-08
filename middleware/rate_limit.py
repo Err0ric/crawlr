@@ -24,6 +24,7 @@ RATE_LIMITS = {
     "/api/analyze/correlate": (20, 60),
     "/api/analyze/email-headers": (20, 60),
     "/api/infra/summarize": (20, 60),
+    "/api/phone/lookup": (15, 60),
 }
 
 
