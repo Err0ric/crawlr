@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from routers import recon, analyze, recon_infra, hash_lookup, email_headers
 
-app = FastAPI(title="Crawlr", version="0.1.0")
+app = FastAPI(title="CrawlR", version="0.1.0")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
