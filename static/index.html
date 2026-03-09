@@ -828,15 +828,29 @@
     align-items: center;
     justify-content: center;
     font-size: 10px;
-    color: var(--text-dim);
+    color: #4ade80;
     user-select: none;
     z-index: 10;
     opacity: 0.6;
     transition: opacity 0.15s;
   }
-  .floating-notes .fn-resize-handle:hover { opacity: 1; }
+  .floating-notes .fn-resize-handle:hover { opacity: 1; color: #4ade80; }
   .floating-notes.minimized .fn-resize-handle,
   .floating-notes.maximized .fn-resize-handle { display: none; }
+  .global-notes-btn {
+    background: rgba(22, 163, 74, 0.1);
+    border: 1px solid #16a34a;
+    border-radius: 3px;
+    color: #4ade80;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .global-notes-btn:hover { background: rgba(22, 163, 74, 0.2); border-color: #4ade80; }
   .floating-notes.open { display: flex; }
   .floating-notes.minimized { height: auto; width: 260px; min-height: 0; bottom: 0; border-radius: 6px 6px 0 0; resize: none; }
   .floating-notes.minimized .fn-body { display: none; }
@@ -1321,6 +1335,7 @@
       <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI REPORT</div>
       <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
+      <button class="global-notes-btn" onclick="openFloatingNotes()">↗ NOTES</button>
       <button class="action-btn" onclick="exportMarkdown()">Export</button>
       <button class="action-btn">Clear</button>
     </div>
@@ -1417,6 +1432,7 @@
       <div class="tab" id="reconAiReportTab" onclick="setReconTab('aiReport')" style="display:none;">AI Report</div>
       <div class="tab" onclick="setReconTab('notes')">Notes</div>
       <div class="tab-spacer"></div>
+      <button class="global-notes-btn" onclick="openFloatingNotes()">↗ NOTES</button>
       <button class="action-btn" onclick="exportReconMarkdown()">Export</button>
     </div>
 
@@ -1471,7 +1487,10 @@
     <div class="dork-builder" style="max-width:960px; margin:0 auto;">
 
       <div style="margin-bottom:20px;">
-        <div style="font-family:'Share Tech Mono',monospace; color:var(--text-bright); font-size:11px; letter-spacing:2px; margin-bottom:6px;">// DORK BUILDER</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-family:'Share Tech Mono',monospace; color:var(--text-bright); font-size:11px; letter-spacing:2px;">// DORK BUILDER</div>
+          <button class="global-notes-btn" onclick="openFloatingNotes()">↗ NOTES</button>
+        </div>
         <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Tell Crawl<span style="color:var(--red-bright);">R</span> what you know. It builds the search.</div>
       </div>
 
@@ -1561,7 +1580,10 @@
   <div class="main" style="flex:1; overflow-y:auto; padding:28px 40px;">
     <div style="max-width:1200px; margin:0 auto;">
       <div style="margin-bottom:20px;">
-        <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:11px; letter-spacing:2px; margin-bottom:6px;">// EMAIL HEADER ANALYZER</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:11px; letter-spacing:2px;">// EMAIL HEADER ANALYZER</div>
+          <button class="global-notes-btn" onclick="openFloatingNotes()">↗ NOTES</button>
+        </div>
         <div style="color:var(--text-bright); font-size:15px; font-weight:500; margin-bottom:4px;">Paste raw email headers to analyze routing, authentication &amp; spoofing.</div>
         <div style="color:var(--text-dim); font-size:12px; font-family:'Share Tech Mono',monospace;">
           Gmail: Open email → ⋮ → Show original &nbsp;|&nbsp; Outlook: ⋯ → View message source
@@ -1951,40 +1973,61 @@
 
   /* ── Floating Notes (detach / reattach / minimize / drag) ── */
   let notesDetached = false;
+  let fnLastPos = { top: '80px', left: '', right: '24px' };
+  let fnManualSize = { width: '', height: '' };
 
-  function detachNotes() {
-    const src = document.getElementById('notesArea');
-    const dst = document.getElementById('fnTextarea');
-    dst.value = src.value;
+  function openFloatingNotes() {
     const panel = document.getElementById('floatingNotes');
+    const ta = document.getElementById('fnTextarea');
+    // Load from shared localStorage
+    const saved = localStorage.getItem('crawlr_notes');
+    if (saved) ta.value = saved;
     panel.classList.add('open');
     panel.classList.remove('minimized');
-    // Position center-right if not already positioned
-    if (!panel.style.top) {
-      panel.style.top = '80px';
-      panel.style.right = '24px';
-      panel.style.left = '';
-    }
+    // Restore last position
+    panel.style.top = fnLastPos.top;
+    panel.style.left = fnLastPos.left;
+    panel.style.right = fnLastPos.right;
+    if (fnManualSize.width) panel.style.width = fnManualSize.width;
+    if (fnManualSize.height) panel.style.height = fnManualSize.height;
     notesDetached = true;
-    // Sync typing from floating back to main
-    dst.oninput = () => { src.value = dst.value; src.dispatchEvent(new Event('input')); };
-    document.querySelector('.notes-detach-btn').textContent = '⇱ DETACHED';
-    document.querySelector('.notes-detach-btn').style.opacity = '0.4';
-    document.querySelector('.notes-detach-btn').style.pointerEvents = 'none';
+    // Sync floating textarea to localStorage and embedded note areas
+    ta.oninput = () => {
+      localStorage.setItem('crawlr_notes', ta.value);
+      const inv = document.getElementById('notesArea');
+      if (inv) { inv.value = ta.value; inv.dispatchEvent(new Event('input')); }
+    };
+    // Update detach buttons state
+    document.querySelectorAll('.notes-detach-btn').forEach(btn => {
+      btn.textContent = '⇱ DETACHED';
+      btn.style.opacity = '0.4';
+      btn.style.pointerEvents = 'none';
+    });
+  }
+
+  function detachNotes() {
+    openFloatingNotes();
   }
 
   function reattachNotes() {
-    const src = document.getElementById('fnTextarea');
-    const dst = document.getElementById('notesArea');
-    dst.value = src.value;
-    dst.dispatchEvent(new Event('input'));
     const panel = document.getElementById('floatingNotes');
+    const ta = document.getElementById('fnTextarea');
+    // Save content back to localStorage
+    localStorage.setItem('crawlr_notes', ta.value);
+    // Sync to embedded note areas
+    const inv = document.getElementById('notesArea');
+    if (inv) { inv.value = ta.value; inv.dispatchEvent(new Event('input')); }
+    // Save position for next open
+    fnLastPos.top = panel.style.top || '80px';
+    fnLastPos.left = panel.style.left || '';
+    fnLastPos.right = panel.style.right || '24px';
     panel.classList.remove('open', 'minimized', 'maximized');
     notesDetached = false;
-    const btn = document.querySelector('.notes-detach-btn');
-    btn.textContent = '⇱ DETACH';
-    btn.style.opacity = '';
-    btn.style.pointerEvents = '';
+    document.querySelectorAll('.notes-detach-btn').forEach(btn => {
+      btn.textContent = '⇱ DETACH';
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+    });
   }
 
   /* ── Maximize / Restore toggle ── */
@@ -2004,9 +2047,11 @@
       }
       btn.textContent = '⛶';
     } else {
+      // Save current computed dimensions (not just style strings)
+      const rect = panel.getBoundingClientRect();
       fnSavedRect = {
-        width: panel.style.width || '',
-        height: panel.style.height || '',
+        width: rect.width + 'px',
+        height: rect.height + 'px',
         top: panel.style.top || '',
         left: panel.style.left || '',
         right: panel.style.right || '',
@@ -2039,6 +2084,9 @@
       const newH = Math.max(180, Math.min(window.innerHeight * 0.9, startH + (e.clientY - startY)));
       panel.style.width = newW + 'px';
       panel.style.height = newH + 'px';
+      // Store manual size for maximize restore
+      fnManualSize.width = newW + 'px';
+      fnManualSize.height = newH + 'px';
     });
     document.addEventListener('mouseup', function() { resizing = false; });
   })();
