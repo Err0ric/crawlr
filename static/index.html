@@ -800,6 +800,8 @@
     height: 380px;
     min-width: 280px;
     min-height: 180px;
+    max-width: 90vw;
+    max-height: 90vh;
     background: var(--bg2);
     border: 1px solid var(--border-hi);
     border-radius: 6px;
@@ -807,6 +809,34 @@
     flex-direction: column;
     overflow: hidden;
   }
+  .floating-notes.maximized {
+    width: 80vw !important;
+    height: 80vh !important;
+    top: 10vh !important;
+    left: 10vw !important;
+    right: auto !important;
+    bottom: auto !important;
+  }
+  .floating-notes .fn-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: nwse-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--text-dim);
+    user-select: none;
+    z-index: 10;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .floating-notes .fn-resize-handle:hover { opacity: 1; }
+  .floating-notes.minimized .fn-resize-handle,
+  .floating-notes.maximized .fn-resize-handle { display: none; }
   .floating-notes.open { display: flex; }
   .floating-notes.minimized { height: auto; width: 260px; min-height: 0; bottom: 0; border-radius: 6px 6px 0 0; resize: none; }
   .floating-notes.minimized .fn-body { display: none; }
@@ -1206,9 +1236,11 @@
   <div class="fn-header" id="fnHeader">
     <div class="fn-title">// Notes</div>
     <button class="fn-btn" onclick="minimizeNotes()">—</button>
+    <button class="fn-btn" id="fnMaxBtn" onclick="toggleMaximizeNotes()">⛶</button>
     <button class="fn-btn" onclick="reattachNotes()">⇲ Dock</button>
   </div>
   <div class="fn-body"><textarea id="fnTextarea" spellcheck="false" placeholder="// case notes, leads, observations..."></textarea></div>
+  <div class="fn-resize-handle" id="fnResizeHandle">⠿</div>
 </div>
 
 <div id="landingPage" style="position:fixed;inset:0;top:56px;z-index:50;background:var(--bg);overflow:hidden;">
@@ -1947,13 +1979,69 @@
     dst.value = src.value;
     dst.dispatchEvent(new Event('input'));
     const panel = document.getElementById('floatingNotes');
-    panel.classList.remove('open', 'minimized');
+    panel.classList.remove('open', 'minimized', 'maximized');
     notesDetached = false;
     const btn = document.querySelector('.notes-detach-btn');
     btn.textContent = '⇱ DETACH';
     btn.style.opacity = '';
     btn.style.pointerEvents = '';
   }
+
+  /* ── Maximize / Restore toggle ── */
+  let fnSavedRect = null;
+  function toggleMaximizeNotes() {
+    const panel = document.getElementById('floatingNotes');
+    const btn = document.getElementById('fnMaxBtn');
+    if (panel.classList.contains('maximized')) {
+      panel.classList.remove('maximized');
+      if (fnSavedRect) {
+        panel.style.width = fnSavedRect.width;
+        panel.style.height = fnSavedRect.height;
+        panel.style.top = fnSavedRect.top;
+        panel.style.left = fnSavedRect.left;
+        panel.style.right = fnSavedRect.right;
+        panel.style.bottom = fnSavedRect.bottom;
+      }
+      btn.textContent = '⛶';
+    } else {
+      fnSavedRect = {
+        width: panel.style.width || '',
+        height: panel.style.height || '',
+        top: panel.style.top || '',
+        left: panel.style.left || '',
+        right: panel.style.right || '',
+        bottom: panel.style.bottom || ''
+      };
+      panel.classList.add('maximized');
+      btn.textContent = '⧉';
+    }
+  }
+
+  /* ── Resize handle drag logic ── */
+  (function() {
+    let resizing = false, startX, startY, startW, startH;
+    document.addEventListener('mousedown', function(e) {
+      if (!e.target.closest('#fnResizeHandle')) return;
+      const panel = document.getElementById('floatingNotes');
+      if (panel.classList.contains('minimized') || panel.classList.contains('maximized')) return;
+      resizing = true;
+      const rect = panel.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = rect.width;
+      startH = rect.height;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!resizing) return;
+      const panel = document.getElementById('floatingNotes');
+      const newW = Math.max(280, Math.min(window.innerWidth * 0.9, startW + (e.clientX - startX)));
+      const newH = Math.max(180, Math.min(window.innerHeight * 0.9, startH + (e.clientY - startY)));
+      panel.style.width = newW + 'px';
+      panel.style.height = newH + 'px';
+    });
+    document.addEventListener('mouseup', function() { resizing = false; });
+  })();
 
   function minimizeNotes() {
     const panel = document.getElementById('floatingNotes');
