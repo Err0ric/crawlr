@@ -1302,14 +1302,20 @@
     <span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(80px,12vw,180px);letter-spacing:0.15em;color:var(--text-bright);opacity:0.04;line-height:1;">Crawl</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(80px,12vw,180px);letter-spacing:0.15em;color:var(--red);opacity:0.06;line-height:1;">R</span>
   </div>
   <div style="position:absolute;top:52%;left:50%;transform:translate(-50%,0);display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:720px;padding:0 24px;">
-    <div style="display:flex;width:100%;gap:0;">
-      <input id="landingInput" type="text" placeholder="target, hash, domain, or paste headers..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        style="flex:1;background:var(--bg3);border:1px solid var(--border-mid);border-right:none;border-radius:4px 0 0 4px;padding:14px 18px;font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--text-bright);outline:none;"
-        onkeydown="if(event.key==='Enter')landingSubmit()"
-        onfocus="this.style.borderColor='var(--red-dim)'" onblur="this.style.borderColor='var(--border-mid)'"
-      />
+    <div id="landingInputWrap" style="position:relative;display:flex;width:100%;gap:0;align-items:stretch;">
+      <div style="position:relative;flex:1;display:flex;align-items:center;">
+        <input id="landingInput" type="text" placeholder="target, hash, domain, or paste headers..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border-mid);border-right:none;border-radius:4px 0 0 4px;padding:14px 18px;padding-right:70px;font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--text-bright);outline:none;"
+          onkeydown="landingInputKeydown(event)"
+          onfocus="this.style.borderColor='var(--red-dim)'" onblur="this.style.borderColor='var(--border-mid)'"
+        />
+        <span id="landingStar" onclick="toggleSavedTarget(event)" style="position:absolute;right:40px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text-dim);cursor:pointer;user-select:none;z-index:2;">☆</span>
+        <span id="landingTypeBadge" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1px;padding:2px 7px;border-radius:3px;white-space:nowrap;z-index:2;display:none;"></span>
+      </div>
       <button onclick="landingSubmit()" style="background:var(--red);border:none;border-radius:0 4px 4px 0;padding:14px 28px;font-family:'Share Tech Mono',monospace;font-size:13px;font-weight:600;letter-spacing:0.08em;color:#fff;cursor:pointer;white-space:nowrap;transition:background 0.15s;" onmouseenter="this.style.background='var(--red-bright)'" onmouseleave="this.style.background='var(--red)'">RUN</button>
+      <div id="landingDropdown" style="display:none;position:absolute;top:100%;left:0;width:100%;z-index:9999;background:var(--bg2);border:1px solid var(--border-mid);border-radius:4px;margin-top:4px;max-height:320px;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,0.5);"></div>
     </div>
+    <div id="landingMultiCount" style="display:none;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);text-align:center;"></div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-mid);letter-spacing:0.06em;opacity:0.5;">OSINT investigation platform</div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:2px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.08em;color:var(--text-mid);opacity:0.5;">
       <span>USERNAME</span><span>EMAIL</span><span>DOMAIN</span><span>IP</span><span>ASN</span><span>HASH</span><span>EMAIL HEADERS</span>
@@ -1817,6 +1823,212 @@
       chips.forEach(c => { if (c.textContent.trim() === 'Hash') c.classList.add('on'); });
     }
     setTimeout(() => runScan(), 100);
+  }
+
+  /* ── Landing search UX: history dropdown, type badge, multi-counter, saved targets ── */
+  let _landingDropdownIdx = -1;
+  let _landingDebounce = null;
+
+  function landingInputKeydown(e) {
+    const dropdown = document.getElementById('landingDropdown');
+    const visible = dropdown.style.display !== 'none';
+
+    if (e.key === 'Enter') {
+      if (visible && _landingDropdownIdx >= 0) {
+        const rows = dropdown.querySelectorAll('.ldrop-row');
+        if (rows[_landingDropdownIdx]) {
+          rows[_landingDropdownIdx].click();
+          e.preventDefault();
+          return;
+        }
+      }
+      landingSubmit();
+      return;
+    }
+    if (e.key === 'Escape') { hideLandingDropdown(); return; }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!visible) { showLandingDropdown(); return; }
+      const rows = dropdown.querySelectorAll('.ldrop-row');
+      _landingDropdownIdx = Math.max(0, _landingDropdownIdx - 1);
+      highlightDropdownRow(rows);
+      return;
+    }
+    if (e.key === 'ArrowDown' && visible) {
+      e.preventDefault();
+      const rows = dropdown.querySelectorAll('.ldrop-row');
+      _landingDropdownIdx = Math.min(rows.length - 1, _landingDropdownIdx + 1);
+      highlightDropdownRow(rows);
+      return;
+    }
+    // Debounce type detection
+    clearTimeout(_landingDebounce);
+    _landingDebounce = setTimeout(updateLandingBadge, 300);
+  }
+
+  document.getElementById('landingInput').addEventListener('input', function() {
+    clearTimeout(_landingDebounce);
+    _landingDebounce = setTimeout(updateLandingBadge, 300);
+    updateMultiCount();
+    updateStarState();
+  });
+
+  function getSavedTargets() {
+    try { return JSON.parse(localStorage.getItem('crawlr_saved_targets') || '[]'); } catch { return []; }
+  }
+  function setSavedTargets(arr) { localStorage.setItem('crawlr_saved_targets', JSON.stringify(arr)); }
+
+  function toggleSavedTarget(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const val = document.getElementById('landingInput').value.trim();
+    if (!val) return;
+    let saved = getSavedTargets();
+    const idx = saved.indexOf(val);
+    if (idx >= 0) { saved.splice(idx, 1); } else { saved.unshift(val); }
+    setSavedTargets(saved);
+    updateStarState();
+  }
+
+  function updateStarState() {
+    const val = document.getElementById('landingInput').value.trim();
+    const star = document.getElementById('landingStar');
+    const saved = getSavedTargets();
+    if (val && saved.includes(val)) {
+      star.textContent = '★';
+      star.style.color = '#f59e0b';
+    } else {
+      star.textContent = '☆';
+      star.style.color = 'var(--text-dim)';
+    }
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return '';
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'now';
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    const days = Math.floor(hrs / 24);
+    return days + 'd ago';
+  }
+
+  function showLandingDropdown() {
+    const dropdown = document.getElementById('landingDropdown');
+    const saved = getSavedTargets();
+    let history = [];
+    try { history = JSON.parse(localStorage.getItem('crawlr_history') || '[]'); } catch {}
+    // Deduplicate history targets, keep most recent
+    const seen = new Set();
+    const recent = [];
+    for (const h of history) {
+      if (!h.target || seen.has(h.target)) continue;
+      seen.add(h.target);
+      recent.push(h);
+      if (recent.length >= 8) break;
+    }
+    // Filter saved that aren't in recent
+    const savedFiltered = saved.filter(s => s);
+    if (!savedFiltered.length && !recent.length) { hideLandingDropdown(); return; }
+
+    let html = '';
+    if (savedFiltered.length) {
+      html += '<div style="padding:6px 14px 2px;font-family:\'Share Tech Mono\',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;">// SAVED</div>';
+      for (const t of savedFiltered) {
+        html += '<div class="ldrop-row" data-val="' + t.replace(/"/g, '&quot;') + '" style="padding:8px 14px;font-family:\'Share Tech Mono\',monospace;font-size:11px;color:var(--text);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.1s;"><span>★ ' + t + '</span></div>';
+      }
+    }
+    if (recent.length) {
+      if (savedFiltered.length) html += '<div style="border-top:1px solid var(--border-mid);margin:2px 10px;"></div>';
+      html += '<div style="padding:6px 14px 2px;font-family:\'Share Tech Mono\',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;">// RECENT</div>';
+      for (const h of recent) {
+        const ago = timeAgo(h.timestamp || h.date);
+        html += '<div class="ldrop-row" data-val="' + h.target.replace(/"/g, '&quot;') + '" style="padding:8px 14px;font-family:\'Share Tech Mono\',monospace;font-size:11px;color:var(--text);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.1s;"><span>' + h.target + '</span><span style="color:var(--text-dim);font-size:9px;">' + ago + '</span></div>';
+      }
+    }
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+    _landingDropdownIdx = -1;
+
+    dropdown.querySelectorAll('.ldrop-row').forEach(row => {
+      row.addEventListener('mouseenter', function() {
+        dropdown.querySelectorAll('.ldrop-row').forEach(r => { r.style.background = ''; r.style.color = 'var(--text)'; });
+        this.style.background = 'var(--bg3)';
+        this.style.color = 'var(--text-bright)';
+      });
+      row.addEventListener('mouseleave', function() {
+        this.style.background = '';
+        this.style.color = 'var(--text)';
+      });
+      row.addEventListener('click', function() {
+        document.getElementById('landingInput').value = this.dataset.val;
+        hideLandingDropdown();
+        updateLandingBadge();
+        updateMultiCount();
+        updateStarState();
+        document.getElementById('landingInput').focus();
+      });
+    });
+  }
+
+  function hideLandingDropdown() {
+    document.getElementById('landingDropdown').style.display = 'none';
+    _landingDropdownIdx = -1;
+  }
+
+  function highlightDropdownRow(rows) {
+    rows.forEach((r, i) => {
+      if (i === _landingDropdownIdx) {
+        r.style.background = 'var(--bg3)';
+        r.style.color = 'var(--text-bright)';
+        r.scrollIntoView({ block: 'nearest' });
+      } else {
+        r.style.background = '';
+        r.style.color = 'var(--text)';
+      }
+    });
+  }
+
+  // Close dropdown on outside click
+  document.addEventListener('mousedown', function(e) {
+    if (!e.target.closest('#landingInputWrap')) hideLandingDropdown();
+  });
+
+  // Type detection badge
+  function detectTargetType(val) {
+    if (!val) return null;
+    if (val.includes(',')) return { type: 'MULTI', color: 'var(--text-mid)' };
+    if (val.includes('@') && val.includes('.')) return { type: 'EMAIL', color: '#a855f7' };
+    if (/^(Received:|X-)/mi.test(val)) return { type: 'EMAIL HEADERS', color: '#a855f7' };
+    if (/^AS\d+$/i.test(val)) return { type: 'ASN', color: '#f59e0b' };
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(val)) return { type: 'IP', color: '#f59e0b' };
+    if (/^[a-f0-9]{32,64}$/i.test(val)) return { type: 'HASH', color: '#ef4444' };
+    if (val.includes('.') && !val.includes(' ') && !val.includes('@')) return { type: 'DOMAIN', color: '#0ea5e9' };
+    return { type: 'USERNAME', color: '#16a34a' };
+  }
+
+  function updateLandingBadge() {
+    const val = document.getElementById('landingInput').value.trim();
+    const badge = document.getElementById('landingTypeBadge');
+    const info = detectTargetType(val);
+    if (!info) { badge.style.display = 'none'; return; }
+    badge.textContent = info.type;
+    badge.style.color = info.color;
+    badge.style.border = '1px solid ' + info.color + '4d';
+    badge.style.background = 'transparent';
+    badge.style.display = '';
+  }
+
+  function updateMultiCount() {
+    const val = document.getElementById('landingInput').value.trim();
+    const el = document.getElementById('landingMultiCount');
+    if (!val.includes(',')) { el.style.display = 'none'; return; }
+    const n = val.split(',').filter(s => s.trim()).length;
+    if (n <= 1) { el.style.display = 'none'; return; }
+    el.textContent = '× ' + n + ' targets';
+    el.style.display = '';
   }
 
   setInterval(() => {
