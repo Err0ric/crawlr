@@ -796,25 +796,23 @@
     display: none;
     position: fixed;
     z-index: 9000;
-    width: 420px;
-    height: 380px;
+    width: 320px;
+    height: 280px;
     min-width: 280px;
-    min-height: 180px;
+    min-height: 200px;
     background: var(--bg2);
-    border: 1px solid var(--border-hi);
+    border: 1px solid var(--border-mid);
     border-radius: 6px;
     box-shadow: 0 8px 40px rgba(0,0,0,0.6);
     flex-direction: column;
     overflow: hidden;
   }
   .floating-notes.open { display: flex; }
-  .floating-notes.minimized { height: auto; width: 260px; min-height: 0; bottom: 0; border-radius: 6px 6px 0 0; resize: none; }
-  .floating-notes.minimized .fn-body { display: none; }
   .floating-notes .fn-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     background: var(--bg3);
     border-bottom: 1px solid var(--border);
     cursor: grab;
@@ -830,65 +828,110 @@
     text-transform: uppercase;
     flex: 1;
   }
-  .floating-notes .fn-btn {
+  .floating-notes .fn-close {
     background: none;
-    border: 1px solid var(--border-mid);
-    border-radius: 3px;
+    border: none;
     color: var(--text-dim);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .floating-notes .fn-close:hover { color: var(--text-mid); }
+  .floating-notes .fn-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 8px;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+  .floating-notes .fn-tab {
     font-family: 'Share Tech Mono', monospace;
     font-size: 9px;
-    padding: 3px 8px;
+    letter-spacing: 1px;
+    padding: 5px 10px;
+    color: var(--text-dim);
     cursor: pointer;
-    transition: all 0.15s;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    user-select: none;
+    transition: color 0.15s;
   }
-  .floating-notes .fn-btn:hover { border-color: var(--border-hi); color: var(--text-mid); }
+  .floating-notes .fn-tab:hover { color: var(--text-mid); }
+  .floating-notes .fn-tab.active { color: #16a34a; border-bottom-color: #16a34a; }
+  .floating-notes .fn-tab-add {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    transition: color 0.15s;
+  }
+  .floating-notes .fn-tab-add:hover { color: #16a34a; }
   .floating-notes .fn-body { flex: 1; overflow: hidden; display: flex; }
   .floating-notes .fn-body textarea {
     width: 100%;
     height: 100%;
     background: var(--bg);
-    color: var(--text-bright);
+    color: var(--text);
     font-family: 'Share Tech Mono', monospace;
     font-size: 12px;
-    line-height: 1.8;
+    line-height: 1.6;
     border: none;
     outline: none;
     resize: none;
-    padding: 14px 16px;
+    padding: 10px;
   }
   .floating-notes .fn-body textarea::placeholder { color: var(--text-dim); }
   .floating-notes .fn-resize-handle {
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     cursor: nwse-resize;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
-    color: #4ade80;
+    font-size: 9px;
+    color: #16a34a;
     user-select: none;
     z-index: 10;
-    opacity: 0.6;
+    opacity: 0.5;
     transition: opacity 0.15s;
   }
   .floating-notes .fn-resize-handle:hover { opacity: 1; }
-  .notes-detach-btn {
-    background: rgba(22, 163, 74, 0.1);
-    border: 1px solid #16a34a;
-    border-radius: 3px;
-    color: #4ade80;
+  .floating-notes .fn-tab-input {
     font-family: 'Share Tech Mono', monospace;
     font-size: 9px;
     letter-spacing: 1px;
-    padding: 3px 8px;
+    background: var(--bg);
+    color: #16a34a;
+    border: 1px solid #16a34a;
+    border-radius: 2px;
+    padding: 2px 6px;
+    outline: none;
+    width: 70px;
+  }
+  .notes-detach-btn {
+    background: transparent;
+    border: 1px solid #16a34a;
+    border-radius: 3px;
+    color: #16a34a;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
   }
-  .notes-detach-btn:hover { background: rgba(22, 163, 74, 0.2); border-color: #4ade80; }
+  .notes-detach-btn:hover { background: rgba(22, 163, 74, 0.1); }
 
   /* ── Mobile modules drawer toggle ── */
   .mobile-modules-toggle {
@@ -1220,11 +1263,11 @@
 <div class="floating-notes" id="floatingNotes">
   <div class="fn-header" id="fnHeader">
     <div class="fn-title">// Notes</div>
-    <button class="fn-btn" onclick="minimizeNotes()">—</button>
-    <button class="fn-btn" onclick="minimizeNotes()">✕ Close</button>
+    <button class="fn-close" onclick="minimizeNotes()">×</button>
   </div>
-  <div class="fn-body"><textarea id="fnTextarea" spellcheck="false" placeholder="// case notes, leads, observations..."></textarea></div>
-  <div class="fn-resize-handle" id="fnResizeHandle">⠿</div>
+  <div class="fn-tabs" id="fnTabs"></div>
+  <div class="fn-body"><textarea id="fnTextarea" spellcheck="false" placeholder="// notes..."></textarea></div>
+  <div class="fn-resize-handle" id="fnResizeHandle">▪</div>
 </div>
 
 <div id="landingPage" style="position:fixed;inset:0;top:56px;z-index:50;background:var(--bg);overflow:hidden;">
@@ -1303,9 +1346,8 @@
     <div class="tab-bar">
       <div class="tab on" onclick="setTab(this,'content')">Results</div>
       <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI REPORT</div>
-      <div class="tab"    onclick="setTab(this,'notes')">Notes</div>
       <div class="tab-spacer"></div>
-      <button class="notes-detach-btn" onclick="detachNotes()">⇱ NOTES</button>
+      <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
       <button class="action-btn" onclick="exportMarkdown()">Export</button>
       <button class="action-btn">Clear</button>
     </div>
@@ -1401,7 +1443,7 @@
       <div class="tab" id="reconAiReportTab" onclick="setReconTab('aiReport')" style="display:none;">AI Report</div>
       <div class="tab" onclick="setReconTab('notes')">Notes</div>
       <div class="tab-spacer"></div>
-      <button class="notes-detach-btn" onclick="detachNotes()">⇱ NOTES</button>
+      <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
       <button class="action-btn" onclick="exportReconMarkdown()">Export</button>
     </div>
 
@@ -1458,7 +1500,7 @@
       <div style="margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <div style="font-family:'Share Tech Mono',monospace; color:var(--text-bright); font-size:11px; letter-spacing:2px;">// DORK BUILDER</div>
-          <button class="notes-detach-btn" onclick="detachNotes()">⇱ NOTES</button>
+          <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
         </div>
         <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Tell Crawl<span style="color:var(--red-bright);">R</span> what you know. It builds the search.</div>
       </div>
@@ -1551,7 +1593,7 @@
       <div style="margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:11px; letter-spacing:2px;">// EMAIL HEADER ANALYZER</div>
-          <button class="notes-detach-btn" onclick="detachNotes()">⇱ NOTES</button>
+          <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
         </div>
         <div style="color:var(--text-bright); font-size:15px; font-weight:500; margin-bottom:4px;">Paste raw email headers to analyze routing, authentication &amp; spoofing.</div>
         <div style="color:var(--text-dim); font-size:12px; font-family:'Share Tech Mono',monospace;">
@@ -1829,7 +1871,6 @@
     document.querySelectorAll('#investigateWorkspace .tab').forEach(t => t.classList.remove('on'));
     el.classList.add('on');
     document.getElementById('content').style.display = panel === 'content' ? '' : 'none';
-    document.getElementById('notesPanel').style.display = panel === 'notes' ? 'flex' : 'none';
     document.getElementById('aiReportPanel').style.display = panel === 'aiReport' ? '' : 'none';
   }
 
@@ -1921,16 +1962,17 @@
     const body = btn.closest('.rcard').querySelector('.rcard-body');
     if (!body) return;
     const contentText = body.innerText.trim();
+    const entry = `\n--- ${titleText} ---\n${contentText}\n`;
+    // Append to active floating notes tab
+    fnTabData[fnActiveTab] = (fnTabData[fnActiveTab] || '') + entry;
+    localStorage.setItem('crawlr_notes_tab_' + fnActiveTab, fnTabData[fnActiveTab]);
+    // Update textarea if panel is open
+    const ta = document.getElementById('fnTextarea');
+    if (ta) ta.value = fnTabData[fnActiveTab];
+    // Also sync to embedded areas for compatibility
     const isRecon = document.getElementById('reconWorkspace').style.display !== 'none';
     const area = document.getElementById(isRecon ? 'reconNotesArea' : 'notesArea');
-    if (!area) return;
-    const entry = `\n--- ${titleText} ---\n${contentText}\n`;
-    area.value += entry;
-    area.dispatchEvent(new Event('input'));
-    // Sync to floating notes if detached
-    if (notesDetached && !isRecon) {
-      document.getElementById('fnTextarea').value = area.value;
-    }
+    if (area) { area.value += entry; area.dispatchEvent(new Event('input')); }
     btn.textContent = '// COPIED';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = '// COPY TO NOTES'; btn.classList.remove('copied'); }, 1500);
@@ -1940,35 +1982,92 @@
     return `<button class="copy-to-notes" onclick="copyCardToNotes('${title.replace(/'/g, "\\'")}', this)">// COPY TO NOTES</button>`;
   }
 
-  /* ── Floating Notes (global, detach / close / drag / resize) ── */
+  /* ── Floating Notes (global, multi-tab, drag, resize) ── */
   let notesDetached = false;
+  let fnActiveTab = 0;
+  let fnTabNames = [];
+  let fnTabData = [];
+  const FN_MAX_TABS = 5;
 
-  // Load saved notes into floating panel on page load
   (function initFloatingNotes() {
-    const ta = document.getElementById('fnTextarea');
-    const saved = localStorage.getItem('crawlr_notes');
-    if (saved) ta.value = saved;
-    ta.addEventListener('input', function() {
-      localStorage.setItem('crawlr_notes', ta.value);
-      // Sync to embedded note areas if they exist
-      const inv = document.getElementById('notesArea');
-      if (inv) { inv.value = ta.value; inv.dispatchEvent(new Event('input')); }
-      const rec = document.getElementById('reconNotesArea');
-      if (rec) { rec.value = ta.value; rec.dispatchEvent(new Event('input')); }
+    // Load tab names
+    try { fnTabNames = JSON.parse(localStorage.getItem('crawlr_notes_tabnames')) || []; } catch(e) { fnTabNames = []; }
+    if (!fnTabNames.length) fnTabNames = ['NOTE 1', 'NOTE 2', 'NOTE 3'];
+    // Load tab data
+    fnTabData = fnTabNames.map((_, i) => localStorage.getItem('crawlr_notes_tab_' + i) || '');
+    fnRenderTabs();
+    fnSwitchTab(0);
+    // Save on keystroke
+    document.getElementById('fnTextarea').addEventListener('input', function() {
+      fnTabData[fnActiveTab] = this.value;
+      localStorage.setItem('crawlr_notes_tab_' + fnActiveTab, this.value);
     });
   })();
 
+  function fnRenderTabs() {
+    const container = document.getElementById('fnTabs');
+    let html = '';
+    fnTabNames.forEach((name, i) => {
+      html += '<div class="fn-tab' + (i === fnActiveTab ? ' active' : '') + '" data-idx="' + i + '" ondblclick="fnRenameTab(' + i + ', this)">' + name + '</div>';
+    });
+    if (fnTabNames.length < FN_MAX_TABS) {
+      html += '<button class="fn-tab-add" onclick="fnAddTab()">+</button>';
+    }
+    container.innerHTML = html;
+    // Click handler for tabs
+    container.querySelectorAll('.fn-tab').forEach(el => {
+      el.addEventListener('click', function(e) {
+        if (e.detail === 2) return; // skip dblclick
+        fnSwitchTab(parseInt(this.dataset.idx));
+      });
+    });
+  }
+
+  function fnSwitchTab(idx) {
+    fnActiveTab = idx;
+    document.getElementById('fnTextarea').value = fnTabData[idx] || '';
+    fnRenderTabs();
+  }
+
+  function fnAddTab() {
+    if (fnTabNames.length >= FN_MAX_TABS) return;
+    const idx = fnTabNames.length;
+    fnTabNames.push('NOTE ' + (idx + 1));
+    fnTabData.push('');
+    localStorage.setItem('crawlr_notes_tabnames', JSON.stringify(fnTabNames));
+    localStorage.setItem('crawlr_notes_tab_' + idx, '');
+    fnSwitchTab(idx);
+  }
+
+  function fnRenameTab(idx, el) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'fn-tab-input';
+    input.value = fnTabNames[idx];
+    input.maxLength = 20;
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+    function commit() {
+      const val = input.value.trim() || fnTabNames[idx];
+      fnTabNames[idx] = val;
+      localStorage.setItem('crawlr_notes_tabnames', JSON.stringify(fnTabNames));
+      fnRenderTabs();
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.value = fnTabNames[idx]; input.blur(); }
+    });
+  }
+
   function detachNotes() {
     const panel = document.getElementById('floatingNotes');
-    const ta = document.getElementById('fnTextarea');
-    // Reload from localStorage to stay in sync
-    const saved = localStorage.getItem('crawlr_notes');
-    if (saved) ta.value = saved;
     panel.classList.add('open');
-    // Position center-right if not already positioned
-    if (!panel.style.top) {
-      panel.style.top = '80px';
-      panel.style.right = '24px';
+    if (!panel.style.top && !panel.style.bottom) {
+      panel.style.bottom = '20px';
+      panel.style.right = '20px';
+      panel.style.top = '';
       panel.style.left = '';
     }
     notesDetached = true;
@@ -1985,13 +2084,14 @@
     let dragging = false, dx = 0, dy = 0;
     document.addEventListener('mousedown', function(e) {
       const header = e.target.closest('#fnHeader');
-      if (!header || e.target.closest('.fn-btn')) return;
+      if (!header || e.target.closest('.fn-close')) return;
       const panel = document.getElementById('floatingNotes');
       dragging = true;
       const rect = panel.getBoundingClientRect();
       dx = e.clientX - rect.left;
       dy = e.clientY - rect.top;
       panel.style.right = '';
+      panel.style.bottom = '';
       e.preventDefault();
     });
     document.addEventListener('mousemove', function(e) {
@@ -2023,7 +2123,7 @@
       if (!resizing) return;
       const panel = document.getElementById('floatingNotes');
       const newW = Math.max(280, Math.min(window.innerWidth * 0.9, startW + (e.clientX - startX)));
-      const newH = Math.max(180, Math.min(window.innerHeight * 0.9, startH + (e.clientY - startY)));
+      const newH = Math.max(200, Math.min(window.innerHeight * 0.9, startH + (e.clientY - startY)));
       panel.style.width = newW + 'px';
       panel.style.height = newH + 'px';
     });
