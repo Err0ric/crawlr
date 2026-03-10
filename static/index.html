@@ -1271,9 +1271,9 @@
   <div class="header-nav">
     <div class="hnav" onclick="switchMode('investigate')">Investigate<span class="hnav-sub">people &amp; identity</span></div>
     <div class="hnav" onclick="switchMode('recon')">Recon<span class="hnav-sub">infrastructure</span></div>
-    <div class="hnav" onclick="switchMode('dorks')" style="border-left:1px solid var(--border-mid);margin-left:6px;padding-left:14px;">Dorks<span class="hnav-sub">search builder</span></div>
+    <div class="hnav" onclick="switchMode('headers')" style="border-left:1px solid var(--border-mid);margin-left:8px;padding-left:16px;">Headers<span class="hnav-sub">email analysis</span></div>
+    <div class="hnav" onclick="switchMode('dorks')">Dorks<span class="hnav-sub">search builder</span></div>
     <div class="hnav" onclick="switchMode('decoders')">Decoders<span class="hnav-sub">encode · decode · hash</span></div>
-    <div class="hnav" onclick="switchMode('headers')">Headers<span class="hnav-sub">email analyzer</span></div>
   </div>
   <div class="header-right">
     <div class="gear-btn" onclick="toggleSettingsPanel()" title="Settings">⚙</div>
@@ -1605,69 +1605,69 @@
 </div>
 
 <div id="decodersWorkspace" class="workspace" style="display:none; flex-direction:column; height:calc(100vh - 56px); overflow:hidden;">
-  <div class="main" style="flex:1; overflow-y:auto; padding:28px 60px;">
-    <div style="max-width:960px; margin:0 auto;">
+  <div class="main" style="flex:1; overflow-y:auto;">
+    <div style="max-width:900px; margin:0 auto; padding:32px 24px;">
 
-      <div style="margin-bottom:20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:11px; letter-spacing:2px;">// DECODERS</div>
-          <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div>
+          <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:10px; letter-spacing:2px; margin-bottom:4px;">// DECODERS</div>
+          <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Encode, decode, hash, and lookup utilities.</div>
         </div>
-        <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Encode, decode, hash, and lookup utilities.</div>
+        <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;">
 
         <!-- Base64 Encoder/Decoder -->
-        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">Base64 // Encode &amp; Decode</label>
-          <textarea id="decBase64Input" placeholder="Enter text or Base64 string..." rows="3"
-            style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border-hi);border-radius:6px;padding:10px 14px;color:var(--text-bright);font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;resize:vertical;outline:none;"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px;">
-            <button onclick="decBase64('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
-            <button onclick="decBase64('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
+        <div style="min-height:180px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// BASE64</div>
+          <textarea id="decBase64Input" placeholder="Enter text or Base64 string..."
+            style="width:100%;box-sizing:border-box;min-height:80px;resize:vertical;background:var(--bg3);border:1px solid var(--border-mid);color:var(--text);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;outline:none;"></textarea>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button onclick="decBase64('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
+            <button onclick="decBase64('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
           </div>
-          <div id="decBase64Result" style="display:none;margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:11px;padding:8px 12px;border-radius:5px;background:var(--bg1);color:var(--text-bright);word-break:break-all;max-height:120px;overflow-y:auto;"></div>
+          <div id="decBase64Result" style="display:none;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);word-break:break-all;margin-top:10px;max-height:100px;overflow-y:auto;"></div>
         </div>
 
         <!-- URL Encoder/Decoder -->
-        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">URL // Encode &amp; Decode</label>
-          <textarea id="decUrlInput" placeholder="Enter URL or encoded string..." rows="3"
-            style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border-hi);border-radius:6px;padding:10px 14px;color:var(--text-bright);font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;resize:vertical;outline:none;"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px;">
-            <button onclick="decUrl('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
-            <button onclick="decUrl('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
+        <div style="min-height:180px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// URL ENCODE</div>
+          <textarea id="decUrlInput" placeholder="Enter URL or encoded string..."
+            style="width:100%;box-sizing:border-box;min-height:80px;resize:vertical;background:var(--bg3);border:1px solid var(--border-mid);color:var(--text);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;outline:none;"></textarea>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button onclick="decUrl('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
+            <button onclick="decUrl('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
           </div>
-          <div id="decUrlResult" style="display:none;margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:11px;padding:8px 12px;border-radius:5px;background:var(--bg1);color:var(--text-bright);word-break:break-all;max-height:120px;overflow-y:auto;"></div>
+          <div id="decUrlResult" style="display:none;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);word-break:break-all;margin-top:10px;max-height:100px;overflow-y:auto;"></div>
         </div>
 
         <!-- Hash Generator -->
-        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">Hash Generator // MD5 · SHA-1 · SHA-256</label>
+        <div style="min-height:180px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// HASH GENERATOR</div>
           <input id="decHashInput" type="text" placeholder="Enter text to hash..." autocomplete="off"
             onkeydown="if(event.key==='Enter') decHashGenerate()"
-            style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border-hi);border-radius:6px;padding:10px 14px;color:var(--text-bright);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;" />
-          <div style="display:flex;gap:8px;margin-top:8px;">
-            <button onclick="decHashGenerate()" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">GENERATE</button>
+            style="width:100%;box-sizing:border-box;height:38px;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:0 10px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;" />
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button onclick="decHashGenerate()" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">GENERATE</button>
           </div>
-          <div id="decHashResult" style="display:none;margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:10px;padding:8px 12px;border-radius:5px;background:var(--bg1);color:var(--text-bright);line-height:1.8;word-break:break-all;"></div>
+          <div id="decHashResult" style="display:none;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);line-height:1.8;word-break:break-all;margin-top:10px;max-height:100px;overflow-y:auto;"></div>
         </div>
 
         <!-- VIN Lookup -->
-        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
-          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">VIN Lookup // Decodes Year / Make / Model</label>
-          <div style="display:flex; gap:10px; align-items:center;">
+        <div style="min-height:180px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// VIN LOOKUP</div>
+          <div style="display:flex;gap:10px;align-items:center;">
             <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
               oninput="this.value=this.value.toUpperCase()"
               onkeydown="if(event.key==='Enter') vinLookup()"
-              style="flex:1; background:var(--bg1); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none; letter-spacing:1px;" />
+              style="flex:1;height:38px;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:0 10px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;letter-spacing:1px;" />
             <button onclick="vinLookup()"
-              style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
+              style="background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 16px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;white-space:nowrap;">
               DECODE
             </button>
           </div>
-          <div id="dbVinResult" style="display:none; margin-top:10px; font-family:'Share Tech Mono',monospace; font-size:12px; padding:8px 12px; border-radius:5px; background:var(--bg1);"></div>
+          <div id="dbVinResult" style="display:none;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);margin-top:10px;"></div>
         </div>
 
       </div>
@@ -1677,31 +1677,27 @@
 </div>
 
 <div id="headersWorkspace" class="workspace" style="display:none; flex-direction:column; height:calc(100vh - 56px); overflow:hidden;">
-  <div class="main" style="flex:1; overflow-y:auto; padding:28px 40px;">
-    <div style="max-width:1200px; margin:0 auto;">
-      <div style="margin-bottom:20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:11px; letter-spacing:2px;">// EMAIL HEADER ANALYZER</div>
-          <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
+  <div class="main" style="flex:1; overflow-y:auto;">
+    <div style="max-width:760px; margin:0 auto; padding:32px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div>
+          <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:10px; letter-spacing:2px; margin-bottom:4px;">// EMAIL HEADER ANALYZER</div>
+          <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Paste raw email headers to analyze routing, authentication &amp; spoofing.</div>
         </div>
-        <div style="color:var(--text-bright); font-size:15px; font-weight:500; margin-bottom:4px;">Paste raw email headers to analyze routing, authentication &amp; spoofing.</div>
-        <div style="color:var(--text-dim); font-size:12px; font-family:'Share Tech Mono',monospace;">
-          Gmail: Open email → ⋮ → Show original &nbsp;|&nbsp; Outlook: ⋯ → View message source
-        </div>
+        <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
       </div>
       <textarea id="headersInput" spellcheck="false" placeholder="Paste full email headers here..."
-        style="width:100%;box-sizing:border-box;height:200px;background:var(--bg2);color:var(--text-bright);border:1px solid var(--border-hi);border-radius:8px;padding:14px 16px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.6;resize:vertical;outline:none;transition:border-color 0.15s;"
+        style="width:100%;box-sizing:border-box;min-height:220px;background:var(--bg2);color:var(--text-bright);border:1px solid var(--border-hi);border-radius:6px;padding:14px 16px;font-family:'Share Tech Mono',monospace;font-size:13px;line-height:1.6;resize:vertical;outline:none;transition:border-color 0.15s;"
         onfocus="this.style.borderColor='var(--red-bright)'" onblur="this.style.borderColor='var(--border-hi)'"
         onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){runHeaderAnalysis()}"
       ></textarea>
-      <div style="display:flex;align-items:center;gap:12px;margin-top:10px;">
-        <button class="run-btn" id="headersRunBtn" onclick="runHeaderAnalysis()" style="flex:0 0 auto;padding:10px 28px;">▶ Analyze Headers</button>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);opacity:0.6;">Ctrl+Enter to run</div>
-        <div style="flex:1;"></div>
-        <button class="action-btn" onclick="document.getElementById('headersInput').value='';document.getElementById('headersResults').innerHTML=document.getElementById('headersEmpty').outerHTML;">Clear</button>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:6px;">Gmail: open email → ⋮ → Show original &nbsp;|&nbsp; Outlook: ⋯ → View message source</div>
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <button class="run-btn" id="headersRunBtn" onclick="runHeaderAnalysis()" style="flex:1;padding:10px 28px;">▶ Analyze Headers</button>
+        <button class="action-btn" onclick="document.getElementById('headersInput').value='';document.getElementById('headersResults').innerHTML=document.getElementById('headersEmpty').outerHTML;" style="padding:10px 20px;">Clear</button>
       </div>
       <div id="headersResults" style="margin-top:24px;">
-        <div class="empty" id="headersEmpty">
+        <div class="empty" id="headersEmpty" style="text-align:center;padding:48px 0;">
           <div class="empty-glyph">[✉]</div>
           <div class="empty-title">No Headers Analyzed</div>
           <div class="empty-sub">Paste email headers above and click Analyze to check for spoofing, authentication, and routing anomalies.</div>
@@ -5263,18 +5259,17 @@
       document.querySelectorAll('.hnav')[1].classList.add('active');
       document.getElementById('reconWorkspace').style.display = 'grid';
       if (mobileBtn) mobileBtn.style.removeProperty('display');
-    } else if (mode === 'dorks') {
+    } else if (mode === 'headers') {
       document.querySelectorAll('.hnav')[2].classList.add('active');
+      document.getElementById('headersWorkspace').style.display = 'flex';
+    } else if (mode === 'dorks') {
+      document.querySelectorAll('.hnav')[3].classList.add('active');
       document.getElementById('dorksWorkspace').style.display = 'flex';
       _initDorkPlatforms();
       if (mobileBtn) mobileBtn.style.display = 'none';
     } else if (mode === 'decoders') {
-      document.querySelectorAll('.hnav')[3].classList.add('active');
-      document.getElementById('decodersWorkspace').style.display = 'flex';
-      if (mobileBtn) mobileBtn.style.display = 'none';
-    } else if (mode === 'headers') {
       document.querySelectorAll('.hnav')[4].classList.add('active');
-      document.getElementById('headersWorkspace').style.display = 'flex';
+      document.getElementById('decodersWorkspace').style.display = 'flex';
       if (mobileBtn) mobileBtn.style.display = 'none';
       // Fresh state unless prefilling from auto-detect
       const prefill = opts && opts.prefill;
