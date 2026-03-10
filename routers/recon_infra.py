@@ -9,6 +9,9 @@ from modules.subdomain_enum import run_subdomains
 from modules.asn_lookup import run_asn
 from modules.asn_detail import run_asn_detail
 from modules.port_scan import run_portscan
+from modules.wayback import run_wayback
+from modules.redirect_chain import run_redirect_chain
+from modules.tech_fingerprint import run_tech_fingerprint
 import anthropic
 import httpx
 import json
@@ -137,6 +140,34 @@ async def batch_ip_asn(req: IpAsnRequest):
             except Exception:
                 results[ip] = {"asn": "", "org": ""}
     return {"results": results}
+
+
+class TargetRequest(BaseModel):
+    target: str
+
+
+@router.post("/wayback")
+async def wayback_scan(req: DomainRequest):
+    domain = req.domain.strip()
+    if not domain:
+        raise HTTPException(status_code=400, detail="Domain is required")
+    return await run_wayback(domain)
+
+
+@router.post("/redirects")
+async def redirect_scan(req: TargetRequest):
+    target = req.target.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Target is required")
+    return await run_redirect_chain(target)
+
+
+@router.post("/techfingerprint")
+async def tech_fingerprint_scan(req: DomainRequest):
+    domain = req.domain.strip()
+    if not domain:
+        raise HTTPException(status_code=400, detail="Domain is required")
+    return await run_tech_fingerprint(domain)
 
 
 @router.post("/summarize")

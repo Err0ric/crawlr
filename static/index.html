@@ -8,6 +8,7 @@
 <title>CrawlR</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg:          #07060f;
@@ -1332,6 +1333,7 @@
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">HIBP</div><div class="mod-sub">email · breach database</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Hunter.io','hunter')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Hash Lookup</div><div class="mod-sub">md5/sha1/sha256 · malware check</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Phone Lookup</div><div class="mod-sub">reverse · carrier · location</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · interpret &amp; suggest leads</div></div><div class="mod-tag">KEY</div></div>
         <div class="mod mod-active"><div class="mod-toggle" id="activeTechToggle" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">⚠ Active Techniques</div><div class="mod-sub">account recovery · may notify target</div></div><div class="mod-tag warn">⚠</div></div>
       </div>
@@ -1349,6 +1351,7 @@
       <div class="tab-spacer"></div>
       <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
       <button class="action-btn" onclick="exportMarkdown()">Export</button>
+      <button class="action-btn" onclick="exportPDF('investigate')">Export PDF</button>
       <button class="action-btn">Clear</button>
     </div>
 
@@ -1421,6 +1424,9 @@
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">ASN / BGP</div><div class="mod-sub">IP ranges · network info</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Port Scan</div><div class="mod-sub">top 20 common ports</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Shodan','shodan')"></div><div class="mod-info"><div class="mod-name">Shodan</div><div class="mod-sub">ip/domain · exposed services &amp; CVEs</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Wayback Machine</div><div class="mod-sub">snapshot history · archive.org</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Redirect Chain</div><div class="mod-sub">follows redirects · final destination</div></div><div class="mod-tag free">FREE</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Tech Fingerprint</div><div class="mod-sub">stack · cms · frameworks</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · attack surface summary</div></div><div class="mod-tag">KEY</div></div>
       </div>
       <div class="mod-scroll" id="reconAsnModules" style="display:none;">
@@ -1445,6 +1451,7 @@
       <div class="tab-spacer"></div>
       <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
       <button class="action-btn" onclick="exportReconMarkdown()">Export</button>
+      <button class="action-btn" onclick="exportPDF('recon')">Export PDF</button>
     </div>
 
     <div class="content" id="reconContent">
@@ -2479,6 +2486,196 @@
 
     html += `</div></div>`;
     return html;
+  }
+
+  /* ── Wayback Machine renderer ── */
+  function renderWaybackCard(data) {
+    if (!data.found) return '';
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Wayback Machine // Archive.org</div>
+        <div class="badge b-hit">${data.total_snapshots} SNAPSHOT${data.total_snapshots !== 1 ? 'S' : ''}</div>
+        ${copyBtn('Wayback Machine')}
+      </div>
+      <div class="rcard-body">`;
+    if (data.most_recent_snapshot) {
+      const ts = data.most_recent_snapshot.timestamp || '';
+      const dateStr = ts.length >= 8 ? ts.slice(0,4)+'-'+ts.slice(4,6)+'-'+ts.slice(6,8) : ts;
+      html += `<div class="ritem"><div class="dot dg"></div><strong>Most Recent:</strong>&nbsp;<a href="${data.most_recent_snapshot.url}" target="_blank" rel="noopener" style="color:var(--red-bright);text-decoration:none;">${dateStr} →</a></div>`;
+    }
+    if (data.snapshot_history && data.snapshot_history.length) {
+      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px;">// Snapshot Timeline</div>`;
+      for (const snap of data.snapshot_history) {
+        html += `<div class="ritem"><div class="dot dd"></div><a href="${snap.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${snap.date}</a></div>`;
+      }
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  /* ── Redirect Chain renderer ── */
+  function renderRedirectChainCard(data) {
+    if (!data.found) return '';
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Redirect Chain</div>
+        <div class="badge ${data.is_clean ? 'b-hit' : 'b-none'}">${data.hop_count} HOP${data.hop_count !== 1 ? 'S' : ''}${data.is_clean ? '' : ' · UNEXPECTED DEST'}</div>
+        ${copyBtn('Redirect Chain')}
+      </div>
+      <div class="rcard-body">`;
+    for (const hop of (data.hops || [])) {
+      const isOk = [200, 301, 302, 303, 307, 308].includes(hop.status_code);
+      const dotClass = isOk ? 'dg' : 'dr';
+      const isLast = hop.step === data.hop_count;
+      html += `<div class="ritem"><div class="dot ${dotClass}"></div><strong>${hop.step}.</strong>&nbsp;<span style="background:${isOk ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)'};color:${isOk ? '#22c55e' : '#ef4444'};padding:1px 6px;border-radius:3px;font-size:10px;font-family:'Share Tech Mono',monospace;">${hop.status_code}</span>&nbsp;`;
+      if (isLast) {
+        html += `<strong style="color:var(--text-bright);">${hop.url}</strong>`;
+      } else {
+        html += `<span style="color:var(--text-mid);">${hop.url}</span>`;
+      }
+      if (hop.server) html += `&nbsp;<span style="color:var(--text-dim);font-size:10px;">(${hop.server})</span>`;
+      html += `</div>`;
+    }
+    if (data.final_url) {
+      html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);"><div class="ritem"><div class="dot dg"></div><strong>Final:</strong>&nbsp;<a href="${data.final_url}" target="_blank" rel="noopener" style="color:var(--red-bright);text-decoration:none;">${data.final_url}</a></div></div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  /* ── Tech Fingerprint renderer ── */
+  function renderTechFingerprintCard(data) {
+    if (!data.found) return '';
+    const catLabels = { cms: 'CMS', server: 'Server', language: 'Language', cdn: 'CDN / Proxy', frameworks: 'JS Frameworks', analytics: 'Analytics' };
+    let html = `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Tech Fingerprint</div>
+        ${copyBtn('Tech Fingerprint')}
+      </div>
+      <div class="rcard-body">`;
+    const dt = data.detected_tech || {};
+    for (const [cat, items] of Object.entries(dt)) {
+      if (!items || !items.length) continue;
+      html += `<div style="margin-bottom:8px;"><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${catLabels[cat] || cat}</div><div style="display:flex;flex-wrap:wrap;gap:4px;">`;
+      for (const tech of items) {
+        html += `<span style="background:rgba(20,184,166,0.1);color:#2dd4bf;border:1px solid rgba(20,184,166,0.3);border-radius:3px;padding:2px 8px;font-family:'Share Tech Mono',monospace;font-size:10px;">${tech}</span>`;
+      }
+      html += `</div></div>`;
+    }
+    const sh = data.security_headers || {};
+    if ((sh.present && sh.present.length) || (sh.missing && sh.missing.length)) {
+      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Security Headers</div>`;
+      for (const h of (sh.present || [])) {
+        html += `<div class="ritem"><span style="color:#22c55e;">✓</span>&nbsp;${h}</div>`;
+      }
+      for (const h of (sh.missing || [])) {
+        html += `<div class="ritem"><span style="color:#ef4444;">✗</span>&nbsp;${h}</div>`;
+      }
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  /* ── Reverse Image Search renderer ── */
+  function renderReverseImageCard(imageUrl) {
+    if (!imageUrl) return '';
+    const encoded = encodeURIComponent(imageUrl);
+    return `<div class="rcard">
+      <div class="rcard-head">
+        <div class="rcard-title">Reverse Image Search</div>
+      </div>
+      <div class="rcard-body">
+        <div class="ritem"><div class="dot dg"></div><a href="https://lens.google.com/uploadbyurl?url=${encoded}" target="_blank" rel="noopener" style="color:var(--red-bright);text-decoration:none;">Search Google Images →</a></div>
+        <div class="ritem"><div class="dot dg"></div><a href="https://tineye.com/search?url=${encoded}" target="_blank" rel="noopener" style="color:var(--red-bright);text-decoration:none;">Search TinEye →</a></div>
+        <div class="ritem"><div class="dot dg"></div><a href="https://yandex.com/images/search?url=${encoded}&rpt=imageview" target="_blank" rel="noopener" style="color:var(--red-bright);text-decoration:none;">Search Yandex →</a></div>
+      </div>
+    </div>`;
+  }
+
+  /* ── PDF Export ── */
+  function exportPDF(mode) {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) { alert('PDF library not loaded'); return; }
+
+    const isRecon = mode === 'recon';
+    const cardsEl = document.getElementById(isRecon ? 'reconCards' : 'results');
+    if (!cardsEl) return;
+
+    const cards = cardsEl.querySelectorAll('.rcard');
+    if (!cards.length) { alert('No results to export'); return; }
+
+    const target = document.getElementById(isRecon ? 'reconTargetInput' : 'targetInput')?.value?.trim() || 'unknown';
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toLocaleString();
+
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    const maxW = pageW - margin * 2;
+    let y = margin;
+
+    function checkPage(needed) {
+      if (y + needed > doc.internal.pageSize.getHeight() - 20) {
+        doc.addPage();
+        y = margin;
+      }
+    }
+
+    // Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('CRAWLR.LOL — OSINT Report', margin, y);
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Target: ${target}`, margin, y);
+    y += 5;
+    doc.text(`Generated: ${timeStr}`, margin, y);
+    y += 5;
+    doc.setDrawColor(100);
+    doc.line(margin, y, pageW - margin, y);
+    y += 8;
+
+    // Cards
+    cards.forEach(card => {
+      const titleEl = card.querySelector('.rcard-title');
+      const bodyEl = card.querySelector('.rcard-body');
+      if (!titleEl || !bodyEl) return;
+
+      const title = titleEl.textContent.trim();
+      const bodyText = bodyEl.innerText.trim();
+      if (!bodyText) return;
+
+      checkPage(15);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(title.toUpperCase(), margin, y);
+      y += 6;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      const lines = doc.splitTextToSize(bodyText, maxW);
+      for (const line of lines) {
+        checkPage(5);
+        doc.text(line, margin, y);
+        y += 4;
+      }
+      y += 4;
+    });
+
+    // Footer
+    checkPage(15);
+    y += 5;
+    doc.setDrawColor(100);
+    doc.line(margin, y, pageW - margin, y);
+    y += 5;
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text('Generated by Crawlr.lol — OSINT investigation platform', margin, y);
+
+    const safeName = target.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40);
+    doc.save(`crawlr-report-${safeName}-${dateStr}.pdf`);
   }
 
   /* ── Email Header Analysis renderer ── */
@@ -3523,7 +3720,7 @@
     }
 
     // Phone lookup — run phone module and return early
-    if (phoneLookup) {
+    if (phoneLookup && isModOn('Phone Lookup')) {
       const headers = {};
       const nlKey = getKey('numlookup');
       if (nlKey) headers['X-Numlookup-Key'] = nlKey;
@@ -3610,6 +3807,24 @@
         `Hunter.io email discovery on "${d}"`,
         '/api/recon/hunter', { domain: d },
         { 'X-Hunter-Key': getKey('hunter') }, renderHunterCard);
+    }
+
+    // Reverse Image Search — detect image URL in target or profile results
+    {
+      let imageUrl = null;
+      const imgExts = /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i;
+      if (imgExts.test(target)) {
+        imageUrl = target;
+      } else {
+        const allResults = [...(collected.sherlock?.results || []), ...(collected.maigret?.results || [])];
+        for (const r of allResults) {
+          if (r.avatar_url && imgExts.test(r.avatar_url)) { imageUrl = r.avatar_url; break; }
+          if (r.image && imgExts.test(r.image)) { imageUrl = r.image; break; }
+        }
+      }
+      if (imageUrl) {
+        cardsEl.innerHTML += renderReverseImageCard(imageUrl);
+      }
     }
 
     // AI Analysis
@@ -5217,6 +5432,21 @@
 
       reconCollected.portscan = await runModule(logEl, cardsEl, t0,
         `Port scan on "${target}"`, '/api/infra/portscan', { domain: target }, renderPortscanCard);
+
+      if (isModOn('Wayback Machine')) {
+        reconCollected.wayback = await runModule(logEl, cardsEl, t0,
+          `Wayback Machine lookup on "${target}"`, '/api/infra/wayback', { domain: target }, renderWaybackCard);
+      }
+
+      if (isModOn('Redirect Chain')) {
+        reconCollected.redirects = await runModule(logEl, cardsEl, t0,
+          `Redirect chain trace on "${target}"`, '/api/infra/redirects', { target }, renderRedirectChainCard);
+      }
+
+      if (isModOn('Tech Fingerprint')) {
+        reconCollected.techfp = await runModule(logEl, cardsEl, t0,
+          `Tech fingerprint on "${target}"`, '/api/infra/techfingerprint', { domain: target }, renderTechFingerprintCard);
+      }
 
       if (isModOn('Shodan') && getKey('shodan')) {
         reconCollected.shodan = await runModuleWithKey(logEl, cardsEl, t0,
