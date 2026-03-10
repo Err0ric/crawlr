@@ -240,7 +240,7 @@
 
   .header-divider { width: 1px; height: 20px; background: var(--border-mid); margin: 0 20px; }
 
-  .header-nav { display: flex; height: 100%; }
+  .header-nav { display: flex; height: 100%; position: absolute; left: 50%; top: 50%; transform: translateX(-50%) translateY(-50%); }
 
   .hnav {
     display: flex;
@@ -1299,10 +1299,12 @@
 </div>
 
 <div id="landingPage" style="position:fixed;inset:0;top:56px;z-index:50;background:var(--bg);overflow:hidden;">
-  <div style="position:absolute;top:28%;left:50%;transform:translate(-50%,-50%);pointer-events:none;user-select:none;white-space:nowrap;">
+  <div style="position:absolute;top:28%;left:50%;transform:translate(-50%,-50%);pointer-events:none;user-select:none;white-space:nowrap;text-align:center;">
     <span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(80px,12vw,180px);letter-spacing:0.15em;color:var(--text-bright);opacity:0.04;line-height:1;">Crawl</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:clamp(80px,12vw,180px);letter-spacing:0.15em;color:var(--red);opacity:0.06;line-height:1;">R</span>
   </div>
   <div style="position:absolute;top:52%;left:50%;transform:translate(-50%,0);display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:720px;padding:0 24px;">
+    <div style="text-align:center; margin-bottom:10px; font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:5px; color:rgba(110,95,153,0.55); text-transform:uppercase;">OSINT PLATFORM</div>
+    <div style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:14px; font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; color:rgba(80,65,120,0.5); text-transform:uppercase;">USERNAME <span style="opacity:0.3">·</span> EMAIL <span style="opacity:0.3">·</span> DOMAIN <span style="opacity:0.3">·</span> IP <span style="opacity:0.3">·</span> ASN <span style="opacity:0.3">·</span> HASH <span style="opacity:0.3">·</span> EMAIL HEADERS</div>
     <div id="landingInputWrap" style="position:relative;display:flex;width:100%;gap:0;align-items:stretch;">
       <div style="position:relative;flex:1;display:flex;align-items:center;">
         <input id="landingInput" type="text" placeholder="target, hash, domain, or paste headers..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
@@ -1317,10 +1319,6 @@
       <div id="landingDropdown" style="display:none;position:absolute;top:100%;left:0;width:100%;z-index:9999;background:var(--bg2);border:1px solid var(--border-mid);border-radius:4px;margin-top:4px;max-height:320px;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,0.5);"></div>
     </div>
     <div id="landingMultiCount" style="display:none;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);text-align:center;"></div>
-    <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-mid);letter-spacing:0.06em;opacity:0.5;">OSINT investigation platform</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:2px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.08em;color:var(--text-mid);opacity:0.5;">
-      <span>USERNAME</span><span>EMAIL</span><span>DOMAIN</span><span>IP</span><span>ASN</span><span>HASH</span><span>EMAIL HEADERS</span>
-    </div>
   </div>
 </div>
 
