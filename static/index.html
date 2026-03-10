@@ -240,7 +240,9 @@
 
   .header-divider { width: 1px; height: 20px; background: var(--border-mid); margin: 0 20px; }
 
-  .header-nav { display: flex; height: 100%; position: absolute; left: 50%; top: 50%; transform: translateX(-50%) translateY(-50%); }
+  .header-nav { display: flex; align-items: center; justify-content: center; flex: 1; gap: 0; }
+  .nav-group { display: flex; align-items: center; }
+  .nav-tools { margin-left: 60px; padding-left: 60px; border-left: 1px solid rgba(61, 45, 106, 0.5); }
 
   .hnav {
     display: flex;
@@ -1269,11 +1271,15 @@
   </div>
   <div class="header-divider"></div>
   <div class="header-nav">
-    <div class="hnav" onclick="switchMode('investigate')">Investigate<span class="hnav-sub">people &amp; identity</span></div>
-    <div class="hnav" onclick="switchMode('recon')">Recon<span class="hnav-sub">infrastructure</span></div>
-    <div class="hnav" onclick="switchMode('headers')" style="border-left:1px solid var(--border-mid);margin-left:8px;padding-left:16px;">Headers<span class="hnav-sub">email analysis</span></div>
-    <div class="hnav" onclick="switchMode('dorks')">Dorks<span class="hnav-sub">search builder</span></div>
-    <div class="hnav" onclick="switchMode('decoders')">Decoders<span class="hnav-sub">encode · decode · hash</span></div>
+    <div class="nav-group nav-intel">
+      <div class="hnav" onclick="switchMode('investigate')">Investigate<span class="hnav-sub">people &amp; identity</span></div>
+      <div class="hnav" onclick="switchMode('recon')">Recon<span class="hnav-sub">infrastructure</span></div>
+    </div>
+    <div class="nav-group nav-tools">
+      <div class="hnav" onclick="switchMode('headers')">Headers<span class="hnav-sub">email analysis</span></div>
+      <div class="hnav" onclick="switchMode('dorks')">Dorks<span class="hnav-sub">search builder</span></div>
+      <div class="hnav" onclick="switchMode('decoders')">Decoders<span class="hnav-sub">encode · decode · hash</span></div>
+    </div>
   </div>
   <div class="header-right">
     <div class="gear-btn" onclick="toggleSettingsPanel()" title="Settings">⚙</div>
