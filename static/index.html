@@ -349,8 +349,8 @@
     position: relative;
   }
 
-  .sb-toggle { position: absolute; top: 8px; right: 6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-dim); font-size: 10px; z-index: 5; border-radius: 3px; transition: all 0.15s; }
-  .sb-toggle:hover { color: var(--text-mid); background: var(--bg3); }
+  .sb-toggle { position: absolute; top: 8px; right: 6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #16a34a; font-size: 13px; z-index: 5; border-radius: 3px; transition: all 0.15s; }
+  .sb-toggle:hover { color: #a855f7; background: var(--bg3); }
 
   .sb-collapsed .sidebar .pane,
   .sb-collapsed .sidebar .mod-scroll,
@@ -812,7 +812,19 @@
   .floating-notes.minimized .fn-tabs,
   .floating-notes.minimized .fn-body,
   .floating-notes.minimized .fn-resize-handle { display: none; }
-  .floating-notes.minimized { height: auto; min-height: 0; }
+  .floating-notes.minimized {
+    height: auto;
+    min-height: 0;
+    background: var(--bg3) !important;
+    border: 1px solid #a855f7 !important;
+    border-radius: 6px 6px 0 0;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    left: auto;
+    top: auto;
+    width: 280px;
+  }
   .floating-notes .fn-header {
     display: flex;
     align-items: center;
@@ -1364,7 +1376,6 @@
       <div class="tab" id="aiReportTab" onclick="setTab(this,'aiReport')" style="display:none;">AI REPORT</div>
       <div class="tab-spacer"></div>
       <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
-      <button class="action-btn">Clear</button>
     </div>
 
     <div class="content" id="content">
@@ -1397,7 +1408,7 @@
 
     <div class="statusbar">
       <div class="sbi"><div class="sbd" style="background:var(--success)"></div><span>READY</span></div>
-      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>6 MODULES</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span id="investigateModuleCount">6 MODULES</span></div>
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0</span></div>
       <div class="sbi"><span style="cursor:pointer;text-decoration:underline;color:var(--text-dim)" onclick="showTerms()">Terms</span></div>
       <div class="sbi" style="margin-left:auto"><span id="clock"></span></div>
@@ -1502,7 +1513,7 @@
 
     <div class="statusbar">
       <div class="sbi"><div class="sbd" style="background:var(--success)"></div><span>RECON READY</span></div>
-      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>9 MODULES</span></div>
+      <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span id="reconModuleCount">9 MODULES</span></div>
       <div class="sbi"><div class="sbd" style="background:var(--border-mid)"></div><span>v0.1.0</span></div>
       <div class="sbi" style="margin-left:auto"><span id="reconClock"></span></div>
     </div>
@@ -1733,7 +1744,17 @@
     return matchCount >= 3;
   }
 
+  function updateModuleCounts() {
+    const invMods = document.querySelectorAll('#investigateWorkspace .mod');
+    const invEl = document.getElementById('investigateModuleCount');
+    if (invEl) invEl.textContent = invMods.length + ' MODULES';
+    const reconMods = document.querySelectorAll('#reconWorkspace .mod');
+    const reconEl = document.getElementById('reconModuleCount');
+    if (reconEl) reconEl.textContent = reconMods.length + ' MODULES';
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
+    updateModuleCounts();
     const targetEl = document.getElementById('targetInput');
     if (targetEl) {
       targetEl.addEventListener('paste', (e) => {
