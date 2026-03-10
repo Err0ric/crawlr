@@ -1271,7 +1271,8 @@
   <div class="header-nav">
     <div class="hnav" onclick="switchMode('investigate')">Investigate<span class="hnav-sub">people &amp; identity</span></div>
     <div class="hnav" onclick="switchMode('recon')">Recon<span class="hnav-sub">infrastructure</span></div>
-    <div class="hnav" onclick="switchMode('dorks')">Dorks<span class="hnav-sub">search builder</span></div>
+    <div class="hnav" onclick="switchMode('dorks')" style="border-left:1px solid var(--border-mid);margin-left:6px;padding-left:14px;">Dorks<span class="hnav-sub">search builder</span></div>
+    <div class="hnav" onclick="switchMode('decoders')">Decoders<span class="hnav-sub">encode · decode · hash</span></div>
     <div class="hnav" onclick="switchMode('headers')">Headers<span class="hnav-sub">email analyzer</span></div>
   </div>
   <div class="header-right">
@@ -1599,21 +1600,76 @@
         </button>
       </div>
 
-      <div style="border-top:1px solid var(--border-hi);margin:28px 0 20px;"></div>
+    </div>
+  </div>
+</div>
 
-      <div style="margin-top:20px;padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
-        <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">VIN Lookup // Decodes Year / Make / Model</label>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
-            oninput="this.value=this.value.toUpperCase()"
-            onkeydown="if(event.key==='Enter') vinLookup()"
-            style="flex:1; background:var(--bg1); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none; letter-spacing:1px;" />
-          <button onclick="vinLookup()"
-            style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
-            DECODE
-          </button>
+<div id="decodersWorkspace" class="workspace" style="display:none; flex-direction:column; height:calc(100vh - 56px); overflow:hidden;">
+  <div class="main" style="flex:1; overflow-y:auto; padding:28px 60px;">
+    <div style="max-width:960px; margin:0 auto;">
+
+      <div style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-family:'Share Tech Mono',monospace; color:var(--text-dim); font-size:11px; letter-spacing:2px;">// DECODERS</div>
+          <button class="notes-detach-btn" onclick="detachNotes()">// NOTES</button>
         </div>
-        <div id="dbVinResult" style="display:none; margin-top:10px; font-family:'Share Tech Mono',monospace; font-size:12px; padding:8px 12px; border-radius:5px; background:var(--bg1);"></div>
+        <div style="color:var(--text-bright); font-size:15px; font-weight:500;">Encode, decode, hash, and lookup utilities.</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+        <!-- Base64 Encoder/Decoder -->
+        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">Base64 // Encode &amp; Decode</label>
+          <textarea id="decBase64Input" placeholder="Enter text or Base64 string..." rows="3"
+            style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border-hi);border-radius:6px;padding:10px 14px;color:var(--text-bright);font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;resize:vertical;outline:none;"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button onclick="decBase64('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
+            <button onclick="decBase64('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
+          </div>
+          <div id="decBase64Result" style="display:none;margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:11px;padding:8px 12px;border-radius:5px;background:var(--bg1);color:var(--text-bright);word-break:break-all;max-height:120px;overflow-y:auto;"></div>
+        </div>
+
+        <!-- URL Encoder/Decoder -->
+        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">URL // Encode &amp; Decode</label>
+          <textarea id="decUrlInput" placeholder="Enter URL or encoded string..." rows="3"
+            style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border-hi);border-radius:6px;padding:10px 14px;color:var(--text-bright);font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;resize:vertical;outline:none;"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button onclick="decUrl('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
+            <button onclick="decUrl('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
+          </div>
+          <div id="decUrlResult" style="display:none;margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:11px;padding:8px 12px;border-radius:5px;background:var(--bg1);color:var(--text-bright);word-break:break-all;max-height:120px;overflow-y:auto;"></div>
+        </div>
+
+        <!-- Hash Generator -->
+        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">Hash Generator // MD5 · SHA-1 · SHA-256</label>
+          <input id="decHashInput" type="text" placeholder="Enter text to hash..." autocomplete="off"
+            onkeydown="if(event.key==='Enter') decHashGenerate()"
+            style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border-hi);border-radius:6px;padding:10px 14px;color:var(--text-bright);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;" />
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button onclick="decHashGenerate()" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:6px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">GENERATE</button>
+          </div>
+          <div id="decHashResult" style="display:none;margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:10px;padding:8px 12px;border-radius:5px;background:var(--bg1);color:var(--text-bright);line-height:1.8;word-break:break-all;"></div>
+        </div>
+
+        <!-- VIN Lookup -->
+        <div style="padding:16px 18px; background:var(--bg2); border:1px solid var(--border); border-radius:8px;">
+          <label style="display:block; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; margin-bottom:10px; text-transform:uppercase;">VIN Lookup // Decodes Year / Make / Model</label>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
+              oninput="this.value=this.value.toUpperCase()"
+              onkeydown="if(event.key==='Enter') vinLookup()"
+              style="flex:1; background:var(--bg1); border:1px solid var(--border-hi); border-radius:6px; padding:10px 14px; color:var(--text-bright); font-family:'Share Tech Mono',monospace; font-size:13px; outline:none; letter-spacing:1px;" />
+            <button onclick="vinLookup()"
+              style="background:var(--bg3); color:var(--text); border:1px solid var(--border-mid); border-radius:6px; padding:10px 16px; font-family:'Share Tech Mono',monospace; font-size:12px; cursor:pointer; white-space:nowrap;">
+              DECODE
+            </button>
+          </div>
+          <div id="dbVinResult" style="display:none; margin-top:10px; font-family:'Share Tech Mono',monospace; font-size:12px; padding:8px 12px; border-radius:5px; background:var(--bg1);"></div>
+        </div>
+
       </div>
 
     </div>
@@ -1997,6 +2053,8 @@
   });
 
   // Type detection badge
+  const _KNOWN_TLDS = new Set(['com','org','net','edu','gov','mil','int','io','co','dev','app','ai','me','us','uk','ca','au','de','fr','it','es','nl','br','ru','cn','jp','kr','in','za','mx','ar','cl','se','no','fi','dk','pl','cz','at','ch','be','pt','ie','nz','sg','hk','tw','ph','th','id','my','vn','ae','sa','il','tr','gr','ro','hu','bg','hr','sk','si','lt','lv','ee','is','lu','mt','cy','info','biz','name','pro','museum','coop','aero','cat','jobs','mobi','tel','travel','asia','post','xxx','xyz','online','site','store','tech','space','fun','icu','top','wang','club','vip','shop','work','ltd','group','live','cloud','digital','world','center','network','systems','solutions','agency','media','design','studio','email','zone','guru','ninja','rocks','lol','wtf']);
+
   function detectTargetType(val) {
     if (!val) return null;
     if (val.includes(',')) return { type: 'MULTI', color: 'var(--text-mid)' };
@@ -2005,7 +2063,12 @@
     if (/^AS\d+$/i.test(val)) return { type: 'ASN', color: '#f59e0b' };
     if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(val)) return { type: 'IP', color: '#f59e0b' };
     if (/^[a-f0-9]{32,64}$/i.test(val)) return { type: 'HASH', color: '#ef4444' };
-    if (val.includes('.') && !val.includes(' ') && !val.includes('@')) return { type: 'DOMAIN', color: '#0ea5e9' };
+    if (val.includes('.') && !val.includes(' ') && !val.includes('@')) {
+      const parts = val.replace(/^https?:\/\//, '').split('/')[0].split('.');
+      const tld = parts[parts.length - 1].toLowerCase();
+      if (_KNOWN_TLDS.has(tld)) return { type: 'DOMAIN', color: '#0ea5e9' };
+      return { type: 'USERNAME', color: '#16a34a' };
+    }
     return { type: 'USERNAME', color: '#16a34a' };
   }
 
@@ -5169,6 +5232,7 @@
     document.getElementById('investigateWorkspace').style.display = 'none';
     document.getElementById('reconWorkspace').style.display = 'none';
     document.getElementById('dorksWorkspace').style.display = 'none';
+    document.getElementById('decodersWorkspace').style.display = 'none';
     document.getElementById('headersWorkspace').style.display = 'none';
     document.getElementById('historyWorkspace').style.display = 'none';
     const het = document.getElementById('historyEdgeTab');
@@ -5191,6 +5255,7 @@
     document.getElementById('investigateWorkspace').style.display = 'none';
     document.getElementById('reconWorkspace').style.display = 'none';
     document.getElementById('dorksWorkspace').style.display = 'none';
+    document.getElementById('decodersWorkspace').style.display = 'none';
     document.getElementById('headersWorkspace').style.display = 'none';
     document.getElementById('historyWorkspace').style.display = 'none';
     const mobileBtn = document.getElementById('mobileModulesBtn');
@@ -5203,8 +5268,12 @@
       document.getElementById('dorksWorkspace').style.display = 'flex';
       _initDorkPlatforms();
       if (mobileBtn) mobileBtn.style.display = 'none';
-    } else if (mode === 'headers') {
+    } else if (mode === 'decoders') {
       document.querySelectorAll('.hnav')[3].classList.add('active');
+      document.getElementById('decodersWorkspace').style.display = 'flex';
+      if (mobileBtn) mobileBtn.style.display = 'none';
+    } else if (mode === 'headers') {
+      document.querySelectorAll('.hnav')[4].classList.add('active');
       document.getElementById('headersWorkspace').style.display = 'flex';
       if (mobileBtn) mobileBtn.style.display = 'none';
       // Fresh state unless prefilling from auto-detect
@@ -6542,6 +6611,118 @@
     } catch (e) {
       resultEl.innerHTML = '<span style="color:var(--red);">Failed to decode VIN — check format and try again</span>';
     }
+  }
+
+  // ── Decoder utilities ──
+  function decBase64(action) {
+    const input = document.getElementById('decBase64Input').value;
+    const el = document.getElementById('decBase64Result');
+    el.style.display = 'block';
+    try {
+      if (action === 'encode') {
+        el.textContent = btoa(unescape(encodeURIComponent(input)));
+      } else {
+        el.textContent = decodeURIComponent(escape(atob(input.trim())));
+      }
+    } catch (e) {
+      el.innerHTML = '<span style="color:var(--red);">Invalid input — ' + (action === 'decode' ? 'not valid Base64' : 'encoding failed') + '</span>';
+    }
+  }
+
+  function decUrl(action) {
+    const input = document.getElementById('decUrlInput').value;
+    const el = document.getElementById('decUrlResult');
+    el.style.display = 'block';
+    try {
+      el.textContent = action === 'encode' ? encodeURIComponent(input) : decodeURIComponent(input);
+    } catch (e) {
+      el.innerHTML = '<span style="color:var(--red);">Invalid input</span>';
+    }
+  }
+
+  async function decHashGenerate() {
+    const input = document.getElementById('decHashInput').value;
+    const el = document.getElementById('decHashResult');
+    if (!input) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.innerHTML = '<span style="color:var(--text-mid);">Generating...</span>';
+    const enc = new TextEncoder().encode(input);
+    try {
+      const sha256Buf = await crypto.subtle.digest('SHA-256', enc);
+      const sha1Buf = await crypto.subtle.digest('SHA-1', enc);
+      const sha256 = Array.from(new Uint8Array(sha256Buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const sha1 = Array.from(new Uint8Array(sha1Buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const md5 = _md5(input);
+      el.innerHTML =
+        '<span style="color:var(--text-dim);">MD5:</span> ' + md5 + '<br>' +
+        '<span style="color:var(--text-dim);">SHA-1:</span> ' + sha1 + '<br>' +
+        '<span style="color:var(--text-dim);">SHA-256:</span> ' + sha256;
+    } catch (e) {
+      el.innerHTML = '<span style="color:var(--red);">Hash generation failed</span>';
+    }
+  }
+
+  // Inline MD5 implementation (SubtleCrypto doesn't support MD5)
+  function _md5(s) {
+    function md5cycle(x, k) {
+      var a = x[0], b = x[1], c = x[2], d = x[3];
+      a = ff(a, b, c, d, k[0], 7, -680876936); d = ff(d, a, b, c, k[1], 12, -389564586);
+      c = ff(c, d, a, b, k[2], 17, 606105819); b = ff(b, c, d, a, k[3], 22, -1044525330);
+      a = ff(a, b, c, d, k[4], 7, -176418897); d = ff(d, a, b, c, k[5], 12, 1200080426);
+      c = ff(c, d, a, b, k[6], 17, -1473231341); b = ff(b, c, d, a, k[7], 22, -45705983);
+      a = ff(a, b, c, d, k[8], 7, 1770035416); d = ff(d, a, b, c, k[9], 12, -1958414417);
+      c = ff(c, d, a, b, k[10], 17, -42063); b = ff(b, c, d, a, k[11], 22, -1990404162);
+      a = ff(a, b, c, d, k[12], 7, 1804603682); d = ff(d, a, b, c, k[13], 12, -40341101);
+      c = ff(c, d, a, b, k[14], 17, -1502002290); b = ff(b, c, d, a, k[15], 22, 1236535329);
+      a = gg(a, b, c, d, k[1], 5, -165796510); d = gg(d, a, b, c, k[6], 9, -1069501632);
+      c = gg(c, d, a, b, k[11], 14, 643717713); b = gg(b, c, d, a, k[0], 20, -373897302);
+      a = gg(a, b, c, d, k[5], 5, -701558691); d = gg(d, a, b, c, k[10], 9, 38016083);
+      c = gg(c, d, a, b, k[15], 14, -660478335); b = gg(b, c, d, a, k[4], 20, -405537848);
+      a = gg(a, b, c, d, k[9], 5, 568446438); d = gg(d, a, b, c, k[14], 9, -1019803690);
+      c = gg(c, d, a, b, k[3], 14, -187363961); b = gg(b, c, d, a, k[8], 20, 1163531501);
+      a = gg(a, b, c, d, k[13], 5, -1444681467); d = gg(d, a, b, c, k[2], 9, -51403784);
+      c = gg(c, d, a, b, k[7], 14, 1735328473); b = gg(b, c, d, a, k[12], 20, -1926607734);
+      a = hh(a, b, c, d, k[5], 4, -378558); d = hh(d, a, b, c, k[8], 11, -2022574463);
+      c = hh(c, d, a, b, k[11], 16, 1839030562); b = hh(b, c, d, a, k[14], 23, -35309556);
+      a = hh(a, b, c, d, k[1], 4, -1530992060); d = hh(d, a, b, c, k[4], 11, 1272893353);
+      c = hh(c, d, a, b, k[7], 16, -155497632); b = hh(b, c, d, a, k[10], 23, -1094730640);
+      a = hh(a, b, c, d, k[13], 4, 681279174); d = hh(d, a, b, c, k[0], 11, -358537222);
+      c = hh(c, d, a, b, k[3], 16, -722521979); b = hh(b, c, d, a, k[6], 23, 76029189);
+      a = hh(a, b, c, d, k[9], 4, -640364487); d = hh(d, a, b, c, k[12], 11, -421815835);
+      c = hh(c, d, a, b, k[15], 16, 530742520); b = hh(b, c, d, a, k[2], 23, -995338651);
+      a = ii(a, b, c, d, k[0], 6, -198630844); d = ii(d, a, b, c, k[7], 10, 1126891415);
+      c = ii(c, d, a, b, k[14], 15, -1416354905); b = ii(b, c, d, a, k[5], 21, -57434055);
+      a = ii(a, b, c, d, k[12], 6, 1700485571); d = ii(d, a, b, c, k[3], 10, -1894986606);
+      c = ii(c, d, a, b, k[10], 15, -1051523); b = ii(b, c, d, a, k[1], 21, -2054922799);
+      a = ii(a, b, c, d, k[8], 6, 1873313359); d = ii(d, a, b, c, k[15], 10, -30611744);
+      c = ii(c, d, a, b, k[6], 15, -1560198380); b = ii(b, c, d, a, k[13], 21, 1309151649);
+      a = ii(a, b, c, d, k[4], 6, -145523070); d = ii(d, a, b, c, k[11], 10, -1120210379);
+      c = ii(c, d, a, b, k[2], 15, 718787259); b = ii(b, c, d, a, k[9], 21, -343485551);
+      x[0] = add32(a, x[0]); x[1] = add32(b, x[1]); x[2] = add32(c, x[2]); x[3] = add32(d, x[3]);
+    }
+    function cmn(q, a, b, x, s, t) { a = add32(add32(a, q), add32(x, t)); return add32((a << s) | (a >>> (32 - s)), b); }
+    function ff(a, b, c, d, x, s, t) { return cmn((b & c) | ((~b) & d), a, b, x, s, t); }
+    function gg(a, b, c, d, x, s, t) { return cmn((b & d) | (c & (~d)), a, b, x, s, t); }
+    function hh(a, b, c, d, x, s, t) { return cmn(b ^ c ^ d, a, b, x, s, t); }
+    function ii(a, b, c, d, x, s, t) { return cmn(c ^ (b | (~d)), a, b, x, s, t); }
+    function md5blk(s) {
+      var md5blks = [], i;
+      for (i = 0; i < 64; i += 4) md5blks[i >> 2] = s.charCodeAt(i) + (s.charCodeAt(i + 1) << 8) + (s.charCodeAt(i + 2) << 16) + (s.charCodeAt(i + 3) << 24);
+      return md5blks;
+    }
+    function add32(a, b) { return (a + b) & 0xFFFFFFFF; }
+    var n = s.length, state = [1732584193, -271733879, -1732584194, 271733878], i;
+    for (i = 64; i <= n; i += 64) md5cycle(state, md5blk(s.substring(i - 64, i)));
+    s = s.substring(i - 64);
+    var tail = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    for (i = 0; i < s.length; i++) tail[i >> 2] |= s.charCodeAt(i) << ((i % 4) << 3);
+    tail[i >> 2] |= 0x80 << ((i % 4) << 3);
+    if (i > 55) { md5cycle(state, tail); tail = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]; }
+    tail[14] = n * 8;
+    md5cycle(state, tail);
+    var hex = '';
+    for (i = 0; i < 4; i++) for (var j = 0; j < 4; j++) hex += ('0' + ((state[i] >> (j * 8)) & 0xFF).toString(16)).slice(-2);
+    return hex;
   }
 
   function renderSettings() {
