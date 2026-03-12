@@ -1203,7 +1203,7 @@
     <div class="modal-eye">// Deep Dive Analysis</div>
     <div class="modal-title">Confirm Deep Dive</div>
     <div class="modal-sub" style="line-height:1.8;margin-bottom:12px;">
-      This will <strong style="color:#f59e0b">actively visit</strong> discovered profile URLs to scrape display names, bios, emails, and linked accounts, then send all data to Claude for cross-platform identity correlation.
+      This will <strong style="color:#f59e0b">actively visit</strong> discovered profile URLs to scrape display names, bios, emails, and linked accounts, then send all data to <span id="ddProviderName">Claude</span> for cross-platform identity correlation.
     </div>
     <div style="background:var(--bg3);border:1px solid var(--border-mid);border-radius:3px;padding:12px 14px;margin-bottom:14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);line-height:1.8;">
       <div style="color:#f59e0b;margin-bottom:4px;letter-spacing:1px;">⚠ ACTIVE TECHNIQUE</div>
@@ -1225,7 +1225,7 @@
   <div class="modal" style="max-width:420px;">
     <div class="modal-eye">// DEEP ANALYSIS</div>
     <div class="modal-title">Extended AI Analysis</div>
-    <div class="modal-sub" style="line-height:1.6;margin-bottom:12px;">This will send all recon data to Claude for deep analysis. Estimated usage: 2,000–3,000 tokens from your API key.</div>
+    <div class="modal-sub" style="line-height:1.6;margin-bottom:12px;">This will send all recon data to <span id="daProviderName">Claude</span> for deep analysis. Estimated usage: 2,000–3,000 tokens from your API key.</div>
     <div class="modal-actions">
       <button class="modal-primary" style="background:rgba(245,158,11,0.1);border-color:#f59e0b;" onclick="confirmDeepAnalysis()">Run Deep Analysis</button>
       <button class="modal-secondary" onclick="closeDeepAnalysis()">Cancel</button>
@@ -3692,10 +3692,11 @@
     }
     const apiKey = getApiKey();
     if (!apiKey) {
-      showToast('Set your Claude API key in Settings first');
+      showToast('Set your API key in Settings first');
       return;
     }
     document.getElementById('ddTokens').textContent = `~${_estimateDeepDiveTokens()} (${Math.min(urls.length, 20)} profiles)`;
+    document.getElementById('ddProviderName').textContent = getAiProvider() === 'gemini' ? 'Gemini' : 'Claude';
     document.getElementById('deepDiveOverlay').classList.add('open');
   }
 
@@ -3733,7 +3734,7 @@
       ddResults.innerHTML = renderProfileScrapeCard(scrapeData);
 
       // Step 2: Run Deep Dive AI analysis
-      ddResults.innerHTML += '<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">⏳ Sending to Claude for deep correlation...</div>';
+      ddResults.innerHTML += `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">⏳ Sending to ${getAiProvider() === 'gemini' ? 'Gemini' : 'Claude'} for deep correlation...</div>`;
 
       const aiResp = await fetch('/api/analyze/deep-dive', {
         method: 'POST',
@@ -4204,7 +4205,7 @@
     const apiKey = getApiKey();
     const hasResults = Object.values(collected).some(v => v);
     if (apiKey && hasResults) {
-      const aiRow = addLogRow(logEl, 'Sending results to Claude for analysis...', 'run');
+      const aiRow = addLogRow(logEl, `Sending results to ${getAiProvider() === 'gemini' ? 'Gemini' : 'Claude'} for analysis...`, 'run');
       const aiTimer = setInterval(() => setLogTime(aiRow, (performance.now() - t0) / 1000), 200);
       try {
         // Merge sherlock + maigret results, deduplicating by URL
@@ -4527,7 +4528,7 @@
       } else if (!apiKey && hasMultipleResults) {
         const noKeyNote = document.createElement('div');
         noKeyNote.style.cssText = 'font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:10px 14px;border:1px solid var(--border-mid);border-radius:4px;margin-bottom:12px;';
-        noKeyNote.textContent = 'Cross-target correlation available — set Claude API key in Settings';
+        noKeyNote.textContent = 'Cross-target correlation available — set API key in Settings';
         res.insertBefore(noKeyNote, res.firstChild);
       }
 
@@ -5835,7 +5836,7 @@
     let reconTokens = 0;
     const apiKey = getApiKey();
     if (apiKey) {
-      const aiRow = addLogRow(logEl, 'Sending recon data to Claude for analysis...', 'run');
+      const aiRow = addLogRow(logEl, `Sending recon data to ${getAiProvider() === 'gemini' ? 'Gemini' : 'Claude'} for analysis...`, 'run');
       const aiTimer = setInterval(() => setLogTime(aiRow, (performance.now() - t0) / 1000), 200);
       try {
         const resp = await fetch('/api/infra/summarize', {
@@ -5899,9 +5900,10 @@
 
   function showDeepAnalysisModal() {
     const apiKey = getApiKey();
-    if (!apiKey) { showToast('Set your Claude API key in Settings first'); return; }
+    if (!apiKey) { showToast('Set your API key in Settings first'); return; }
     const target = document.getElementById('reconTargetInput').value.trim();
     if (!target || !Object.keys(reconCollected).length) { showToast('Run a recon scan first'); return; }
+    document.getElementById('daProviderName').textContent = getAiProvider() === 'gemini' ? 'Gemini' : 'Claude';
     document.getElementById('deepAnalysisOverlay').classList.add('open');
   }
   function closeDeepAnalysis() { document.getElementById('deepAnalysisOverlay').classList.remove('open'); }
@@ -5909,7 +5911,7 @@
 
   async function runDeepAnalysis() {
     const apiKey = getApiKey();
-    if (!apiKey) { showToast('Set your Claude API key in Settings first'); return; }
+    if (!apiKey) { showToast('Set your API key in Settings first'); return; }
     const target = document.getElementById('reconTargetInput').value.trim();
     if (!target || !Object.keys(reconCollected).length) { showToast('Run a recon scan first'); return; }
 
@@ -5917,7 +5919,7 @@
     const resultEl = document.getElementById('deepAnalysisResult');
     btn.textContent = '⏳ ANALYZING...';
     btn.style.pointerEvents = 'none';
-    resultEl.innerHTML = '<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">Sending recon data to Claude for deep analysis...</div>';
+    resultEl.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">Sending recon data to ${getAiProvider() === 'gemini' ? 'Gemini' : 'Claude'} for deep analysis...</div>`;
 
     try {
       const resp = await fetch('/api/analyze/deep', {
@@ -6340,9 +6342,9 @@
     { id: 'numlookup', label: 'NumLookup', storageKey: 'cs_numlookup_key', placeholder: 'numlookup-api-key...', hint: 'numlookupapi.com', helper: 'Enables carrier, location, and line type data for phone number lookups' },
   ];
 
-  // Migrate old key format
+  // Migrate old key formats
   (function migrateKeys() {
-    const oldKey = localStorage.getItem('cs_key') || sessionStorage.getItem('cs_key');
+    const oldKey = localStorage.getItem('crawlr_api_key') || localStorage.getItem('cs_key') || sessionStorage.getItem('cs_key');
     if (oldKey && !localStorage.getItem('crawlr_anthropic_key')) {
       localStorage.setItem('crawlr_anthropic_key', oldKey);
       if (!localStorage.getItem('crawlr_ai_provider')) localStorage.setItem('crawlr_ai_provider', 'anthropic');
