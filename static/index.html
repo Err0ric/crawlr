@@ -1174,16 +1174,20 @@
 
 <div class="overlay" id="overlay">
   <div class="modal">
-    <div class="modal-eye">// Claude API Key</div>
+    <div class="modal-eye">// AI Provider</div>
     <div class="modal-title">Set API Key</div>
     <div class="modal-sub">Used for AI Analysis, identity summaries, and Deep Dive reports.<br>Your key is stored in your browser only — never transmitted to this server.</div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-mid);margin-bottom:18px;line-height:1.6;"><span style="color:var(--success);">✓</span> FREE modules always work · <span style="color:var(--amber-bright);">KEY</span> unlocks AI Analysis + Deep Dive</div>
+    <div style="display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border-mid);border-radius:4px;overflow:hidden;">
+      <button id="providerBtnAnthropic" onclick="setProvider('anthropic')" style="flex:1;padding:8px 0;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;cursor:pointer;border:none;transition:all 0.15s;background:var(--red);color:#fff;">ANTHROPIC</button>
+      <button id="providerBtnGemini" onclick="setProvider('gemini')" style="flex:1;padding:8px 0;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;cursor:pointer;border:none;transition:all 0.15s;background:var(--bg3);color:var(--text-dim);">GEMINI</button>
+    </div>
     <input class="modal-input" type="password" id="keyInput" placeholder="sk-ant-api03-..." />
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);">
       <input type="checkbox" id="rememberKey" style="accent-color:var(--red);cursor:pointer;" />
       Remember my API key on this device
     </label>
-    <div class="modal-note">
+    <div class="modal-note" id="keyModalHint">
       No key? Get one at <a href="#">console.anthropic.com →</a><br>
       Uncheck remember to clear key when you close your browser.
     </div>
@@ -2162,7 +2166,9 @@
 
   function openModal() {
     document.getElementById('overlay').classList.add('open');
-    document.getElementById('rememberKey').checked = !!localStorage.getItem('cs_key');
+    const p = getAiProvider();
+    setProvider(p);
+    document.getElementById('rememberKey').checked = !!(p === 'gemini' ? localStorage.getItem('crawlr_gemini_key') : localStorage.getItem('crawlr_anthropic_key') || localStorage.getItem('cs_key'));
   }
   function closeModal() { document.getElementById('overlay').classList.remove('open'); }
 
@@ -3161,7 +3167,7 @@
     try {
       const resp = await fetch('/api/analyze/email-headers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
         body: JSON.stringify({ header_analysis: data }),
       });
       if (!resp.ok) {
@@ -3701,7 +3707,7 @@
 
       const aiResp = await fetch('/api/analyze/deep-dive', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
         body: JSON.stringify({
           target,
           sherlock: c.sherlock,
@@ -4188,7 +4194,7 @@
 
         const resp = await fetch('/api/analyze/summarize', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
           body: JSON.stringify({
             target,
             sherlock: mergedSherlock,
@@ -4470,7 +4476,7 @@
           try {
             const corrResp = await fetch('/api/analyze/correlate', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+              headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
               body: JSON.stringify({ targets: window._bulkCorrelationData }),
             });
             if (!corrResp.ok) {
@@ -5804,7 +5810,7 @@
       try {
         const resp = await fetch('/api/infra/summarize', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
           body: JSON.stringify({
             target,
             dns: reconCollected.dns,
@@ -5886,7 +5892,7 @@
     try {
       const resp = await fetch('/api/analyze/deep', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
         body: JSON.stringify({
           target,
           dns: reconCollected.dns,
@@ -6295,13 +6301,27 @@
 
   // ── API Key Management ──
   const API_KEYS = [
-    { id: 'claude', label: 'Claude (Anthropic)', storageKey: 'cs_key', placeholder: 'sk-ant-api03-...', hint: 'console.anthropic.com' },
+    { id: 'claude', label: 'Claude (Anthropic)', storageKey: 'crawlr_anthropic_key', placeholder: 'sk-ant-api03-...', hint: 'console.anthropic.com' },
+    { id: 'gemini', label: 'Gemini (Google)', storageKey: 'crawlr_gemini_key', placeholder: 'AIza...', hint: 'aistudio.google.com/apikey' },
     { id: 'hibp', label: 'HIBP (Have I Been Pwned)', storageKey: 'cs_hibp_key', placeholder: 'hibp-api-key...', hint: 'haveibeenpwned.com/API/Key' },
     { id: 'hunter', label: 'Hunter.io', storageKey: 'cs_hunter_key', placeholder: 'hunter-api-key...', hint: 'hunter.io/api-keys' },
     { id: 'shodan', label: 'Shodan', storageKey: 'cs_shodan_key', placeholder: 'shodan-api-key...', hint: 'account.shodan.io' },
     { id: 'github', label: 'GitHub', storageKey: 'cs_github_key', placeholder: 'ghp_...', hint: 'github.com/settings/tokens', helper: 'Increases GitHub API rate limits during username investigation' },
     { id: 'numlookup', label: 'NumLookup', storageKey: 'cs_numlookup_key', placeholder: 'numlookup-api-key...', hint: 'numlookupapi.com', helper: 'Enables carrier, location, and line type data for phone number lookups' },
   ];
+
+  // Migrate old key format
+  (function migrateKeys() {
+    const oldKey = localStorage.getItem('cs_key') || sessionStorage.getItem('cs_key');
+    if (oldKey && !localStorage.getItem('crawlr_anthropic_key')) {
+      localStorage.setItem('crawlr_anthropic_key', oldKey);
+      if (!localStorage.getItem('crawlr_ai_provider')) localStorage.setItem('crawlr_ai_provider', 'anthropic');
+    }
+  })();
+
+  function getAiProvider() {
+    return localStorage.getItem('crawlr_ai_provider') || 'anthropic';
+  }
 
   function getKey(id) {
     const cfg = API_KEYS.find(k => k.id === id);
@@ -6314,23 +6334,68 @@
     if (value) localStorage.setItem(cfg.storageKey, value);
     else localStorage.removeItem(cfg.storageKey);
   }
-  // Keep getApiKey() working for Claude key
-  function getApiKey() { return getKey('claude'); }
+  // getApiKey returns the active provider's key
+  function getApiKey() {
+    const p = getAiProvider();
+    return p === 'gemini' ? getKey('gemini') : getKey('claude');
+  }
+
+  function updateKeyPill() {
+    const dot = document.getElementById('keyDot');
+    const label = document.getElementById('keyLabel');
+    const p = getAiProvider();
+    const key = getApiKey();
+    if (key) {
+      dot.classList.add('set');
+      label.textContent = p === 'gemini' ? 'GEMINI' : 'CLAUDE';
+    } else {
+      dot.classList.remove('set');
+      label.textContent = 'NO KEY';
+    }
+  }
+
+  function setProvider(p) {
+    localStorage.setItem('crawlr_ai_provider', p);
+    const btnA = document.getElementById('providerBtnAnthropic');
+    const btnG = document.getElementById('providerBtnGemini');
+    const input = document.getElementById('keyInput');
+    const hint = document.getElementById('keyModalHint');
+    if (p === 'gemini') {
+      btnG.style.background = 'var(--red)'; btnG.style.color = '#fff';
+      btnA.style.background = 'var(--bg3)'; btnA.style.color = 'var(--text-dim)';
+      input.placeholder = 'AIza...';
+      input.value = getKey('gemini') ? '••••••••' : '';
+      hint.innerHTML = 'No key? Get one at <a href="#">aistudio.google.com/apikey →</a><br>Uncheck remember to clear key when you close your browser.';
+    } else {
+      btnA.style.background = 'var(--red)'; btnA.style.color = '#fff';
+      btnG.style.background = 'var(--bg3)'; btnG.style.color = 'var(--text-dim)';
+      input.placeholder = 'sk-ant-api03-...';
+      input.value = getKey('claude') ? '••••••••' : '';
+      hint.innerHTML = 'No key? Get one at <a href="#">console.anthropic.com →</a><br>Uncheck remember to clear key when you close your browser.';
+    }
+    updateKeyPill();
+  }
 
   function saveKey() {
     const k = document.getElementById('keyInput').value;
-    if (k) {
+    if (k && k !== '••••••••') {
+      const p = getAiProvider();
+      const id = p === 'gemini' ? 'gemini' : 'claude';
       const remember = document.getElementById('rememberKey').checked;
+      const storageKey = API_KEYS.find(x => x.id === id).storageKey;
       if (remember) {
-        localStorage.setItem('cs_key', k);
-        sessionStorage.removeItem('cs_key');
+        localStorage.setItem(storageKey, k);
       } else {
-        sessionStorage.setItem('cs_key', k);
-        localStorage.removeItem('cs_key');
+        sessionStorage.setItem(storageKey, k);
+        localStorage.removeItem(storageKey);
       }
-      document.getElementById('keyDot').classList.add('set');
-      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
+      // Also keep old cs_key in sync for backward compat
+      if (id === 'claude') {
+        if (remember) { localStorage.setItem('cs_key', k); sessionStorage.removeItem('cs_key'); }
+        else { sessionStorage.setItem('cs_key', k); localStorage.removeItem('cs_key'); }
+      }
     }
+    updateKeyPill();
     closeModal();
   }
 
@@ -6769,10 +6834,7 @@
     }
     setKey(id, val);
     input.value = '••••••••';
-    if (id === 'claude') {
-      document.getElementById('keyDot').classList.add('set');
-      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
-    }
+    if (id === 'claude' || id === 'gemini') updateKeyPill();
     showToast(`${API_KEYS.find(k=>k.id===id).label} key saved`);
     renderSettings();
   }
@@ -6782,9 +6844,8 @@
     if (id === 'claude') {
       localStorage.removeItem('cs_key');
       sessionStorage.removeItem('cs_key');
-      document.getElementById('keyDot').classList.remove('set');
-      document.getElementById('keyLabel').textContent = 'NO KEY';
     }
+    if (id === 'claude' || id === 'gemini') updateKeyPill();
     showToast(`${API_KEYS.find(k=>k.id===id).label} key cleared`);
     renderSettings();
   }
@@ -6891,16 +6952,12 @@
     if (!localStorage.getItem('crawlr_terms_v1')) {
       showTerms();
     } else if (getApiKey()) {
-      document.getElementById('keyDot').classList.add('set');
-      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
+      updateKeyPill();
     } else {
       setTimeout(openModal, 500);
     }
 
-    if (getApiKey()) {
-      document.getElementById('keyDot').classList.add('set');
-      document.getElementById('keyLabel').textContent = 'KEY SET ✓';
-    }
+    updateKeyPill();
 
     // Focus landing input
     const li = document.getElementById('landingInput');

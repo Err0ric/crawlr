@@ -12,7 +12,7 @@ from modules.port_scan import run_portscan
 from modules.wayback import run_wayback
 from modules.redirect_chain import run_redirect_chain
 from modules.tech_fingerprint import run_tech_fingerprint
-import anthropic
+from modules.ai_provider import call_ai
 import httpx
 import json
 import time
@@ -171,9 +171,10 @@ async def tech_fingerprint_scan(req: DomainRequest):
 
 
 @router.post("/summarize")
-async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)):
+async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API key is required")
+    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
 
     prompt_parts = [f"Target domain/IP: {req.target}\n"]
 
@@ -310,11 +311,11 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
 
     recon_data = "\n".join(prompt_parts)
 
-    client = anthropic.Anthropic(api_key=x_api_key)
     t0 = time.time()
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    ai_resp = await call_ai(
+        api_key=x_api_key,
+        provider=provider,
         max_tokens=2048,
         messages=[
             {
@@ -351,8 +352,8 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = message.content[0].text
-    tokens = message.usage.input_tokens + message.usage.output_tokens
+    text = ai_resp["text"]
+    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
     try:
         parsed = json.loads(text)
@@ -366,7 +367,7 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
     return {
         "summary": full_report,
         "short_summary": short_summary,
-        "model": message.model,
+        "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
     }

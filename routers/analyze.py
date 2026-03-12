@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
-import anthropic
+from modules.ai_provider import call_ai
 import json
 import time
 
@@ -31,9 +31,10 @@ def ping():
 
 
 @router.post("/summarize")
-async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
+async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API key is required")
+    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
 
     prompt_parts = [f"Target: {req.target}\n"]
 
@@ -198,11 +199,11 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
 
     recon_data = "\n".join(prompt_parts)
 
-    client = anthropic.Anthropic(api_key=x_api_key)
     t0 = time.time()
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    ai_resp = await call_ai(
+        api_key=x_api_key,
+        provider=provider,
         max_tokens=2048,
         messages=[
             {
@@ -246,8 +247,8 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = message.content[0].text
-    tokens = message.usage.input_tokens + message.usage.output_tokens
+    text = ai_resp["text"]
+    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
     # Parse JSON response
     try:
@@ -263,16 +264,17 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...)):
     return {
         "summary": full_report,
         "short_summary": short_summary,
-        "model": message.model,
+        "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
     }
 
 
 @router.post("/deep-dive")
-async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...)):
+async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API key is required")
+    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
 
     # Build recon context (same data assembly as summarize)
     prompt_parts = [f"Target: {req.target}\n"]
@@ -367,11 +369,11 @@ async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...)):
     if scrape_section:
         recon_data += "\n" + scrape_section
 
-    client = anthropic.Anthropic(api_key=x_api_key)
     t0 = time.time()
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    ai_resp = await call_ai(
+        api_key=x_api_key,
+        provider=provider,
         max_tokens=2048,
         messages=[
             {
@@ -431,12 +433,12 @@ async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...)):
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = message.content[0].text
-    tokens = message.usage.input_tokens + message.usage.output_tokens
+    text = ai_resp["text"]
+    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
     return {
         "summary": text,
-        "model": message.model,
+        "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
     }
@@ -447,9 +449,10 @@ class EmailHeaderAnalyzeRequest(BaseModel):
 
 
 @router.post("/email-headers")
-async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: str = Header(...)):
+async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API key is required")
+    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
 
     data = req.header_analysis
     prompt_parts = []
@@ -509,11 +512,11 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: st
 
     header_data = "\n".join(prompt_parts)
 
-    client = anthropic.Anthropic(api_key=x_api_key)
     t0 = time.time()
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    ai_resp = await call_ai(
+        api_key=x_api_key,
+        provider=provider,
         max_tokens=1500,
         messages=[
             {
@@ -543,8 +546,8 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: st
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = message.content[0].text
-    tokens = message.usage.input_tokens + message.usage.output_tokens
+    text = ai_resp["text"]
+    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
     try:
         parsed = json.loads(text)
@@ -561,7 +564,7 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: st
         "verdict": parsed.get("verdict", "UNKNOWN"),
         "reasons": parsed.get("reasons", []),
         "next_steps": parsed.get("next_steps", []),
-        "model": message.model,
+        "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
     }
@@ -581,9 +584,10 @@ class DeepAnalysisRequest(BaseModel):
 
 
 @router.post("/deep")
-async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...)):
+async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API key is required")
+    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
 
     prompt_parts = [f"Target: {req.target}\n"]
 
@@ -669,11 +673,11 @@ async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...)):
 
     recon_data = "\n".join(prompt_parts)
 
-    client = anthropic.Anthropic(api_key=x_api_key)
     t0 = time.time()
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    ai_resp = await call_ai(
+        api_key=x_api_key,
+        provider=provider,
         max_tokens=3000,
         messages=[
             {
@@ -697,12 +701,12 @@ async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...)):
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = message.content[0].text
-    tokens = message.usage.input_tokens + message.usage.output_tokens
+    text = ai_resp["text"]
+    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
     return {
         "summary": text,
-        "model": message.model,
+        "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
     }
@@ -779,9 +783,10 @@ def _summarize_target_data(target: str, data: dict) -> str:
 
 
 @router.post("/correlate")
-async def correlate(req: CorrelateRequest, x_api_key: str = Header(...)):
+async def correlate(req: CorrelateRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API key is required")
+    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
 
     if len(req.targets) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 targets to correlate")
@@ -793,11 +798,11 @@ async def correlate(req: CorrelateRequest, x_api_key: str = Header(...)):
     combined_data = "\n".join(target_summaries)
     target_list = ", ".join(req.targets.keys())
 
-    client = anthropic.Anthropic(api_key=x_api_key)
     t0 = time.time()
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    ai_resp = await call_ai(
+        api_key=x_api_key,
+        provider=provider,
         max_tokens=2048,
         messages=[
             {
@@ -847,12 +852,12 @@ async def correlate(req: CorrelateRequest, x_api_key: str = Header(...)):
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = message.content[0].text
-    tokens = message.usage.input_tokens + message.usage.output_tokens
+    text = ai_resp["text"]
+    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
     return {
         "summary": text,
-        "model": message.model,
+        "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
     }
