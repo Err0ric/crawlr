@@ -1234,7 +1234,7 @@
 </div>
 
 <div class="overlay" id="termsOverlay" style="z-index:300;">
-  <div class="modal" style="max-width:480px;">
+  <div class="modal" style="max-width:480px;max-height:90vh;overflow-y:auto;padding-bottom:24px;">
     <div class="modal-eye">// Terms of Use · v1</div>
     <div class="modal-title">Acceptable Use Policy</div>
     <div class="modal-sub" style="line-height:1.8;margin-bottom:12px;">
@@ -1257,7 +1257,7 @@
     </div>
     <label id="termsCheckLabel" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-mid);">
       <input type="checkbox" id="termsCheck" style="accent-color:var(--red);cursor:pointer;" onchange="document.getElementById('termsAcceptBtn').disabled=!this.checked" />
-      I confirm I will use Crawl<span style="color:var(--red-bright);">R</span> only for authorized, lawful purposes
+      I confirm I will use CrawlR only for authorized, lawful purposes
     </label>
     <div class="modal-actions">
       <button class="modal-primary" id="termsAcceptBtn" disabled onclick="acceptTerms()">Accept &amp; Continue</button>
