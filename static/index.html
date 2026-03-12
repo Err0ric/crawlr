@@ -3281,89 +3281,44 @@
     if (s.endsWith('```')) s = s.slice(0, s.lastIndexOf('```'));
     return s.trim();
   }
-  function _normalizeAIResponse(data) {
-    if (data._normalized) return data;
-    data._normalized = true;
-    window._crawlrFullReport = null;
-
-    // --- Step 1: get the raw text and strip code fences ---
-    let cleaned = (data.summary || '').trim();
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```[a-z]*\n?/, '').replace(/```$/, '').trim();
+  function _normalizeAIResponse(raw) {
+    let text = (raw || '').trim();
+    // Strip code fences
+    if (text.startsWith('```')) {
+      text = text.replace(/^```[a-z]*\n?/i, '').replace(/```\s*$/, '').trim();
     }
-
-    let displayLines = [];
-    let fullReport = '';
-
-    // --- Step 2: try to parse as JSON ---
-    let parsed = null;
-    // Direct parse
-    try { parsed = JSON.parse(cleaned); } catch (e) {}
-    // Extract { ... } substring
-    if (!parsed) {
-      const i = cleaned.indexOf('{'), j = cleaned.lastIndexOf('}');
+    // Try JSON parse
+    try {
+      const parsed = JSON.parse(text);
+      return {
+        short_summary: Array.isArray(parsed.short_summary)
+          ? parsed.short_summary
+          : (parsed.short_summary ? [parsed.short_summary] : []),
+        summary: parsed.full_report || parsed.summary || text,
+        raw: text
+      };
+    } catch (e) {
+      // Try extracting JSON from surrounding text
+      const i = text.indexOf('{'), j = text.lastIndexOf('}');
       if (i !== -1 && j > i) {
-        try { parsed = JSON.parse(cleaned.substring(i, j + 1)); } catch (e) {}
+        try {
+          const parsed = JSON.parse(text.substring(i, j + 1));
+          return {
+            short_summary: Array.isArray(parsed.short_summary)
+              ? parsed.short_summary
+              : (parsed.short_summary ? [parsed.short_summary] : []),
+            summary: parsed.full_report || parsed.summary || text,
+            raw: text
+          };
+        } catch (e2) {}
       }
+      // Not JSON — treat as plain text
+      return {
+        short_summary: [],
+        summary: text,
+        raw: text
+      };
     }
-    // Regex fallback for malformed JSON (Gemini sometimes has unescaped newlines)
-    if (!parsed && cleaned.includes('"full_report"')) {
-      const ssMatch = cleaned.match(/"short_summary"\s*:\s*\[([\s\S]*?)\]/);
-      if (ssMatch) {
-        const items = ssMatch[1].match(/"([^"]+)"/g);
-        if (items) displayLines = items.map(s => s.replace(/^"|"$/g, ''));
-      }
-      const frMatch = cleaned.match(/"full_report"\s*:\s*"([\s\S]*)"[\s\n]*\}?\s*$/);
-      if (frMatch) {
-        fullReport = frMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-      }
-    }
-
-    // --- Step 3: extract fields from parsed object ---
-    if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.short_summary)) {
-        displayLines = parsed.short_summary;
-      } else if (typeof parsed.short_summary === 'string') {
-        displayLines = [parsed.short_summary];
-      }
-      fullReport = parsed.full_report || '';
-    }
-
-    // --- Step 4: apply results ---
-    if (fullReport) {
-      data.summary = fullReport.replace(/\\n/g, '\n');
-      window._crawlrFullReport = data.summary;
-    } else if (parsed) {
-      // Parsed something but no full_report key — use cleaned text
-      data.summary = cleaned;
-    } else {
-      data.summary = cleaned;
-    }
-
-    if (displayLines.length) {
-      data.short_summary = displayLines;
-    }
-
-    // --- Step 5: sanitize short_summary fallback ---
-    if (!Array.isArray(data.short_summary) || !data.short_summary.length) {
-      // Last resort: split summary into lines, filter noise
-      data.short_summary = data.summary.split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 10
-          && l !== '{' && l !== '}' && l !== '[' && l !== ']'
-          && !l.startsWith('"short_summary"')
-          && !l.startsWith('"full_report"')
-          && !l.startsWith('```') && !l.startsWith('#'))
-        .slice(0, 4)
-        .map(l => l.replace(/^[→•\-\*]\s*/, '').replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim());
-    } else {
-      // Clean existing bullets
-      data.short_summary = data.short_summary
-        .map(b => typeof b === 'string' ? b.trim() : b)
-        .filter(b => typeof b === 'string' && b.length > 3);
-    }
-
-    return data;
   }
   function _fmtDelay(sec) {
     if (sec < 1) return '<1s';
@@ -3622,7 +3577,9 @@
   let aiLeadCounter = 0;
 
   function renderAISummaryCard(data, mode) {
-    _normalizeAIResponse(data);
+    const norm = _normalizeAIResponse(data.summary);
+    if (norm.short_summary.length) data.short_summary = norm.short_summary;
+    data.summary = norm.summary;
     let bullets = data.short_summary || [];
     // Fallback: extract readable lines from summary, filtering JSON noise
     if (!bullets.length && data.summary) {
@@ -3740,9 +3697,10 @@
   }
 
   function renderAIBlock(data) {
-    _normalizeAIResponse(data);
-    // data.summary is now full_report (set by _normalizeAIResponse), never raw JSON
-    const summary = data.summary || '';
+    const norm = _normalizeAIResponse(data.summary);
+    data.summary = norm.summary;
+    // Replace literal \n with real newlines for markdown rendering
+    const summary = (data.summary || '').replace(/\\n/g, '\n');
     const meta = data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history';
     let html = `<div class="ai-block">
       <div class="ai-head">
@@ -4363,7 +4321,10 @@
           const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
           updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
         } else {
-          const data = _normalizeAIResponse(await resp.json());
+          const data = await resp.json();
+          const norm = _normalizeAIResponse(data.summary);
+          data.summary = norm.summary;
+          if (norm.short_summary.length) data.short_summary = norm.short_summary;
           scanTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           aiSummary = data.summary;
@@ -5977,7 +5938,10 @@
           const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
           updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
         } else {
-          const data = _normalizeAIResponse(await resp.json());
+          const data = await resp.json();
+          const norm = _normalizeAIResponse(data.summary);
+          data.summary = norm.summary;
+          if (norm.short_summary.length) data.short_summary = norm.short_summary;
           reconAISummary = data.summary;
           reconTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
