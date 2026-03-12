@@ -3282,26 +3282,44 @@
     return s.trim();
   }
   function _normalizeAIResponse(data) {
+    // Skip if already normalized
+    if (data._normalized) return data;
+    data._normalized = true;
     window._crawlrFullReport = null;
 
-    // Attempt to parse summary as JSON and extract short_summary / full_report
-    function _tryParseJSON(text) {
-      if (!text || typeof text !== 'string') return null;
-      let s = _stripFences(text).trim();
-      // Try direct parse first
-      try { return JSON.parse(s); } catch (e) {}
-      // Try to extract JSON object from surrounding text
-      const start = s.indexOf('{');
-      const end = s.lastIndexOf('}');
+    const raw = _stripFences(data.summary || '');
+
+    // Try JSON.parse (handles clean backend responses)
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch (e) {}
+    // Try extracting JSON from surrounding text
+    if (!parsed) {
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
       if (start !== -1 && end > start) {
-        try { return JSON.parse(s.substring(start, end + 1)); } catch (e) {}
+        try { parsed = JSON.parse(raw.substring(start, end + 1)); } catch (e) {}
       }
-      return null;
+    }
+    // Last resort: regex extraction for malformed JSON (unescaped newlines in full_report)
+    if (!parsed && raw.includes('"full_report"')) {
+      try {
+        // Extract short_summary array
+        const ssMatch = raw.match(/"short_summary"\s*:\s*\[([\s\S]*?)\]/);
+        if (ssMatch) {
+          const items = ssMatch[1].match(/"([^"]+)"/g);
+          if (items) data.short_summary = items.map(s => s.replace(/^"|"$/g, ''));
+        }
+        // Extract full_report value — everything between "full_report": " and the closing "}
+        const frMatch = raw.match(/"full_report"\s*:\s*"([\s\S]*)"[\s\n]*\}?\s*$/);
+        if (frMatch) {
+          data.summary = frMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+          window._crawlrFullReport = data.summary;
+        }
+        parsed = true; // flag to skip the else branch
+      } catch (e) {}
     }
 
-    const parsed = _tryParseJSON(data.summary);
-    if (parsed && (parsed.full_report || parsed.short_summary)) {
-      // Successfully extracted structured AI response
+    if (parsed && typeof parsed === 'object') {
       if (parsed.full_report) {
         data.summary = parsed.full_report;
         window._crawlrFullReport = parsed.full_report;
@@ -3311,12 +3329,11 @@
       } else if (typeof parsed.short_summary === 'string') {
         data.short_summary = [parsed.short_summary];
       }
-    } else {
-      // Not structured JSON — strip fences at minimum
-      data.summary = _stripFences(data.summary || '');
+    } else if (!parsed) {
+      data.summary = raw;
     }
 
-    // Replace literal \n sequences with real newlines for markdown rendering
+    // Replace literal \n sequences with real newlines
     if (typeof data.summary === 'string') {
       data.summary = data.summary.replace(/\\n/g, '\n');
     }
@@ -3708,7 +3725,8 @@
 
   function renderAIBlock(data) {
     _normalizeAIResponse(data);
-    const summary = window._crawlrFullReport || data.summary || '';
+    // data.summary is now full_report (set by _normalizeAIResponse), never raw JSON
+    const summary = data.summary || '';
     const meta = data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history';
     let html = `<div class="ai-block">
       <div class="ai-head">
