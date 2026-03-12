@@ -3251,6 +3251,13 @@
   }
 
   function _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function _stripFences(s) {
+    if (!s) return s;
+    s = s.trim();
+    if (s.startsWith('```')) s = s.split('\n').slice(1).join('\n');
+    if (s.endsWith('```')) s = s.slice(0, s.lastIndexOf('```'));
+    return s.trim();
+  }
   function _fmtDelay(sec) {
     if (sec < 1) return '<1s';
     if (sec < 60) return Math.round(sec) + 's';
@@ -3508,6 +3515,7 @@
   let aiLeadCounter = 0;
 
   function renderAISummaryCard(data, mode) {
+    if (data.summary) data.summary = _stripFences(data.summary);
     let bullets = data.short_summary || [];
     // Fallback: extract first few non-heading, non-empty lines from summary
     if (!bullets.length && data.summary) {
@@ -3618,7 +3626,7 @@
   }
 
   function renderAIBlock(data) {
-    const summary = data.summary || '';
+    const summary = _stripFences(data.summary || '');
     const meta = data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history';
     let html = `<div class="ai-block">
       <div class="ai-head">
@@ -3924,7 +3932,7 @@
   }
 
   function renderDeepDiveBlock(data) {
-    const lines = data.summary.split('\n');
+    const lines = _stripFences(data.summary).split('\n');
     // First pass: group lines into sections
     const sections = [];
     let currentSection = { heading: null, headingLabel: '', lines: [] };
@@ -4028,7 +4036,7 @@
   }
 
   function renderCorrelationBlock(data) {
-    const lines = data.summary.split('\n');
+    const lines = _stripFences(data.summary).split('\n');
     let html = `<div class="ai-block" style="border-color:rgba(245,158,11,0.4);background:linear-gradient(180deg,rgba(245,158,11,0.03) 0%,transparent 60px);">
       <div class="ai-head" style="border-color:rgba(245,158,11,0.25);">
         <div class="ai-tag" style="color:#f59e0b;font-size:12px;">// CROSS-TARGET CORRELATION</div>
@@ -4241,7 +4249,7 @@
           const data = await resp.json();
           scanTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
-          aiSummary = data.summary;
+          aiSummary = _stripFences(data.summary);
           aiData = data;
           // Render inline summary card in results grid
           const summaryHtml = renderAISummaryCard(data, 'investigate');
@@ -5853,7 +5861,7 @@
           updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
         } else {
           const data = await resp.json();
-          reconAISummary = data.summary;
+          reconAISummary = _stripFences(data.summary);
           reconTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           // Inline summary card in results grid
@@ -5938,7 +5946,7 @@
           <div class="ai-tag" style="color:#f59e0b;">// DEEP ANALYSIS</div>
           <div class="ai-meta">${data.model} · ${data.tokens} tokens · ${data.elapsed}s</div>
         </div>
-        <div class="ai-body" style="font-size:12px;line-height:1.7;">${_renderMarkdownReport(data.summary)}</div>
+        <div class="ai-body" style="font-size:12px;line-height:1.7;">${_renderMarkdownReport(_stripFences(data.summary))}</div>
       </div>`;
       btn.textContent = '// REGENERATE DEEP ANALYSIS';
       btn.style.pointerEvents = '';

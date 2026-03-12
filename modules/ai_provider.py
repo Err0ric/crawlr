@@ -76,6 +76,14 @@ async def _call_gemini(api_key: str, messages: list[dict], max_tokens: int, mode
 
     text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
 
+    # Strip markdown code fences that Gemini often wraps around JSON
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]
+    if text.endswith("```"):
+        text = text.rsplit("```", 1)[0]
+    text = text.strip()
+
     # Token usage from usageMetadata
     usage = data.get("usageMetadata", {})
     input_tokens = usage.get("promptTokenCount", 0)
