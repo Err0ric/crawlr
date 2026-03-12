@@ -3282,71 +3282,87 @@
     return s.trim();
   }
   function _normalizeAIResponse(data) {
-    // Skip if already normalized
     if (data._normalized) return data;
     data._normalized = true;
     window._crawlrFullReport = null;
 
-    const raw = _stripFences(data.summary || '');
+    // --- Step 1: get the raw text and strip code fences ---
+    let cleaned = (data.summary || '').trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```[a-z]*\n?/, '').replace(/```$/, '').trim();
+    }
 
-    // Try JSON.parse (handles clean backend responses)
+    let displayLines = [];
+    let fullReport = '';
+
+    // --- Step 2: try to parse as JSON ---
     let parsed = null;
-    try { parsed = JSON.parse(raw); } catch (e) {}
-    // Try extracting JSON from surrounding text
+    // Direct parse
+    try { parsed = JSON.parse(cleaned); } catch (e) {}
+    // Extract { ... } substring
     if (!parsed) {
-      const start = raw.indexOf('{');
-      const end = raw.lastIndexOf('}');
-      if (start !== -1 && end > start) {
-        try { parsed = JSON.parse(raw.substring(start, end + 1)); } catch (e) {}
+      const i = cleaned.indexOf('{'), j = cleaned.lastIndexOf('}');
+      if (i !== -1 && j > i) {
+        try { parsed = JSON.parse(cleaned.substring(i, j + 1)); } catch (e) {}
       }
     }
-    // Last resort: regex extraction for malformed JSON (unescaped newlines in full_report)
-    if (!parsed && raw.includes('"full_report"')) {
-      try {
-        // Extract short_summary array
-        const ssMatch = raw.match(/"short_summary"\s*:\s*\[([\s\S]*?)\]/);
-        if (ssMatch) {
-          const items = ssMatch[1].match(/"([^"]+)"/g);
-          if (items) data.short_summary = items.map(s => s.replace(/^"|"$/g, ''));
-        }
-        // Extract full_report value — everything between "full_report": " and the closing "}
-        const frMatch = raw.match(/"full_report"\s*:\s*"([\s\S]*)"[\s\n]*\}?\s*$/);
-        if (frMatch) {
-          data.summary = frMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-          window._crawlrFullReport = data.summary;
-        }
-        parsed = true; // flag to skip the else branch
-      } catch (e) {}
+    // Regex fallback for malformed JSON (Gemini sometimes has unescaped newlines)
+    if (!parsed && cleaned.includes('"full_report"')) {
+      const ssMatch = cleaned.match(/"short_summary"\s*:\s*\[([\s\S]*?)\]/);
+      if (ssMatch) {
+        const items = ssMatch[1].match(/"([^"]+)"/g);
+        if (items) displayLines = items.map(s => s.replace(/^"|"$/g, ''));
+      }
+      const frMatch = cleaned.match(/"full_report"\s*:\s*"([\s\S]*)"[\s\n]*\}?\s*$/);
+      if (frMatch) {
+        fullReport = frMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      }
     }
 
+    // --- Step 3: extract fields from parsed object ---
     if (parsed && typeof parsed === 'object') {
-      if (parsed.full_report) {
-        data.summary = parsed.full_report;
-        window._crawlrFullReport = parsed.full_report;
-      }
-      if (Array.isArray(parsed.short_summary) && parsed.short_summary.length) {
-        data.short_summary = parsed.short_summary;
+      if (Array.isArray(parsed.short_summary)) {
+        displayLines = parsed.short_summary;
       } else if (typeof parsed.short_summary === 'string') {
-        data.short_summary = [parsed.short_summary];
+        displayLines = [parsed.short_summary];
       }
-    } else if (!parsed) {
-      data.summary = raw;
+      fullReport = parsed.full_report || '';
     }
 
-    // Replace literal \n sequences with real newlines
-    if (typeof data.summary === 'string') {
-      data.summary = data.summary.replace(/\\n/g, '\n');
+    // --- Step 4: apply results ---
+    if (fullReport) {
+      data.summary = fullReport.replace(/\\n/g, '\n');
+      window._crawlrFullReport = data.summary;
+    } else if (parsed) {
+      // Parsed something but no full_report key — use cleaned text
+      data.summary = cleaned;
+    } else {
+      data.summary = cleaned;
     }
 
-    // Sanitize short_summary: filter out JSON syntax fragments
-    if (Array.isArray(data.short_summary)) {
+    if (displayLines.length) {
+      data.short_summary = displayLines;
+    }
+
+    // --- Step 5: sanitize short_summary fallback ---
+    if (!Array.isArray(data.short_summary) || !data.short_summary.length) {
+      // Last resort: split summary into lines, filter noise
+      data.short_summary = data.summary.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 10
+          && l !== '{' && l !== '}' && l !== '[' && l !== ']'
+          && !l.startsWith('"short_summary"')
+          && !l.startsWith('"full_report"')
+          && !l.startsWith('```') && !l.startsWith('#'))
+        .slice(0, 4)
+        .map(l => l.replace(/^[→•\-\*]\s*/, '').replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim());
+    } else {
+      // Clean existing bullets
       data.short_summary = data.short_summary
-        .map(b => typeof b === 'string' ? b.trim().replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim() : b)
-        .filter(b => typeof b === 'string' && b.length > 10
-                  && b !== '{' && b !== '}'
-                  && !b.startsWith('"short_summary"')
-                  && !b.startsWith('"full_report"'));
+        .map(b => typeof b === 'string' ? b.trim() : b)
+        .filter(b => typeof b === 'string' && b.length > 3);
     }
+
     return data;
   }
   function _fmtDelay(sec) {
