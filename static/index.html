@@ -1613,7 +1613,7 @@
 
 <div id="decodersWorkspace" class="workspace" style="display:none; flex-direction:column; height:calc(100vh - 56px); overflow:hidden;">
   <div class="main" style="flex:1; overflow-y:auto;">
-    <div style="max-width:1100px; margin:0 auto; padding:32px 24px;">
+    <div style="max-width:1200px; margin:0 auto; padding:24px;">
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
         <div>
@@ -1626,10 +1626,10 @@
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px;">
 
         <!-- Base64 Encoder/Decoder -->
-        <div style="min-height:220px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+        <div style="min-height:260px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
           <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// BASE64</div>
           <textarea id="decBase64Input" placeholder="Enter text or Base64 string..."
-            style="width:100%;box-sizing:border-box;min-height:100px;resize:vertical;background:var(--bg3);border:1px solid var(--border-mid);color:var(--text);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;outline:none;"></textarea>
+            style="width:100%;box-sizing:border-box;min-height:120px;resize:vertical;background:var(--bg3);border:1px solid var(--border-mid);color:var(--text);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;outline:none;"></textarea>
           <div style="display:flex;gap:8px;margin-top:10px;">
             <button onclick="decBase64('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
             <button onclick="decBase64('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
@@ -1638,10 +1638,10 @@
         </div>
 
         <!-- URL Encoder/Decoder -->
-        <div style="min-height:220px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+        <div style="min-height:260px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
           <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// URL ENCODE</div>
           <textarea id="decUrlInput" placeholder="Enter URL or encoded string..."
-            style="width:100%;box-sizing:border-box;min-height:100px;resize:vertical;background:var(--bg3);border:1px solid var(--border-mid);color:var(--text);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;outline:none;"></textarea>
+            style="width:100%;box-sizing:border-box;min-height:120px;resize:vertical;background:var(--bg3);border:1px solid var(--border-mid);color:var(--text);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5;outline:none;"></textarea>
           <div style="display:flex;gap:8px;margin-top:10px;">
             <button onclick="decUrl('encode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">ENCODE</button>
             <button onclick="decUrl('decode')" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">DECODE</button>
@@ -1650,31 +1650,53 @@
         </div>
 
         <!-- Hash Generator -->
-        <div style="min-height:220px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+        <div style="min-height:260px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
           <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// HASH GENERATOR</div>
           <input id="decHashInput" type="text" placeholder="Enter text to hash..." autocomplete="off"
             onkeydown="if(event.key==='Enter') decHashGenerate()"
             style="width:100%;box-sizing:border-box;height:38px;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:0 10px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;" />
-          <div style="display:flex;gap:8px;margin-top:10px;">
-            <button onclick="decHashGenerate()" style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;">GENERATE</button>
-          </div>
+          <button onclick="decHashGenerate()" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;margin-top:10px;">GENERATE</button>
           <div id="decHashResult" style="display:none;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);line-height:1.8;word-break:break-all;margin-top:10px;max-height:100px;overflow-y:auto;"></div>
         </div>
 
         <!-- VIN Lookup -->
-        <div style="min-height:220px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
+        <div style="min-height:260px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;">
           <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// VIN LOOKUP</div>
-          <div style="display:flex;gap:10px;align-items:center;">
-            <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
-              oninput="this.value=this.value.toUpperCase()"
-              onkeydown="if(event.key==='Enter') vinLookup()"
-              style="flex:1;height:38px;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:0 10px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;letter-spacing:1px;" />
-            <button onclick="vinLookup()"
-              style="background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 16px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;white-space:nowrap;">
-              DECODE
-            </button>
-          </div>
+          <input id="dbVin" type="text" placeholder="e.g. 1HGBH41JXMN109186" maxlength="17" autocomplete="off"
+            oninput="this.value=this.value.toUpperCase()"
+            onkeydown="if(event.key==='Enter') vinLookup()"
+            style="width:100%;box-sizing:border-box;height:38px;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:0 10px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;letter-spacing:1px;" />
+          <button onclick="vinLookup()" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;margin-top:10px;">DECODE</button>
           <div id="dbVinResult" style="display:none;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-bright);margin-top:10px;"></div>
+        </div>
+
+        <!-- Plate Lookup -->
+        <div style="min-height:260px;padding:24px;background:var(--bg2);border:1px solid var(--border-mid);border-radius:6px;grid-column:1 / -1;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-bottom:14px;">// PLATE LOOKUP</div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input id="decPlateInput" type="text" placeholder="ABC1234" autocomplete="off" maxlength="8"
+              oninput="this.value=this.value.toUpperCase()"
+              onkeydown="if(event.key==='Enter') plateLookup()"
+              style="flex:1;height:38px;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:0 10px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;letter-spacing:1px;" />
+            <select id="decPlateState" style="height:38px;background:var(--bg3);border:1px solid var(--border-mid);border-radius:4px;padding:0 8px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;outline:none;cursor:pointer;min-width:140px;">
+              <option value="">State...</option>
+              <option value="AL">AL - Alabama</option><option value="AK">AK - Alaska</option><option value="AZ">AZ - Arizona</option><option value="AR">AR - Arkansas</option>
+              <option value="CA">CA - California</option><option value="CO">CO - Colorado</option><option value="CT">CT - Connecticut</option><option value="DE">DE - Delaware</option>
+              <option value="DC">DC - District of Columbia</option><option value="FL">FL - Florida</option><option value="GA">GA - Georgia</option><option value="HI">HI - Hawaii</option>
+              <option value="ID">ID - Idaho</option><option value="IL">IL - Illinois</option><option value="IN">IN - Indiana</option><option value="IA">IA - Iowa</option>
+              <option value="KS">KS - Kansas</option><option value="KY">KY - Kentucky</option><option value="LA">LA - Louisiana</option><option value="ME">ME - Maine</option>
+              <option value="MD">MD - Maryland</option><option value="MA">MA - Massachusetts</option><option value="MI">MI - Michigan</option><option value="MN">MN - Minnesota</option>
+              <option value="MS">MS - Mississippi</option><option value="MO">MO - Missouri</option><option value="MT">MT - Montana</option><option value="NE">NE - Nebraska</option>
+              <option value="NV">NV - Nevada</option><option value="NH">NH - New Hampshire</option><option value="NJ">NJ - New Jersey</option><option value="NM">NM - New Mexico</option>
+              <option value="NY">NY - New York</option><option value="NC">NC - North Carolina</option><option value="ND">ND - North Dakota</option><option value="OH">OH - Ohio</option>
+              <option value="OK">OK - Oklahoma</option><option value="OR">OR - Oregon</option><option value="PA">PA - Pennsylvania</option><option value="RI">RI - Rhode Island</option>
+              <option value="SC">SC - South Carolina</option><option value="SD">SD - South Dakota</option><option value="TN">TN - Tennessee</option><option value="TX">TX - Texas</option>
+              <option value="UT">UT - Utah</option><option value="VT">VT - Vermont</option><option value="VA">VA - Virginia</option><option value="WA">WA - Washington</option>
+              <option value="WV">WV - West Virginia</option><option value="WI">WI - Wisconsin</option><option value="WY">WY - Wyoming</option>
+            </select>
+          </div>
+          <button onclick="plateLookup()" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border-mid);border-radius:4px;padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;margin-top:10px;">LOOKUP</button>
+          <div id="decPlateResult" style="margin-top:12px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);">Enter a plate and state to begin</div>
         </div>
 
       </div>
@@ -6720,6 +6742,65 @@
         '<span style="color:var(--text-dim);">SHA-256:</span> ' + sha256;
     } catch (e) {
       el.innerHTML = '<span style="color:var(--red);">Hash generation failed</span>';
+    }
+  }
+
+  async function plateLookup() {
+    const plate = document.getElementById('decPlateInput').value.trim().toUpperCase();
+    const state = document.getElementById('decPlateState').value;
+    const el = document.getElementById('decPlateResult');
+
+    if (!plate || !state) {
+      el.innerHTML = '<span style="color:var(--amber);">Enter both a plate number and state</span>';
+      return;
+    }
+
+    el.innerHTML = '<span style="color:var(--text-mid);">Looking up...</span>';
+
+    try {
+      const resp = await fetch('/api/vehicles/plate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plate, state }),
+      });
+      const data = await resp.json();
+
+      if (data.error) {
+        el.innerHTML = '<span style="color:var(--red);">' + data.error + '</span>';
+        return;
+      }
+
+      const stateNames = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
+
+      let html = '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">';
+
+      // Plate render
+      html += '<div style="background:var(--bg);border:2px solid #a855f7;border-radius:6px;padding:12px 20px;text-align:center;min-width:180px;">';
+      html += '<div style="font-size:9px;letter-spacing:3px;color:#a855f7;text-transform:uppercase;margin-bottom:4px;">' + (stateNames[state] || state) + '</div>';
+      html += '<div style="font-size:22px;font-weight:700;letter-spacing:4px;color:var(--text-bright);">' + plate + '</div>';
+      html += '</div>';
+
+      // Vehicle details
+      let details = '';
+      if (data.year) details += data.year + ' ';
+      if (data.make) details += data.make.toUpperCase() + ' ';
+      if (data.model) details += data.model;
+      if (data.trim) details += ' ' + data.trim;
+      if (data.engine) details += '<br><span style="color:var(--text-dim);font-size:11px;">Engine: ' + data.engine + '</span>';
+
+      html += '<div style="flex:1;min-width:200px;">';
+      if (details) {
+        html += '<div style="color:#4ade80;margin-bottom:6px;">&#10003; Vehicle Found</div>';
+        html += '<div style="color:var(--text-bright);line-height:1.8;">' + details + '</div>';
+      }
+      if (data.vin) {
+        html += '<div style="color:var(--text-dim);font-size:10px;margin-top:6px;">VIN: ' + data.vin + '</div>';
+      }
+      html += '</div></div>';
+
+      el.innerHTML = html;
+    } catch (e) {
+      el.innerHTML = '<span style="color:var(--red);">No vehicle found or data unavailable</span>';
     }
   }
 
