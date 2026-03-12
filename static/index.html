@@ -2190,7 +2190,7 @@
     document.getElementById('overlay').classList.add('open');
     const p = getAiProvider();
     setProvider(p);
-    document.getElementById('rememberKey').checked = !!(p === 'gemini' ? localStorage.getItem('crawlr_gemini_key') : localStorage.getItem('crawlr_anthropic_key') || localStorage.getItem('cs_key'));
+    document.getElementById('rememberKey').checked = !!getApiKey();
   }
   function closeModal() { document.getElementById('overlay').classList.remove('open'); }
 
@@ -2437,7 +2437,30 @@
 
   function minimizeNotes() {
     const panel = document.getElementById('floatingNotes');
-    panel.classList.toggle('minimized');
+    const isMinimized = panel.classList.toggle('minimized');
+    if (isMinimized) {
+      // Store current position for restore, then snap to bottom-right
+      panel._savedTop = panel.style.top;
+      panel._savedLeft = panel.style.left;
+      panel._savedBottom = panel.style.bottom;
+      panel._savedRight = panel.style.right;
+      panel._savedWidth = panel.style.width;
+      panel._savedHeight = panel.style.height;
+      panel.style.top = '';
+      panel.style.left = '';
+      panel.style.bottom = '20px';
+      panel.style.right = '20px';
+      panel.style.width = '280px';
+      panel.style.height = 'auto';
+    } else {
+      // Restore previous position
+      panel.style.top = panel._savedTop || '';
+      panel.style.left = panel._savedLeft || '';
+      panel.style.bottom = panel._savedBottom || '20px';
+      panel.style.right = panel._savedRight || '20px';
+      panel.style.width = panel._savedWidth || '';
+      panel.style.height = panel._savedHeight || '';
+    }
   }
 
   function closeNotes() {
@@ -3259,19 +3282,27 @@
     return s.trim();
   }
   function _normalizeAIResponse(data) {
-    // If summary is a JSON string containing short_summary/full_report, parse it out
-    if (data.summary && typeof data.summary === 'string') {
-      const s = _stripFences(data.summary);
-      try {
-        const parsed = JSON.parse(s);
-        if (parsed && typeof parsed === 'object') {
-          if (Array.isArray(parsed.short_summary)) data.short_summary = parsed.short_summary;
-          if (parsed.full_report) data.summary = parsed.full_report;
+    window._crawlrFullReport = null;
+    // Try to parse summary as JSON to extract short_summary / full_report
+    const raw = _stripFences(data.summary || '');
+    let displayLines = [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.short_summary && Array.isArray(parsed.short_summary)) {
+          displayLines = parsed.short_summary;
+        } else if (typeof parsed.short_summary === 'string') {
+          displayLines = [parsed.short_summary];
         }
-      } catch (e) {
-        // Not JSON — leave as-is
-        data.summary = s;
+        if (parsed.full_report) {
+          data.summary = parsed.full_report;
+          window._crawlrFullReport = parsed.full_report;
+        }
+        if (displayLines.length) data.short_summary = displayLines;
       }
+    } catch (e) {
+      // Not JSON — check if short_summary from server is usable
+      data.summary = raw;
     }
     // Replace literal \n sequences with real newlines for markdown rendering
     if (typeof data.summary === 'string') {
@@ -3279,10 +3310,12 @@
     }
     // Sanitize short_summary: filter out JSON syntax fragments that leak through
     if (Array.isArray(data.short_summary)) {
-      const jsonNoise = /^[\{\}\[\]",]+$|^"short_summary"|^"full_report"|^```/;
       data.short_summary = data.short_summary
         .map(b => typeof b === 'string' ? b.trim().replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim() : b)
-        .filter(b => typeof b === 'string' && b.length > 3 && !jsonNoise.test(b));
+        .filter(b => typeof b === 'string' && b.length > 10
+                  && b !== '{' && b !== '}'
+                  && !b.startsWith('"short_summary"')
+                  && !b.startsWith('"full_report"'));
     }
     return data;
   }
@@ -3545,12 +3578,17 @@
   function renderAISummaryCard(data, mode) {
     _normalizeAIResponse(data);
     let bullets = data.short_summary || [];
-    // Fallback: extract first few non-heading, non-empty lines from summary
+    // Fallback: extract readable lines from summary, filtering JSON noise
     if (!bullets.length && data.summary) {
-      const jsonNoise = /^[\{\}\[\]",]+$|^"short_summary"|^"full_report"|^```/;
-      const lines = data.summary.split('\n').map(l => l.trim())
-        .filter(l => l && l.length > 3 && !l.startsWith('#') && !l.startsWith('**') && !jsonNoise.test(l));
-      bullets = lines.slice(0, 4).map(l => l.replace(/^[→•\-\*]\s*/, '').replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim());
+      bullets = data.summary.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 10
+                  && l !== '{' && l !== '}'
+                  && !l.startsWith('"short_summary"')
+                  && !l.startsWith('"full_report"')
+                  && !l.startsWith('#') && !l.startsWith('**') && !l.startsWith('```'))
+        .slice(0, 4)
+        .map(l => l.replace(/^[→•\-\*]\s*/, '').replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim());
     }
     if (!bullets.length) return '';
     const switchTab = mode === 'recon'
@@ -3657,7 +3695,7 @@
 
   function renderAIBlock(data) {
     _normalizeAIResponse(data);
-    const summary = data.summary || '';
+    const summary = window._crawlrFullReport || data.summary || '';
     const meta = data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history';
     let html = `<div class="ai-block">
       <div class="ai-head">
@@ -6400,7 +6438,8 @@
   // getApiKey returns the active provider's key
   function getApiKey() {
     const p = getAiProvider();
-    return p === 'gemini' ? getKey('gemini') : getKey('claude');
+    if (p === 'gemini') return getKey('gemini');
+    return getKey('claude') || localStorage.getItem('crawlr_api_key');
   }
 
   function updateKeyPill() {
