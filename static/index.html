@@ -3258,6 +3258,27 @@
     if (s.endsWith('```')) s = s.slice(0, s.lastIndexOf('```'));
     return s.trim();
   }
+  function _normalizeAIResponse(data) {
+    // If summary is a JSON string containing short_summary/full_report, parse it out
+    if (data.summary && typeof data.summary === 'string') {
+      const s = _stripFences(data.summary);
+      try {
+        const parsed = JSON.parse(s);
+        if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.short_summary)) data.short_summary = parsed.short_summary;
+          if (parsed.full_report) data.summary = parsed.full_report;
+        }
+      } catch (e) {
+        // Not JSON — leave as-is
+        data.summary = s;
+      }
+    }
+    // Replace literal \n sequences with real newlines for markdown rendering
+    if (typeof data.summary === 'string') {
+      data.summary = data.summary.replace(/\\n/g, '\n');
+    }
+    return data;
+  }
   function _fmtDelay(sec) {
     if (sec < 1) return '<1s';
     if (sec < 60) return Math.round(sec) + 's';
@@ -3515,7 +3536,7 @@
   let aiLeadCounter = 0;
 
   function renderAISummaryCard(data, mode) {
-    if (data.summary) data.summary = _stripFences(data.summary);
+    _normalizeAIResponse(data);
     let bullets = data.short_summary || [];
     // Fallback: extract first few non-heading, non-empty lines from summary
     if (!bullets.length && data.summary) {
@@ -3626,7 +3647,8 @@
   }
 
   function renderAIBlock(data) {
-    const summary = _stripFences(data.summary || '');
+    _normalizeAIResponse(data);
+    const summary = data.summary || '';
     const meta = data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history';
     let html = `<div class="ai-block">
       <div class="ai-head">
@@ -4247,10 +4269,10 @@
           const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
           updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
         } else {
-          const data = await resp.json();
+          const data = _normalizeAIResponse(await resp.json());
           scanTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
-          aiSummary = _stripFences(data.summary);
+          aiSummary = data.summary;
           aiData = data;
           // Render inline summary card in results grid
           const summaryHtml = renderAISummaryCard(data, 'investigate');
@@ -5861,8 +5883,8 @@
           const err = await resp.json().catch(() => ({ detail: 'Request failed' }));
           updateLogRow(aiRow, `AI Analysis error: ${err.detail || resp.statusText}`, 'wait');
         } else {
-          const data = await resp.json();
-          reconAISummary = _stripFences(data.summary);
+          const data = _normalizeAIResponse(await resp.json());
+          reconAISummary = data.summary;
           reconTokens = data.tokens;
           updateLogRow(aiRow, `AI Analysis complete — ${data.tokens} tokens`, 'done');
           // Inline summary card in results grid
