@@ -3277,6 +3277,13 @@
     if (typeof data.summary === 'string') {
       data.summary = data.summary.replace(/\\n/g, '\n');
     }
+    // Sanitize short_summary: filter out JSON syntax fragments that leak through
+    if (Array.isArray(data.short_summary)) {
+      const jsonNoise = /^[\{\}\[\]",]+$|^"short_summary"|^"full_report"|^```/;
+      data.short_summary = data.short_summary
+        .map(b => typeof b === 'string' ? b.trim().replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim() : b)
+        .filter(b => typeof b === 'string' && b.length > 3 && !jsonNoise.test(b));
+    }
     return data;
   }
   function _fmtDelay(sec) {
@@ -3540,8 +3547,10 @@
     let bullets = data.short_summary || [];
     // Fallback: extract first few non-heading, non-empty lines from summary
     if (!bullets.length && data.summary) {
-      const lines = data.summary.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('**'));
-      bullets = lines.slice(0, 3).map(l => l.replace(/^[→•\-\*]\s*/, ''));
+      const jsonNoise = /^[\{\}\[\]",]+$|^"short_summary"|^"full_report"|^```/;
+      const lines = data.summary.split('\n').map(l => l.trim())
+        .filter(l => l && l.length > 3 && !l.startsWith('#') && !l.startsWith('**') && !jsonNoise.test(l));
+      bullets = lines.slice(0, 4).map(l => l.replace(/^[→•\-\*]\s*/, '').replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim());
     }
     if (!bullets.length) return '';
     const switchTab = mode === 'recon'

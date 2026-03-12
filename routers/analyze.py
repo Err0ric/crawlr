@@ -250,16 +250,33 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_prov
     text = ai_resp["text"]
     tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
-    # Parse JSON response
+    # Parse JSON response — strip fences and try to extract the JSON object
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1]
+    if cleaned.endswith("```"):
+        cleaned = cleaned.rsplit("```", 1)[0]
+    cleaned = cleaned.strip()
     try:
-        parsed = json.loads(text)
+        parsed = json.loads(cleaned)
         short_summary = parsed.get("short_summary", [])
-        full_report = parsed.get("full_report", text)
+        full_report = parsed.get("full_report", cleaned)
     except (json.JSONDecodeError, KeyError):
-        # Fallback: treat entire response as full_report, extract first lines as summary
-        full_report = text
-        lines = [l.strip() for l in text.split("\n") if l.strip() and not l.startswith("#")]
-        short_summary = lines[:3]
+        # Fallback: treat entire response as full_report, extract readable lines as summary
+        full_report = cleaned
+        _json_noise = {"{", "}", "[", "]", '",', "```", "```json"}
+        lines = [
+            l.strip() for l in cleaned.split("\n")
+            if l.strip()
+            and l.strip() not in _json_noise
+            and not l.strip().startswith('"short_summary"')
+            and not l.strip().startswith('"full_report"')
+            and not l.strip().startswith("#")
+        ]
+        # Strip JSON string artifacts like leading/trailing quotes and commas
+        lines = [l.strip().strip('"').strip(",").strip('"') for l in lines]
+        lines = [l for l in lines if l and len(l) > 3]
+        short_summary = lines[:4]
 
     return {
         "summary": full_report,
