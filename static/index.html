@@ -3283,32 +3283,45 @@
   }
   function _normalizeAIResponse(data) {
     window._crawlrFullReport = null;
-    // Try to parse summary as JSON to extract short_summary / full_report
-    const raw = _stripFences(data.summary || '');
-    let displayLines = [];
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        if (parsed.short_summary && Array.isArray(parsed.short_summary)) {
-          displayLines = parsed.short_summary;
-        } else if (typeof parsed.short_summary === 'string') {
-          displayLines = [parsed.short_summary];
-        }
-        if (parsed.full_report) {
-          data.summary = parsed.full_report;
-          window._crawlrFullReport = parsed.full_report;
-        }
-        if (displayLines.length) data.short_summary = displayLines;
+
+    // Attempt to parse summary as JSON and extract short_summary / full_report
+    function _tryParseJSON(text) {
+      if (!text || typeof text !== 'string') return null;
+      let s = _stripFences(text).trim();
+      // Try direct parse first
+      try { return JSON.parse(s); } catch (e) {}
+      // Try to extract JSON object from surrounding text
+      const start = s.indexOf('{');
+      const end = s.lastIndexOf('}');
+      if (start !== -1 && end > start) {
+        try { return JSON.parse(s.substring(start, end + 1)); } catch (e) {}
       }
-    } catch (e) {
-      // Not JSON — check if short_summary from server is usable
-      data.summary = raw;
+      return null;
     }
+
+    const parsed = _tryParseJSON(data.summary);
+    if (parsed && (parsed.full_report || parsed.short_summary)) {
+      // Successfully extracted structured AI response
+      if (parsed.full_report) {
+        data.summary = parsed.full_report;
+        window._crawlrFullReport = parsed.full_report;
+      }
+      if (Array.isArray(parsed.short_summary) && parsed.short_summary.length) {
+        data.short_summary = parsed.short_summary;
+      } else if (typeof parsed.short_summary === 'string') {
+        data.short_summary = [parsed.short_summary];
+      }
+    } else {
+      // Not structured JSON — strip fences at minimum
+      data.summary = _stripFences(data.summary || '');
+    }
+
     // Replace literal \n sequences with real newlines for markdown rendering
     if (typeof data.summary === 'string') {
       data.summary = data.summary.replace(/\\n/g, '\n');
     }
-    // Sanitize short_summary: filter out JSON syntax fragments that leak through
+
+    // Sanitize short_summary: filter out JSON syntax fragments
     if (Array.isArray(data.short_summary)) {
       data.short_summary = data.short_summary
         .map(b => typeof b === 'string' ? b.trim().replace(/^"+|"+$/g, '').replace(/,\s*$/, '').trim() : b)
