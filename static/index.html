@@ -25,9 +25,9 @@
     --red-glow-hi: rgba(124,58,237,0.22);
     --amber:       #d97706;
     --amber-bright:#f59e0b;
-    --text:        #b0a8cc;
-    --text-dim:    #3d3460;
-    --text-mid:    #6e5f99;
+    --text:        #b8b0d0;
+    --text-dim:    #4a4070;
+    --text-mid:    #8878b0;
     --text-bright: #e8e0f8;
     --success:     #16a34a;
   }
@@ -124,7 +124,7 @@
     --border: #2d1a1a; --border-mid: #3d2222; --border-hi: #5c3333;
     --red: #dc2626; --red-dim: #b91c1c; --red-bright: #ef4444;
     --red-glow: rgba(220,38,38,0.12); --red-glow-hi: rgba(220,38,38,0.22);
-    --text: #c4a8a8; --text-dim: #4a2d2d; --text-mid: #7a5555; --text-bright: #f0dada;
+    --text: #c4a8a8; --text-dim: #5a3838; --text-mid: #9a7070; --text-bright: #f0dada;
   }
   [data-theme="ghost"] {
     --bg: #101014; --bg2: #16161c; --bg3: #1c1c24; --bg4: #22222c;
@@ -815,17 +815,19 @@
   .floating-notes.minimized .fn-body,
   .floating-notes.minimized .fn-resize-handle { display: none; }
   .floating-notes.minimized {
-    height: auto;
-    min-height: 0;
+    height: auto !important;
+    min-height: 0 !important;
     background: var(--bg3) !important;
     border: 1px solid #a855f7 !important;
-    border-radius: 6px 6px 0 0;
+    border-radius: 6px;
     position: fixed;
     bottom: 20px;
     right: 20px;
-    left: auto;
-    top: auto;
+    left: auto !important;
+    top: auto !important;
     width: 280px;
+    overflow: visible;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   }
   .floating-notes .fn-header {
     display: flex;
@@ -1408,7 +1410,7 @@
 
     <div class="content" id="aiReportPanel" style="display:none;">
       <div id="deepDiveBtn" style="display:none;padding:12px 16px;">
-        <button onclick="showDeepDiveModal()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">⚡ Run Deep Dive Analysis</button>
+        <button onclick="showDeepDiveModal()" style="display:block;max-width:400px;margin:0 auto;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">⚡ Run Deep Dive Analysis</button>
       </div>
       <div id="deepDiveResults" style="display:none;padding:0 16px 16px;"></div>
       <div id="aiReportContent">
@@ -3285,7 +3287,7 @@
     let text = (raw || '').trim();
     // Strip code fences
     if (text.startsWith('```')) {
-      text = text.replace(/^```[a-z]*\n?/i, '').replace(/```\s*$/, '').trim();
+      text = text.replace(/^```[a-zA-Z]*\n?/, '').replace(/```\s*$/, '').trim();
     }
     // Try JSON parse
     try {
@@ -3293,31 +3295,13 @@
       return {
         short_summary: Array.isArray(parsed.short_summary)
           ? parsed.short_summary
-          : (parsed.short_summary ? [parsed.short_summary] : []),
-        summary: parsed.full_report || parsed.summary || text,
+          : (parsed.short_summary ? [String(parsed.short_summary)] : []),
+        summary: parsed.full_report || parsed.summary || '',
         raw: text
       };
     } catch (e) {
-      // Try extracting JSON from surrounding text
-      const i = text.indexOf('{'), j = text.lastIndexOf('}');
-      if (i !== -1 && j > i) {
-        try {
-          const parsed = JSON.parse(text.substring(i, j + 1));
-          return {
-            short_summary: Array.isArray(parsed.short_summary)
-              ? parsed.short_summary
-              : (parsed.short_summary ? [parsed.short_summary] : []),
-            summary: parsed.full_report || parsed.summary || text,
-            raw: text
-          };
-        } catch (e2) {}
-      }
       // Not JSON — treat as plain text
-      return {
-        short_summary: [],
-        summary: text,
-        raw: text
-      };
+      return { short_summary: [], summary: text, raw: text };
     }
   }
   function _fmtDelay(sec) {
@@ -4486,6 +4470,7 @@
       // Bulk mode — collapsible sections per target
       res.innerHTML = '';
       const allCollected = {};
+      const allAiData = {};
       const t0 = performance.now();
 
       for (let i = 0; i < targets.length; i++) {
@@ -4529,6 +4514,7 @@
         addHistoryEntry(target, 'INVESTIGATE', result.collected, result.aiSummary);
 
         allCollected[target] = result.collected;
+        if (result.aiData) allAiData[target] = result.aiData;
 
         // Collapse previous sections, keep current open
         if (i > 0) {
@@ -4541,10 +4527,17 @@
         }
       }
 
-      // Set last target as active for Deep Dive
+      // Set last target as active for Deep Dive and show AI Report if available
       const lastTarget = targets[targets.length - 1];
       lastCollected = allCollected[lastTarget] || {};
       currentTarget = lastTarget;
+      lastAISummary = allAiData[lastTarget] ? allAiData[lastTarget].summary || '' : '';
+      // Show AI Report tab from last target's analysis
+      const lastAi = allAiData[lastTarget];
+      if (lastAi) {
+        document.getElementById('aiReportTab').style.display = '';
+        document.getElementById('aiReportContent').innerHTML = renderAIBlock(lastAi);
+      }
 
       // Cross-Target Correlation — show button if API key + multiple targets
       const apiKey = getApiKey();
