@@ -25,10 +25,10 @@
     --red-glow-hi: rgba(124,58,237,0.22);
     --amber:       #d97706;
     --amber-bright:#f59e0b;
-    --text:        #b8b0d0;
+    --text:        #c0b8d8;
     --text-dim:    #4a4070;
-    --text-mid:    #8878b0;
-    --text-bright: #e8e0f8;
+    --text-mid:    #9088b8;
+    --text-bright: #ece4ff;
     --success:     #16a34a;
   }
 
@@ -117,7 +117,7 @@
     --border: #1c2540; --border-mid: #263050; --border-hi: #3a4a70;
     --red: #3b82f6; --red-dim: #2563eb; --red-bright: #60a5fa;
     --red-glow: rgba(59,130,246,0.12); --red-glow-hi: rgba(59,130,246,0.22);
-    --text: #94a3b8; --text-dim: #334155; --text-mid: #64748b; --text-bright: #e2e8f0;
+    --text: #a8b4c4; --text-dim: #3d4d60; --text-mid: #7888a0; --text-bright: #e2e8f0;
   }
   [data-theme="blood"] {
     --bg: #0f0808; --bg2: #150c0c; --bg3: #1a1010; --bg4: #201414;
@@ -1410,7 +1410,7 @@
 
     <div class="content" id="aiReportPanel" style="display:none;">
       <div id="deepDiveBtn" style="display:none;padding:12px 16px;">
-        <button onclick="showDeepDiveModal()" style="display:block;max-width:400px;margin:0 auto;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">⚡ Run Deep Dive Analysis</button>
+        <button onclick="showDeepDiveModal()" style="display:block;max-width:360px;margin:0 auto 24px;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">⚡ Run Deep Dive Analysis</button>
       </div>
       <div id="deepDiveResults" style="display:none;padding:0 16px 16px;"></div>
       <div id="aiReportContent">
@@ -3683,8 +3683,11 @@
   function renderAIBlock(data) {
     const norm = _normalizeAIResponse(data.summary);
     data.summary = norm.summary;
-    // Replace literal \n with real newlines for markdown rendering
-    const summary = (data.summary || '').replace(/\\n/g, '\n');
+    // Replace literal \n with real newlines, then render as markdown
+    const cleaned = (data.summary || '').replace(/\\n/g, '\n');
+    const rendered = _renderMarkdownReport(cleaned);
+    // If markdown renderer produced nothing, fall back to <br> rendering
+    const summaryHtml = rendered || cleaned.replace(/\n/g, '<br>');
     const meta = data.model ? `${data.model} · ${data.tokens} tokens · ${data.elapsed}s` : 'from history';
     let html = `<div class="ai-block">
       <div class="ai-head">
@@ -3693,7 +3696,7 @@
         <div class="ai-meta">${meta}</div>
       </div>
       <div class="ai-body">`;
-    html += _renderMarkdownReport(summary);
+    html += summaryHtml;
     html += `</div></div>`;
     return html;
   }
