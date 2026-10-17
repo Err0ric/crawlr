@@ -4,7 +4,9 @@ from fastapi.responses import FileResponse
 from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, vehicles
 from middleware.rate_limit import SoftRateLimitMiddleware
 
-app = FastAPI(title="CrawlR", version="0.1.0")
+APP_VERSION = "0.1.0"
+
+app = FastAPI(title="CrawlR", version=APP_VERSION)
 
 app.add_middleware(SoftRateLimitMiddleware)
 
@@ -21,3 +23,9 @@ app.include_router(vehicles.router, prefix="/api/vehicles", tags=["vehicles"])
 @app.get("/")
 def root():
     return FileResponse("static/index.html")
+
+
+@app.get("/api/health", tags=["meta"])
+def health():
+    """Liveness probe for Railway and uptime monitors."""
+    return {"status": "ok", "service": "crawlr", "version": APP_VERSION}
