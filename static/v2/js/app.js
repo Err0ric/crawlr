@@ -1,21 +1,26 @@
 // Entry point: navigation, landing, settings, history drawer, AI pill, terms.
-import { $, $$, h, raw, esc, store, toast, refreshQuota, quota, aiLabel, aiAvailable, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES } from "./core.js";
+import { $, $$, h, raw, esc, store, toast, looksLikeHeaders, refreshQuota, quota, aiLabel, aiAvailable, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES } from "./core.js";
 import { openModal, closeModal, openDrawer, closeDrawer } from "./ui.js";
 import { run, renderSources, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
 import * as recon from "./recon.js";
+import * as tools from "./tools.js";
 
 // ---- views ---------------------------------------------------------------------
 const BENCHES = ["investigate", "recon"];
+const TOOLS = ["headers", "dorks", "decoders"];
+const VIEWS = [...BENCHES, ...TOOLS];
 function show(view) {
   $("#landing").hidden = view !== "landing";
-  BENCHES.forEach((b) => ($(`#${b}`).hidden = view !== b));
+  VIEWS.forEach((b) => ($(`#${b}`).hidden = view !== b));
   $("#railToggle").hidden = !BENCHES.includes(view);
   $$(".nav a").forEach((a) => a.removeAttribute("aria-current"));
   $(`.nav a[data-mode="${view}"]`)?.setAttribute("aria-current", "page");
   if (view === "landing") setTimeout(() => $("#landingInput").focus(), 50);
-  if (BENCHES.includes(view) && location.hash !== `#${view}`) history.replaceState(null, "", `/v2#${view}`);
+  if (VIEWS.includes(view) && location.hash !== `#${view}`) history.replaceState(null, "", `/v2#${view}`);
+  if (view === "headers") setTimeout(() => $("#hdrInput").focus(), 50);
+  if (view === "dorks") setTimeout(() => $("#dkName").focus(), 50);
 }
-window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (BENCHES.includes(v)) show(v); });
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.includes(v)) show(v); });
 document.addEventListener("click", (e) => { const g = e.target.closest("[data-goto]"); if (g) { e.preventDefault(); show(g.dataset.goto); } });
 $("#brand").addEventListener("click", (e) => { e.preventDefault(); clearCase(); recon.clearCase(); show("landing"); history.replaceState(null, "", "/v2"); });
 $$(".nav a[data-mode]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.mode); }));
@@ -24,7 +29,7 @@ $$(".nav a[data-mode]").forEach((a) => a.addEventListener("click", (e) => { e.pr
 const detectBox = $("#landingDetect");
 function describe(type) {
   if (!type) return "";
-  if (type === "headers") return "Looks like email headers. Those run in the classic Headers mode for now.";
+  if (type === "headers") return "Email headers. Will check SPF, DKIM and DMARC and trace the route.";
   if (type === "multi") return "Multiple targets. Run them one at a time for now.";
   if (RECON_TYPES.includes(type)) return `${TYPE_LABEL[type]}. Will run ${{ domain: "DNS, WHOIS, TLS, headers, subdomains, exposure and a port scan", ip: "TLS, headers, network owner, exposure and a port scan", asn: "registry, prefix and peering lookups" }[type]}.`;
   return `${TYPE_LABEL[type]}. Will run ${{ username: "Sherlock, Maigret, GitHub and platform checks", email: "Holehe, breaches, Gravatar, Sherlock and Maigret", hash: "MalwareBazaar, CIRCL, OTX and ThreatFox", phone: "carrier lookup", name: "people-search links" }[type]}.`;
@@ -34,13 +39,20 @@ $("#landingForm").addEventListener("submit", (e) => {
   e.preventDefault();
   const v = $("#landingInput").value.trim(); if (!v) return;
   const t = detect(v);
-  if (t === "headers") { location.href = "/"; return; }
+  if (t === "headers") { show("headers"); tools.prefillHeaders(v); return; }
   if (t === "multi") { toast("One target at a time for now."); return; }
   if (RECON_TYPES.includes(t)) { show("recon"); recon.run(v); return; }
   $("#targetInput").value = v; onTargetInput();
   show("investigate");
   run(v);
 });
+// Pasted email headers lose their newlines in a one-line input, so catch the paste itself.
+["#landingInput", "#targetInput"].forEach((sel) => $(sel).addEventListener("paste", (e) => {
+  const text = e.clipboardData?.getData("text") || "";
+  if (!looksLikeHeaders(text)) return;
+  e.preventDefault();
+  show("headers"); tools.prefillHeaders(text); toast("Those look like email headers. Analyzing them here.");
+}));
 $$(".ex").forEach((b) => b.addEventListener("click", () => { $("#landingInput").value = b.dataset.example; $("#landingForm").requestSubmit(); }));
 
 // ---- rail (target + sources + run) ----------------------------------------------
@@ -96,7 +108,7 @@ function openSettings() {
       </section>
       <section>
         <h3 style="font-size:var(--fs-2);margin-bottom:6px">Interface</h3>
-        <p style="color:var(--ink-3);font-size:var(--fs-1)">You're on the new interface. Headers and Dorks still open in the <a href="/">classic one</a> until they're ported.</p>
+        <p style="color:var(--ink-3);font-size:var(--fs-1)">Every mode now runs in the new interface. The <a href="/classic">classic interface</a> stays available for a while.</p>
       </section>`,
   });
   el.addEventListener("click", (e) => {
@@ -137,7 +149,7 @@ function openHistory() {
       if (!entry) return;
       if (entry.type === "RECON") { recon.loadHistory(entry); show("recon"); }
       else if (entry.type === "INVESTIGATE") { loadHistory(entry.id); show("investigate"); }
-      else location.href = "/";
+      else if (entry.type === "email_headers") { show("headers"); tools.loadHeaderHistory(entry); }
     }
   });
   el.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("hist-row")) e.target.click(); });
@@ -165,5 +177,5 @@ function termsIfNeeded() {
   paintPill();
   termsIfNeeded();
   const v = location.hash.slice(1);
-  show(BENCHES.includes(v) ? v : "landing");
+  show(VIEWS.includes(v) ? v : "landing");
 })();
