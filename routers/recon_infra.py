@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
+from core.house_key import resolve_ai_key
+from middleware.observability import client_ip
 from pydantic import BaseModel
 from typing import Optional
 from modules.dns_lookup import run_dns
@@ -171,10 +173,8 @@ async def tech_fingerprint_scan(req: DomainRequest):
 
 
 @router.post("/summarize")
-async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key is required")
-    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
+async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
 
     prompt_parts = [f"Target domain/IP: {req.target}\n"]
 
@@ -314,8 +314,9 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
     t0 = time.time()
 
     ai_resp = await call_ai(
-        api_key=x_api_key,
-        provider=provider,
+        api_key=key.api_key,
+        provider=key.provider,
+        model=key.model,
         max_tokens=2048,
         messages=[
             {
@@ -387,4 +388,6 @@ async def recon_summarize(req: ReconAnalyzeRequest, x_api_key: str = Header(...)
         "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
+        "ai_source": key.source,
+        "free_remaining": key.remaining,
     }

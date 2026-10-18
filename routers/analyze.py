@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
+from core.house_key import resolve_ai_key
+from middleware.observability import client_ip
 from pydantic import BaseModel
 from typing import Optional
 from modules.ai_provider import call_ai
@@ -31,10 +33,8 @@ def ping():
 
 
 @router.post("/summarize")
-async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key is required")
-    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
+async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
 
     prompt_parts = [f"Target: {req.target}\n"]
 
@@ -202,8 +202,9 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_prov
     t0 = time.time()
 
     ai_resp = await call_ai(
-        api_key=x_api_key,
-        provider=provider,
+        api_key=key.api_key,
+        provider=key.provider,
+        model=key.model,
         max_tokens=2048,
         messages=[
             {
@@ -284,14 +285,14 @@ async def summarize(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_prov
         "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
+        "ai_source": key.source,
+        "free_remaining": key.remaining,
     }
 
 
 @router.post("/deep-dive")
-async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key is required")
-    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
+async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "deepdive")
 
     # Build recon context (same data assembly as summarize)
     prompt_parts = [f"Target: {req.target}\n"]
@@ -389,8 +390,9 @@ async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_prov
     t0 = time.time()
 
     ai_resp = await call_ai(
-        api_key=x_api_key,
-        provider=provider,
+        api_key=key.api_key,
+        provider=key.provider,
+        model=key.model,
         max_tokens=2048,
         messages=[
             {
@@ -458,6 +460,8 @@ async def deep_dive(req: AnalyzeRequest, x_api_key: str = Header(...), x_ai_prov
         "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
+        "ai_source": key.source,
+        "free_remaining": key.remaining,
     }
 
 
@@ -466,10 +470,8 @@ class EmailHeaderAnalyzeRequest(BaseModel):
 
 
 @router.post("/email-headers")
-async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key is required")
-    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
+async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
 
     data = req.header_analysis
     prompt_parts = []
@@ -532,8 +534,9 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: st
     t0 = time.time()
 
     ai_resp = await call_ai(
-        api_key=x_api_key,
-        provider=provider,
+        api_key=key.api_key,
+        provider=key.provider,
+        model=key.model,
         max_tokens=1500,
         messages=[
             {
@@ -584,6 +587,8 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, x_api_key: st
         "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
+        "ai_source": key.source,
+        "free_remaining": key.remaining,
     }
 
 
@@ -601,10 +606,8 @@ class DeepAnalysisRequest(BaseModel):
 
 
 @router.post("/deep")
-async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key is required")
-    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
+async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "deepdive")
 
     prompt_parts = [f"Target: {req.target}\n"]
 
@@ -693,8 +696,9 @@ async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...), 
     t0 = time.time()
 
     ai_resp = await call_ai(
-        api_key=x_api_key,
-        provider=provider,
+        api_key=key.api_key,
+        provider=key.provider,
+        model=key.model,
         max_tokens=3000,
         messages=[
             {
@@ -726,6 +730,8 @@ async def deep_analysis(req: DeepAnalysisRequest, x_api_key: str = Header(...), 
         "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
+        "ai_source": key.source,
+        "free_remaining": key.remaining,
     }
 
 
@@ -800,10 +806,8 @@ def _summarize_target_data(target: str, data: dict) -> str:
 
 
 @router.post("/correlate")
-async def correlate(req: CorrelateRequest, x_api_key: str = Header(...), x_ai_provider: str = Header(default="anthropic")):
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key is required")
-    provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
+async def correlate(req: CorrelateRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
 
     if len(req.targets) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 targets to correlate")
@@ -818,8 +822,9 @@ async def correlate(req: CorrelateRequest, x_api_key: str = Header(...), x_ai_pr
     t0 = time.time()
 
     ai_resp = await call_ai(
-        api_key=x_api_key,
-        provider=provider,
+        api_key=key.api_key,
+        provider=key.provider,
+        model=key.model,
         max_tokens=2048,
         messages=[
             {
@@ -877,4 +882,6 @@ async def correlate(req: CorrelateRequest, x_api_key: str = Header(...), x_ai_pr
         "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
+        "ai_source": key.source,
+        "free_remaining": key.remaining,
     }

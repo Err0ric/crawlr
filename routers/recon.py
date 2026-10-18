@@ -12,6 +12,7 @@ from modules.platform_check import run_platform_check
 from modules.hunter import run_hunter
 from modules.profile_scraper import scrape_profiles
 from modules.shodan_lookup import run_shodan
+from modules.internetdb import run_internetdb
 from modules.maigret_mod import run_maigret
 
 router = APIRouter()
@@ -143,6 +144,15 @@ async def shodan_scan(req: ShodanRequest, x_shodan_key: str = Header(...)):
     if not x_shodan_key:
         raise HTTPException(status_code=401, detail="Shodan API key is required")
     return await run_shodan(target, x_shodan_key)
+
+
+@router.post("/internetdb")
+async def internetdb_scan(req: ShodanRequest):
+    """Keyless exposure lookup via Shodan InternetDB (ports, CVEs, hostnames, tags)."""
+    target = req.target.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Target is required")
+    return await run_internetdb(target)
 
 
 class ScrapeProfilesRequest(BaseModel):

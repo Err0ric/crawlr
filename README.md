@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.100-green) ![License](https://img.shields.io/badge/license-MIT-purple) ![Live](https://img.shields.io/badge/live-crawlr.lol-brightgreen)
 
-> Open your browser and start investigating. No install. No setup. One Claude API key unlocks everything.
+> Open your browser and start investigating. No install, no account, no API key. Bring your own key when you want more.
 
 **[crawlr.lol](https://crawlr.lol)**
 
@@ -50,6 +50,33 @@ No Python environment. No CLI. No configuration files. Open the URL and go.
 
 ---
 
+## Free tier and your own keys
+
+CrawlR runs every free module with no key at all. AI features run on a shared house key (Gemini Flash) with a small daily allowance per visitor so you can see what they do. Add your own key in Settings for unlimited AI, your choice of Claude or Gemini, and the full Shodan and Hunter.io modules.
+
+| | Without a key | With your key |
+|---|---|---|
+| OSINT and recon modules | All free modules | Same |
+| Exposure data | Shodan InternetDB (ports, CVEs, hostnames) | Full Shodan (banners, org, geo) |
+| AI Analysis | 5 per day | Unlimited |
+| Deep Dive | 1 per day | Unlimited |
+| Provider | Gemini Flash | Claude or Gemini, your pick |
+
+Keys are stored only in your browser's localStorage and are sent with each request to the API they belong to; CrawlR never stores them.
+
+### Self-hosting the house key
+
+Set `GEMINI_API_KEY` (Google AI Studio) in the environment to turn on the free tier. Optional tuning:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HOUSE_KEY_ENABLED` | `true` | Kill switch |
+| `HOUSE_MODEL` | `gemini-2.5-flash` | Model used for house-key calls |
+| `HOUSE_QUOTA_ANALYSIS` | `5` | Per-IP daily AI Analysis / correlation / header verdicts |
+| `HOUSE_QUOTA_DEEPDIVE` | `1` | Per-IP daily Deep Dive |
+| `HOUSE_QUOTA_GLOBAL` | `300` | All house-key calls per day across all visitors |
+| `AI_CACHE_TTL` | `86400` | Seconds an identical AI prompt is served from cache |
+
 ## Modes
 
 ### INVESTIGATE — People & Identity
@@ -68,9 +95,9 @@ Auto-detects usernames, emails, names, phone numbers, and hashes. Runs selected 
 | Platform Check | Email registration check across social platforms via Holehe | Free |
 | Hash Lookup | MD5/SHA1/SHA256 checked against MalwareBazaar, CIRCL, AlienVault OTX, ThreatFox | Free |
 | Phone Search | Carrier lookup links for TrueCaller, Spokeo, WhitePages, BeenVerified | Free |
-| Hunter.io | Domain email discovery and address pattern detection | API Key |
-| AI Analysis | Claude-powered interpretation with investigative leads | Claude Key |
-| Deep Dive | Full intelligence dossier — see below | Claude Key |
+| Hunter.io | Domain email discovery and address pattern detection | Your key |
+| AI Analysis | AI interpretation with investigative leads | Free tier, or your key |
+| Deep Dive | Full intelligence dossier — see below | Free tier (1/day), or your key |
 
 **Deep Dive Intelligence Dossier**
 
@@ -97,8 +124,9 @@ Enter a domain, IP, or ASN to map the full infrastructure footprint.
 | Subdomains | DNS enumeration + certificate transparency via crt.sh | Free |
 | ASN / BGP | IP-to-ASN mapping, org, prefixes, peering data | Free |
 | Port Scan | Top 20 common ports (SSH, HTTP, RDP, SMB, databases, etc.) | Free |
-| Shodan | Exposed services, open ports, CVEs, and host intelligence | API Key |
-| AI Analysis | Claude-powered attack surface summary and red team next steps | Claude Key |
+| InternetDB | Open ports, CVEs, hostnames, tags via Shodan InternetDB (runs when no Shodan key is set) | Free |
+| Shodan | Banners, org, ISP, geo, full host intelligence | Your key |
+| AI Analysis | Attack surface summary and red team next steps | Free tier, or your key |
 
 Includes a D3.js topology graph (TOPOLOGY tab) for interactive visualization of DNS records and ASN prefix maps.
 
