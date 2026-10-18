@@ -79,3 +79,13 @@ def test_tool_slot_returns_busy_when_saturated(monkeypatch):
 
     assert asyncio.run(main()) == "busy"
     assert sg.busy_result(username="x")["error"] == "busy"
+
+
+def test_html_and_static_assets_revalidate_but_api_is_untouched():
+    with TestClient(app) as c:
+        assert c.get("/").headers["cache-control"] == "no-cache"
+        r = c.get("/static/v2/js/app.js")
+        assert r.headers["cache-control"] == "no-cache" and r.headers.get("etag")
+        again = c.get("/static/v2/js/app.js", headers={"If-None-Match": r.headers["etag"]})
+        assert again.status_code == 304
+        assert "cache-control" not in c.get("/api/health").headers
