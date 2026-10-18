@@ -79,3 +79,27 @@ class tool_slot:
 def busy_result(**fields) -> dict:
     """Standard payload returned to the client when a tool slot could not be acquired."""
     return {**fields, "error": "busy", "message": "CrawlR is at capacity right now. Try again in a minute."}
+
+
+def log_result(tool: str, result: dict) -> dict:
+    """One line per tool run with what it actually found, so empty results are visible in Railway logs."""
+    try:
+        log.info(
+            "tool result",
+            extra={
+                "tool": tool,
+                "total": result.get("total", len(result.get("results", []) or [])),
+                "confirmed": result.get("confirmed"),
+                "error": result.get("error"),
+            },
+        )
+    except Exception:  # never let logging break a response
+        pass
+    return result
+
+
+def log_process(tool: str, returncode: int | None, stderr: bytes | None) -> None:
+    """Warn when the external tool exits non-zero, with the tail of its stderr."""
+    if returncode not in (0, None):
+        tail = (stderr or b"").decode("utf-8", "replace").strip().splitlines()[-5:]
+        log.warning("tool exited non-zero", extra={"tool": tool, "returncode": returncode, "stderr_tail": " | ".join(tail)[:800]})

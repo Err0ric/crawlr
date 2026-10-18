@@ -16,7 +16,7 @@ export const SOURCES = [
   { id: "hibp",      name: "Breaches",        desc: "known credential exposures",            types: ["email"],             on: true },
   { id: "gravatar",  name: "Gravatar",        desc: "avatar profile for this email",         types: ["email"],             on: true },
   { id: "hunter",    name: "Hunter.io",       desc: "addresses on the email's domain",       types: ["email"],             on: false, pro: "hunter" },
-  { id: "harvester", name: "theHarvester",    desc: "hosts and emails from public sources",  types: ["email"],             on: false, note: "unavailable on this server" },
+  { id: "harvester", name: "Domain harvest",  desc: "other addresses on this email's domain, from 8 public sources", types: ["email"], on: true },
   { id: "hash",      name: "Hash lookup",     desc: "MalwareBazaar, CIRCL, OTX, ThreatFox",  types: ["hash"],              on: true },
   { id: "phone",     name: "Phone lookup",    desc: "carrier and line type",                 types: ["phone"],             on: true, pro: "numlookup", proOptional: true },
   { id: "ai",        name: "AI analysis",     desc: "interpretation and next leads",         types: ["username", "email", "hash", "phone", "name"], on: true },
@@ -223,7 +223,15 @@ export async function run(targetRaw, typeOverride) {
   if (type === "hash") {
     if (on("hash")) await runSource("Hash lookup", "/api/hash/hash", { hash: target }, {}, "hash");
   } else if (type === "phone") {
-    if (on("phone")) { const k = getKey("numlookup"); await runSource("Phone lookup", "/api/phone/lookup", { phone: target }, k ? { "X-Numlookup-Key": k } : {}, "phone"); }
+    if (on("phone")) {
+      const k = getKey("numlookup");
+      const d = await runSource("Phone lookup", "/api/phone/lookup", { phone: target }, k ? { "X-Numlookup-Key": k } : {}, "phone");
+      if (!d && k) {
+        // Saved key was rejected: still give the user the lookup links, and say why carrier data is missing.
+        const d2 = await runSource("Phone lookup (links only)", "/api/phone/lookup", { phone: target }, {}, "phone");
+        if (d2) { d2.api_error = "Your NumLookup key was rejected. Update or clear it in Settings."; renderSourceCards(); }
+      }
+    }
   } else if (type === "name") {
     c.nameSearch = target; renderSourceCards(); log.add("People search links ready", "done");
   } else {
@@ -234,7 +242,7 @@ export async function run(targetRaw, typeOverride) {
     if (isEmail && on("holehe")) jobs.push(runSource("Holehe", "/api/recon/holehe", { email: target }, {}, "holehe"));
     if (isEmail && on("hibp")) jobs.push(runSource("Breaches", "/api/recon/hibp", { email: target }, {}, "hibp"));
     if (isEmail && on("gravatar")) jobs.push(runSource("Gravatar", "/api/recon/gravatar", { email: target }, {}, "gravatar"));
-    if (isEmail && on("harvester")) jobs.push(runSource("theHarvester", "/api/recon/harvester", { domain }, {}, "harvester"));
+    if (isEmail && on("harvester")) jobs.push(runSource("Domain harvest", "/api/recon/harvester", { domain }, {}, "harvester"));
     if (isEmail && on("hunter") && getKey("hunter")) jobs.push(runSource("Hunter.io", "/api/recon/hunter", { domain }, { "X-Hunter-Key": getKey("hunter") }, "hunter"));
     await Promise.all(jobs);
     const sites = [...(c.sherlock?.results || []), ...(c.maigret?.results || [])].filter((r) => r.confidence !== "false_positive").map((r) => r.site);

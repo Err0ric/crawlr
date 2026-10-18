@@ -88,7 +88,7 @@ Auto-detects usernames, emails, names, phone numbers, and hashes. Runs selected 
 | Sherlock | Username enumeration across 400+ social platforms | Free |
 | Maigret | Username enumeration across 3,000+ sites with confidence scoring | Free |
 | Holehe | Email-to-account detection via registration checks | Free |
-| theHarvester | Email and subdomain discovery from public sources | Free |
+| Domain harvest | Hosts and addresses on the email's domain from crt.sh, CertSpotter, HackerTarget, RapidDNS, URLScan, OTX, Anubis, Wayback | Free |
 | HIBP | Have I Been Pwned breach database lookup | Free |
 | GitHub | Profile, repos, activity, and linked email scraping | Free |
 | Profile Scraper | Bios, display names, and metadata from YouTube, Reddit, and more | Free |

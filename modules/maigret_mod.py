@@ -5,7 +5,7 @@ import shutil
 import tempfile
 
 from modules.sherlock import _classify_site
-from core.subprocess_guard import tool_slot, ToolBusy, busy_result
+from core.subprocess_guard import tool_slot, ToolBusy, busy_result, log_result, log_process
 
 MAIGRET_AVAILABLE = shutil.which("maigret") is not None
 
@@ -63,6 +63,7 @@ async def _run_maigret_impl(username: str, nsfw: bool = True, timeout: int = 180
             proc.kill()
             await proc.wait()
             return {"username": username, "error": "timeout", "results": [], "total": 0, "confirmed": 0}
+        log_process("maigret", proc.returncode, stderr)
 
         results = []
 
@@ -132,6 +133,6 @@ async def run_maigret(username: str, nsfw: bool = True, timeout: int = 180) -> d
     """Guarded entry point: bounded by the global tool concurrency limit."""
     try:
         async with tool_slot("maigret"):
-            return await _run_maigret_impl(username=username, nsfw=nsfw, timeout=timeout)
+            return log_result("maigret", await _run_maigret_impl(username=username, nsfw=nsfw, timeout=timeout))
     except ToolBusy:
         return busy_result(username=username, results=[], total=0, confirmed=0)

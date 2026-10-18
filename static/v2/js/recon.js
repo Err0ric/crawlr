@@ -3,6 +3,7 @@ import { $, $$, h, raw, esc, link, store, toast, post, postAi, getKey, aiAvailab
 import { normalizeAi, markdown, summaryBlock } from "./ai.js";
 import { openModal, closeModal } from "./ui.js";
 import { makeLog, renderTiers, bindLedger, renderFacts, factCollector, itemCollector } from "./workbench.js";
+import { harvestCard } from "./renderers.js";
 
 // ---- sources -----------------------------------------------------------------
 export const SOURCES = [
@@ -11,6 +12,7 @@ export const SOURCES = [
   { id: "ssl",        name: "TLS certificate",  desc: "issuer, names covered, expiry",                  types: ["domain", "ip"],  on: true },
   { id: "headers",    name: "HTTP headers",     desc: "server and security header grade",               types: ["domain", "ip"],  on: true },
   { id: "subdomains", name: "Subdomains",       desc: "DNS checks and certificate transparency logs",   types: ["domain"],        on: true },
+  { id: "harvest",    name: "Passive discovery", desc: "hosts and addresses from 8 public sources (CT, passive DNS, URLScan, Wayback)", types: ["domain"], on: true },
   { id: "asn",        name: "Network owner",    desc: "ASN, organization, announced prefixes",          types: ["domain", "ip"],  on: true },
   { id: "exposure",   name: "Exposure",         desc: "open ports and CVEs (InternetDB, or Shodan with your key)", types: ["domain", "ip"], on: true },
   { id: "portscan",   name: "Port scan",        desc: "connects to 20 common ports on the target",      types: ["domain", "ip"],  on: true, warn: "active" },
@@ -54,7 +56,7 @@ const flat = (v) => [].concat(v ?? []).flat().filter(Boolean);
 export const TIERS = [
   { id: "flag",      title: "Flags",            cls: "flag",    open: true, blurb: "Known CVEs, risky open services, weak headers, expiring certificates or domains." },
   { id: "surface",   title: "Exposed services", cls: "surface", open: true, blurb: "What answers from the internet." },
-  { id: "inventory", title: "Subdomains",       cls: "",        collapseOver: 15, limit: 300, blurb: "From DNS checks and certificate transparency. Each opens in a new tab." },
+  { id: "inventory", title: "Subdomains",       cls: "",        collapseOver: 15, limit: 300, blurb: "From DNS checks, certificate transparency and passive sources. Each opens in a new tab." },
 ];
 
 export function buildFindings(c, target) {
@@ -88,6 +90,12 @@ export function buildFindings(c, target) {
 
   // inventory
   for (const s of c.subdomains?.subdomains || []) add({ tier: "inventory", what: s.subdomain, url: `https://${s.subdomain}`, meta: [flat(s.ips).join(", "), s.source].filter(Boolean).join(" · "), source: "Subdomains", key: `sub:${s.subdomain}` });
+
+  const hv = c.harvest;
+  if (hv && !hv.error && !hv.skipped) {
+    for (const e of hv.emails || []) add({ tier: "surface", what: e, url: "", meta: "address on this domain", source: "Passive discovery", key: `email:${e}` });
+    for (const hn of hv.hosts || []) add({ tier: "inventory", what: hn, url: `https://${hn}`, meta: (hv.host_sources?.[hn] || []).join(", "), source: "Passive discovery", key: `sub:${hn}` });
+  }
 
   // facts
   if (wh?.found !== false) {
@@ -133,6 +141,7 @@ const muted = (s) => h`<p style="color:var(--ink-3);font-size:var(--fs-1)">${s}<
 const errCard = (title, d) => card(title, tag("error", "warn"), muted(d.error));
 
 const CARDS = {
+  harvest: (d) => harvestCard(d),
   dns: (d) => {
     const rec = d.records || {};
     const rows = Object.entries(rec).filter(([, v]) => flat(v).length).map(([t, v]) => [t, flat(v).map((x) => mono(typeof x === "object" ? JSON.stringify(x) : x)).join("<br>")]);
@@ -185,7 +194,7 @@ const CARDS = {
       + (peers.length ? card("Peers", tag(`${fmtNum(d.total_peers ?? peers.length)}`), `<div style="font-size:var(--fs-1)">${peers.slice(0, 25).map((p) => h`<div>${raw(link(`https://bgp.he.net/AS${String(p.asn).replace(/^AS/i, "")}`, `AS${String(p.asn).replace(/^AS/i, "")}`))} ${p.name}</div>`).join("")}</div>`) : "");
   },
 };
-const CARD_ORDER = ["shodan", "portscan", "headers", "ssl", "dns", "whois", "subdomains", "asn", "asn_detail", "redirects", "techfp", "wayback"];
+const CARD_ORDER = ["shodan", "portscan", "headers", "ssl", "dns", "whois", "subdomains", "harvest", "asn", "asn_detail", "redirects", "techfp", "wayback"];
 
 function renderCards() {
   const html = CARD_ORDER.filter((k) => state.collected[k]).map((k) => { try { return CARDS[k](state.collected[k]); } catch (e) { return card(k, tag("render error", "warn"), muted(e.message)); } }).join("");
@@ -319,6 +328,7 @@ export async function run(raw0) {
     if (on("ssl")) jobs.push(source("TLS certificate", "/api/infra/ssl", T, "ssl"));
     if (on("headers")) jobs.push(source("HTTP headers", "/api/infra/headers", T, "headers"));
     if (type === "domain" && on("subdomains")) jobs.push(source("Subdomains", "/api/infra/subdomains", T, "subdomains"));
+    if (type === "domain" && on("harvest")) jobs.push(source("Passive discovery", "/api/recon/harvester", T, "harvest"));
     if (on("asn")) jobs.push(source("Network owner", "/api/infra/asn", T, "asn"));
     if (on("exposure")) jobs.push(getKey("shodan") ? source("Exposure (Shodan)", "/api/recon/shodan", { target }, "shodan", { "X-Shodan-Key": getKey("shodan") }) : source("Exposure (InternetDB)", "/api/recon/internetdb", { target }, "shodan"));
     if (on("redirects")) jobs.push(source("Redirect chain", "/api/infra/redirects", { target }, "redirects"));

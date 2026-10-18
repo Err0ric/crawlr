@@ -98,10 +98,10 @@ export function buildEvidence(collected, target) {
   }
 
   // --- harvester ---------------------------------------------------------------------
+  // Domain harvest: only addresses matter for a person; hostnames stay in the source card.
   const hv = collected.harvester;
-  if (hv && !hv.error) {
-    for (const e of hv.emails || []) add({ tier: "likely", what: e, url: "", meta: "harvested address", source: "theHarvester", key: `email:${norm(e)}` });
-    for (const hname of (hv.hosts || []).slice(0, 30)) add({ tier: "likely", what: hname, url: `https://${hname}`, meta: "host", source: "theHarvester", key: `host:${norm(hname)}` });
+  if (hv && !hv.error && !hv.skipped) {
+    for (const e of hv.emails || []) if (norm(e) !== norm(target)) add({ tier: "likely", what: e, url: "", meta: "same domain, seen in public archives", source: "Domain harvest", key: `email:${norm(e)}` });
   }
 
   // --- hash --------------------------------------------------------------------------
