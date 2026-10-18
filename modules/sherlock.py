@@ -3,6 +3,7 @@ import csv
 import io
 import tempfile
 import os
+from core.subprocess_guard import tool_slot, ToolBusy, busy_result
 
 # Sites known to return 200 for any username (false positives)
 FALSE_POSITIVE_SITES = {
@@ -69,7 +70,7 @@ def _classify_site(site_name: str) -> str:
     return "normal"
 
 
-async def run_sherlock(username: str, timeout: int = 300) -> dict:
+async def _run_sherlock_impl(username: str, timeout: int = 300) -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
         proc = await asyncio.create_subprocess_exec(
             "sherlock", username,
@@ -122,3 +123,12 @@ async def run_sherlock(username: str, timeout: int = 300) -> dict:
             "confirmed": confirmed,
             "results": results,
         }
+
+
+async def run_sherlock(username: str, timeout: int = 300) -> dict:
+    """Guarded entry point: bounded by the global tool concurrency limit."""
+    try:
+        async with tool_slot("sherlock"):
+            return await _run_sherlock_impl(username=username, timeout=timeout)
+    except ToolBusy:
+        return busy_result(username=username, results=[])

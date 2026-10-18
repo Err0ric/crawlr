@@ -1,14 +1,32 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, vehicles
 from middleware.rate_limit import SoftRateLimitMiddleware
+from middleware.observability import RequestContextMiddleware, SecurityHeadersMiddleware
+from core.logging import configure_logging, get_logger
+
+configure_logging()
+log = get_logger("crawlr")
 
 APP_VERSION = "0.1.0"
 
-app = FastAPI(title="CrawlR", version=APP_VERSION)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    log.info("crawlr started", extra={"version": APP_VERSION})
+    yield
+    log.info("crawlr stopping")
 
+
+app = FastAPI(title="CrawlR", version=APP_VERSION, lifespan=lifespan)
+
+# Middleware runs in reverse registration order on the way in, so the
+# request-context (request id + access log) is registered last to wrap everything.
 app.add_middleware(SoftRateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

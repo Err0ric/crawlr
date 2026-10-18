@@ -3,9 +3,10 @@ import csv
 import glob
 import os
 import tempfile
+from core.subprocess_guard import tool_slot, ToolBusy, busy_result
 
 
-async def run_holehe(email: str, timeout: int = 300) -> dict:
+async def _run_holehe_impl(email: str, timeout: int = 300) -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
         proc = await asyncio.create_subprocess_exec(
             "holehe", email,
@@ -44,3 +45,12 @@ async def run_holehe(email: str, timeout: int = 300) -> dict:
             "total": len(results),
             "results": results,
         }
+
+
+async def run_holehe(email: str, timeout: int = 300) -> dict:
+    """Guarded entry point: bounded by the global tool concurrency limit."""
+    try:
+        async with tool_slot("holehe"):
+            return await _run_holehe_impl(email=email, timeout=timeout)
+    except ToolBusy:
+        return busy_result(email=email, results=[])
