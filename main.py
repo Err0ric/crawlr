@@ -43,7 +43,7 @@ app.include_router(vehicles.router, prefix="/api/vehicles", tags=["vehicles"])
 
 @app.get("/")
 def root():
-    return FileResponse("static/index.html")
+    return FileResponse("static/v2/index.html")
 
 
 @app.get("/classic")
@@ -54,7 +54,7 @@ def classic():
 
 @app.get("/v2")
 def v2():
-    """New interface (in progress). Lives beside the classic UI until every mode is ported."""
+    """Alias for links shared during the v2 rollout."""
     return FileResponse("static/v2/index.html")
 
 

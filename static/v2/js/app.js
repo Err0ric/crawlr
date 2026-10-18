@@ -16,13 +16,13 @@ function show(view) {
   $$(".nav a").forEach((a) => a.removeAttribute("aria-current"));
   $(`.nav a[data-mode="${view}"]`)?.setAttribute("aria-current", "page");
   if (view === "landing") setTimeout(() => $("#landingInput").focus(), 50);
-  if (VIEWS.includes(view) && location.hash !== `#${view}`) history.replaceState(null, "", `/v2#${view}`);
+  if (VIEWS.includes(view) && location.hash !== `#${view}`) history.replaceState(null, "", `${location.pathname}#${view}`);
   if (view === "headers") setTimeout(() => $("#hdrInput").focus(), 50);
   if (view === "dorks") setTimeout(() => $("#dkName").focus(), 50);
 }
 window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.includes(v)) show(v); });
 document.addEventListener("click", (e) => { const g = e.target.closest("[data-goto]"); if (g) { e.preventDefault(); show(g.dataset.goto); } });
-$("#brand").addEventListener("click", (e) => { e.preventDefault(); clearCase(); recon.clearCase(); show("landing"); history.replaceState(null, "", "/v2"); });
+$("#brand").addEventListener("click", (e) => { e.preventDefault(); clearCase(); recon.clearCase(); show("landing"); history.replaceState(null, "", location.pathname); });
 $$(".nav a[data-mode]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.mode); }));
 
 // ---- landing -------------------------------------------------------------------
@@ -108,7 +108,7 @@ function openSettings() {
       </section>
       <section>
         <h3 style="font-size:var(--fs-2);margin-bottom:6px">Interface</h3>
-        <p style="color:var(--ink-3);font-size:var(--fs-1)">Every mode now runs in the new interface. The <a href="/classic">classic interface</a> stays available for a while.</p>
+        <p style="color:var(--ink-3);font-size:var(--fs-1)">The <a href="/classic">classic interface</a> is still available for a few weeks if you need something from it.</p>
       </section>`,
   });
   el.addEventListener("click", (e) => {
