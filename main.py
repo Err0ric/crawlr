@@ -46,6 +46,12 @@ def root():
     return FileResponse("static/index.html")
 
 
+@app.get("/classic")
+def classic():
+    """Original single-file interface, kept reachable during the v2 rollout."""
+    return FileResponse("static/index.html")
+
+
 @app.get("/v2")
 def v2():
     """New interface (in progress). Lives beside the classic UI until every mode is ported."""
