@@ -24,3 +24,31 @@ def test_prompt_asks_for_investigation_sections_and_no_invention():
     for section in ("## Case summary", "## Identity assessment", "## Platform footprint", "## Exposure and risk", "## Investigative leads", "## Gaps and next pivots"):
         assert section in INVESTIGATION_PROMPT
     assert "Never invent" in INVESTIGATION_PROMPT
+
+
+def test_parse_profile_block():
+    from routers.analyze import parse_profile, parse_tagged_report
+    text = """<summary>
+- Identity – Eric
+</summary>
+<profile>
+name: Eric
+location:
+interests: developer, gaming, bug bounty
+exposure: Medium exposure
+exposure_reason: First name and city are public.
+</profile>
+<report>
+## Case summary
+Hi.
+</report>"""
+    p = parse_profile(text)
+    assert p == {"name": "Eric", "interests": ["developer", "gaming", "bug bounty"], "exposure": "Medium", "exposure_reason": "First name and city are public."}
+    bullets, report = parse_tagged_report(text)
+    assert "<profile>" not in report and report.startswith("## Case summary")
+
+
+def test_parse_profile_missing_or_junk():
+    from routers.analyze import parse_profile
+    assert parse_profile("no block here") == {}
+    assert parse_profile("<profile>\nname: Unknown\nexposure: extreme\nfoo: bar\n</profile>") == {}

@@ -26,6 +26,13 @@ Respond in exactly this format, with nothing before or after:
 <summary>
 - 4 bullets, each starting with a label and a dash (e.g. "Identity –", "Footprint –", "Exposure –", "Best lead –"), max 18 words, naming specific platforms, handles, breaches or counts
 </summary>
+<profile>
+name: likely real name, only if the data supports it, else leave blank
+location: likely location, only if the data supports it, else leave blank
+interests: up to 5 short comma-separated tags (e.g. developer, gaming, bug bounty)
+exposure: Low, Medium or High
+exposure_reason: one sentence, 15 words or fewer
+</profile>
 <report>
 ## Case summary
 2-4 sentences: who or what this target most likely is, how confident you are, and the single most useful thing found.
@@ -62,7 +69,7 @@ def parse_tagged_report(text: str) -> tuple[list[str], str]:
     rp = _re.search(r"<report>(.*?)(?:</report>|$)", t, _re.S | _re.I)
     if sm or rp:
         bullets = [b.strip().lstrip("-•*→ ").strip() for b in (sm.group(1) if sm else "").splitlines() if b.strip().lstrip("-•*→ ").strip()]
-        report = (rp.group(1) if rp else _re.sub(r"<summary>.*?</summary>", "", t, flags=_re.S | _re.I)).strip()
+        report = (rp.group(1) if rp else _re.sub(r"<(summary|profile)>.*?</\1>", "", t, flags=_re.S | _re.I)).strip()
         return bullets[:6], report
     cleaned = t
     if cleaned.startswith("```"):
@@ -75,6 +82,37 @@ def parse_tagged_report(text: str) -> tuple[list[str], str]:
     except (json.JSONDecodeError, AttributeError):
         lines = [l.strip().lstrip("-•*→ ") for l in cleaned.splitlines() if l.strip() and not l.strip().startswith(("#", "|", "{", "}"))]
         return [l for l in lines if len(l) > 3][:4], cleaned
+
+
+PROFILE_KEYS = {"name", "location", "interests", "exposure", "exposure_reason"}
+_BLANK = {"", "-", "n/a", "none", "unknown", "blank", "not found", "leave blank"}
+
+
+def parse_profile(text: str) -> dict:
+    """Read the <profile> block (simple key: value lines) used for the report's dossier card.
+    Missing or malformed blocks return {} and the frontend falls back to collected facts."""
+    import re as _re
+    m = _re.search(r"<profile>(.*?)</profile>", text or "", _re.S | _re.I)
+    if not m:
+        return {}
+    out: dict = {}
+    for line in m.group(1).splitlines():
+        k, sep, v = line.partition(":")
+        k = k.strip().lower().lstrip("-•* ")
+        v = v.strip().strip('"').strip()
+        if not sep or k not in PROFILE_KEYS or v.lower() in _BLANK or v.lower().startswith("likely real name"):
+            continue
+        if k == "interests":
+            tags = [t.strip() for t in v.split(",") if t.strip() and t.strip().lower() not in _BLANK]
+            if tags:
+                out[k] = [t[:32] for t in tags[:5]]
+        elif k == "exposure":
+            lvl = v.split()[0].strip(".,").capitalize()
+            if lvl in ("Low", "Medium", "High"):
+                out[k] = lvl
+        else:
+            out[k] = v[:160]
+    return out
 
 
 class AnalyzeRequest(BaseModel):
@@ -293,6 +331,7 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
     return {
         "summary": full_report,
         "short_summary": short_summary,
+        "profile": parse_profile(text),
         "model": ai_resp["model"],
         "tokens": tokens,
         "elapsed": elapsed,
