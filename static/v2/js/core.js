@@ -140,6 +140,13 @@ export const looksLikeHeaders = (t) =>
   [/^Received:/mi, /^From:/mi, /^To:/mi, /^Subject:/mi, /^Message-ID:/mi, /^MIME-Version:/mi, /^Authentication-Results:/mi, /^Return-Path:/mi, /^DKIM-Signature:/mi]
     .filter((re) => re.test(t)).length >= 3;
 
+// A dotted string is only a domain if it ends in a real TLD; "word.word" is a username.
+// Ported from the classic UI's list, plus common newer/ccTLDs.
+const TLDS = new Set(("com org net edu gov mil int io co dev app ai me us uk ca au de fr it es nl br ru cn jp kr in za mx ar cl se no fi dk pl cz at ch be pt ie nz sg hk tw ph th id my vn ae sa il tr gr ro hu bg hr sk si lt lv ee is lu mt cy eu ua by kz pk bd ng ke eg ma " +
+  "info biz name pro museum coop aero cat jobs mobi tel travel asia post xxx xyz online site store tech space fun icu top wang club vip shop work ltd group live cloud digital world center network systems " +
+  "solutions agency media design studio email zone guru ninja rocks lol wtf gg tv cc ly fm to sh so gl ws la page blog news tools security link run host website tk ml ga cf gq su").split(" "));
+const isDomain = (t) => RE.domain.test(t) && TLDS.has(t.split(".").pop().toLowerCase());
+
 export function detect(input) {
   const t = String(input ?? "").trim();
   if (!t) return "";
@@ -150,7 +157,7 @@ export function detect(input) {
   if (RE.ip.test(t)) return "ip";
   if (RE.hash.test(t)) return "hash";
   if (RE.phone.test(t) && t.replace(/\D/g, "").length >= 7 && t.replace(/\D/g, "").length <= 15) return "phone";
-  if (RE.domain.test(t)) return "domain";
+  if (isDomain(t)) return "domain";
   if (RE.name.test(t)) return "name";
   return "username";
 }
