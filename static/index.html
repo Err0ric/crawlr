@@ -1376,7 +1376,7 @@
         <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Hunter.io','hunter')"></div><div class="mod-info"><div class="mod-name">Hunter.io</div><div class="mod-sub">domain · email discovery</div></div><div class="mod-tag">API</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Hash Lookup</div><div class="mod-sub">md5/sha1/sha256 · malware check</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Phone Lookup</div><div class="mod-sub">reverse · carrier · location</div></div><div class="mod-tag free">FREE</div></div>
-        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · interpret &amp; suggest leads</div></div><div class="mod-tag">KEY</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">ai · interpret &amp; suggest leads</div></div><div class="mod-tag">AI</div></div>
         <div class="mod mod-active"><div class="mod-toggle" id="activeTechToggle" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">⚠ Active Techniques</div><div class="mod-sub">account recovery · may notify target</div></div><div class="mod-tag warn">⚠</div></div>
       </div>
     </div>
@@ -1462,17 +1462,17 @@
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Subdomains</div><div class="mod-sub">common subdomain enumeration</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">ASN / BGP</div><div class="mod-sub">IP ranges · network info</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Port Scan</div><div class="mod-sub">top 20 common ports</div></div><div class="mod-tag free">FREE</div></div>
-        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Shodan','shodan')"></div><div class="mod-info"><div class="mod-name">Shodan</div><div class="mod-sub">ip/domain · exposed services &amp; CVEs</div></div><div class="mod-tag">API</div></div>
+        <div class="mod"><div class="mod-toggle"    onclick="this.classList.toggle('on');if(this.classList.contains('on'))promptKeyForModule('Shodan','shodan')"></div><div class="mod-info"><div class="mod-name">Shodan</div><div class="mod-sub">ip/domain · free via InternetDB, full with your key</div></div><div class="mod-tag">PRO</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Wayback Machine</div><div class="mod-sub">snapshot history · archive.org</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Redirect Chain</div><div class="mod-sub">follows redirects · final destination</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Tech Fingerprint</div><div class="mod-sub">stack · cms · frameworks</div></div><div class="mod-tag free">FREE</div></div>
-        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · attack surface summary</div></div><div class="mod-tag">KEY</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">ai · attack surface summary</div></div><div class="mod-tag">AI</div></div>
       </div>
       <div class="mod-scroll" id="reconAsnModules" style="display:none;">
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">ASN Detail</div><div class="mod-sub">org · handle · RIR · registration</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">IP Prefixes</div><div class="mod-sub">IPv4 · IPv6 announced routes</div></div><div class="mod-tag free">FREE</div></div>
         <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">Peering</div><div class="mod-sub">upstream · downstream peers</div></div><div class="mod-tag free">FREE</div></div>
-        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">claude · network analysis</div></div><div class="mod-tag">KEY</div></div>
+        <div class="mod"><div class="mod-toggle on" onclick="this.classList.toggle('on')"></div><div class="mod-info"><div class="mod-name">AI Analysis</div><div class="mod-sub">ai · network analysis</div></div><div class="mod-tag">AI</div></div>
       </div>
     </div>
 
@@ -3111,7 +3111,7 @@
     html += `<div id="headerAiSlot"></div>`;
 
     // AI Analysis button (only if API key configured)
-    if (getApiKey()) {
+    if (aiAvailable()) {
       html += `<div id="headerAiBtnWrap" style="margin-bottom:14px;">
         <button id="headerAiBtn" onclick="runHeaderAiAnalysis()" style="width:100%;padding:10px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.4);border-radius:4px;color:#f59e0b;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.15)';this.style.borderColor='#f59e0b'" onmouseout="this.style.background='rgba(245,158,11,0.08)';this.style.borderColor='rgba(245,158,11,0.4)'">// AI ANALYSIS</button>
       </div>`;
@@ -3205,7 +3205,7 @@
     const data = window._lastHeaderAnalysis;
     if (!data) return;
     const apiKey = getApiKey();
-    if (!apiKey) return;
+    if (!aiAvailable()) return;
 
     const btn = document.getElementById('headerAiBtn');
     btn.textContent = '⏳ ANALYZING...';
@@ -3214,7 +3214,7 @@
     try {
       const resp = await fetch('/api/analyze/email-headers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
+        headers: aiHeaders(),
         body: JSON.stringify({ header_analysis: data }),
       });
       if (!resp.ok) {
@@ -3752,8 +3752,8 @@
       return;
     }
     const apiKey = getApiKey();
-    if (!apiKey) {
-      showToast('Set your API key in Settings first');
+    if (!aiAvailable()) {
+      showToast('Free AI is unavailable right now. Add your own key in Settings.');
       return;
     }
     document.getElementById('ddTokens').textContent = `~${_estimateDeepDiveTokens()} (${Math.min(urls.length, 20)} profiles)`;
@@ -3799,7 +3799,7 @@
 
       const aiResp = await fetch('/api/analyze/deep-dive', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
+        headers: aiHeaders(),
         body: JSON.stringify({
           target,
           sherlock: c.sherlock,
@@ -4265,7 +4265,7 @@
     let aiData = null;
     const apiKey = getApiKey();
     const hasResults = Object.values(collected).some(v => v);
-    if (apiKey && hasResults) {
+    if (aiAvailable() && hasResults) {
       const aiRow = addLogRow(logEl, `Sending results to ${getAiProvider() === 'gemini' ? 'Gemini' : 'Claude'} for analysis...`, 'run');
       const aiTimer = setInterval(() => setLogTime(aiRow, (performance.now() - t0) / 1000), 200);
       try {
@@ -4286,7 +4286,7 @@
 
         const resp = await fetch('/api/analyze/summarize', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
+          headers: aiHeaders(),
           body: JSON.stringify({
             target,
             sherlock: mergedSherlock,
@@ -4325,8 +4325,8 @@
         setLogTime(aiRow, (performance.now() - t0) / 1000);
         updateLogRow(aiRow, `AI Analysis error: ${e.message}`, 'wait');
       }
-    } else if (!apiKey) {
-      addLogRow(logEl, 'AI Analysis skipped — no API key set', 'wait');
+    } else if (!aiAvailable()) {
+      addLogRow(logEl, 'AI Analysis skipped — add a key in Settings', 'wait');
     }
 
     // If no cards rendered at all, show empty state
@@ -4547,7 +4547,7 @@
       const hasMultipleResults = Object.keys(allCollected).length >= 2
         && Object.values(allCollected).some(c => Object.values(c).some(v => v));
 
-      if (apiKey && hasMultipleResults) {
+      if (aiAvailable() && hasMultipleResults) {
         let estTokens = 600;
         for (const tgt of Object.keys(allCollected)) {
           const c = allCollected[tgt];
@@ -4580,7 +4580,7 @@
           try {
             const corrResp = await fetch('/api/analyze/correlate', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
+              headers: aiHeaders(),
               body: JSON.stringify({ targets: window._bulkCorrelationData }),
             });
             if (!corrResp.ok) {
@@ -4598,10 +4598,10 @@
             resultsDiv.innerHTML = `<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--red-bright);padding:10px 14px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;">Correlation error: ${e.message}</div>`;
           }
         };
-      } else if (!apiKey && hasMultipleResults) {
+      } else if (!aiAvailable() && hasMultipleResults) {
         const noKeyNote = document.createElement('div');
         noKeyNote.style.cssText = 'font-family:Share Tech Mono,monospace;font-size:11px;color:var(--text-dim);padding:10px 14px;border:1px solid var(--border-mid);border-radius:4px;margin-bottom:12px;';
-        noKeyNote.textContent = 'Cross-target correlation available — set API key in Settings';
+        noKeyNote.textContent = 'Cross-target correlation available — add a key in Settings';
         res.insertBefore(noKeyNote, res.firstChild);
       }
 
@@ -5902,19 +5902,24 @@
           `Shodan host lookup on "${target}"`,
           '/api/recon/shodan', { target },
           { 'X-Shodan-Key': getKey('shodan') }, renderShodanCard);
+      } else {
+        // No Shodan key: fall back to Shodan InternetDB (free, keyless). Same shape
+        // (ports/vulns) so the AI summary and exports consume it unchanged.
+        reconCollected.shodan = await runModule(logEl, cardsEl, t0,
+          `Exposure lookup (InternetDB) on "${target}"`, '/api/recon/internetdb', { target }, renderInternetDbCard);
       }
     }
 
     // AI Analysis
     let reconTokens = 0;
     const apiKey = getApiKey();
-    if (apiKey) {
+    if (aiAvailable()) {
       const aiRow = addLogRow(logEl, `Sending recon data to ${getAiProvider() === 'gemini' ? 'Gemini' : 'Claude'} for analysis...`, 'run');
       const aiTimer = setInterval(() => setLogTime(aiRow, (performance.now() - t0) / 1000), 200);
       try {
         const resp = await fetch('/api/infra/summarize', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
+          headers: aiHeaders(),
           body: JSON.stringify({
             target,
             dns: reconCollected.dns,
@@ -6000,7 +6005,7 @@
     try {
       const resp = await fetch('/api/analyze/deep', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, 'X-Ai-Provider': getAiProvider() },
+        headers: aiHeaders(),
         body: JSON.stringify({
           target,
           dns: reconCollected.dns,
@@ -6442,6 +6447,43 @@
     if (value) localStorage.setItem(cfg.storageKey, value);
     else localStorage.removeItem(cfg.storageKey);
   }
+  // ---- house AI (free tier served from the server's own key) ----
+  // /api/quota tells us whether free AI is on and how many calls this IP has left today.
+  let HOUSE_AI = { house_ai: false };
+  async function refreshQuota() {
+    try {
+      const r = await fetch('/api/quota');
+      if (r.ok) HOUSE_AI = await r.json();
+    } catch (e) { /* offline or blocked; treat as no house AI */ }
+    updateKeyPill();
+  }
+  function aiAvailable() {
+    return !!getApiKey() || !!HOUSE_AI.house_ai;
+  }
+  // Headers for AI calls: only send X-Api-Key when the user actually has one,
+  // so the server can fall back to the house key.
+  function aiHeaders() {
+    const h = { 'Content-Type': 'application/json', 'X-Ai-Provider': getAiProvider() };
+    const k = getApiKey();
+    if (k) h['X-Api-Key'] = k;
+    return h;
+  }
+  // Keep the pill accurate after every AI call without touching each call site.
+  (function () {
+    const _fetch = window.fetch.bind(window);
+    window.fetch = async function (url, opts) {
+      const resp = await _fetch(url, opts);
+      try {
+        const u = typeof url === 'string' ? url : (url && url.url) || '';
+        if (!getApiKey() && (u.startsWith('/api/analyze/') || u.startsWith('/api/infra/summarize'))) {
+          setTimeout(refreshQuota, 0);
+        }
+      } catch (e) { /* noop */ }
+      return resp;
+    };
+  })();
+  document.addEventListener('DOMContentLoaded', refreshQuota);
+
   // getApiKey returns the active provider's key
   function getApiKey() {
     const p = getAiProvider();
@@ -6457,6 +6499,10 @@
     if (key) {
       dot.classList.add('set');
       label.textContent = p === 'gemini' ? 'GEMINI' : 'CLAUDE';
+    } else if (HOUSE_AI.house_ai) {
+      const left = (HOUSE_AI.remaining && HOUSE_AI.remaining.analysis) || 0;
+      dot.classList.toggle('set', left > 0);
+      label.textContent = `FREE AI · ${left} LEFT`;
     } else {
       dot.classList.remove('set');
       label.textContent = 'NO KEY';
@@ -7111,6 +7157,24 @@
     return html;
   }
 
+  function renderInternetDbCard(data) {
+    if (!data.found) {
+      const err = data.error || 'No exposure data for this host';
+      return `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Exposure · InternetDB</div><div class="badge b-none">${data.error ? 'ERROR' : 'NOT FOUND'}</div>${copyBtn('InternetDB')}</div><div class="rcard-body"><div class="ritem"><div class="dot dd"></div>${err}</div></div></div>`;
+    }
+    const ports = data.ports || [], vulns = data.vulns || [], hosts = data.hostnames || [], tags = data.tags || [], cpes = data.cpes || [];
+    let html = `<div class="rcard"><div class="rcard-head"><div class="rcard-title">Exposure · InternetDB</div><div class="badge b-hit">${ports.length} PORT${ports.length !== 1 ? 'S' : ''}</div>${vulns.length ? `<div class="badge b-warn" style="margin-left:4px;">${data.vuln_count || vulns.length} CVE${vulns.length !== 1 ? 'S' : ''}</div>` : ''}${copyBtn('InternetDB')}</div><div class="rcard-body">`;
+    html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">IP:</strong> ${data.ip}</div>`;
+    if (ports.length) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Ports:</strong> ${ports.join(', ')}</div>`;
+    if (hosts.length) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Hostnames:</strong> ${hosts.slice(0, 8).join(', ')}${hosts.length > 8 ? ` (+${hosts.length - 8})` : ''}</div>`;
+    if (tags.length) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Tags:</strong> ${tags.join(', ')}</div>`;
+    if (cpes.length) html += `<div class="ritem"><div class="dot dg"></div><strong style="color:var(--text-bright)">Software:</strong> ${cpes.slice(0, 6).map(c => c.replace(/^cpe:\/a:/, '')).join(', ')}</div>`;
+    if (vulns.length) html += `<div class="ritem" style="color:var(--amber);"><div class="dot" style="background:var(--amber)"></div><strong>CVEs:</strong> ${vulns.slice(0, 10).join(', ')}${vulns.length > 10 ? ` (+${vulns.length - 10} more)` : ''}</div>`;
+    html += `<div class="ritem"><div class="dot dd"></div><span style="color:var(--text-dim);">Free keyless source. Add a Shodan key in Settings for banners, org, and geo.</span></div>`;
+    html += `</div></div>`;
+    return html;
+  }
+
   window.onload = () => {
     // Apply saved theme
     const savedTheme = localStorage.getItem('crawlr_theme');
@@ -7122,7 +7186,8 @@
     } else if (getApiKey()) {
       updateKeyPill();
     } else {
-      setTimeout(openModal, 500);
+      // Only push the key modal at people when there is no free AI to fall back on.
+      refreshQuota().then(() => { if (!aiAvailable()) setTimeout(openModal, 500); });
     }
 
     updateKeyPill();

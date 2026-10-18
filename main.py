@@ -7,6 +7,9 @@ from routers import recon, analyze, recon_infra, hash_lookup, email_headers, pho
 from middleware.rate_limit import SoftRateLimitMiddleware
 from middleware.observability import RequestContextMiddleware, SecurityHeadersMiddleware
 from core.logging import configure_logging, get_logger
+from core.house_key import quota_status
+from middleware.observability import client_ip
+from fastapi import Request
 
 configure_logging()
 log = get_logger("crawlr")
@@ -41,6 +44,12 @@ app.include_router(vehicles.router, prefix="/api/vehicles", tags=["vehicles"])
 @app.get("/")
 def root():
     return FileResponse("static/index.html")
+
+
+@app.get("/api/quota", tags=["meta"])
+def quota(request: Request):
+    """Free-AI availability and remaining calls for the caller's IP. Drives the Settings UI."""
+    return quota_status(client_ip(request))
 
 
 @app.get("/api/health", tags=["meta"])
