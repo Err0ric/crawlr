@@ -89,4 +89,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         for k, v in SECURITY_HEADERS.items():
             response.headers.setdefault(k, v)
+        # The app is served as unbundled ES modules with stable filenames, so a browser that
+        # caches them heuristically keeps running old code after a deploy. "no-cache" makes it
+        # revalidate every time; StaticFiles answers with ETag/Last-Modified, so an unchanged
+        # file costs a 304, not a re-download.
+        path = request.url.path
+        if path.startswith("/static/") or not path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-cache")
         return response
