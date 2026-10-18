@@ -46,6 +46,14 @@ $("#landingForm").addEventListener("submit", (e) => {
   show("investigate");
   run(v);
 });
+// Pivot buttons in the investigation report ("Run in Investigate" / "Run in Recon").
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-pivot]"); if (!b) return;
+  const v = b.dataset.value; if (!v) return;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (b.dataset.pivot === "recon") { show("recon"); recon.run(v); return; }
+  $("#targetInput").value = v; onTargetInput(); show("investigate"); run(v);
+});
 // Pasted email headers lose their newlines in a one-line input, so catch the paste itself.
 ["#landingInput", "#targetInput"].forEach((sel) => $(sel).addEventListener("paste", (e) => {
   const text = e.clipboardData?.getData("text") || "";

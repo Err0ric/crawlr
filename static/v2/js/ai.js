@@ -17,7 +17,7 @@ export function normalizeAi(data) {
   return { ...data, summary: summary.replace(/```(?:json|markdown)?/g, "").trim(), short_summary: bullets.map(String) };
 }
 
-const inline = (s) =>
+export const inline = (s) =>
   esc(s)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code>$1</code>")
