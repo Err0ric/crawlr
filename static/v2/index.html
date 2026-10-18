@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CrawlR</title>
+<meta name="description" content="Browser-based OSINT investigation. Type a username, email, domain, IP, phone number or hash and CrawlR runs the right sources.">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/v2/css/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/v2" id="brand" aria-label="CrawlR home">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
+    <span>Crawl<span class="r">R</span></span>
+  </a>
+  <nav class="nav" aria-label="Modes">
+    <a href="#investigate" data-mode="investigate">Investigate</a>
+    <a href="/" data-legacy title="Opens the classic interface until this mode is ported">Recon</a>
+    <a href="/" data-legacy title="Opens the classic interface until this mode is ported">Headers</a>
+    <a href="/" data-legacy title="Opens the classic interface until this mode is ported">Dorks</a>
+  </nav>
+  <div class="grow"></div>
+  <div class="right">
+    <button class="pill" id="aiPill" type="button" title="AI availability. Click to manage keys."><span class="dot"></span><span id="aiPillText">AI off</span></button>
+    <button class="btn btn-ghost btn-sm" id="historyBtn" type="button">History</button>
+    <button class="btn btn-ghost btn-sm" id="settingsBtn" type="button">Settings</button>
+  </div>
+</header>
+
+<!-- ============ Landing ============ -->
+<main class="landing" id="landing">
+  <h1>Investigate a target in your browser.</h1>
+  <p class="sub">Type a username, email, domain, IP, phone number or hash. CrawlR picks the right sources, runs them, and sorts what comes back by how much it tells you.</p>
+  <form class="search" id="landingForm">
+    <label class="sr-only" for="landingInput">Target</label>
+    <input class="input mono" id="landingInput" placeholder="username, email, domain, IP, phone, hash" autocomplete="off" spellcheck="false" autofocus>
+    <button class="btn btn-primary" type="submit">Run</button>
+  </form>
+  <div class="detect" id="landingDetect"></div>
+
+  <div class="examples">
+    <p>Try one:</p>
+    <div class="row">
+      <button class="ex" type="button" data-example="torvalds"><span class="k">username</span>torvalds</button>
+      <button class="ex" type="button" data-example="test@example.com"><span class="k">email</span>test@example.com</button>
+      <button class="ex" type="button" data-example="44d88612fea8a8f36de82e1278abb02f"><span class="k">hash</span>44d88612…abb02f</button>
+    </div>
+  </div>
+
+  <div class="how">
+    <div><b>No account, no key</b>Every open source runs as-is. AI analysis has a small daily free allowance.</div>
+    <div><b>Evidence, ranked</b>Confirmed accounts and breaches come first. Unverified hits are kept but tucked away.</div>
+    <div><b>Your keys, your browser</b>Add Claude, Gemini, Shodan or Hunter keys in Settings. They stay in your browser.</div>
+  </div>
+</main>
+
+<!-- ============ Investigate workbench ============ -->
+<div class="bench" id="investigate" hidden>
+  <aside class="rail" id="rail">
+    <section>
+      <h2>Target</h2>
+      <label class="sr-only" for="targetInput">Target</label>
+      <input class="input target" id="targetInput" placeholder="username, email, hash, phone" autocomplete="off" spellcheck="false">
+      <div class="detected" id="targetDetected"></div>
+    </section>
+    <section>
+      <h2>Sources</h2>
+      <div id="sources"></div>
+    </section>
+    <div class="run">
+      <button class="btn btn-primary btn-lg btn-block" id="runBtn" type="button">Run investigation</button>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="main-head" id="mainHead" hidden>
+      <h1 id="caseTarget"></h1>
+      <span class="meta" id="caseMeta"></span>
+      <span class="spacer"></span>
+      <button class="btn btn-sm" id="exportBtn" type="button">Export</button>
+      <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">New case</button>
+    </div>
+    <div class="runlog collapsed" id="runlog" hidden></div>
+    <div class="ledger" id="ledger"></div>
+    <div class="empty" id="emptyState">
+      <h3>No case open</h3>
+      <p>Enter a target on the left and run. Confirmed accounts, breaches and extracted facts will appear here, ranked.</p>
+    </div>
+    <section id="bySource" hidden>
+      <h2 class="rail-h">By source</h2>
+      <div class="sources-grid" id="sourceCards"></div>
+    </section>
+  </main>
+
+  <aside class="aside" id="aside">
+    <section>
+      <h2>What we know</h2>
+      <div class="facts" id="facts"><p class="empty" style="padding:0">Nothing yet.</p></div>
+    </section>
+    <section>
+      <h2>AI analysis</h2>
+      <div id="aiPanel"><p class="empty" style="padding:0">Runs automatically after the sources finish.</p></div>
+    </section>
+    <section class="notes">
+      <h2>Notes</h2>
+      <textarea class="textarea" id="notes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
+      <div class="foot"><span id="notesStatus">Saved</span><span id="notesCount">0 chars</span></div>
+    </section>
+  </aside>
+</div>
+<button class="btn btn-primary rail-toggle" id="railToggle" type="button" hidden>Target &amp; sources</button>
+
+<!-- ============ Overlays ============ -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div id="overlays"></div>
+
+<script type="module" src="/static/v2/js/app.js"></script>
+</body>
+</html>
