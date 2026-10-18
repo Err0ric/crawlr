@@ -5,6 +5,25 @@ import { run, renderSources, loadHistory, getHistory, clearCase, exportCase, sta
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
 
+// Password managers (Chrome, Safari/iCloud Keychain, 1Password, Bitwarden, LastPass) treat any
+// text box mentioning "username" or "email" as a login field and pop up saved logins.
+// None of CrawlR's inputs are logins, so opt every one of them out, including ones added later.
+const QUIET = { autocomplete: "off", "data-1p-ignore": "", "data-lpignore": "true", "data-bwignore": "", "data-form-type": "other" };
+function quietAutofill(root) {
+  for (const el of root.querySelectorAll?.("input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea") || []) {
+    if (el.dataset.quiet) continue;
+    el.dataset.quiet = "1";
+    for (const [k, v] of Object.entries(QUIET)) el.setAttribute(k, v);
+    // A password-type box always triggers "save password"; mask API keys with CSS instead.
+    if (el.type === "password") { el.type = "text"; el.classList.add("masked"); }
+    // Browsers skip autofill on search boxes, which is what these are.
+    if (el.tagName === "INPUT" && el.type === "text") el.type = "search";
+  }
+}
+quietAutofill(document);
+new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => n.nodeType === 1 && quietAutofill(n.parentNode || n)))).observe(document.body, { childList: true, subtree: true });
+
+
 // ---- views ---------------------------------------------------------------------
 const BENCHES = ["investigate", "recon"];
 const TOOLS = ["headers", "dorks", "decoders"];
