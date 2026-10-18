@@ -59,18 +59,20 @@ $$(".ex").forEach((b) => b.addEventListener("click", () => { $("#landingInput").
 let typeOverride = "";
 function onTargetInput() {
   const v = $("#targetInput").value.trim();
-  const t = typeOverride || detect(v);
+  const detected = detect(v);
+  const t = typeOverride || detected;
   renderSources(INVESTIGATE_TYPES.includes(t) ? t : "");
   const box = $("#targetDetected");
   if (!v) { box.innerHTML = ""; return; }
-  const options = INVESTIGATE_TYPES.includes(t) || !t ? INVESTIGATE_TYPES : [];
-  box.innerHTML = h`<span>${typeOverride ? "Treating as" : "Detected"}</span>
-    <span class="seg" role="group" aria-label="Target type">${raw(options.map((o) => h`<button type="button" data-type="${o}" aria-pressed="${o === t}">${TYPE_LABEL[o]}</button>`).join(""))}</span>
-    ${RECON_TYPES.includes(t) ? raw(h`<span class="pill">${TYPE_LABEL[t]}</span> <span>runs in <a href="#recon" data-goto="recon" data-carry="1">Recon</a></span>`) : ""}`;
+  const looksRecon = !typeOverride && RECON_TYPES.includes(detected);
+  // Always offer the Investigate types so an ambiguous target ("john.dev") can be searched as a username.
+  box.innerHTML = h`<span>${looksRecon ? `Looks like a ${TYPE_LABEL[detected].toLowerCase()}. Search it as:` : typeOverride ? "Treating as" : "Detected"}</span>
+    <span class="seg" role="group" aria-label="Target type">${raw(INVESTIGATE_TYPES.map((o) => h`<button type="button" data-type="${o}" aria-pressed="${o === t}">${TYPE_LABEL[o]}</button>`).join(""))}</span>
+    ${looksRecon ? raw(h`<span>or run it in <a href="#recon" data-goto="recon" data-carry="1">Recon</a></span>`) : ""}`;
 }
 $("#targetInput").addEventListener("input", () => { typeOverride = ""; onTargetInput(); });
 $("#targetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#runBtn").click(); });
-$("#targetDetected").addEventListener("click", (e) => { const b = e.target.closest("[data-type]"); if (!b) return; typeOverride = b.dataset.type === detect($("#targetInput").value) ? "" : b.dataset.type; onTargetInput(); });
+$("#targetDetected").addEventListener("click", (e) => { const b = e.target.closest("[data-type]"); if (!b) return; typeOverride = b.dataset.type === detect($("#targetInput").value.trim()) ? "" : b.dataset.type; onTargetInput(); });
 $("#runBtn").addEventListener("click", () => { $("#rail").classList.remove("open"); run($("#targetInput").value, typeOverride || undefined); });
 $("#clearBtn").addEventListener("click", () => { clearCase(); typeOverride = ""; });
 $("#exportBtn").addEventListener("click", exportCase);

@@ -206,7 +206,7 @@ export async function run(targetRaw, typeOverride) {
   if (!target || state.running) return;
   const type = typeOverride || detect(target);
   if (type === "multi") { toast("One target at a time for now. Multi-target runs come back in a later build."); return; }
-  if (!["username", "email", "hash", "phone", "name"].includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Recon. Use the Recon tab.`); return; }
+  if (!["username", "email", "hash", "phone", "name"].includes(type)) { toast(`That looks like a ${(TYPE_LABEL[type] || "domain").toLowerCase()}. Pick Username under the target to search it as a handle, or run it in Recon.`, 5000); return; }
 
   Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, running: true });
   store.del(checkKey());
