@@ -10,6 +10,73 @@ import time
 router = APIRouter()
 
 
+# ---- investigation report prompt ------------------------------------------------
+# Tagged sections instead of markdown-inside-JSON: long reports in a JSON string break
+# on unescaped quotes/newlines, especially with smaller models.
+INVESTIGATION_PROMPT = """You are a senior OSINT investigator writing a case report from automated collection results.
+
+Write for an investigator who will act on this report. Be specific and evidence-driven:
+- Use only the collected data below. Never invent accounts, names, locations or breaches.
+- Cite the source for each claim in parentheses, e.g. (Sherlock), (GitHub), (HIBP).
+- When evidence is thin or conflicting, say so and lower the confidence. A short honest report beats a padded one.
+- Treat sites flagged as false positives or unverified as weak signals, not confirmations.
+
+Respond in exactly this format, with nothing before or after:
+
+<summary>
+- 4 bullets, each starting with a label and a dash (e.g. "Identity –", "Footprint –", "Exposure –", "Best lead –"), max 18 words, naming specific platforms, handles, breaches or counts
+</summary>
+<report>
+## Case summary
+2-4 sentences: who or what this target most likely is, how confident you are, and the single most useful thing found.
+
+## Identity assessment
+| Attribute | Assessment | Confidence | Evidence |
+|---|---|---|---|
+Rows for: likely real name, location, occupation or interests, other handles or emails, age range (only if supported). Use High / Medium / Low. Write "Unknown" rather than guessing.
+
+## Platform footprint
+| Platform | Account | Confidence | Why it matters |
+|---|---|---|---|
+One row per confirmed or likely account worth an investigator's time (skip noise). Note reuse of the same handle, avatar, bio or links across platforms.
+
+## Exposure and risk
+Breaches, leaked data, exposed personal details, and an OPSEC rating (Low / Medium / High exposure) with one line explaining it.
+
+## Investigative leads
+Ranked, most valuable first. Each lead is one line starting with → and must be directly actionable: a URL to open, a pivot to run in CrawlR (another username, email or domain), or an exact search query in backticks.
+
+## Gaps and next pivots
+What the data does not answer yet and which source or technique would answer it.
+</report>"""
+
+ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active techniques" (the investigator enabled them) listing account-recovery or password-reset enumeration checks worth running on the confirmed platforms, each marked with ⚠ and a one-line note on what it reveals and the risk of notifying the target."""
+
+
+def parse_tagged_report(text: str) -> tuple[list[str], str]:
+    """Extract (bullets, markdown report) from the tagged format, falling back to the
+    legacy JSON shape and finally to raw text, so a model that ignores the format still renders."""
+    import re as _re
+    t = (text or "").strip()
+    sm = _re.search(r"<summary>(.*?)</summary>", t, _re.S | _re.I)
+    rp = _re.search(r"<report>(.*?)(?:</report>|$)", t, _re.S | _re.I)
+    if sm or rp:
+        bullets = [b.strip().lstrip("-•*→ ").strip() for b in (sm.group(1) if sm else "").splitlines() if b.strip().lstrip("-•*→ ").strip()]
+        report = (rp.group(1) if rp else _re.sub(r"<summary>.*?</summary>", "", t, flags=_re.S | _re.I)).strip()
+        return bullets[:6], report
+    cleaned = t
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1]
+    if cleaned.endswith("```"):
+        cleaned = cleaned.rsplit("```", 1)[0]
+    try:
+        parsed = json.loads(cleaned.strip())
+        return list(parsed.get("short_summary", []))[:6], str(parsed.get("full_report", cleaned))
+    except (json.JSONDecodeError, AttributeError):
+        lines = [l.strip().lstrip("-•*→ ") for l in cleaned.splitlines() if l.strip() and not l.strip().startswith(("#", "|", "{", "}"))]
+        return [l for l in lines if len(l) > 3][:4], cleaned
+
+
 class AnalyzeRequest(BaseModel):
     target: str
     sherlock: Optional[dict] = None
@@ -205,43 +272,14 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
         api_key=key.api_key,
         provider=key.provider,
         model=key.model,
-        max_tokens=2048,
+        max_tokens=4096,
         messages=[
             {
                 "role": "user",
                 "content": (
-                    "You are an OSINT analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
-                    '{\n'
-                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"],\n'
-                    '  "full_report": "markdown string"\n'
-                    '}\n\n'
-                    "**short_summary**: Exactly 4 bullet strings. STRICT RULES:\n"
-                    "- Each bullet starts with a category label followed by a dash (e.g. 'Platform Footprint –', 'Identity Lead –', 'Breach Exposure –')\n"
-                    "- Maximum 15 words per bullet\n"
-                    "- Every bullet MUST reference specific findings (actual platform names, usernames, breach names, email addresses, account counts)\n"
-                    "- NO generic observations. Bad: 'Active on multiple platforms'. Good: 'Platform Footprint – confirmed on GitHub, Reddit, Steam, and 12 others'\n"
-                    "- Plain text only, no markdown\n\n"
-                    "**full_report**: A markdown string with this structure:\n\n"
-                    "## Digital Footprint\n"
-                    "Brief overview of the target's online presence and notable patterns.\n\n"
-                    "## Key Findings\n"
-                    "Detailed analysis organized by category. Use bullet points (→ prefix). "
-                    "Include identity leads, probable name inference with confidence level, "
-                    "platform correlations, and notable data points.\n\n"
-                    "## Recommendations\n"
-                    "→ Specific investigative next steps\n"
-                    "→ Phone lookup strategies (Truecaller, Spokeo, WhitePages, etc.)\n"
-                    "→ URLs to check for confirmation\n"
-                    + (
-                        "\n## Active Techniques\n"
-                        "→ ⚠ Account recovery flows on detected services\n"
-                        "→ ⚠ Password reset enumeration\n"
-                        "→ ⚠ Social engineering approaches\n"
-                        if req.active_techniques else ""
-                    ) +
-                    "\nUse **bold** for emphasis in the full_report. Use → prefix for action items. "
-                    "Keep it concise and actionable.\n\n"
-                    f"Recon data:\n{recon_data}"
+                    INVESTIGATION_PROMPT
+                    + ("\n" + ACTIVE_TECHNIQUES_SECTION if req.active_techniques else "")
+                    + f"\n\nTarget: {req.target}\n\nCollected data:\n{recon_data}"
                 ),
             }
         ],
@@ -251,34 +289,7 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
     text = ai_resp["text"]
     tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
 
-    # Parse JSON response — strip fences and try to extract the JSON object
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[-1]
-    if cleaned.endswith("```"):
-        cleaned = cleaned.rsplit("```", 1)[0]
-    cleaned = cleaned.strip()
-    try:
-        parsed = json.loads(cleaned)
-        short_summary = parsed.get("short_summary", [])
-        full_report = parsed.get("full_report", cleaned)
-    except (json.JSONDecodeError, KeyError):
-        # Fallback: treat entire response as full_report, extract readable lines as summary
-        full_report = cleaned
-        _json_noise = {"{", "}", "[", "]", '",', "```", "```json"}
-        lines = [
-            l.strip() for l in cleaned.split("\n")
-            if l.strip()
-            and l.strip() not in _json_noise
-            and not l.strip().startswith('"short_summary"')
-            and not l.strip().startswith('"full_report"')
-            and not l.strip().startswith("#")
-        ]
-        # Strip JSON string artifacts like leading/trailing quotes and commas
-        lines = [l.strip().strip('"').strip(",").strip('"') for l in lines]
-        lines = [l for l in lines if l and len(l) > 3]
-        short_summary = lines[:4]
-
+    short_summary, full_report = parse_tagged_report(text)
     return {
         "summary": full_report,
         "short_summary": short_summary,

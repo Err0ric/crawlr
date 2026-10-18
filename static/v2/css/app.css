@@ -494,3 +494,12 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
   .dec-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
+
+/* investigation report in the main column */
+.report-card .card-head .ai-meta { margin: 0 auto 0 0; padding-left: 4px; }
+.report-card .report { max-width: none; font-size: var(--fs-2); line-height: 1.6; }
+.report-card .report h3 { font-size: var(--fs-3); color: var(--ink); margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line-soft); }
+.report-card .report h3:first-child { margin-top: 0; }
+.report-card .report table { font-size: var(--fs-1); }
+.report-card .report li { margin: 6px 0; }
+.lead-copy { margin-left: 6px; vertical-align: 1px; padding: 2px 8px; }
