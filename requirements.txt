@@ -1,13 +1,16 @@
-fastapi
-uvicorn[standard]
-anthropic
-httpx
-python-whois
-dnspython
-requests
-beautifulsoup4
-sherlock-project
-holehe
-maigret
-theHarvester
-python-nmap
+# Pinned 2026-10-17. Dependabot keeps these current (see .github/dependabot.yml).
+fastapi==0.143.3
+uvicorn[standard]==0.53.0
+anthropic==1.15.0
+httpx==0.28.1
+python-whois==0.9.6
+dnspython==2.9.0
+requests==2.34.2
+beautifulsoup4==4.15.0
+sherlock-project==0.16.2
+holehe==1.61
+maigret==0.6.6
+# NOTE: the PyPI "theHarvester" package is a 2019 0.0.1 snapshot, not the maintained tool.
+# Pinned here to preserve current behavior; replaced with an install from the upstream repo in a follow-up.
+theHarvester==0.0.1
+python-nmap==0.7.1

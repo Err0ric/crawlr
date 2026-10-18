@@ -1,6 +1,9 @@
 import dns.resolver
 import httpx
 import re
+from core.logging import get_logger
+
+log = get_logger(__name__)
 
 COMMON_SUBDOMAINS = [
     "www", "mail", "ftp", "smtp", "pop", "imap", "webmail",
@@ -35,7 +38,7 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
                 return [], []
             entries = resp.json()
     except Exception as e:
-        print(f"[crt.sh] Error querying CT logs for {domain}: {type(e).__name__}: {e}")
+        log.warning("crt.sh query failed", extra={"domain": domain, "err": f"{type(e).__name__}: {e}"})
         return [], []
 
     subs = set()
