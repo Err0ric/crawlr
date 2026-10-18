@@ -20,7 +20,7 @@
   </a>
   <nav class="nav" aria-label="Modes">
     <a href="#investigate" data-mode="investigate">Investigate</a>
-    <a href="/" data-legacy title="Opens the classic interface until this mode is ported">Recon</a>
+    <a href="#recon" data-mode="recon">Recon</a>
     <a href="/" data-legacy title="Opens the classic interface until this mode is ported">Headers</a>
     <a href="/" data-legacy title="Opens the classic interface until this mode is ported">Dorks</a>
   </nav>
@@ -38,7 +38,7 @@
   <p class="sub">Type a username, email, domain, IP, phone number or hash. CrawlR picks the right sources, runs them, and sorts what comes back by how much it tells you.</p>
   <form class="search" id="landingForm">
     <label class="sr-only" for="landingInput">Target</label>
-    <input class="input mono" id="landingInput" placeholder="username, email, domain, IP, phone, hash" autocomplete="off" spellcheck="false" autofocus>
+    <input class="input mono" id="landingInput" placeholder="username, email, domain, IP, ASN, phone, hash" autocomplete="off" spellcheck="false" autofocus>
     <button class="btn btn-primary" type="submit">Run</button>
   </form>
   <div class="detect" id="landingDetect"></div>
@@ -48,6 +48,7 @@
     <div class="row">
       <button class="ex" type="button" data-example="torvalds"><span class="k">username</span>torvalds</button>
       <button class="ex" type="button" data-example="test@example.com"><span class="k">email</span>test@example.com</button>
+      <button class="ex" type="button" data-example="example.com"><span class="k">domain</span>example.com</button>
       <button class="ex" type="button" data-example="44d88612fea8a8f36de82e1278abb02f"><span class="k">hash</span>44d88612…abb02f</button>
     </div>
   </div>
@@ -110,6 +111,71 @@
       <h2>Notes</h2>
       <textarea class="textarea" id="notes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
       <div class="foot"><span id="notesStatus">Saved</span><span id="notesCount">0 chars</span></div>
+    </section>
+  </aside>
+</div>
+
+<!-- ============ Recon workbench ============ -->
+<div class="bench" id="recon" hidden>
+  <aside class="rail" id="rRail">
+    <section>
+      <h2>Target</h2>
+      <label class="sr-only" for="rTargetInput">Domain, IP or ASN</label>
+      <input class="input target" id="rTargetInput" placeholder="example.com, 8.8.8.8, AS15169" autocomplete="off" spellcheck="false">
+      <div class="detected" id="rTargetDetected"></div>
+    </section>
+    <section>
+      <h2>Sources</h2>
+      <div id="rSources"></div>
+    </section>
+    <div class="run">
+      <button class="btn btn-primary btn-lg btn-block" id="rRunBtn" type="button">Run recon</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-head" id="rMainHead" hidden>
+      <h1 id="rCaseTarget"></h1>
+      <span class="meta" id="rCaseMeta"></span>
+      <span class="spacer"></span>
+      <button class="btn btn-sm" id="rExportBtn" type="button">Export</button>
+      <button class="btn btn-ghost btn-sm" id="rClearBtn" type="button">New case</button>
+    </div>
+    <div class="runlog collapsed" id="rRunlog" hidden></div>
+    <div class="tabs" id="rTabs" role="tablist">
+      <button type="button" role="tab" data-tab="findings" aria-selected="true">Findings</button>
+      <button type="button" role="tab" data-tab="topology" aria-selected="false">Topology</button>
+    </div>
+    <div id="rFindings">
+      <div class="ledger" id="rLedger"></div>
+      <div class="empty" id="rEmpty">
+        <h3>No target yet</h3>
+        <p>Enter a domain, IP or ASN on the left and run. Flags such as known CVEs, risky open services and expiring certificates come first.</p>
+      </div>
+      <section id="rBySource" hidden style="margin-top:var(--s-4)">
+        <h2 class="rail-h">By source</h2>
+        <div class="sources-grid" id="rSourceCards"></div>
+      </section>
+    </div>
+    <div id="rTopology" hidden>
+      <div class="graph" id="rGraph"></div>
+      <p class="graph-note">Scroll to zoom, drag to pan. Hover a node for details. Orange marks Cloudflare.</p>
+    </div>
+  </main>
+
+  <aside class="aside">
+    <section>
+      <h2>What we know</h2>
+      <div class="facts" id="rFacts"><p class="empty" style="padding:0">Nothing yet.</p></div>
+    </section>
+    <section>
+      <h2>AI analysis</h2>
+      <div id="rAiPanel"><p class="empty" style="padding:0">Runs automatically after the sources finish.</p></div>
+    </section>
+    <section class="notes">
+      <h2>Notes</h2>
+      <textarea class="textarea" id="rNotes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
+      <div class="foot"><span id="rNotesStatus">Saved</span><span id="rNotesCount">0 chars</span></div>
     </section>
   </aside>
 </div>

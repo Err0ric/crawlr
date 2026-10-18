@@ -2,18 +2,23 @@
 import { $, $$, h, raw, esc, store, toast, refreshQuota, quota, aiLabel, aiAvailable, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES } from "./core.js";
 import { openModal, closeModal, openDrawer, closeDrawer } from "./ui.js";
 import { run, renderSources, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
+import * as recon from "./recon.js";
 
 // ---- views ---------------------------------------------------------------------
+const BENCHES = ["investigate", "recon"];
 function show(view) {
   $("#landing").hidden = view !== "landing";
-  $("#investigate").hidden = view !== "investigate";
-  $("#railToggle").hidden = view !== "investigate";
-  $$(".nav a").forEach((a) => a.toggleAttribute("aria-current", false));
-  if (view === "investigate") $('.nav a[data-mode="investigate"]').setAttribute("aria-current", "page");
+  BENCHES.forEach((b) => ($(`#${b}`).hidden = view !== b));
+  $("#railToggle").hidden = !BENCHES.includes(view);
+  $$(".nav a").forEach((a) => a.removeAttribute("aria-current"));
+  $(`.nav a[data-mode="${view}"]`)?.setAttribute("aria-current", "page");
   if (view === "landing") setTimeout(() => $("#landingInput").focus(), 50);
+  if (BENCHES.includes(view) && location.hash !== `#${view}`) history.replaceState(null, "", `/v2#${view}`);
 }
-$("#brand").addEventListener("click", (e) => { e.preventDefault(); clearCase(); show("landing"); history.replaceState(null, "", "/v2"); });
-$('.nav a[data-mode="investigate"]').addEventListener("click", (e) => { e.preventDefault(); show("investigate"); location.hash = "investigate"; });
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (BENCHES.includes(v)) show(v); });
+document.addEventListener("click", (e) => { const g = e.target.closest("[data-goto]"); if (g) { e.preventDefault(); show(g.dataset.goto); } });
+$("#brand").addEventListener("click", (e) => { e.preventDefault(); clearCase(); recon.clearCase(); show("landing"); history.replaceState(null, "", "/v2"); });
+$$(".nav a[data-mode]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.mode); }));
 
 // ---- landing -------------------------------------------------------------------
 const detectBox = $("#landingDetect");
@@ -21,18 +26,19 @@ function describe(type) {
   if (!type) return "";
   if (type === "headers") return "Looks like email headers. Those run in the classic Headers mode for now.";
   if (type === "multi") return "Multiple targets. Run them one at a time for now.";
-  if (RECON_TYPES.includes(type)) return `${TYPE_LABEL[type]}. Runs in Recon (classic interface for now).`;
+  if (RECON_TYPES.includes(type)) return `${TYPE_LABEL[type]}. Will run ${{ domain: "DNS, WHOIS, TLS, headers, subdomains, exposure and a port scan", ip: "TLS, headers, network owner, exposure and a port scan", asn: "registry, prefix and peering lookups" }[type]}.`;
   return `${TYPE_LABEL[type]}. Will run ${{ username: "Sherlock, Maigret, GitHub and platform checks", email: "Holehe, breaches, Gravatar, Sherlock and Maigret", hash: "MalwareBazaar, CIRCL, OTX and ThreatFox", phone: "carrier lookup", name: "people-search links" }[type]}.`;
 }
-$("#landingInput").addEventListener("input", (e) => { const t = detect(e.target.value); detectBox.innerHTML = t ? h`<span class="pill ${INVESTIGATE_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t]}</span><span>${describe(t).split(". ").slice(1).join(". ")}</span>` : ""; });
+$("#landingInput").addEventListener("input", (e) => { const t = detect(e.target.value); detectBox.innerHTML = t ? h`<span class="pill ${INVESTIGATE_TYPES.includes(t) || RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t]}</span><span>${describe(t).split(". ").slice(1).join(". ")}</span>` : ""; });
 $("#landingForm").addEventListener("submit", (e) => {
   e.preventDefault();
   const v = $("#landingInput").value.trim(); if (!v) return;
   const t = detect(v);
-  if (RECON_TYPES.includes(t) || t === "headers") { location.href = "/"; return; }
+  if (t === "headers") { location.href = "/"; return; }
   if (t === "multi") { toast("One target at a time for now."); return; }
+  if (RECON_TYPES.includes(t)) { show("recon"); recon.run(v); return; }
   $("#targetInput").value = v; onTargetInput();
-  show("investigate"); location.hash = "investigate";
+  show("investigate");
   run(v);
 });
 $$(".ex").forEach((b) => b.addEventListener("click", () => { $("#landingInput").value = b.dataset.example; $("#landingForm").requestSubmit(); }));
@@ -48,7 +54,7 @@ function onTargetInput() {
   const options = INVESTIGATE_TYPES.includes(t) || !t ? INVESTIGATE_TYPES : [];
   box.innerHTML = h`<span>${typeOverride ? "Treating as" : "Detected"}</span>
     <span class="seg" role="group" aria-label="Target type">${raw(options.map((o) => h`<button type="button" data-type="${o}" aria-pressed="${o === t}">${TYPE_LABEL[o]}</button>`).join(""))}</span>
-    ${RECON_TYPES.includes(t) ? raw(h`<span class="pill">${TYPE_LABEL[t]} → <a href="/">Recon</a></span>`) : ""}`;
+    ${RECON_TYPES.includes(t) ? raw(h`<span class="pill">${TYPE_LABEL[t]}</span> <span>runs in <a href="#recon" data-goto="recon" data-carry="1">Recon</a></span>`) : ""}`;
 }
 $("#targetInput").addEventListener("input", () => { typeOverride = ""; onTargetInput(); });
 $("#targetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#runBtn").click(); });
@@ -56,7 +62,9 @@ $("#targetDetected").addEventListener("click", (e) => { const b = e.target.close
 $("#runBtn").addEventListener("click", () => { $("#rail").classList.remove("open"); run($("#targetInput").value, typeOverride || undefined); });
 $("#clearBtn").addEventListener("click", () => { clearCase(); typeOverride = ""; });
 $("#exportBtn").addEventListener("click", exportCase);
-$("#railToggle").addEventListener("click", () => $("#rail").classList.toggle("open"));
+$("#railToggle").addEventListener("click", () => $(".bench:not([hidden]) .rail")?.classList.toggle("open"));
+// carry a domain/IP typed into Investigate over to Recon
+document.addEventListener("click", (e) => { if (e.target.closest("[data-carry]")) { const v = $("#targetInput").value.trim(); $("#rTargetInput").value = v; $("#rTargetInput").dispatchEvent(new Event("input")); } });
 
 // ---- AI pill + settings ----------------------------------------------------------------
 function paintPill() {
@@ -88,7 +96,7 @@ function openSettings() {
       </section>
       <section>
         <h3 style="font-size:var(--fs-2);margin-bottom:6px">Interface</h3>
-        <p style="color:var(--ink-3);font-size:var(--fs-1)">You're on the new interface. Recon, Headers and Dorks still open in the <a href="/">classic one</a> until they're ported.</p>
+        <p style="color:var(--ink-3);font-size:var(--fs-1)">You're on the new interface. Headers and Dorks still open in the <a href="/">classic one</a> until they're ported.</p>
       </section>`,
   });
   el.addEventListener("click", (e) => {
@@ -123,7 +131,14 @@ function openHistory() {
     if (d) { store.set("crawlr_history", getHistory().filter((x) => x.id !== d.dataset.del)); closeDrawer(); openHistory(); return; }
     if (e.target.id === "histClear") { openModal({ title: "Clear all history?", body: `<p style="font-size:var(--fs-1)">Removes every saved case and its notes from this browser.</p>`, actions: [{ label: "Keep", onClick: closeModal }, { label: "Clear all", primary: true, onClick: () => { store.del("crawlr_history"); closeModal(); closeDrawer(); toast("History cleared"); } }] }); return; }
     const r = e.target.closest(".hist-row");
-    if (r) { closeDrawer(); if (loadHistory(r.dataset.id)) show("investigate"); }
+    if (r) {
+      closeDrawer();
+      const entry = getHistory().find((x) => x.id === r.dataset.id);
+      if (!entry) return;
+      if (entry.type === "RECON") { recon.loadHistory(entry); show("recon"); }
+      else if (entry.type === "INVESTIGATE") { loadHistory(entry.id); show("investigate"); }
+      else location.href = "/";
+    }
   });
   el.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("hist-row")) e.target.click(); });
 }
@@ -149,5 +164,6 @@ function termsIfNeeded() {
   await refreshQuota();
   paintPill();
   termsIfNeeded();
-  if (location.hash === "#investigate") show("investigate"); else show("landing");
+  const v = location.hash.slice(1);
+  show(BENCHES.includes(v) ? v : "landing");
 })();

@@ -79,7 +79,7 @@ export function summaryBlock(ai, opts = {}) {
     <div class="ai-summary card">
       ${bullets.length ? raw(`<ul>${bullets.map((b) => `<li>${inline(b)}</li>`).join("")}</ul>`) : raw(`<div class="report">${markdown(ai.summary).slice(0, 2000)}</div>`)}
       <div class="ai-meta">${meta}</div>
-      ${opts.reportId ? raw(h`<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" type="button" data-open-report="${opts.reportId}">Full report</button>${opts.deepDive ? raw(opts.deepDive) : ""}</div>`) : ""}
+      ${opts.reportId ? raw(`<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" type="button" ${opts.attr || "data-open-report"}="${esc(opts.reportId)}">Full report</button>${opts.deepDive || ""}</div>`) : ""}
     </div>`;
 }
 

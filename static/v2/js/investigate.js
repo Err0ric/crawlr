@@ -4,6 +4,7 @@ import { buildEvidence, TIERS } from "./evidence.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock } from "./ai.js";
 import { openModal, closeModal } from "./ui.js";
+import { makeLog, renderTiers, bindLedger, renderFacts } from "./workbench.js";
 
 // ---- sources ---------------------------------------------------------------
 export const SOURCES = [
@@ -56,21 +57,7 @@ $("#sources").addEventListener("change", (e) => {
 });
 
 // ---- run log -----------------------------------------------------------------
-const log = {
-  el: null, t0: 0, rows: [],
-  start() { this.el = $("#runlog"); this.el.hidden = false; this.el.classList.remove("collapsed"); this.el.innerHTML = `<div class="runlog-summary"><span>Running</span><span class="spacer"></span><span class="t"></span></div>`; this.t0 = performance.now(); this.rows = []; },
-  add(text, status = "run") {
-    const r = document.createElement("div");
-    r.className = `lg ${status}`;
-    r.innerHTML = `<span class="ic">${status === "run" ? "◌" : status === "done" ? "✓" : status === "err" ? "✕" : "…"}</span><span class="m"></span><span class="t"></span>`;
-    r.querySelector(".m").textContent = text;
-    this.el.appendChild(r); this.rows.push(r);
-    return r;
-  },
-  set(r, text, status) { r.className = `lg ${status}`; r.querySelector(".ic").textContent = status === "done" ? "✓" : status === "err" ? "✕" : "…"; r.querySelector(".m").textContent = text; r.querySelector(".t").textContent = `${((performance.now() - this.t0) / 1000).toFixed(1)}s`; },
-  finish(summary) { const s = this.el.querySelector(".runlog-summary"); s.firstChild.textContent = summary; s.querySelector(".t").textContent = `${((performance.now() - this.t0) / 1000).toFixed(1)}s`; this.el.classList.add("collapsed"); },
-};
-$("#runlog").addEventListener("click", (e) => { if (e.target.closest(".runlog-summary")) $("#runlog").classList.toggle("collapsed"); });
+const log = makeLog($("#runlog"));
 
 // ---- state -------------------------------------------------------------------
 export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false };
@@ -80,46 +67,11 @@ const checked = () => new Set(store.get(checkKey(), []));
 // ---- ledger + facts -------------------------------------------------------------
 function renderLedger() {
   const { items, facts } = buildEvidence(state.collected, state.target);
-  const done = checked();
-  const byTier = Object.fromEntries(TIERS.map((t) => [t.id, items.filter((i) => i.tier === t.id)]));
-  const tiers = TIERS.filter((t) => byTier[t.id].length);
   $("#emptyState").hidden = true;
-  $("#ledger").innerHTML = tiers.length ? tiers.map((t) => {
-    const rows = byTier[t.id];
-    const limit = t.id === "unverified" ? 40 : 200;
-    return h`
-      <section class="tier ${t.cls} ${t.open ? "" : "collapsed"}" data-tier="${t.id}">
-        <div class="tier-head" role="button" tabindex="0" aria-expanded="${t.open}">
-          <span class="tier-rail"></span><h3>${t.title}</h3><span class="count">${fmtNum(rows.length)}</span><span class="chev">▾</span>
-        </div>
-        <div class="tier-body">
-          <div style="padding:4px 14px 8px;color:var(--ink-4);font-size:var(--fs-0)">${t.blurb}</div>
-          ${raw(rows.slice(0, limit).map((it) => h`
-            <div class="ev ${done.has(it.key) ? "done" : ""}">
-              <input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""} aria-label="Mark reviewed">
-              <div class="what">${raw(it.url ? link(it.url, it.what) : esc(it.what))}${it.meta ? raw(h`<span class="meta">${it.meta}</span>`) : ""}</div>
-              <span class="src">${it.source}</span>
-            </div>`).join(""))}
-          ${rows.length > limit ? raw(h`<div class="ev-more" style="color:var(--ink-4);font-size:var(--fs-0)">${fmtNum(rows.length - limit)} more not shown</div>`) : ""}
-        </div>
-      </section>`;
-  }).join("") : h`<div class="empty"><h3>Nothing found yet</h3><p>No source returned a result for this target.</p></div>`;
-
-  $("#facts").innerHTML = facts.length ? facts.map((f) => h`
-    <div class="fact"><span class="k">${f.k}</span><span class="v">${raw(f.url ? link(f.url, f.v) : esc(f.v))}<span class="src">${f.source}</span></span></div>`).join("")
-    : `<p class="empty" style="padding:0">No facts extracted yet.</p>`;
+  renderTiers($("#ledger"), items, TIERS, checked(), `<div class="empty"><h3>Nothing found yet</h3><p>No source returned a result for this target.</p></div>`);
+  renderFacts($("#facts"), facts);
 }
-$("#ledger").addEventListener("click", (e) => {
-  const head = e.target.closest(".tier-head");
-  if (head) { const sec = head.parentElement; sec.classList.toggle("collapsed"); head.setAttribute("aria-expanded", !sec.classList.contains("collapsed")); }
-});
-$("#ledger").addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("tier-head")) { e.preventDefault(); e.target.click(); } });
-$("#ledger").addEventListener("change", (e) => {
-  const k = e.target.dataset.key; if (!k) return;
-  const s = checked(); e.target.checked ? s.add(k) : s.delete(k);
-  store.set(checkKey(), [...s]);
-  e.target.closest(".ev").classList.toggle("done", e.target.checked);
-});
+bindLedger($("#ledger"), checkKey);
 
 function renderSourceCards() {
   const c = state.collected;
@@ -157,7 +109,7 @@ function renderAiPanel() {
     ? `<button class="btn btn-sm" type="button" data-open-report="deep">Deep Dive report</button>`
     : canDeep ? `<button class="btn btn-sm" type="button" id="deepDiveBtn">Deep Dive…</button>`
     : srcOn("active") ? "" : `<span style="color:var(--ink-4);font-size:var(--fs-0);align-self:center">Deep Dive needs Active techniques on</span>`;
-  box.innerHTML = summaryBlock(state.ai, { reportId: "summary", deepDive: deepBtn });
+  box.innerHTML = summaryBlock(state.ai, { reportId: "summary", attr: "data-open-report", deepDive: deepBtn });
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-open-report]");
@@ -209,7 +161,7 @@ function confirmDeepDive() {
 
 async function runDeepDive(urls) {
   const row = log.add(`Scraping ${plural(urls.length, "profile")}`);
-  $("#runlog").classList.remove("collapsed");
+  log.open();
   try {
     const scraped = await post("/api/recon/scrape-profiles", { urls });
     state.collected.profileScrape = scraped;
@@ -254,7 +206,7 @@ export async function run(targetRaw, typeOverride) {
   if (!target || state.running) return;
   const type = typeOverride || detect(target);
   if (type === "multi") { toast("One target at a time for now. Multi-target runs come back in a later build."); return; }
-  if (!["username", "email", "hash", "phone", "name"].includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Recon.`); return; }
+  if (!["username", "email", "hash", "phone", "name"].includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Recon. Use the Recon tab.`); return; }
 
   Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, running: true });
   store.del(checkKey());
@@ -318,7 +270,6 @@ function saveHistory() {
 export function loadHistory(id) {
   const e = getHistory().find((x) => x.id === id);
   if (!e) return false;
-  if (e.type !== "INVESTIGATE") { location.href = "/"; return true; }
   Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false });
   $("#targetInput").value = e.target;
   renderSources(state.type);
