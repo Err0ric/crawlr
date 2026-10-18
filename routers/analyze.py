@@ -33,21 +33,21 @@ Respond in exactly this format, with nothing before or after:
 ## Identity assessment
 | Attribute | Assessment | Confidence | Evidence |
 |---|---|---|---|
-Rows for: likely real name, location, occupation or interests, other handles or emails, age range (only if supported). Use High / Medium / Low. Write "Unknown" rather than guessing.
+Only rows the data actually supports, from: likely real name, location, occupation or interests, other handles or emails, age range. Use High / Medium / Low. Leave unsupported attributes out of the table and list them under Gaps instead of writing "Unknown".
 
 ## Platform footprint
 | Platform | Account | Confidence | Why it matters |
 |---|---|---|---|
-One row per confirmed or likely account worth an investigator's time (skip noise). Note reuse of the same handle, avatar, bio or links across platforms.
+At most 8 rows: the accounts most useful to an investigator, strongest first. "Why it matters" is 12 words or fewer and does not restate the source. Below the table, one line noting how many other accounts were found and any reuse of the same handle, avatar, bio or links.
 
 ## Exposure and risk
-Breaches, leaked data, exposed personal details, and an OPSEC rating (Low / Medium / High exposure) with one line explaining it.
+At most 3 sentences: breaches, leaked data, exposed personal details, and an OPSEC rating (Low / Medium / High exposure) with the reason.
 
 ## Investigative leads
-Ranked, most valuable first. Each lead is one line starting with → and must be directly actionable: a URL to open, a pivot to run in CrawlR (another username, email or domain), or an exact search query in backticks.
+At most 6, ranked, most valuable first. Each lead is one line starting with → and must be directly actionable: a pivot to run in CrawlR (another username, email or domain), an exact search query in backticks, or a specific URL and what to look for there. Don't list "open profile X" for every account.
 
 ## Gaps and next pivots
-What the data does not answer yet and which source or technique would answer it.
+Bullets: each unanswered question (including attributes left out of the identity table) and the source or technique that would answer it.
 </report>"""
 
 ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active techniques" (the investigator enabled them) listing account-recovery or password-reset enumeration checks worth running on the confirmed platforms, each marked with ⚠ and a one-line note on what it reveals and the risk of notifying the target."""

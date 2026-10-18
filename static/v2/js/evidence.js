@@ -14,6 +14,18 @@ const SITE_RANK = new Set(["github", "reddit", "steam", "tiktok", "linkedin", "t
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 
+// Different tools name the same site differently ("Twitter" vs "X", "Steam Community" vs "Steam").
+// Accounts are merged on the canonical name so one site is one row, with every source that saw it.
+const SITE_ALIAS = {
+  "twitter": "x", "x (twitter)": "x", "x / twitter": "x", "x/twitter": "x", "twitter.com": "x", "x.com": "x",
+  "steam community": "steam", "steamcommunity": "steam", "threads.net": "threads", "instagram.com": "instagram",
+  "facebook.com": "facebook", "youtube channel": "youtube", "reddit.com": "reddit", "github.com": "github",
+  "tiktok.com": "tiktok", "twitch.tv": "twitch", "bsky": "bluesky", "bsky.app": "bluesky", "hugging face": "huggingface",
+};
+const SITE_DISPLAY = { x: "X (Twitter)", steam: "Steam", huggingface: "Hugging Face" };
+const canonSite = (s) => { const n = norm(s).replace(/\s*\((?!twitter).*\)$/, ""); return SITE_ALIAS[n] || n; };
+const TIER_RANK = { flag: 0, confirmed: 1, likely: 2, unverified: 3 };
+
 export function buildEvidence(collected, target) {
   const items = [];
   const facts = [];
@@ -24,6 +36,23 @@ export function buildEvidence(collected, target) {
     seen.add(dedupe);
     items.push(it);
   };
+  // One row per site across Sherlock, Maigret, Holehe and Platform check.
+  const accounts = new Map();
+  const addAccount = (site, it) => {
+    const c = canonSite(site);
+    if (!c) return;
+    const prev = accounts.get(c);
+    if (prev) {
+      if (!prev.sources.includes(it.source)) prev.sources.push(it.source);
+      if (TIER_RANK[it.tier] < TIER_RANK[prev.tier]) prev.tier = it.tier;
+      if (!prev.url && it.url) prev.url = it.url;
+      if (!prev.meta && it.meta) prev.meta = it.meta;
+      return;
+    }
+    const row = { ...it, what: SITE_DISPLAY[c] || site, key: `acct:${c}`, sources: [it.source] };
+    accounts.set(c, row);
+    items.push(row);
+  };
   const fact = (k, v, source, url) => {
     if (!v) return;
     const dup = facts.find((f) => f.k === k && norm(f.v) === norm(v));
@@ -31,24 +60,24 @@ export function buildEvidence(collected, target) {
   };
 
   // --- username enumeration: sherlock + maigret (merged by url) ----------
-  const accounts = [];
-  for (const r of collected.sherlock?.results || []) accounts.push({ ...r, _src: "Sherlock" });
-  for (const r of collected.maigret?.results || []) accounts.push({ ...r, _src: "Maigret" });
-  for (const r of accounts) {
+  const accountRows = [];
+  for (const r of collected.sherlock?.results || []) accountRows.push({ ...r, _src: "Sherlock" });
+  for (const r of collected.maigret?.results || []) accountRows.push({ ...r, _src: "Maigret" });
+  for (const r of accountRows) {
     const site = r.site || r.name || "";
     const conf = r.confidence || "";
     let tier = "likely";
     if (conf === "false_positive") tier = "unverified";
-    else if (conf === "high_confidence" || SITE_RANK.has(norm(site))) tier = "confirmed";
-    add({ tier, what: site, url: r.url, meta: r.category || "", source: r._src, key: `acct:${norm(site)}` });
+    else if (conf === "high_confidence" || SITE_RANK.has(canonSite(site))) tier = "confirmed";
+    addAccount(site, { tier, url: r.url, meta: r.category || "", source: r._src });
   }
 
   // --- email registration checks: holehe + platform check -----------------
   for (const r of collected.holehe?.results || []) {
-    add({ tier: "confirmed", what: r.site || r.domain, url: r.domain ? `https://${r.domain}` : "", meta: "account registered", source: "Holehe", key: `holehe:${norm(r.site || r.domain)}` });
+    addAccount(r.site || r.domain, { tier: "confirmed", url: r.domain ? `https://${r.domain}` : "", meta: "account registered", source: "Holehe" });
   }
   for (const r of collected.platformCheck?.results || []) {
-    if (r.found) add({ tier: r.manual ? "likely" : "confirmed", what: r.platform, url: r.url, meta: r.manual ? "needs manual check" : "account registered", source: "Platform check", key: `plat:${norm(r.platform)}` });
+    if (r.found) addAccount(r.platform, { tier: r.manual ? "likely" : "confirmed", url: r.url, meta: r.manual ? "needs manual check" : "account registered", source: "Platform check" });
   }
 
   // --- breaches -------------------------------------------------------------
@@ -59,7 +88,7 @@ export function buildEvidence(collected, target) {
   // --- github ----------------------------------------------------------------
   const gh = collected.github;
   if (gh?.found) {
-    add({ tier: "confirmed", what: "GitHub profile", url: gh.profile_url, meta: `${gh.public_repos ?? 0} repos · ${gh.followers ?? 0} followers`, source: "GitHub", key: "acct:github" });
+    addAccount("GitHub", { tier: "confirmed", url: gh.profile_url, meta: `${gh.public_repos ?? 0} repos · ${gh.followers ?? 0} followers`, source: "GitHub" });
     fact("Name", gh.name, "GitHub", gh.profile_url);
     fact("Location", gh.location, "GitHub", gh.profile_url);
     fact("Employer", gh.company, "GitHub", gh.profile_url);
@@ -127,6 +156,7 @@ export function buildEvidence(collected, target) {
 
   // tier ordering inside the ledger
   const order = { flag: 0, confirmed: 1, likely: 2, unverified: 3 };
+  for (const it of items) if (it.sources) it.source = it.sources.join(", ");
   items.sort((a, b) => order[a.tier] - order[b.tier] || a.what.localeCompare(b.what));
   return { items, facts };
 }

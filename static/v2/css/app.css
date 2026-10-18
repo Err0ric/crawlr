@@ -503,3 +503,9 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
 .report-card .report table { font-size: var(--fs-1); }
 .report-card .report li { margin: 6px 0; }
 .lead-copy { margin-left: 6px; vertical-align: 1px; padding: 2px 8px; }
+
+.report-lead { max-width: 80ch; }
+.report-lead p { font-size: var(--fs-3); line-height: 1.55; color: var(--ink); }
+.report-tabs { margin: var(--s-4) 0 var(--s-3); overflow-x: auto; }
+.report-pane { max-width: 110ch; }
+.report-pane > p, .report-pane > ul { max-width: 80ch; }

@@ -24,7 +24,12 @@ const inline = (s) =>
     .replace(/(?<![\w*])\*(?!\s)([^*]+?)\*(?!\w)/g, "<em>$1</em>")
     .replace(/\bhttps?:\/\/[^\s)<]+/g, (u) => link(u, u));
 
-const confClass = (cell) => { const t = cell.toLowerCase(); return t.includes("high") ? "conf-high" : t.includes("medium") ? "conf-medium" : t.includes("low") ? "conf-low" : ""; };
+// Only color cells that ARE a confidence value ("High", "medium-high", "Low (unverified)"),
+// not any cell that happens to contain the letters ("followers", "highlights").
+const confClass = (cell) => {
+  const m = String(cell).trim().toLowerCase().match(/^(high|medium|low)\b/);
+  return m ? `conf-${m[1]}` : "";
+};
 
 // Supports: ## / ### / **Heading** lines, bullets (- * • →), pipe tables, paragraphs,
 // and "search query" lead lines (→ or lines inside the "ready-to-use" section) rendered with a copy button.
@@ -74,6 +79,19 @@ export function markdown(md) {
   }
   flushAll();
   return out.join("");
+}
+
+// Split a "## Heading" markdown report into [{title, md}] for tabbed display.
+export function splitSections(md) {
+  const out = [];
+  let cur = null;
+  for (const line of String(md || "").split("\n")) {
+    const m = line.match(/^#{1,3}\s+(.+)/);
+    if (m) { cur = { title: m[1].replace(/\*\*/g, "").trim(), md: "" }; out.push(cur); }
+    else if (cur) cur.md += line + "\n";
+    else if (line.trim()) { cur = { title: "", md: line + "\n" }; out.push(cur); }
+  }
+  return out;
 }
 
 export function summaryBlock(ai, opts = {}) {
