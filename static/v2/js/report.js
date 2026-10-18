@@ -19,9 +19,9 @@ const normSite = (s) => String(s).toLowerCase().replace(/\(.*?\)/g, "").replace(
 // Favicon with a letter fallback (the <img> is removed on error by the delegated handler below).
 const icon = (name, url) => {
   const d = host(url);
-  return `<span class="ic" aria-hidden="true"><span class="ic-l">${esc(initials(name))}</span>${d ? `<img src="https://icons.duckduckgo.com/ip3/${esc(d)}.ico" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}</span>`;
+  return `<span class="fav" aria-hidden="true"><span class="fav-l">${esc(initials(name))}</span>${d ? `<img src="https://icons.duckduckgo.com/ip3/${esc(d)}.ico" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}</span>`;
 };
-document.addEventListener("error", (e) => { if (e.target?.matches?.(".ic img, .dossier .avatar img")) e.target.remove(); }, true);
+document.addEventListener("error", (e) => { if (e.target?.matches?.(".fav img, .dossier .avatar img")) e.target.remove(); }, true);
 
 // "| a | b |" markdown table -> rows of cells (header first), or null.
 function parseTable(md) {
@@ -37,7 +37,7 @@ function identityFields(md) {
   const t = parseTable(md);
   if (!t) return markdown(md);
   const [, ...rows] = t;
-  return `<div class="fields">${rows.map(([k = "", v = "", c = "", e = ""]) => `<div class="field"><div class="k">${inline(k)}${conf(c)}</div><div class="v">${inline(v)}</div>${e ? `<div class="e">${inline(e)}</div>` : ""}</div>`).join("")}</div>` + markdown(notTable(md));
+  return `<div class="idfs">${rows.map(([k = "", v = "", c = "", e = ""]) => `<div class="idf"><div class="k">${inline(k)}${conf(c)}</div><div class="v">${inline(v)}</div>${e ? `<div class="e">${inline(e)}</div>` : ""}</div>`).join("")}</div>` + markdown(notTable(md));
 }
 
 // Account tiles from evidence; the AI footprint table only adds the "why it matters" note.
