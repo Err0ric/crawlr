@@ -591,3 +591,8 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
   .pivot { grid-template-columns: auto 1fr; }
   .pivot .acts { grid-column: 2; justify-content: flex-start; }
 }
+
+/* inputs are type=search to keep password managers away; keep them looking like plain inputs */
+input[type=search] { -webkit-appearance: none; appearance: none; }
+input[type=search]::-webkit-search-cancel-button, input[type=search]::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+.masked { -webkit-text-security: disc; text-security: disc; }
