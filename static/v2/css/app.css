@@ -191,6 +191,26 @@ button { cursor: pointer; }
 .tier.confirmed .tier-rail { background: var(--ok); }
 .tier.likely .tier-rail { background: var(--violet); }
 .tier.flag .tier-rail { background: var(--warn); }
+.tier.surface .tier-rail { background: var(--violet); }
+
+/* tabs */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+.tabs button {
+  padding: 8px 12px; background: transparent; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  color: var(--ink-3); font-size: var(--fs-1); font-weight: 500;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--violet); }
+
+/* topology graph */
+.graph { position: relative; height: min(70vh, 640px); border: 1px solid var(--line); border-radius: var(--r-3); background: var(--bg-sunken); overflow: hidden; }
+.graph svg { display: block; }
+.graph-tooltip {
+  position: absolute; pointer-events: none; z-index: 5; max-width: 320px;
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-2);
+  padding: 6px 9px; font: 12px/1.4 var(--mono); color: var(--ink); white-space: pre-wrap;
+}
+.graph-note { color: var(--ink-4); font-size: var(--fs-0); margin-top: 8px; }
 .tier-body { padding: 4px 0; }
 .ev {
   display: grid; grid-template-columns: 22px 1fr auto; align-items: baseline; gap: var(--s-3);
@@ -204,7 +224,8 @@ button { cursor: pointer; }
 .ev .meta { color: var(--ink-3); font-size: var(--fs-0); margin-left: 8px; }
 .ev .src { color: var(--ink-4); font-size: var(--fs-0); white-space: nowrap; }
 .ev.done .what { color: var(--ink-4); text-decoration: line-through; }
-.ev-more { padding: 6px 14px 10px 50px; }
+.ev-more { padding: 6px 14px 10px 50px; color: var(--ink-4); font-size: var(--fs-0); }
+.tier-blurb { padding: 4px 14px 8px; color: var(--ink-4); font-size: var(--fs-0); }
 
 /* run log strip */
 .runlog {

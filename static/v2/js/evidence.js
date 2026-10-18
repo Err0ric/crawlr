@@ -135,5 +135,5 @@ export const TIERS = [
   { id: "flag",       title: "Flags",               cls: "flag",      open: true,  blurb: "Breaches, malware, disposable numbers. Read these first." },
   { id: "confirmed",  title: "Confirmed",           cls: "confirmed", open: true,  blurb: "Accounts and records that exist for this target." },
   { id: "likely",     title: "Likely",              cls: "likely",    open: true,  blurb: "Probable, but from a source that sometimes guesses." },
-  { id: "unverified", title: "Unverified",          cls: "",          open: false, blurb: "Sites that answer yes to any username. Kept for completeness." },
+  { id: "unverified", title: "Unverified",          cls: "",          open: false, limit: 40, blurb: "Sites that answer yes to any username. Kept for completeness." },
 ];
