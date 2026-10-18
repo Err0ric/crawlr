@@ -17,6 +17,7 @@ log = get_logger(__name__)
 # prompt, so the AI answer is reused instead of re-billed. Keyed on a hash of
 # (provider, model, messages, max_tokens); the API key is deliberately NOT part
 # of the key so house-key and BYOK users share hits. Bounded LRU, 24h TTL.
+GEMINI_THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "1024"))
 AI_CACHE_TTL = int(os.getenv("AI_CACHE_TTL", str(24 * 3600)))
 AI_CACHE_MAX = int(os.getenv("AI_CACHE_MAX", "500"))
 _cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
@@ -124,8 +125,11 @@ async def _call_gemini(api_key: str, messages: list[dict], max_tokens: int, mode
     payload = {
         "contents": contents,
         "generationConfig": {
-            "maxOutputTokens": max_tokens,
-            "temperature": 0.7,
+            # Gemini 2.5 "thinking" tokens count against maxOutputTokens. Without headroom the
+            # model spends the budget reasoning and the written answer comes back short.
+            "maxOutputTokens": max_tokens + (GEMINI_THINKING_BUDGET if "2.5" in model else 0),
+            "temperature": 0.4,
+            **({"thinkingConfig": {"thinkingBudget": GEMINI_THINKING_BUDGET}} if "2.5" in model else {}),
         },
     }
 

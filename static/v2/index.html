@@ -88,6 +88,15 @@
       <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">New case</button>
     </div>
     <div class="runlog collapsed" id="runlog" hidden></div>
+    <section class="card report-card" id="reportSection" hidden>
+      <div class="card-head">
+        <h3>Investigation report</h3>
+        <span class="ai-meta" id="reportMeta"></span>
+        <button class="btn btn-ghost btn-sm" id="reportCopy" type="button">Copy</button>
+        <button class="btn btn-ghost btn-sm" id="reportToggle" type="button" aria-expanded="true">Collapse</button>
+      </div>
+      <div class="card-body report" id="reportBody"></div>
+    </section>
     <div class="ledger" id="ledger"></div>
     <div class="empty" id="emptyState">
       <h3>No case open</h3>

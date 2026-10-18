@@ -31,7 +31,7 @@ const confClass = (cell) => { const t = cell.toLowerCase(); return t.includes("h
 export function markdown(md) {
   const lines = String(md || "").replace(/\r/g, "").split("\n");
   const out = [];
-  let para = [], ul = [], table = [], inLeads = false;
+  let para = [], ul = [], table = [];
   const flushP = () => { if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; } };
   const flushUl = () => { if (ul.length) { out.push(`<ul>${ul.map((x) => `<li>${x}</li>`).join("")}</ul>`); ul = []; } };
   const flushTable = () => {
@@ -50,19 +50,23 @@ export function markdown(md) {
     if ((m = t.match(/^#{1,4}\s+(.+)/)) || (m = t.match(/^\*\*([^*]{3,60})\*\*:?$/))) {
       flushAll();
       const title = m[1].replace(/\*\*/g, "").replace(/:$/, "");
-      inLeads = /search|quer|dork|lead/i.test(title);
       out.push(`<h3>${esc(title)}</h3>`);
       continue;
     }
     if (/^\|/.test(t)) { flushP(); flushUl(); table.push(t); continue; }
     flushTable();
-    if ((m = t.match(/^(?:[-*•]|→|\d+[.)])\s+(.+)/))) {
+    if ((m = t.match(/^(?:[-*•]\s+|→\s*|\d+[.)]\s+)(.+)/))) {
       flushP();
       const body = m[1];
-      if (inLeads || /^→/.test(t) || /^`[^`]+`$/.test(body)) {
+      if (/^`[^`]+`$/.test(body)) {
+        // a bare query on its own line: show it as a copyable block
         const q = body.replace(/^`|`$/g, "");
         ul.push(`<div class="lead"><code>${esc(q)}</code><button class="btn btn-sm" type="button" data-copy="${esc(q)}">Copy</button></div>`);
-      } else ul.push(inline(body));
+      } else {
+        // prose lead: render normally, and add a copy button for the first query in backticks
+        const q = body.match(/`([^`]+)`/);
+        ul.push(inline(body) + (q ? ` <button class="btn btn-sm lead-copy" type="button" data-copy="${esc(q[1])}">Copy query</button>` : ""));
+      }
       continue;
     }
     flushUl();

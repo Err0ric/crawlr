@@ -109,11 +109,27 @@ function renderAiPanel() {
     ? `<button class="btn btn-sm" type="button" data-open-report="deep">Deep Dive report</button>`
     : canDeep ? `<button class="btn btn-sm" type="button" id="deepDiveBtn">Deep Dive…</button>`
     : srcOn("active") ? "" : `<span style="color:var(--ink-4);font-size:var(--fs-0);align-self:center">Deep Dive needs Active techniques on</span>`;
-  box.innerHTML = summaryBlock(state.ai, { reportId: "summary", attr: "data-open-report", deepDive: deepBtn });
+  box.innerHTML = summaryBlock(state.ai, { reportId: "summary", attr: "data-open-report", deepDive: deepBtn }).replace(">Full report<", ">Read report<");
+  renderReport();
 }
+
+// The full investigation report lives in the main column, right under the case header.
+function renderReport() {
+  const sec = $("#reportSection");
+  if (!state.ai?.summary) { sec.hidden = true; return; }
+  sec.hidden = false;
+  $("#reportBody").innerHTML = markdown(state.ai.summary);
+  $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : "", state.ai.cached ? "cached" : ""].filter(Boolean).join(" · ");
+}
+$("#reportToggle").addEventListener("click", (e) => {
+  const body = $("#reportBody"), open = body.hidden;
+  body.hidden = !open; e.currentTarget.textContent = open ? "Collapse" : "Expand"; e.currentTarget.setAttribute("aria-expanded", open);
+});
+$("#reportCopy").addEventListener("click", (e) => navigator.clipboard?.writeText(state.ai?.summary || "").then(() => { e.currentTarget.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1400); }));
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-open-report]");
-  if (b) openReport(b.dataset.openReport);
+  if (b && b.dataset.openReport === "summary" && !$("#reportSection").hidden) { $("#reportBody").hidden = false; $("#reportSection").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  else if (b) openReport(b.dataset.openReport);
   if (e.target.id === "deepDiveBtn") confirmDeepDive();
 });
 
@@ -212,7 +228,7 @@ export async function run(targetRaw, typeOverride) {
   store.del(checkKey());
   $("#runBtn").disabled = true; $("#runBtn").textContent = "Running…";
   $("#ledger").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#facts").innerHTML = `<p class="empty" style="padding:0">Collecting…</p>`;
-  renderHead(); renderAiPanel(); loadNotes();
+  renderHead(); renderAiPanel(); loadNotes(); $("#reportSection").hidden = true;
   log.start();
 
   const on = (id) => srcOn(id);
@@ -291,7 +307,7 @@ export function clearCase() {
   Object.assign(state, { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty" style="padding:0">Nothing yet.</p>`; $("#notes").value = ""; updateNotesMeta();
-  renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = "";
+  renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
 }
 
 // ---- notes --------------------------------------------------------------------------
