@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import json
 import os
 import tempfile
@@ -7,6 +8,8 @@ from core.subprocess_guard import tool_slot, ToolBusy, busy_result
 
 async def _run_harvester_impl(domain: str, timeout: int = 300) -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
+        if shutil.which("theHarvester") is None:
+            return {"domain": domain, "error": "unavailable", "message": "theHarvester is not installed on this server", "hosts": [], "emails": []}
         proc = await asyncio.create_subprocess_exec(
             "theHarvester",
             "-d", domain,

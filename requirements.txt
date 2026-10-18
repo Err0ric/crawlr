@@ -10,7 +10,8 @@ beautifulsoup4==4.15.0
 sherlock-project==0.16.2
 holehe==1.61
 maigret==0.6.6
-# theHarvester is not published to PyPI in a usable form (the PyPI package is a 2019 stub),
-# so it is installed from the upstream repo at a tagged release.
-theHarvester @ git+https://github.com/laramies/theHarvester.git@4.11.1
+# theHarvester is intentionally NOT installed here. The PyPI package is a 2019 stub and the
+# upstream project hard-pins its own fastapi/uvicorn/dnspython versions and needs Python 3.12+,
+# so it cannot share this environment. It will be installed isolated (pipx) once the service
+# moves to a Dockerfile. Until then modules/harvester.py reports "unavailable" cleanly.
 python-nmap==0.7.1
