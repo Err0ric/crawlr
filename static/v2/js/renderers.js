@@ -21,6 +21,19 @@ function accountCard(title, data, limit = 8) {
   return card(title, badge, (rows.length ? list(rows) : h`<p style="color:var(--ink-3)">No accounts found.</p>`) + more(ok.length - limit));
 }
 
+// Shared by Investigate (email domain) and Recon (target domain).
+export function harvestCard(d) {
+  if (d?.skipped) return card("Domain harvest", tag("skipped"), h`<p style="color:var(--ink-3);font-size:var(--fs-1)">${d.message}</p>`);
+  if (d?.error) return card("Domain harvest", tag("error", "warn"), h`<p style="color:var(--ink-3)">${d.message || d.error}</p>`);
+  const em = d?.emails || [], ho = d?.hosts || [], hs = d?.host_sources || {};
+  const srcRows = Object.entries(d?.sources || {}).map(([n, r]) => h`<span class="tag ${r.error ? "" : "ok"}" title="${r.error || `${r.hosts ?? 0} hosts${r.emails ? `, ${r.emails} emails` : ""}`}">${n}${r.error ? " ✕" : ` ${r.hosts ?? 0}`}</span>`).join(" ");
+  return card("Domain harvest", tag(`${fmtNum(d?.total_hosts ?? ho.length)} hosts · ${fmtNum(em.length)} emails`, em.length ? "ok" : ""),
+    (srcRows ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${srcRows}</div>` : "")
+    + (em.length ? `<div class="mono" style="font-size:var(--fs-0);margin-bottom:8px">${em.map(esc).join("<br>")}</div>` : "")
+    + (ho.length ? `<details style="font-size:var(--fs-0)"><summary style="cursor:pointer;color:var(--ink-3)">Hostnames (${fmtNum(ho.length)})</summary><div class="mono" style="margin-top:6px;max-height:260px;overflow:auto">${ho.slice(0, 300).map((x) => `${esc(x)} <span style="color:var(--ink-4)">${esc((hs[x] || []).join(", "))}</span>`).join("<br>")}</div></details>` : "")
+    + (!em.length && !ho.length ? h`<p style="color:var(--ink-3)">No public sources returned anything for this domain.</p>` : ""));
+}
+
 export const sourceCards = {
   sherlock: (d) => accountCard("Sherlock", d),
   maigret: (d) => accountCard("Maigret", d),
@@ -60,11 +73,7 @@ export const sourceCards = {
     const rows = p.map((x) => li(h`${raw(link(x.url, x.site || x.url))}${x.display_name ? h` · ${x.display_name}` : ""}${x.location ? h` · ${x.location}` : ""}${x.emails?.length ? raw(h`<div class="mono" style="font-size:var(--fs-0)">${x.emails.join(", ")}</div>`) : ""}${x.bio ? raw(h`<div style="color:var(--ink-3);font-size:var(--fs-0)">${String(x.bio).slice(0, 200)}</div>`) : ""}`));
     return card("Scraped profiles", tag(`${fmtNum(p.length)} scraped`), rows.length ? list(rows) : h`<p style="color:var(--ink-3)">No profile pages could be read.</p>`);
   },
-  harvester: (d) => {
-    if (d?.error) return card("theHarvester", tag(d.error === "unavailable" ? "unavailable" : "error", "warn"), h`<p style="color:var(--ink-3)">${d.message || d.error}</p>`);
-    const em = d?.emails || [], ho = d?.hosts || [];
-    return card("theHarvester", tag(`${fmtNum(em.length)} emails · ${fmtNum(ho.length)} hosts`), (em.length ? `<div class="mono" style="font-size:var(--fs-0)">${em.map(esc).join("<br>")}</div>` : "") + (ho.length ? `<div class="mono" style="font-size:var(--fs-0);margin-top:6px">${ho.slice(0, 30).map(esc).join("<br>")}</div>` : "") + (!em.length && !ho.length ? h`<p style="color:var(--ink-3)">Nothing harvested.</p>` : ""));
-  },
+  harvester: (d) => harvestCard(d),
   hunter: (d) => {
     if (!d || d.error) return "";
     const em = d.emails || [];
@@ -83,7 +92,10 @@ export const sourceCards = {
   },
   phone: (d) => {
     const links = Object.entries(d?.lookup_links || {}).map(([n, u]) => link(u, n)).join(" · ");
-    return card("Phone lookup", d?.api_error ? tag("no key", "warn") : tag(d?.valid === false ? "invalid" : "valid", d?.valid === false ? "warn" : "ok"), kv([["Number", h`<span class="mono">${d?.normalized || d?.input}</span>`], ["Carrier", esc(d?.carrier)], ["Line type", esc(d?.line_type)], ["Location", esc([d?.location, d?.country].filter(Boolean).join(", "))], ["Lookups", links]]) + (d?.api_error ? h`<p style="color:var(--ink-3);font-size:var(--fs-0);margin-top:8px">Add a NumLookup key in Settings for carrier and location.</p>` : ""));
+    const noData = !d?.carrier && !d?.line_type;
+    const badge = d?.api_error ? tag("key problem", "warn") : noData ? tag("links only") : tag(d?.valid === false ? "invalid" : "valid", d?.valid === false ? "warn" : "ok");
+    const note = d?.api_error ? d.api_error : noData ? "Add a NumLookup key in Settings for carrier and line type." : "";
+    return card("Phone lookup", badge, kv([["Number", h`<span class="mono">${d?.normalized || d?.input}</span>`], ["Carrier", esc(d?.carrier)], ["Line type", esc(d?.line_type)], ["Location", esc([d?.location, d?.country].filter(Boolean).join(", "))], ["Lookups", links]]) + (note ? h`<p style="color:var(--ink-3);font-size:var(--fs-0);margin-top:8px">${note}</p>` : ""));
   },
   nameSearch: (name) => {
     const q = encodeURIComponent(name);

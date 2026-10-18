@@ -3,7 +3,7 @@ import csv
 import glob
 import os
 import tempfile
-from core.subprocess_guard import tool_slot, ToolBusy, busy_result
+from core.subprocess_guard import tool_slot, ToolBusy, busy_result, log_result, log_process
 
 
 async def _run_holehe_impl(email: str, timeout: int = 300) -> dict:
@@ -26,6 +26,7 @@ async def _run_holehe_impl(email: str, timeout: int = 300) -> dict:
             proc.kill()
             await proc.wait()
             return {"email": email, "error": "timeout", "results": []}
+        log_process("holehe", proc.returncode, stderr)
 
         results = []
         csv_files = glob.glob(os.path.join(tmpdir, "holehe_*_results.csv"))
@@ -51,6 +52,6 @@ async def run_holehe(email: str, timeout: int = 300) -> dict:
     """Guarded entry point: bounded by the global tool concurrency limit."""
     try:
         async with tool_slot("holehe"):
-            return await _run_holehe_impl(email=email, timeout=timeout)
+            return log_result("holehe", await _run_holehe_impl(email=email, timeout=timeout))
     except ToolBusy:
         return busy_result(email=email, results=[])

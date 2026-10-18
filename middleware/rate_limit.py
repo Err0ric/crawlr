@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse
 RATE_LIMITS = {
     "/api/recon/sherlock": (10, 60),
     "/api/recon/maigret": (10, 60),
+    "/api/recon/harvester": (10, 60),
     "/api/analyze/summarize": (20, 60),
     "/api/analyze/deep-dive": (20, 60),
     "/api/analyze/deep": (20, 60),
