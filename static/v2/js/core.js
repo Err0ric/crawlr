@@ -62,7 +62,7 @@ export function toast(msg, ms = 2800) {
 // ---- keys + AI availability ---------------------------------------------------
 export const KEYS = [
   { id: "claude",    label: "Claude",     store: "crawlr_anthropic_key", placeholder: "sk-ant-api03-…", help: "console.anthropic.com", url: "https://console.anthropic.com/settings/keys" },
-  { id: "gemini",    label: "Gemini",     store: "crawlr_gemini_key",    placeholder: "AIza…",          help: "aistudio.google.com",    url: "https://aistudio.google.com/apikey" },
+  { id: "gemini",    label: "Gemini",     store: "crawlr_gemini_key",    placeholder: "AQ.… or AIza…",  help: "aistudio.google.com",    url: "https://aistudio.google.com/apikey" },
   { id: "shodan",    label: "Shodan",     store: "cs_shodan_key",        placeholder: "Shodan API key", help: "account.shodan.io",      url: "https://account.shodan.io/" },
   { id: "hunter",    label: "Hunter.io",  store: "cs_hunter_key",        placeholder: "Hunter API key", help: "hunter.io/api-keys",     url: "https://hunter.io/api-keys" },
   { id: "numlookup", label: "NumLookup",  store: "cs_numlookup_key",     placeholder: "NumLookup key",  help: "numlookupapi.com",       url: "https://www.numlookupapi.com/" },

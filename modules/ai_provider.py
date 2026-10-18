@@ -107,7 +107,10 @@ def _call_anthropic(api_key: str, messages: list[dict], max_tokens: int, model: 
 
 async def _call_gemini(api_key: str, messages: list[dict], max_tokens: int, model: str | None) -> dict:
     model = model or "gemini-2.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    # Key goes in the x-goog-api-key header, not ?key=. New AI Studio keys ("AQ." prefix)
+    # are rejected as a query parameter; the header works for both AQ. and legacy AIza keys,
+    # and keeps the key out of URLs (and any proxy/access logs that record them).
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     # Convert Anthropic-style messages to Gemini format
     contents = []
@@ -127,9 +130,10 @@ async def _call_gemini(api_key: str, messages: list[dict], max_tokens: int, mode
     }
 
     async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(url, json=payload)
+        resp = await client.post(url, json=payload, headers={"x-goog-api-key": api_key})
         if resp.status_code != 200:
             error_detail = resp.text[:500]
+            log.warning("gemini error", extra={"status": resp.status_code, "detail": error_detail[:300], "key_prefix": api_key[:4]})
             raise Exception(f"Gemini API error ({resp.status_code}): {error_detail}")
         data = resp.json()
 

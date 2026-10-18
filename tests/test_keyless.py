@@ -151,3 +151,25 @@ def test_internetdb_route_shapes_result(monkeypatch):
         body = r.json()
         assert r.status_code == 200 and body["found"] and body["ports"] == [22, 443]
         assert body["vulns"][0] == "CVE-2024-1" and body["source"] == "internetdb"
+
+
+def test_gemini_key_sent_in_header_not_url(monkeypatch):
+    seen = {}
+
+    class R:
+        status_code = 200
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": "ok"}]}}], "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1}}
+
+    class C:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json=None, headers=None):
+            seen.update(url=url, headers=headers or {})
+            return R()
+
+    monkeypatch.setattr(ai_provider.httpx, "AsyncClient", C)
+    asyncio.run(ai_provider._call_gemini("AQ.test-key", [{"role": "user", "content": "hi"}], 10, None))
+    assert "key=" not in seen["url"] and "AQ." not in seen["url"]
+    assert seen["headers"]["x-goog-api-key"] == "AQ.test-key"
