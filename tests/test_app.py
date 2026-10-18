@@ -22,6 +22,7 @@ def test_root_serves_index(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
+    assert "/static/v2/js/app.js" in resp.text  # / now serves the v2 interface
 
 
 def test_invalid_hash_rejected(client):
