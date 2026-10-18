@@ -36,9 +36,9 @@ Respond in exactly this format, with nothing before or after:
 Only rows the data actually supports, from: likely real name, location, occupation or interests, other handles or emails, age range. Use High / Medium / Low. Leave unsupported attributes out of the table and list them under Gaps instead of writing "Unknown".
 
 ## Platform footprint
-| Platform | Account | Confidence | Why it matters |
+| Platform | Profile URL | Confidence | Why it matters |
 |---|---|---|---|
-At most 8 rows: the accounts most useful to an investigator, strongest first. "Why it matters" is 12 words or fewer and does not restate the source. Below the table, one line noting how many other accounts were found and any reuse of the same handle, avatar, bio or links.
+Use the profile URL exactly as it appears in the collected data; if none is given, write the handle instead. Never construct or guess a URL. At most 8 rows: the accounts most useful to an investigator, strongest first. "Why it matters" is 12 words or fewer and does not restate the source. Below the table, one line noting how many other accounts were found and any reuse of the same handle, avatar, bio or links.
 
 ## Exposure and risk
 At most 3 sentences: breaches, leaked data, exposed personal details, and an OPSEC rating (Low / Medium / High exposure) with the reason.
@@ -107,7 +107,7 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
 
     if req.sherlock and req.sherlock.get("results"):
         results = req.sherlock["results"]
-        confirmed = [r["site"] for r in results if r.get("confidence") != "false_positive"]
+        confirmed = [f'{r["site"]} ({r["url"]})' if r.get("url") else r["site"] for r in results if r.get("confidence") != "false_positive"]
         unverified = [r["site"] for r in results if r.get("confidence") == "false_positive"]
         high_conf = [r["site"] for r in results if r.get("confidence") == "high_confidence"]
         if confirmed:
