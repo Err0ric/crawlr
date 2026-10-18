@@ -39,6 +39,7 @@ export function makeLog(el) {
 
 // ---- tiered ledger ---------------------------------------------------------------
 // tiers: [{ id, title, cls, open, blurb, limit?, collapseOver? }]
+const PREVIEW = 15;
 export function renderTiers(el, items, tiers, done, emptyHtml) {
   const byTier = Object.fromEntries(tiers.map((t) => [t.id, items.filter((i) => i.tier === t.id)]));
   const shown = tiers.filter((t) => byTier[t.id].length);
@@ -46,19 +47,22 @@ export function renderTiers(el, items, tiers, done, emptyHtml) {
     const rows = byTier[t.id];
     const limit = t.limit ?? 200;
     const open = t.collapseOver ? rows.length <= t.collapseOver : t.open;
+    // Long tiers (a heavily breached email can have 200+ rows) show the first PREVIEW rows.
+    const clip = Math.min(rows.length, limit) > PREVIEW + 5;
     return h`
-      <section class="tier ${t.cls} ${open ? "" : "collapsed"}" data-tier="${t.id}">
+      <section class="tier ${t.cls} ${open ? "" : "collapsed"} ${clip ? "clipped" : ""}" data-tier="${t.id}">
         <div class="tier-head" role="button" tabindex="0" aria-expanded="${open}">
           <span class="tier-rail"></span><h3>${t.title}</h3><span class="count">${fmtNum(rows.length)}</span><span class="chev">▾</span>
         </div>
         <div class="tier-body">
           <div class="tier-blurb">${t.blurb}</div>
-          ${raw(rows.slice(0, limit).map((it) => h`
-            <div class="ev ${done.has(it.key) ? "done" : ""}">
+          ${raw(rows.slice(0, limit).map((it, i) => h`
+            <div class="ev ${done.has(it.key) ? "done" : ""} ${i >= PREVIEW ? "ev-extra" : ""}">
               <input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""} aria-label="Mark reviewed">
               <div class="what">${raw(it.url ? link(it.url, it.what) : esc(it.what))}${it.meta ? raw(h`<span class="meta">${it.meta}</span>`) : ""}</div>
               <span class="src">${it.source}</span>
             </div>`).join(""))}
+          ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
           ${rows.length > limit ? raw(h`<div class="ev-more">${fmtNum(rows.length - limit)} more not shown. Export for the full list.</div>`) : ""}
         </div>
       </section>`;
@@ -68,6 +72,13 @@ export function renderTiers(el, items, tiers, done, emptyHtml) {
 // Wire collapse + review checkboxes once per ledger element.
 export function bindLedger(el, storageKey) {
   el.addEventListener("click", (e) => {
+    const more = e.target.closest("[data-show-all]");
+    if (more) {
+      more.dataset.label ||= more.textContent;
+      const clipped = more.closest(".tier").classList.toggle("clipped");
+      more.textContent = clipped ? more.dataset.label : "Show fewer";
+      return;
+    }
     const head = e.target.closest(".tier-head");
     if (!head) return;
     const sec = head.parentElement;
