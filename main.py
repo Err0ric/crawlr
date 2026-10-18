@@ -46,6 +46,12 @@ def root():
     return FileResponse("static/index.html")
 
 
+@app.get("/v2")
+def v2():
+    """New interface (in progress). Lives beside the classic UI until every mode is ported."""
+    return FileResponse("static/v2/index.html")
+
+
 @app.get("/api/quota", tags=["meta"])
 def quota(request: Request):
     """Free-AI availability and remaining calls for the caller's IP. Drives the Settings UI."""
