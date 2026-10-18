@@ -2,7 +2,7 @@
 import { $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, providerName, detect, TYPE_LABEL, fmtNum, plural } from "./core.js";
 import { buildEvidence, TIERS } from "./evidence.js";
 import { sourceCards } from "./renderers.js";
-import { normalizeAi, markdown, summaryBlock } from "./ai.js";
+import { normalizeAi, markdown, summaryBlock, splitSections } from "./ai.js";
 import { openModal, closeModal } from "./ui.js";
 import { makeLog, renderTiers, bindLedger, renderFacts } from "./workbench.js";
 
@@ -118,9 +118,31 @@ function renderReport() {
   const sec = $("#reportSection");
   if (!state.ai?.summary) { sec.hidden = true; return; }
   sec.hidden = false;
-  $("#reportBody").innerHTML = markdown(state.ai.summary);
+  // Case summary always visible; every other section behind a tab so the card stays short.
+  const parts = splitSections(state.ai.summary);
+  // Profiles tab is built from collected data, not the model, so every URL is one a source actually returned.
+  const { items } = buildEvidence(state.collected, state.target);
+  const verified = items.filter((i) => i.url && i.key?.startsWith("acct:") && (i.tier === "confirmed" || i.tier === "likely"));
+  const profilesCount = verified.length;
+  const profiles = verified.length ? `<table><thead><tr><th>Platform</th><th>Profile</th><th>Confidence</th><th>Found by</th></tr></thead><tbody>${verified.map((i) => h`<tr><td>${i.what}</td><td>${raw(link(i.url, i.url.replace(/^https?:\/\/(www\.)?/, "")))}</td><td class="${i.tier === "confirmed" ? "conf-high" : "conf-medium"}">${i.tier === "confirmed" ? "Confirmed" : "Likely"}</td><td>${i.source}</td></tr>`).join("")}</tbody></table><p class="ai-meta">Every link comes straight from the source that found it. Copy them all from Export.</p>` : "";
+  const lead = parts.length && /summary/i.test(parts[0].title) ? parts.shift() : null;
+  if (parts.length < 2) { $("#reportBody").innerHTML = markdown(state.ai.summary); }
+  else {
+    const LABELS = { "identity assessment": "Identity", "platform footprint": "Footprint", "exposure and risk": "Exposure", "investigative leads": "Leads", "gaps and next pivots": "Gaps", "active techniques": "Active techniques" };
+    const short = (t) => LABELS[t.toLowerCase()] || t;
+    $("#reportBody").innerHTML =
+      (lead ? `<div class="report-lead">${markdown(lead.md)}</div>` : "")
+      + `<div class="tabs report-tabs" role="tablist">${parts.map((p, i) => `<button type="button" role="tab" data-rtab="${i}" aria-selected="${i === 0}">${esc(short(p.title))}</button>`).join("")}${profiles ? `<button type="button" role="tab" data-rtab="profiles" aria-selected="false">Profiles (${profilesCount})</button>` : ""}</div>`
+      + parts.map((p, i) => `<div class="report-pane" data-rpane="${i}" ${i ? "hidden" : ""}>${markdown(p.md)}</div>`).join("")
+      + (profiles ? `<div class="report-pane" data-rpane="profiles" hidden>${profiles}</div>` : "");
+  }
   $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : "", state.ai.cached ? "cached" : ""].filter(Boolean).join(" · ");
 }
+$("#reportBody").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-rtab]"); if (!t) return;
+  $$("#reportBody [data-rtab]").forEach((b) => b.setAttribute("aria-selected", b === t));
+  $$("#reportBody [data-rpane]").forEach((p) => (p.hidden = p.dataset.rpane !== t.dataset.rtab));
+});
 $("#reportToggle").addEventListener("click", (e) => {
   const body = $("#reportBody"), open = body.hidden;
   body.hidden = !open; e.currentTarget.textContent = open ? "Collapse" : "Expand"; e.currentTarget.setAttribute("aria-expanded", open);
