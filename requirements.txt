@@ -1,7 +1,7 @@
 # Pinned 2026-10-17. Dependabot keeps these current (see .github/dependabot.yml).
 fastapi==0.143.3
 uvicorn[standard]==0.54.0
-anthropic==1.15.0
+anthropic==2.2.0
 httpx==0.28.1
 python-whois==0.9.6
 dnspython==2.9.0
