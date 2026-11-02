@@ -1,10 +1,10 @@
 # Pinned 2026-10-17. Dependabot keeps these current (see .github/dependabot.yml).
-fastapi==0.143.3
+fastapi==0.162.0
 uvicorn[standard]==0.54.0
 anthropic==1.15.0
 httpx==0.28.1
 python-whois==0.9.6
-dnspython==2.9.0
+dnspython==2.9.1
 requests==2.34.2
 beautifulsoup4==4.15.0
 sherlock-project==0.16.2
