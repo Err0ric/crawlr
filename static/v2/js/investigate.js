@@ -1,12 +1,13 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
-import { buildEvidence, ledgerTiers, accountsFor, isFinding, factsFor, avatarImages, sourcePlan, emailParts, isFreeMail } from "./evidence.js";
+import { buildEvidence, ledgerTiers, accountsFor, isFinding, factsFor, avatarImages, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
+import { makeAdultSwitch, adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultForAi, adultSummary, adultCheckText, guardText, ADULT_SWITCH, ADULT_SWITCH_DESC, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
 import { investigateBrief } from "./brief.js";
 import { reportHtml } from "./report.js";
 import { openModal, closeModal } from "./ui.js";
-import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText, mdLink, mdNote } from "./links.js";
+import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText } from "./links.js";
 import { makeLinkChecker } from "./linkcheck.js";
 import { patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
 import { buildCaseFile } from "./casefile.js";
@@ -16,7 +17,7 @@ import { buildCaseFile } from "./casefile.js";
 // asks for it from the AI panel once the sources are in, and sees what it will cost first.
 export const SOURCES = [
   { id: "sherlock", how: "guess",  name: "Sherlock",        desc: "username across 400+ sites",            types: ["username"],          on: true },
-  { id: "maigret", how: "guess",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username"], on: true, extra: { id: "nsfw", label: "include adult and dating sites", on: false } },
+  { id: "maigret", how: "guess",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username"], on: true },
   { id: "github", how: "record",    name: "GitHub",          desc: "profile, organisations, repos, linked accounts and commit emails", types: ["username"], on: true },
   { id: "platform", how: "guess",  name: "Platform check",  desc: "reads the profile page on major platforms, and says when a site blocks the check", types: ["username"], on: true },
   { id: "holehe", how: "guess",    name: "Holehe",          desc: "accounts registered to this email",     types: ["email"],             on: true },
@@ -34,10 +35,28 @@ export const SOURCES = [
 const srcState = store.get("crawlr_v2_sources", {});
 export const srcOn = (id) => (id in srcState ? !!srcState[id] : SOURCES.find((s) => s.id === id)?.on ?? false);
 const setSrc = (id, v) => { srcState[id] = v; store.set("crawlr_v2_sources", srcState); };
-// Adult sites are opt-in: only an explicit "true" turns them on.
-const nsfwOn = () => srcState["maigret.nsfw"] === true;
+// An older version kept an adult sites choice here. It is ignored, and dropped on the next write:
+// that mode is a switch for one case and is never stored (see adult.js).
+delete srcState["maigret.nsfw"];
+// "Include adult sites": off by default, held in memory only, tied to the handle in the box.
+const adultSwitch = makeAdultSwitch();
+const adultView = (type) => adultSwitch.view($("#targetInput").value, type);
+function adultSwitchHtml(v) {
+  return h`
+    <div class="source adult-mode ${v.on ? "" : "off"}" data-adult>
+      <div>
+        <div class="name" id="adultModeName">${ADULT_SWITCH}</div>
+        <div class="desc" id="adultModeDesc">${ADULT_SWITCH_DESC}</div>
+        <p class="adult-note" id="adultModeNote" ${v.on ? "" : "hidden"}>${ADULT_NOTICE}</p>
+        ${v.reason ? raw(h`<p class="adult-note" id="adultModeWhy">${v.reason}</p>`) : ""}
+      </div>
+      <label class="switch"><input type="checkbox" role="switch" data-adult-toggle ${v.on ? "checked" : ""} ${v.disabled ? "disabled" : ""} aria-labelledby="adultModeName" aria-describedby="adultModeDesc${v.reason ? " adultModeWhy" : v.on ? " adultModeNote" : ""}"><span></span></label>
+    </div>`;
+}
 
+let sourcesType = "";   // the target type the panel was last drawn for
 export function renderSources(type) {
+  sourcesType = type || "";
   const box = $("#sources");
   const rows = SOURCES.filter((s) => !type || s.types.includes(type));
   box.innerHTML = rows.map((s) => h`
@@ -45,11 +64,13 @@ export function renderSources(type) {
       <div>
         <div class="name" id="src-${s.id}">${s.name}${s.warn ? raw(' <span class="tag warn">caution</span>') : ""}${s.pro && !s.proOptional ? raw(' <span class="tag violet">your key</span>') : ""}</div>
         <div class="desc" id="srcd-${s.id}">${raw(howTag(s.how))}${s.desc}${s.pro && s.proOptional && !getKey(s.pro) ? raw(' <span class="tag">links only without a key</span>') : ""}</div>
-        ${s.extra ? raw(h`<label class="source-extra"><input type="checkbox" data-extra="${s.extra.id}" ${nsfwOn() ? "checked" : ""}>${s.extra.label}</label>`) : ""}
       </div>
       <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-label="${s.name}" aria-labelledby="src-${s.id}" aria-describedby="srcd-${s.id}"><span></span></label>
     </div>`).join("");
   if (!rows.length) box.innerHTML = h`<p class="empty flat">Type a target to see which sources apply.</p>`;
+  // Username cases only: an email case does not run the username tools.
+  const av = adultView(type);
+  if (av.show) box.insertAdjacentHTML("beforeend", adultSwitchHtml(av));
   paintCount();
 }
 // The Sources button shows how many are switched on for this target type.
@@ -58,7 +79,17 @@ function paintCount() {
   $("#sourcesCount").textContent = all ? `${on} of ${all}` : "";
 }
 $("#sources").addEventListener("change", (e) => {
-  const t = e.target.dataset.toggle, x = e.target.dataset.extra;
+  const t = e.target.dataset.toggle;
+  if ("adultToggle" in e.target.dataset) {
+    // Held in memory for this handle only. Nothing is written to storage.
+    const v = adultSwitch.set(e.target.checked, $("#targetInput").value, sourcesType);
+    e.target.checked = v.on;
+    const row = e.target.closest("[data-adult]");
+    row.classList.toggle("off", !v.on);
+    $("#adultModeNote").hidden = !v.on;
+    e.target.setAttribute("aria-describedby", `adultModeDesc${v.reason ? " adultModeWhy" : v.on ? " adultModeNote" : ""}`);
+    return;
+  }
   if (t) {
     const s = SOURCES.find((q) => q.id === t);
     if (e.target.checked && s?.pro && !s.proOptional && !getKey(s.pro)) {
@@ -71,7 +102,6 @@ $("#sources").addEventListener("change", (e) => {
     paintCount();
     if (t === "linkcheck") { if (e.target.checked) checker.watch(); else { checker.reset(); renderLedger(); } }
   }
-  if (x) setSrc(`maigret.${x}`, e.target.checked);
 });
 
 // ---- run log + result tabs -----------------------------------------------------
@@ -82,17 +112,28 @@ const tabs = makeTabs($("#tabs"));
 // prev: { keys, ts, ai, sig } from the last saved run of the same target, for the diff.
 // view: which identity cluster "What we know" shows; "" means the primary one.
 // live: this case was run in this session, so its header and run log follow the tally.
-export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "", live: false, imported: false };
+export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "", live: false, imported: false, adultMode: false, adultBlocked: "" };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
 
-const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: "Phone lookup", enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison", linkCheck: "Link check" };
+const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: "Phone lookup", enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison", adultCheck: ADULT_SOURCE, linkCheck: "Link check" };
 // Every count of sources on this page comes from this one tally. The link check is a source like
 // any other: its row is built from the stored results, or from the error if the verifier failed.
-const tally = () => sourceTally({ ...state.collected, linkCheck: linkCheckSource(state.collected) }, SRC_NAME);
+// Counted over the adult-free view: Sherlock and Maigret are never "with results" for rows on
+// adult sites. Those are tallied only as the separate adult site check, in a case with the mode on.
+const tally = () => sourceTally({ ...tallyView(state.collected, state.target, state.type), linkCheck: linkCheckSource(state.collected) }, SRC_NAME);
 const failedSources = () => tally().rows.filter((r) => r.state === "failed");
 // Identical evidence means an identical AI answer, so a re-run can reuse the last one.
-const signature = (items, facts) => JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v])]);
+const adultItems = (items) => items.filter((i) => i.tier === "adult");
+const signature = (items, facts) => JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]), adultForAi(adultItems(items))]);
+const hasAdult = () => adultAllowed(state.collected, state.target, state.type);
+// Above the findings: what the adult and dating site rows are, or why they were not asked for.
+function adultNotice() {
+  if (state.adultBlocked) return h`<div class="notice" role="note">${state.adultBlocked} The other sources ran as usual.</div>`;
+  if (!hasAdult()) return "";
+  const mg = state.collected.maigret;
+  return h`<div class="notice" role="note" id="adultNotice">${ADULT_NOTICE}${mg && mg.adult_error ? ` Maigret could not check adult and dating sites (${String(mg.adult_error).slice(0, 160)}), so that part is unknown, not "not found".` : ""}</div>`;
+}
 
 // ---- ledger + facts -------------------------------------------------------------
 function evidence() {
@@ -106,13 +147,15 @@ function renderLedger() {
   const ev = evidence();
   const { items, facts, diff } = ev;
   $("#emptyState").hidden = true;
-  $("#notices").innerHTML = failedNotice(failedSources()) + (diff ? diffNotice(diff, state.prev.ts) : "");
+  $("#notices").innerHTML = failedNotice(failedSources()) + adultNotice() + (diff ? diffNotice(diff, state.prev.ts) : "");
   const nothing = state.running
     ? `<div class="empty"><h3>Collecting</h3><p>Findings appear here as each source answers.</p></div>`
     : failedSources().length
       ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean negative. See the notice above and try again.</p></div>`
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
-  renderTiers($("#ledger"), items, ledgerTiers(state.target, state.type), checked(), nothing, { check: (tier) => checker.waiting(tier) });
+  // The adult group says what its count is made of, under its heading.
+  const tiers = ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? { ...t, note: adultSummary(adultItems(items)) } : t));
+  renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier) });
   const emptyFacts = state.running ? "Collecting…" : "No facts extracted yet.";
   // A person case shows one identity at a time, so one person's name never sits beside another's.
   // state.view is only ever what the investigator picked; with no pick the primary cluster shows.
@@ -151,7 +194,9 @@ const checker = makeLinkChecker({
   allowed: () => policy().allowed,
   auto: () => policy().auto,
   username: linkHandle,
-  rows: (tier) => pendingChecks(buildEvidence(state.collected, state.target, state.type).items, tier),
+  // Account rows only, and never an address on an adult or dating host. The verifier's `adult`
+  // field is never sent: no adult row goes to the link check.
+  rows: (tier) => pendingChecks(buildEvidence(state.collected, state.target, state.type).items, tier).filter((r) => !adultHost(r.url)),
   // A case file's links were chosen by whoever made the file, so say so before fetching them.
   request: (tier, n, go) => {
     if (!policy().confirm) { go(); return; }
@@ -180,14 +225,18 @@ const checker = makeLinkChecker({
 });
 
 function renderSourceCards() {
-  const c = state.collected;
+  // Drawn from the adult-free view: no card lists an adult row or a link to an adult site. The
+  // adult site check has its own card, built from the ledger's adult group.
+  const all = state.collected, c = withoutAdult(all);
   const cards = [];
   // Every source that ran gets a card: with results, "answered, nothing found", or failed.
   const push = (id, d, extra) => { if (d !== undefined && d !== null && !d.skipped && sourceCards[id]) { const html = sourceCards[id](d, extra); if (html) cards.push(html); } };
   push("hash", c.hash); push("phone", c.phone);
   push("hibp", c.hibp); push("holehe", c.holehe); push("github", c.github, c.githubDeep); push("githubDeep", c.githubDeep, c.github); push("gravatar", c.gravatar);
   push("sherlock", c.sherlock, c.linkChecks); push("maigret", c.maigret, c.linkChecks); push("platformCheck", c.platformCheck, c.linkChecks);
-  push("linkCheck", linkCheckSource(c));
+  // Its rows are the ledger's adult group, so the card and the group cannot disagree.
+  if (hasAdult()) push("adultCheck", all.adultCheck, adultItems(buildEvidence(all, state.target, state.type).items));
+  push("linkCheck", linkCheckSource(all));
   push("enricher", c.enricher); push("avatarHash", c.avatarHash); push("profileScrape", c.profileScrape); push("hunter", c.hunter); push("harvester", c.harvester);
   if (c.nameSearch) cards.push(sourceCards.nameSearch(c.nameSearch));
   if (c.reverseImage) cards.push(sourceCards.reverseImage(c.reverseImage));
@@ -203,13 +252,9 @@ function renderHead(meta) {
 }
 
 // ---- AI panel ---------------------------------------------------------------------
-function profileUrls() {
-  const urls = [];
-  for (const k of ["sherlock", "maigret"]) for (const r of state.collected[k]?.results || []) if (r.url && r.confidence !== "false_positive") urls.push({ site: r.site, url: r.url });
-  for (const r of state.collected.platformCheck?.results || []) if (r.found && r.url) urls.push({ site: r.platform, url: r.url });
-  const seen = new Set(); return urls.filter((u) => /^https?:\/\//i.test(u.url) && !seen.has(u.url) && seen.add(u.url)).slice(0, 20);
-}
-const hasData = () => Object.values(state.collected).some((v) => v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
+// Never an adult or dating site: Deep Dive reads the pages it is given (see deepDiveUrls).
+const profileUrls = () => deepDiveUrls(state.collected);
+const hasData = () => Object.entries(state.collected).some(([k, v]) => k !== "adultMode" && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
 
 // What the report will cover, said for the kind of target on screen.
 const AI_PITCH = {
@@ -275,23 +320,18 @@ function openReport(which) {
   openModal({
     title: which === "deep" ? "Deep Dive report" : "AI analysis",
     wide: true,
-    body: `<div class="report">${markdown(ai.summary)}</div>`,
+    // Sections about adult or dating sites are shown only for a case that has such rows, and never in a Deep Dive.
+    body: `<div class="report">${markdown(reportForExport(ai.summary, which !== "deep" && adultItems(buildEvidence(state.collected, state.target, state.type).items).length > 0))}</div>`,
     actions: [{ label: "Copy markdown", onClick: () => navigator.clipboard?.writeText(ai.summary).then(() => toast("Copied")) }, { label: "Close", primary: true, onClick: closeModal }],
   });
 }
 
 // Everything the model is told about what ran and how it went.
 function aiPayload(extra = {}) {
-  const c = state.collected;
-  const { items } = buildEvidence(c, state.target, state.type);
   const source_status = Object.fromEntries(tally().rows.filter((r) => r.state !== "skipped").map((r) => [r.name, statusForAi(r)]));
-  return {
-    target: state.target, target_type: state.type, accounts: accountsFor(items), source_status,
-    hash: c.hash || null, phone: c.phone || null, github_deep: c.githubDeep || null,
-    sherlock: c.sherlock || null, maigret: c.maigret || null, holehe: c.holehe || null, harvester: c.harvester || null, hibp: c.hibp || null,
-    gravatar: c.gravatar || null, github: c.github || null, enricher: c.enricher || null, platform_check: c.platformCheck || null,
-    hunter: c.hunter || null, name_search: c.nameSearch ? { name: c.nameSearch } : null, active_techniques: srcOn("active"), ...extra,
-  };
+  // Built in evidence.js so it can be tested: adult and dating site rows travel only as their
+  // own field, and only for a case that had the mode on.
+  return { ...aiPayloadFor(state.collected, state.target, state.type, { source_status, active: srcOn("active") }), ...extra };
 }
 
 // Runs only from the "Analyze with AI" button. One click, one credit, and the cost is on screen first.
@@ -333,7 +373,7 @@ async function runDeepDive(urls) {
     renderLedger(); renderSourceCards();
     const row2 = log.add(`Deep Dive (${providerName()})`);
     try {
-      const data = await postAi("/api/analyze/deep-dive", aiPayload({ shodan: null, name_search: null, profile_scrape: scraped, active_techniques: true }));
+      const data = await postAi("/api/analyze/deep-dive", aiPayload({ shodan: null, name_search: null, profile_scrape: scraped, active_techniques: true, adult_sites: null }));
       state.deepDive = normalizeAi(data);
       log.set(row2, "Deep Dive complete", "done");
       saveHistory();
@@ -352,21 +392,40 @@ async function runDeepDive(urls) {
 // ---- the run --------------------------------------------------------------------
 function resultText(key, data) {
   if (key === "sherlock" || key === "maigret") {
-    const ok = (data.results || []).filter((r) => r.confidence !== "false_positive");
+    // Adult and dating site rows are counted apart, and only reach here when the mode is on.
+    const ad = (data.results || []).filter(isAdultRow).length;
+    const ok = (data.results || []).filter((r) => !isAdultRow(r) && r.confidence !== "false_positive");
     const v = ok.filter((r) => r.verified).length;
-    return ok.length ? [v && `${plural(v, "profile")} read`, `${ok.length - v} unverified`].filter(Boolean).join(", ") : "";
+    return ok.length || ad ? [v && `${plural(v, "profile")} read`, ok.length ? `${ok.length - v} unverified` : "", ad && `${ad} on adult and dating sites, listed in their own group`].filter(Boolean).join(", ") : "";
   }
   if (key === "githubDeep") return "";
   if (key === "avatarHash") { const r = data?.results || [], n = r.filter((x) => x.hash && !x.error).length; return n === r.length ? `${plural(n, "image")} compared` : ""; }
+  if (key === "adultCheck") return adultCheckText(data);
   if (key === "platformCheck" && (data?.results || []).some((r) => r.state)) { const r = data.results, n = (st) => r.filter((x) => x.state === st).length; return [n("found") && `${n("found")} read`, n("blocked") && `${n("blocked")} blocked by site`, n("unknown") && `${n("unknown")} unclear`].filter(Boolean).join(", "); }
   if (key === "harvester") return [data?.hosts?.length && plural(data.hosts.length, "host"), data?.emails?.length && plural(data.emails.length, "address", "addresses")].filter(Boolean).join(", ");
   const n = data?.total ?? data?.breaches?.length ?? data?.results?.filter?.((r) => r.found === true).length ?? (data?.found ? 1 : 0);
   return n ? `${fmtNum(n)} result${n === 1 ? "" : "s"}` : "";
 }
+// The server's own minor guard refused the adult part of a request. It wins over the client's
+// copy: the mode goes off for this case, the reason is shown, and nothing adult is kept.
+const GUARDED = Symbol("minor guard");
+function adultRefused(reason) {
+  const why = reason || "";
+  if (!state.adultBlocked) toast(guardText(why), 6000);
+  state.adultMode = false; state.adultBlocked = guardText(why);
+  adultSwitch.refuse(state.target, why);
+  const clean = withoutAdult(state.collected);
+  for (const k of Object.keys(state.collected)) delete state.collected[k];
+  Object.assign(state.collected, clean);
+  renderSources(state.type);
+}
 async function runSource(label, url, body, headers, key) {
   const row = log.add(label);
   try {
-    const data = await post(url, body, headers, state.controller?.signal);
+    // With the mode off any adult row in an answer is dropped here, before it is stored. With it
+    // on, those rows keep their text fields and nothing else.
+    const data = scrubResponse(key, await post(url, body, headers, state.controller?.signal), state.adultMode);
+    if (data === null) { log.set(row, `${label} · not kept`, "skip"); return null; }
     state.collected[key] = data;
     const o = sourceOutcome(data);
     const found = resultText(key, data);
@@ -376,12 +435,13 @@ async function runSource(label, url, body, headers, key) {
     else if (o.state === "skipped") log.set(row, `${label} · skipped`, "skip");
     else if (cv && cv.total > 0 && cv.answered === 0) log.set(row, `${label} · ${cv.failedText}`, "err");
     else if (cv && cv.answered < cv.total) log.set(row, `${label} · ${[found, coverageText(cv)].filter(Boolean).join(" · ")}`, "done");
-    else if (!sourceHasResults(data)) log.set(row, `${label} · nothing found`, "none");
+    else if (!sourceHasResults(key === "sherlock" || key === "maigret" ? withoutAdult({ [key]: data })[key] : data)) log.set(row, `${label} · nothing found${found ? ` (${found})` : ""}`, "none");
     else log.set(row, `${label} · ${found || "done"}`, "done");
     renderLedger(); renderSourceCards();
     return data;
   } catch (err) {
     if (err.code === "cancelled") { log.set(row, `${label} · cancelled`, "skip"); return null; }
+    if (err.code === "minor_guard") { adultRefused(err.reason); log.set(row, `${label} · adult and dating sites not checked for this handle`, "skip"); renderLedger(); return GUARDED; }
     // Keep the failure with the results, so the screen and the AI both know this source is unknown.
     state.collected[key] = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
     log.set(row, `${label}: ${err.detail || err.message}`, "err", err.raw);
@@ -416,7 +476,9 @@ export async function run(targetRaw, typeOverride) {
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: signature(ev.items, ev.facts) }; }
 
   checker.reset(); linkRow = null;
-  Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false });
+  // The switch as it stands for this handle, and only if the handle passes the minor guard.
+  const adult = adultOn(type, target, adultSwitch.view(target, type).on);
+  Object.assign(state, { target, type, collected: adult ? { adultMode: true } : {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -426,7 +488,7 @@ export async function run(targetRaw, typeOverride) {
   renderLedger(); renderAiPanel();
 
   // What runs for this kind of target is decided in one place (sourcePlan), then filtered by the switches.
-  const plan = new Set(sourcePlan(type, target));
+  const plan = new Set(sourcePlan(type, target, { adult }));
   const on = (id) => plan.has(id) && srcOn(id);
   const c = state.collected;
   const isEmail = type === "email", isUser = type === "username";
@@ -453,8 +515,12 @@ export async function run(targetRaw, typeOverride) {
   } else {
     const jobs = [];
     if (isUser && !handleOk && (on("sherlock") || on("maigret"))) log.add(`Username tools skipped: "${handle}" has characters they can't search`, "skip");
-    if (handleOk && on("sherlock")) jobs.push(runSource("Sherlock", "/api/recon/sherlock", { username: handle }, {}, "sherlock"));
-    if (handleOk && on("maigret")) jobs.push(runSource("Maigret", "/api/recon/maigret", { username: handle, nsfw: nsfwOn() }, {}, "maigret"));
+    // nsfw is true only while the mode is on. If the server's guard refuses, the tool runs again without it.
+    const tool = async (label, url, key) => { const d = await runSource(label, url, usernameBody(handle, state.adultMode), {}, key); return d === GUARDED ? runSource(label, url, usernameBody(handle, false), {}, key) : d; };
+    if (handleOk && on("sherlock")) jobs.push(tool("Sherlock", "/api/recon/sherlock", "sherlock"));
+    if (handleOk && on("maigret")) jobs.push(tool("Maigret", "/api/recon/maigret", "maigret"));
+    // The adult site check is its own source, and is only ever in the plan with the mode on.
+    if (handleOk && plan.has("adult")) jobs.push(runSource(ADULT_SOURCE, "/api/recon/adult-check", { username: handle }, {}, "adultCheck"));
     if (handleOk && on("github")) jobs.push(runSource("GitHub", "/api/recon/github", { username: handle }, {}, "github"));
     if (on("holehe")) jobs.push(runSource("Holehe", "/api/recon/holehe", { email: target }, {}, "holehe"));
     if (on("hibp")) jobs.push(runSource("Breaches", "/api/recon/hibp", { email: target }, {}, "hibp"));
@@ -468,7 +534,9 @@ export async function run(targetRaw, typeOverride) {
     if (on("hunter") && getKey("hunter")) jobs.push(runSource("Hunter.io", "/api/recon/hunter", { domain }, { "X-Hunter-Key": getKey("hunter") }, "hunter"));
     await Promise.all(jobs);
     if (!state.cancelled && handleOk) {
-      const sites = [...(c.sherlock?.results || []), ...(c.maigret?.results || [])].filter((r) => r.confidence !== "false_positive").map((r) => r.site).slice(0, 1000);
+      // Follow-up sources read profile pages, so they are never given an adult or dating site.
+      const main = withoutAdult(c);
+      const sites = [...(main.sherlock?.results || []), ...(main.maigret?.results || [])].filter((r) => r.confidence !== "false_positive").map((r) => r.site).slice(0, 1000);
       const after = [];
       if (sites.length) after.push(runSource("Profile enrichment", "/api/recon/enrich", { username: handle, sherlock_sites: sites }, {}, "enricher"));
       if (on("platform")) after.push(runSource("Platform check", "/api/recon/platform-check", { username: handle, sherlock_sites: sites }, {}, "platformCheck"));
@@ -480,7 +548,7 @@ export async function run(targetRaw, typeOverride) {
     // it needs at least two to say anything. If it fails, clusters fall back to the other signals.
     const images = state.cancelled ? [] : avatarImages(c, target, type);
     if (images.length > 1) await runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash");
-    const img = [target, ...(c.maigret?.results || []).map((r) => r.profile?.image)].find((u) => /^https?:\/\/\S+\.(jpe?g|png|gif|webp)(\?|$)/i.test(String(u || "")));
+    const img = [target, ...(withoutAdult(c).maigret?.results || []).map((r) => r.profile?.image)].find((u) => /^https?:\/\/\S+\.(jpe?g|png|gif|webp)(\?|$)/i.test(String(u || "")));
     if (img) { c.reverseImage = img; renderSourceCards(); }
   }
 
@@ -512,7 +580,11 @@ export function loadHistory(idOrEntry) {
   const e = typeof idOrEntry === "string" ? getHistory().find((x) => x.id === idOrEntry) : idOrEntry;
   if (!e) return false;
   checker.reset(); linkRow = null;
-  Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
+  // A case opened from History starts with the switch off. It shows adult and dating site rows
+  // only if it recorded that the mode was on; otherwise any such row is dropped here.
+  adultSwitch.reset();
+  const kind = e.kind || detect(e.target);
+  Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", collected: scrubCollected(e.results || {}, e.target, kind), ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
   $("#targetInput").value = e.target;
   renderSources(state.type);
   $("#runlog").hidden = true; $("#tabs").hidden = false; tabs.set("findings");
@@ -522,8 +594,8 @@ export function loadHistory(idOrEntry) {
   return true;
 }
 export function clearCase() {
-  cancel(); checker.reset(); linkRow = null;
-  Object.assign(state, { live: false, imported: false, target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
+  cancel(); checker.reset(); linkRow = null; adultSwitch.reset();
+  Object.assign(state, { live: false, imported: false, adultMode: false, adultBlocked: "", target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
@@ -548,22 +620,9 @@ $("#purpose").addEventListener("input", noteSave);
 // ---- export ------------------------------------------------------------------------------
 export function exportCase() {
   if (!state.target) return;
-  const ev = buildEvidence(state.collected, state.target, state.type);
-  const { items, facts, identity } = ev;
-  const failed = failedSources();
   const purpose = $("#purpose").value.trim();
-  const main = identity.views.find((v) => v.primary);
-  const others = identity.views.filter((v) => v.named && !v.primary);
-  const md = [`# CrawlR case: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}${state.ran ? ` · collected ${new Date(state.ran).toISOString()}` : ""}`, tallyText(tally()), "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
-    "> Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts. A link marked (unverified URL) is a site address built from the handle that nothing has checked. A profile that exists is not proof of who owns it, and leads are places to look, not findings.", "",
-    ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a negative result)`), ""] : []),
-    `## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), "",
-    ...(others.length ? ["## Other people using this handle", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
-    ...ledgerTiers(state.target, state.type).flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
-    ...(state.ai ? ["## AI analysis", state.ai.summary, ""] : []),
-    ...(state.deepDive ? ["## Deep Dive", state.deepDive.summary, ""] : []),
-    ...($("#notes").value.trim() ? ["## Notes", $("#notes").value.trim(), ""] : []),
-  ].join("\n");
+  // Built in evidence.js so the export rules (the adult section included) can be tested.
+  const md = caseMarkdown({ collected: state.collected, target: state.target, type: state.type, ran: state.ran, tallyLine: tallyText(tally()), failed: failedSources(), purpose, ai: state.ai, deep: state.deepDive, notes: $("#notes").value });
   const name = `crawlr-${slug(state.target)}`;
   const done = (fn) => () => { fn(); closeModal(); };
   openModal({

@@ -139,6 +139,10 @@ export async function post(url, body, headers = {}, signal) {
     if (r.status === 422 || Array.isArray(d)) throw new ApiError(r.status, "That input isn't valid for this source.", { code: "bad_input", raw: JSON.stringify(d ?? "").slice(0, 400) });
     // A 429 says how long to wait. Callers that pace themselves (the link check) read it.
     const retryAfter = r.status === 429 ? Math.max(0, Number(r.headers?.get?.("Retry-After")) || 0) : 0;
+    // The server's minor guard refused the adult and dating site part of a request. The reason is one
+    // of the server's own short phrases; callers show it and run the rest without that part.
+    const guard = [j, d].find((x) => x && typeof x === "object" && !Array.isArray(x) && (x.error_code === "minor_guard" || x.code === "minor_guard"));
+    if (guard) { const e = new ApiError(r.status, "Adult and dating sites are not checked for this handle.", { code: "minor_guard" }); e.reason = String(guard.reason || (typeof d === "string" ? d : "") || "").slice(0, 160); throw e; }
     if (r.status === 429) throw new ApiError(429, typeof d === "string" ? d : "Too many requests. Try again in a minute.", { code: j?.code || "rate_limited", retryAfter });
     if (typeof d === "string" && r.status < 500) throw new ApiError(r.status, d, { code: j.code || "" });
     if (typeof d === "string" && j.code) throw new ApiError(r.status, d, { code: j.code });
@@ -163,6 +167,9 @@ export function sourceOutcome(d) {
 export function sourceHasResults(d) {
   if (!d || typeof d !== "object" || d.error || d.error_code || d.skipped || d.found === false) return false;
   if (d.found === true) return true;
+  // A source that answers per site (platform check, adult site check): only a page that was read
+  // is a result. Its own "total" may count the sites asked, not the pages found.
+  if (!d.link_check && Array.isArray(d.results) && d.results.some((r) => r && typeof r.state === "string")) return d.results.some((r) => r && r.state === "found");
   if (typeof d.total === "number") return d.total > 0;
   for (const k of ["results", "breaches", "emails", "hosts", "profiles", "subdomains", "candidates", "ports", "findings", "hops"]) {
     if (Array.isArray(d[k]) && d[k].some((r) => !r || typeof r !== "object" || (r.found !== false && r.open !== false && r.found !== null && !r.error))) return true;
@@ -182,8 +189,13 @@ export function sourceCoverage(d) {
   // The link check: a page that was verified or found missing is an answer; blocked is not.
   if (d.link_check === true) return { answered: rows.filter((r) => ["verified", "not_found", "no_public_url"].includes(r.state)).length, total: rows.length, unit: "links", failedText: "no link could be checked" };
   if (rows.some((r) => typeof r.state === "string")) {
-    const asked = rows.filter((r) => r.state !== "manual");
-    return { answered: asked.filter((r) => r.state === "found" || r.state === "not_found").length, total: asked.length, unit: "sites", failedText: "blocked by every site checked" };
+    // A site with no public page was never asked, like one left for a check by hand.
+    const asked = rows.filter((r) => r.state !== "manual" && r.state !== "no_public_url");
+    const answered = asked.filter((r) => r.state === "found" || r.state === "not_found").length;
+    // `checked` is the number of sites a request went to. A site that is never requested (it
+    // cannot be told apart automatically) is not a site that failed to answer.
+    const total = Number.isInteger(d.checked) && d.checked >= answered && d.checked <= asked.length ? d.checked : asked.length;
+    return { answered, total, unit: "sites", failedText: "blocked by every site checked" };
   }
   if (rows.length && rows.every((r) => typeof r.id === "string" && ("hash" in r || "error" in r || "error_code" in r))) {
     return { answered: rows.filter((r) => r.hash && !r.error && !r.error_code).length, total: rows.length, unit: "images", failedText: "no image could be read" };

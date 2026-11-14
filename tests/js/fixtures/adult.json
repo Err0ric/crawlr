@@ -1,0 +1,352 @@
+{
+ "_note": "Invented handle and names. A username case that had adult and dating sites switched on. The adult site check rows use the platforms that check knows; the tool rows use made-up sites and domains. The image, avatar, thumbnail and media fields, and the media and off-site addresses, are there on purpose: nothing may ever render them.",
+ "target": "jdoe_example",
+ "type": "username",
+ "collected": {
+  "adultMode": true,
+  "github": {
+   "found": true,
+   "name": "Jordan Doe",
+   "location": "Leeds",
+   "profile_url": "https://github.com/jdoe_example",
+   "avatar_url": "https://avatars.githubusercontent.com/u/100000001?v=4",
+   "public_repos": 3,
+   "followers": 2,
+   "blog": "https://onlyfans.com/jdoe_example",
+   "bio": "Maps, trains and fansly.com/jdoe_example"
+  },
+  "sherlock": {
+   "username": "jdoe_example",
+   "total": 11,
+   "nsfw": true,
+   "adult_checked": 34,
+   "results": [
+    {
+     "site": "GitHub",
+     "url": "https://github.com/jdoe_example",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Keybase",
+     "url": "https://keybase.io/jdoe_example",
+     "confidence": "normal"
+    },
+    {
+     "site": "Velvet Lounge",
+     "url": "https://velvetlounge.example/u/jdoe_example",
+     "confidence": "normal",
+     "adult": true,
+     "category": "adult",
+     "image": "https://cdn.velvetlounge.example/avatars/jdoe_example.jpg"
+    },
+    {
+     "site": "Crimson Chat",
+     "url": "https://crimsonchat.example/jdoe_example",
+     "confidence": "normal",
+     "adult": true,
+     "category": "adult",
+     "thumbnail": "https://cdn.crimsonchat.example/t/jdoe_example.webp"
+    },
+    {
+     "site": "Rosewater",
+     "url": "https://rosewater.example/p/jdoe_example",
+     "confidence": "normal",
+     "adult": true,
+     "category": "adult"
+    },
+    {
+     "site": "HomeOnly Dates",
+     "url": "https://homeonly.example",
+     "confidence": "normal",
+     "adult": true,
+     "category": "dating"
+    },
+    {
+     "site": "AnyYes Cams",
+     "url": "https://anyyes.example/cam/jdoe_example",
+     "confidence": "false_positive",
+     "adult": true,
+     "category": "adult"
+    },
+    {
+     "site": "Amber Room",
+     "url": "https://amberroom.example/media/avatar-9.png",
+     "confidence": "normal",
+     "adult": true,
+     "category": "adult"
+    },
+    {
+     "site": "Opal Nights",
+     "url": "https://cdn.imagehost.example/opalnights/jdoe_example",
+     "confidence": "normal",
+     "adult": true,
+     "category": "adult"
+    },
+    {
+     "site": "Fansly",
+     "url": "https://fansly.com/jdoe_example",
+     "confidence": "normal",
+     "adult": true,
+     "category": "adult"
+    },
+    {
+     "site": "RoyalCams",
+     "url": "https://royalcams.com/profile/jdoe_example",
+     "confidence": "normal"
+    }
+   ]
+  },
+  "maigret": {
+   "username": "jdoe_example",
+   "total": 7,
+   "nsfw": true,
+   "sites_checked": 540,
+   "adult_checked": 40,
+   "adult_errors": [
+    "Dusk Personals"
+   ],
+   "results": [
+    {
+     "site": "Mastodon",
+     "url": "https://mastodon.social/@jdoe_example",
+     "confidence": "major_platform",
+     "category": "social",
+     "verified": true,
+     "profile": {
+      "name": "Jordan Doe",
+      "bio": "Maps and trains.",
+      "image": "https://files.mastodon.social/accounts/avatars/jdoe.png"
+     }
+    },
+    {
+     "site": "MatchHarbor",
+     "url": "https://matchharbor.example/@jdoe_example",
+     "confidence": "normal",
+     "category": "dating",
+     "adult": true,
+     "verified": true,
+     "profile": {
+      "name": "Jordan D.",
+      "created_at": "2021-03-09T10:00:00Z",
+      "followers": 1204,
+      "bio": "Hiking, coffee and bad puns.",
+      "image": "https://img.matchharbor.example/p/123.jpg",
+      "links": [
+       "https://jdoe-private.example/me"
+      ],
+      "location": "Leeds"
+     }
+    },
+    {
+     "site": "Lumen Fans",
+     "url": "https://lumenfans.example/jdoe_example",
+     "confidence": "normal",
+     "category": "adult",
+     "adult": true,
+     "verified": true,
+     "profile": {
+      "name": "jd",
+      "created_at": "2020",
+      "bio": "See my gallery https://lumenfans.example/media/9.jpg",
+      "avatar": "https://lumenfans.example/media/avatar-9.png"
+     }
+    },
+    {
+     "site": "Ember Dating",
+     "url": "https://emberdating.example/member/jdoe_example",
+     "confidence": "normal",
+     "category": "dating",
+     "adult": true,
+     "verified": false
+    },
+    {
+     "site": "TagOnly Dates",
+     "url": "https://tagonly.example/u/jdoe_example",
+     "confidence": "normal",
+     "category": "dating, social",
+     "verified": true,
+     "profile": {
+      "name": "Jordan Doe",
+      "bio": "Old shape, tagged only.",
+      "image": "https://tagonly.example/i/1.gif"
+     }
+    },
+    {
+     "site": "Keybase",
+     "url": "https://keybase.io/jdoe_example",
+     "confidence": "normal",
+     "category": "coding",
+     "verified": false
+    },
+    {
+     "site": "Tinder",
+     "url": "https://tinder.com/@jdoe_example",
+     "confidence": "normal",
+     "category": "dating",
+     "adult": true,
+     "verified": false
+    }
+   ]
+  },
+  "adultCheck": {
+   "username": "jdoe_example",
+   "checked": 8,
+   "total": 3,
+   "results": [
+    {
+     "platform": "Fansly",
+     "category": "adult",
+     "url": "https://cdn.fansly.com/jdoe_example/avatar.jpg",
+     "state": "found",
+     "found": true,
+     "evidence": "The site's account lookup has an account with this handle.",
+     "display_name": "Jay",
+     "joined": "2019-04-02",
+     "followers": 88,
+     "bio": "Night owl. Tea drinker.",
+     "hint": "",
+     "avatar_url": "https://cdn.fansly.com/avatars/jdoe_example.jpg",
+     "thumbnail": "https://cdn.fansly.com/thumbs/jdoe_example.jpg"
+    },
+    {
+     "platform": "Pornhub",
+     "category": "adult",
+     "url": "https://www.pornhub.com/users/jdoe_example",
+     "state": "found",
+     "found": true,
+     "evidence": "The page loaded and names this handle.",
+     "display_name": "<img src=https://ei.phncdn.example/x.png>",
+     "joined": "",
+     "followers": null,
+     "bio": "<img src=\"https://ei.phncdn.example/banner.jpg\"> new posts daily",
+     "hint": "",
+     "media": [
+      "https://ei.phncdn.example/posts/1.mp4"
+     ]
+    },
+    {
+     "platform": "xHamster",
+     "category": "adult",
+     "url": "https://evil.example/xhamster/jdoe_example",
+     "state": "found",
+     "found": true,
+     "evidence": "The page loaded and names this handle.",
+     "display_name": "Jordan",
+     "joined": "2022-11",
+     "followers": "312",
+     "bio": "",
+     "hint": "",
+     "photo": "https://thumb.xhcdn.example/photos/77.jpeg"
+    },
+    {
+     "platform": "Chaturbate",
+     "category": "adult",
+     "url": "https://chaturbate.com/jdoe_example/",
+     "state": "not_found",
+     "found": false,
+     "evidence": "The site shows its own no-such-user page for this handle.",
+     "display_name": "",
+     "joined": "",
+     "followers": null,
+     "bio": "",
+     "hint": ""
+    },
+    {
+     "platform": "Tinder",
+     "category": "dating",
+     "url": "https://tinder.com/@jdoe_example",
+     "state": "not_found",
+     "found": false,
+     "evidence": "The site shows its own no-such-user page for this handle.",
+     "display_name": "",
+     "joined": "",
+     "followers": null,
+     "bio": "",
+     "hint": ""
+    },
+    {
+     "platform": "JustFor.Fans",
+     "category": "adult",
+     "url": "https://justfor.fans/jdoe_example",
+     "state": "not_found",
+     "found": false,
+     "evidence": "The site shows its own no-such-user page for this handle.",
+     "display_name": "",
+     "joined": "",
+     "followers": null,
+     "bio": "",
+     "hint": ""
+    },
+    {
+     "platform": "FetLife",
+     "category": "adult",
+     "url": "https://fetlife.com/jdoe_example",
+     "state": "blocked",
+     "found": null,
+     "evidence": "The site sends anonymous visitors to its sign-in page, so the profile cannot be read from here.",
+     "display_name": "",
+     "joined": "",
+     "followers": null,
+     "bio": "",
+     "hint": "Sign in to the site and open the link."
+    },
+    {
+     "platform": "LoyalFans",
+     "category": "adult",
+     "url": "https://www.loyalfans.com/jdoe_example",
+     "state": "blocked",
+     "found": null,
+     "evidence": "The site refused the request.",
+     "display_name": "",
+     "joined": "",
+     "followers": null,
+     "bio": "",
+     "hint": ""
+    },
+    {
+     "platform": "OnlyFans",
+     "category": "adult",
+     "url": "https://onlyfans.com/jdoe_example",
+     "state": "unknown",
+     "found": null,
+     "evidence": "The site sends the same page for every handle, so it cannot be checked automatically.",
+     "display_name": "",
+     "joined": "",
+     "followers": null,
+     "bio": "",
+     "hint": "Open the link and look at the page yourself."
+    },
+    {
+     "platform": "ManyVids",
+     "category": "adult",
+     "url": "",
+     "state": "no_public_url",
+     "found": null,
+     "evidence": "",
+     "display_name": "",
+     "joined": "",
+     "followers": null,
+     "bio": "",
+     "hint": "ManyVids has no public page for a handle. Search the name on the site itself."
+    }
+   ]
+  },
+  "githubDeep": {
+   "found": true,
+   "sections": {
+    "readme_links": "ok",
+    "social_accounts": "ok"
+   },
+   "readme_links": [
+    "https://chaturbate.com/jdoe_example/",
+    "https://example.org/docs"
+   ],
+   "social_accounts": [
+    {
+     "provider": "generic",
+     "url": "https://tinder.com/@jdoe_example"
+    }
+   ]
+  }
+ }
+}

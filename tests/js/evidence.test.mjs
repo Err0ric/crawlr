@@ -15,7 +15,7 @@ const tier = (ev, t) => ev.items.filter((i) => i.tier === t);
 const text = (b) => b.rows.map((r) => `${r.level}: ${r.text}`).join("\n");
 
 // ---- B. tiers ---------------------------------------------------------------------
-ok(TIERS.map((t) => t.id).join() === "flag,info,linked,matches,different,unverified,lead,hosts,noise", "tier order");
+ok(TIERS.map((t) => t.id).join() === "flag,info,linked,matches,different,unverified,adult,lead,hosts,noise", "tier order");
 ok(TIERS.filter((t) => ["linked", "matches", "different", "unverified", "noise"].includes(t.id)).map((t) => t.title).join("|") === "Linked|Exists (matches)|Exists (different person)|Unverified|Known noisy sites", "tier titles");
 ok(TIERS.find((t) => t.id === "different").open === false, "different people are collapsed by default");
 const tv = fx("torvalds"), er = fx("err0ric"), em = fx("email"), hs = fx("hash"), rc = fx("recon"), extra = fx("identity-extras");
@@ -85,7 +85,12 @@ const tv = fx("torvalds"), er = fx("err0ric"), em = fx("email"), hs = fx("hash")
   ok(row(v2, "acct:instagram").tier === "matches" && /profile read/.test(row(v2, "acct:instagram").meta) && /profile page names @err0ric/.test(row(v2, "acct:instagram").meta), "platform check v2: state found is a read profile, not a lead to check by hand");
   ok(row(v2, "acct:linkedin").tier === "unverified" && /^Blocked by site \(login wall\)/.test(row(v2, "acct:linkedin").meta), "state blocked is unverified and labelled Blocked by site");
   ok(row(v2, "acct:facebook").tier === "unverified" && /^Could not tell/.test(row(v2, "acct:facebook").meta), "state unknown is unverified");
-  ok(!row(v2, "acct:tiktok") && !row(v2, "acct:onlyfans"), "not_found and manual add nothing");
+  ok(!row(v2, "acct:tiktok"), "not_found adds nothing");
+  // An older platform check listed OnlyFans as "check by hand". It is an adult site: without the
+  // adult mode on the case it shows nowhere, and with it on it is a row of that group only.
+  ok(er.platformCheckV2.results.some((r) => r.platform === "OnlyFans") && !v2.items.some((i) => /onlyfans/i.test(i.key + i.what + i.url)), "an old manual OnlyFans row shows nowhere in a case without the adult mode");
+  const v2a = buildEvidence({ ...er.collected, platformCheck: er.platformCheckV2, adultMode: true }, er.target, er.type);
+  ok(v2a.items.filter((i) => /onlyfans/i.test(i.key + i.what)).map((i) => `${i.key}:${i.tier}`).join() === "adult:onlyfans:adult" && /could not be checked/.test(row(v2a, "adult:onlyfans").meta), "with the mode on it is an adult row that could not be checked");
   const b2 = text(investigateBrief({ collected: { ...er.collected, platformCheck: er.platformCheckV2 }, items: v2.items, facts: v2.facts, identity: v2.identity, failed: [], type: "username", target: er.target }));
   ok(/LinkedIn blocked the check, so that account is unknown, not absent/.test(b2), "the brief says a blocked site is unknown");
   const dead = buildEvidence({ ...er.collected, maigret: { error: "timeout", error_code: "timeout", results: er.collected.maigret.results } }, er.target, er.type);

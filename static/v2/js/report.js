@@ -4,6 +4,7 @@
 import { h, raw, esc, safeUrl, link } from "./core.js";
 import { UNVERIFIED_TEXT, checkText } from "./links.js";
 import { markdown, splitSections, inline } from "./ai.js";
+import { adultListHtml, splitAdultProse, ADULT_SECTION } from "./adult.js";
 
 const SECTION = {
   "case summary": "summary", "identity assessment": "identity", "platform footprint": "footprint",
@@ -128,13 +129,22 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   </div>`;
 }
 
-const TITLE = { identity: "Identity", accounts: "Accounts", leads: "Next moves", exposure: "Exposure and risk", gaps: "Gaps", active: "Active techniques" };
+const TITLE = { identity: "Identity", accounts: "Accounts", leads: "Next moves", exposure: "Exposure and risk", gaps: "Gaps", active: "Active techniques", adult: ADULT_SECTION };
 
 export function reportHtml({ ai, target, items, facts, collected }) {
   // Every account row, with or without a URL: a row with no public page is a tile, not a link.
   const accounts = items.filter((i) => i.key?.startsWith("acct:") && i.tier in RANK);
-  const parts = splitSections(ai.summary);
-  if (parts.length < 2) return dossier({ target, profile: ai.profile, facts, accounts, collected }) + `<div class="report-scroll">${markdown(ai.summary)}</div>`;
+  // Adult and dating site rows are in the items only when the case had that mode on. They get
+  // their own last section, as text: no tile, no favicon, no picture.
+  const adult = items.filter((i) => i.tier === "adult");
+  const adultHtml = adultListHtml(adult);
+  // Every section of the report that is about adult or dating sites, however its heading is
+  // worded and however many there are, is taken out before anything is rendered. What is left of
+  // them (lines with no address and no markup) is shown only in the one section below, and only
+  // for a case that has adult rows: with the mode off nothing of them is shown at all.
+  const { rest, prose } = splitAdultProse(ai.summary);
+  const parts = splitSections(rest);
+  if (parts.length < 2) return dossier({ target, profile: ai.profile, facts, accounts, collected }) + `<div class="report-scroll">${markdown(rest)}${adultHtml ? `<section class="rsec adult" id="rs-adult"><h3>${esc(ADULT_SECTION)}</h3>${adultHtml}${prose ? markdown(prose) : ""}</section>` : ""}</div>`;
   const by = {}; const other = [];
   for (const p of parts) { const k = kind(p.title); if (k === "other" || by[k]) other.push(p); else by[k] = p.md; }
 
@@ -147,6 +157,7 @@ export function reportHtml({ ai, target, items, facts, collected }) {
   sec("gaps", by.gaps && markdown(by.gaps));
   sec("active", by.active && markdown(by.active));
   other.forEach((p, i) => sec(`x${i}`, markdown(p.md), p.title || "Notes"));
+  sec("adult", adult.length ? adultHtml + (prose ? markdown(prose) : "") : "");
 
   const jump = `<nav class="jump" aria-label="Report sections"><span>Jump to</span>${secs.map((s) => `<a href="#rs-${s.id}" data-jump>${esc(s.title.replace(/ \(\d+\)$/, ""))}</a>`).join("")}</nav>`;
   return dossier({ target, profile: ai.profile, facts, accounts, collected })

@@ -721,7 +721,6 @@ input[type=search]::-webkit-search-cancel-button, input[type=search]::-webkit-se
 .terms-ok input { margin-top: 2px; flex: none; }
 .set-h { font-size: var(--fs-2); margin-bottom: 6px; }
 .set-p { color: var(--ink-3); font-size: var(--fs-1); margin-bottom: 10px; }
-.source-extra { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 24px; font-size: var(--fs-0); color: var(--ink-3); cursor: pointer; }
 .by-source { margin-top: var(--s-4); }
 .report a, .notice a, .howto a, .set-p a, .muted a, .detected a, .tool .lede a { text-decoration: underline; text-underline-offset: 2px; }
 .card-body .kv a, .card-body li a { text-decoration: underline; text-underline-offset: 2px; }
@@ -953,3 +952,17 @@ details.more[open] > summary { margin-bottom: 6px; }
 .lk-status[hidden] { display: none; }
 .lk-status-text { flex: 1; min-width: 12ch; }
 @media print { .lk-status, .tier-check { display: none !important; } }
+
+/* adult and dating sites: the case switch, the site mark and the text-only list (no new colors) */
+.adult-note { margin: 4px 0 0; font-size: var(--fs-0); color: var(--ink-2); }
+.adult-note[hidden] { display: none; }
+.switch input:disabled { cursor: not-allowed; }
+.switch input:disabled + span { opacity: .55; }
+.site-glyph { display: inline-grid; place-items: center; min-width: 22px; height: 18px; padding: 0 3px; margin-right: 8px; border-radius: var(--r-1); background: var(--bg-hover); box-shadow: 0 0 0 1px var(--line) inset; font: 600 var(--fs-0) var(--mono); color: var(--ink-2); vertical-align: 1px; }
+.adult-list { margin: 6px 0 0; padding: 0; list-style: none; font-size: var(--fs-1); }
+.adult-list li { padding: 3px 0; overflow-wrap: anywhere; }
+@media print {
+  /* after every other finding, under a heading that says what the rows are */
+  .tier[data-tier="adult"] { order: 99; }
+  .tier[data-tier="adult"] .tier-title::after { content: " (existence checks only)"; }
+}

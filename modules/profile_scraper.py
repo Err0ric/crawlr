@@ -1,6 +1,8 @@
 import httpx
 import re
+from urllib.parse import urljoin
 
+from core import adult_sites
 from core.boilerplate import clean_bio
 from core.errors import error_fields
 from core.netguard import safe_fetch
@@ -128,6 +130,30 @@ def _scrape_profile(html: str, url: str, site: str = "") -> dict:
     return result
 
 
+ADULT_REFUSAL = "CrawlR does not read profile pages on adult or dating sites."
+MAX_REDIRECTS = 5
+
+
+class AdultSiteRefused(Exception):
+    """The URL, or a redirect on the way, is on an adult or dating site."""
+
+
+async def _fetch_page(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """GET `url` through core.netguard, one hop at a time, so that a redirect to an adult or
+    dating site is refused before it is requested. This scraper has no handle to run the minor
+    guard on and no opt-in, so it never opens such a site at all."""
+    current = url
+    for _ in range(MAX_REDIRECTS + 1):
+        if adult_sites.is_adult_site(url=current):
+            raise AdultSiteRefused()
+        resp = (await safe_fetch(client, current, follow_redirects=False)).response
+        location = resp.headers.get("location", "")
+        if not (resp.is_redirect and location):
+            return resp
+        current = urljoin(current, location)
+    raise httpx.TooManyRedirects(f"more than {MAX_REDIRECTS} redirects", request=resp.request)
+
+
 async def scrape_profiles(urls: list[dict], timeout: int = TIMEOUT) -> list[dict]:
     """Scrape a list of profile URLs.
 
@@ -143,7 +169,7 @@ async def scrape_profiles(urls: list[dict], timeout: int = TIMEOUT) -> list[dict
             if not url:
                 continue
             try:
-                resp = (await safe_fetch(client, url, max_redirects=5)).response
+                resp = await _fetch_page(client, url)
                 if resp.status_code != 200:
                     results.append({
                         "site": site, "url": url,
@@ -154,6 +180,11 @@ async def scrape_profiles(urls: list[dict], timeout: int = TIMEOUT) -> list[dict
                 data["site"] = site
                 data["url"] = url
                 results.append(data)
+            except AdultSiteRefused:
+                results.append({
+                    "site": site, "url": url,
+                    **error_fields(code="adult_site", message=ADULT_REFUSAL),
+                })
             except Exception as e:
                 results.append({
                     "site": site, "url": url,

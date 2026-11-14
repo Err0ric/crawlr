@@ -44,6 +44,9 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
 const cases = [];
 for (const f of files) { const got = casesOf(f.replace(/\.json$/, ""), fx(f.replace(/\.json$/, ""))); ok(got.length > 0, `fixture ${f} is covered by the link check`); cases.push(...got); }
 ok(files.length >= 7 && cases.length >= 12, "every fixture file is read");
+// The adult and dating site fixture goes through every invariant below like any other case: its
+// rows carry a link kind, never link to a homepage, and mark an unchecked URL as unverified.
+ok(cases.some((c) => c.name === "adult" && buildEvidence(c.collected, c.target, c.type).items.filter((i) => i.tier === "adult").length >= 12), "the adult and dating site rows are among the rows checked");
 
 // ---- the rules ------------------------------------------------------------------------------
 // The homepage rule is the app's own isBareHome, so this check and the app cannot disagree. What
@@ -286,13 +289,13 @@ ok(L.classifyLink({ url: "https://example.org/find?q=jdoe@example.org", want: "e
   ok(row(ev, "acct:discord").link_kind === "none" && row(ev, "acct:reddit").link_kind === "verified_profile" && row(ev, "acct:reddit").url === "https://www.reddit.com/user/jdoe_old/" && row(ev, "acct:github").link_kind === "templated_unverified", "an old username case gets link kinds through the same code");
   ok(row(ev, "acct:instagram").link_kind === "templated_unverified" && /profile URL answered, check by hand/.test(row(ev, "acct:instagram").meta), "an old platform check hit was a bare response, so its URL is unverified");
   const card = sourceCards.platformCheck(c.collected.platformCheck);
-  ok(anchors(card).length === 2 && anchors(card).every((a) => /data-link-kind="templated_unverified"/.test(a)), "the old platform check card marks its URLs unverified");
+  ok(anchors(card).length === 1 && anchors(card).every((a) => /data-link-kind="templated_unverified"/.test(a)) && !/OnlyFans|check by hand/.test(card), "the old platform check card marks its URLs unverified, and no longer lists the old manual OnlyFans row");
   const e = lf.cases[3], ee = buildEvidence(e.collected, e.target, e.type);
   ok(row(ee, "acct:spotify").link_kind === "none" && row(ee, "acct:spotify").hint === L.REGISTERED_HINT && row(ee, "acct:discord").link_kind === "none" && row(ee, "acct:gravatar").link_kind === "verified_profile", "an old email case: a registration check has no page to link, Gravatar's record does");
   ok(ee.items.filter((i) => /^breach:/.test(i.key)).every((i) => i.link_kind === "none"), "old breach rows (names only) have no link");
   const old = buildEvidence(tv.collected, tv.target, tv.type);
   ok(old.items.every((i) => L.LINK_KINDS.includes(i.link_kind)) && old.items.filter((i) => i.tier === "unverified" && i.url).every((i) => i.link_kind === "templated_unverified"), "a case saved before link kinds existed is classified when it is opened");
-  ok(ledgerTiers(tv.target, tv.type).length === 9, "the link check adds no tier");
+  ok(ledgerTiers(tv.target, tv.type).length === 10, "the link check adds no tier");
 }
 
 // ---- 1. a case that was opened, not run, never starts fetches on its own ---------------------------

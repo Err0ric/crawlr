@@ -9,6 +9,7 @@
 
 import { reconTimeline, domainAgeDays } from "./timeline.js";
 import { breachList, hashView, hashCoverage, TEST_FILE_TEXT, isFreeMail, emailParts } from "./evidence.js";
+import { adultBriefText } from "./adult.js";
 import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -69,6 +70,10 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     else if (main && !main.named && others.length) add("info", `The ${main.sites[0]} record carries no name. ${others.length === 1 ? `One name appears on other profiles (${who(others[0])})` : `${others.length} unrelated names appear on other profiles (${list(others.map(who), 4)})`}, and nothing ties ${others.length === 1 ? "it" : "any of them"} to that record yet.`);
     const blocked = unverified.filter((i) => /^Blocked by site/.test(i.meta || ""));
     if (blocked.length) add("info", `${list(blocked.map((i) => i.what))} blocked the check, so ${blocked.length === 1 ? "that account is" : "those accounts are"} unknown, not absent.`);
+
+    // Adult and dating sites get one neutral line. They are in none of the counts above.
+    const adult = items.filter((i) => i.tier === "adult");
+    if (adult.length) add("info", adultBriefText(adult));
 
     const breaches = c.hibp && !c.hibp.error ? breachList(c.hibp) : [];
     if (breaches.length) add("flag", `This address is in ${plural(breaches.length, "known breach", "known breaches")} (${list(breaches.map((b) => (b.year ? `${b.name} ${b.year}` : b.name)), 5)}). Passwords used on those sites should be considered exposed.`);

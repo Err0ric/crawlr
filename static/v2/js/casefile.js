@@ -54,11 +54,14 @@ export function parseCaseFile(text) {
   const results = {};
   for (const [k, v] of Object.entries(j.collected)) {
     if (!KEY_OK.test(k) || KEY_BAD.has(k)) continue;
+    // The one flag among the results: this case had adult and dating sites switched on. Only the
+    // literal true is kept. Without it the rows from those sites are never shown (see adult.js).
+    if (k === "adultMode") { if (v === true) results.adultMode = true; continue; }
     // Sources return objects. Two client-side values are plain strings: the searched name and an image URL.
     if (v === null || typeof v === "object" || (TEXT_KEYS.has(k) && typeof v === "string" && v.length <= 2000)) results[k] = v;
   }
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
-  if (!Object.keys(results).length) return fail("The case file holds no results.");
+  if (!Object.keys(results).filter((k) => k !== "adultMode").length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();
   const ai = report(j.ai), deep = report(j.deep);
   const entry = {

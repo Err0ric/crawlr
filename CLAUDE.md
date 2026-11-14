@@ -30,6 +30,7 @@ node tests/js/casefile.test.mjs
 node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
+node tests/js/adult.test.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally to match `runtime.txt`.
@@ -59,6 +60,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - A failed source is not a negative result. Keep "failed", "not found" and "found" as three separate states end to end. A site that blocks a check is "blocked", and a DNS lookup that errors is "unknown"; neither is "not found".
 - An account that exists is not an account that belongs to the target. Profiles are grouped by person in `static/v2/js/identity.js`; facts and AI input come from the primary identity only.
 - Leads are followed one hop at a time and only on a click.
+- Adult and dating sites are opt-in per case and never remembered. With the mode off no path may query one: ask `core/adult_sites.py`. Results stay in their own group, text only, with no image of any kind. `core/adult_guard.py` runs before any such request and has no override. Sherlock and Maigret run on the site lists that ship with the installed packages, so the queried set is known; regenerate `static/v2/js/adult-sites.js` when either package is upgraded.
 - Every link gets a kind from `static/v2/js/links.js`. No finding links to a bare homepage, and no third-party URL carries a username or email in its query. `node tests/js/links.test.mjs` enforces both.
 - Tests never use the network. Recorded responses live in `tests/fixtures/` and `tests/js/fixtures/`; use invented names for private people.
 - Do not log target values (usernames, emails, domains) on the server.

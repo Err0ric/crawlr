@@ -36,6 +36,7 @@ class VerifyLink(BaseModel):
 class VerifyLinksRequest(BaseModel):
     username: str = Field(max_length=320)
     links: list[VerifyLink] = Field(min_length=1, max_length=MAX_LINKS)
+    adult: bool = False   # the adult and dating opt-in: without it no link on such a site is opened
 
 
 @router.post("/github-deep")
@@ -68,4 +69,6 @@ async def verify_links(req: VerifyLinksRequest):
         links.append({"id": link.id, "site": link.site, "url": url})
     # The module only opens links on sites the username tools know and that name this handle,
     # and each one is vetted by core.netguard hop by hop.
-    return await run_link_verify(username, links)
+    # A link on an adult or dating site is opened only with the opt-in, and never for a handle
+    # that suggests a minor (core.adult_guard, inside the module).
+    return await run_link_verify(username, links, adult=req.adult)

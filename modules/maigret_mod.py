@@ -1,11 +1,16 @@
 import asyncio
 import json
 import os
+import re
 import shutil
 import tempfile
+from urllib.parse import urlsplit
 
+from core import adult_guard, adult_sites
 from core.boilerplate import clean_bio
 from core.errors import error_fields
+from core.validate import registrable_domain
+from modules import adult_check
 from modules.sherlock import _classify_site, SORT_ORDER
 from core.subprocess_guard import tool_slot, ToolBusy, busy_result, log_result, log_process
 
@@ -33,8 +38,13 @@ def _is_maigret_false_positive(site_name: str, url: str) -> bool:
     return False
 
 
-# Maigret's own site tags for adult content and dating.
-SENSITIVE_TAGS = ("porn", "erotic", "webcam", "dating")
+# Maigret's own site tags for adult content and dating. The normal pass always excludes them.
+# ("nsfw" is not a tag in Maigret's data today; it is listed so that it is covered if it appears.)
+SENSITIVE_TAGS = ("porn", "erotic", "webcam", "dating", "nsfw")
+ADULT_TAGS = SENSITIVE_TAGS
+ADULT_TIMEOUT = 60        # seconds for the adult pass, on top of the normal pass
+# Sites that are adult or dating whatever tags Maigret gives them (Fansly is tagged "social").
+ADULT_HOSTS = frozenset(adult_sites.HOSTS)
 
 _ID_KEYS = {"uid", "username", "account_id", "gaia_id"}
 _NAME_KEYS = ("fullname", "name", "nickname")
@@ -69,116 +79,304 @@ def profile_signal(ids: dict | None, site: str = "", username: str = "") -> dict
     return {k: v for k, v in out.items() if v}
 
 
-async def _run_maigret_impl(username: str, nsfw: bool = False, timeout: int = 180) -> dict:
-    if not MAIGRET_AVAILABLE:
-        return {"username": username, "results": [], "total": 0, "possible": 0, "verified": 0, **error_fields(code="not_installed")}
+# --------------------------------------------------------------------------------------
+# The site database Maigret is given.
+#
+# Left alone, Maigret updates its database on its own (~/.maigret/data.json), so the sites it
+# queries are not the installed ones the filters were built from, and it has no option to
+# leave a site out by name. So both passes are pinned to the installed database with --db
+# (a custom database also switches the auto-update off; --no-autoupdate says so again):
+#
+#   normal pass   a copy of the installed database with every site core.adult_sites lists
+#                 taken out, so no option or ranking can select one
+#   adult pass    the installed database itself, restricted to the adult tags
+#
+# The price: site definitions change only when the maigret package is upgraded.
+# --------------------------------------------------------------------------------------
+_filtered_db_path = ""
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cmd = [
-            "maigret",
-            "-J", "simple",
-            "--timeout", "10",
-            "--no-color",
-            "--no-progressbar",
-            "--no-recursion",
-            "--top-sites", "500",
-            "--folderoutput", tmpdir,
-        ]
-        # Adult and dating sites are excluded unless the investigator explicitly opts in.
-        # (The old filter passed "--tags !nsfw", which is not a tag Maigret knows, so with the
-        # box unticked it matched no sites at all.)
-        if not nsfw:
-            cmd.extend(["--exclude-tags", ",".join(SENSITIVE_TAGS)])
-        # "--" ends option parsing, so the username can never be read as a flag.
-        cmd.extend(["--", username])
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=tmpdir,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return {"username": username, "results": [], "total": 0, "possible": 0, "verified": 0, **error_fields(code="timeout", message="Maigret ran out of time. Partial results were discarded.")}
-        log_process("maigret", proc.returncode, stderr)
+def _site_is_adult(name: str, entry) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    return bool(adult_sites.tag_category(entry.get("tags"))) or any(
+        adult_sites.is_adult_site(name, str(entry.get(k) or "")) for k in ("url", "urlMain", "urlProbe"))
 
-        results = []
 
-        # Find the JSON output file
-        raw = None
-        for fname in sorted(os.listdir(tmpdir)):
-            if fname.endswith(".json"):
-                fpath = os.path.join(tmpdir, fname)
-                with open(fpath) as f:
-                    try:
-                        raw = json.load(f)
-                        break
-                    except json.JSONDecodeError:
-                        continue
+def filtered_database(path: str | None = None) -> dict:
+    """The installed Maigret database without any adult or dating site."""
+    try:
+        with open(path or adult_sites.MAIGRET_DATA, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or not isinstance(data.get("sites"), dict):
+        return {}
+    return {**data, "sites": {name: entry for name, entry in data["sites"].items() if not _site_is_adult(name, entry)}}
 
-        if raw and isinstance(raw, dict):
-            # maigret simple JSON format:
-            # { "SiteName": { "status": { "status": "Claimed", "site_name": "...", "tags": [...] },
-            #                  "url_user": "...", "site": { "tags": [...] } } }
-            for site_key, info in raw.items():
-                if not isinstance(info, dict):
+
+def normal_db_file() -> str:
+    """Path of the filtered database, written once per process. "" when it cannot be built."""
+    global _filtered_db_path
+    if _filtered_db_path and os.path.isfile(_filtered_db_path):
+        return _filtered_db_path
+    data = filtered_database()
+    if not data:
+        return ""
+    fd, path = tempfile.mkstemp(prefix="crawlr_maigret_", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    _filtered_db_path = path
+    return path
+
+
+def adult_db_file() -> str:
+    """The installed database, for the adult pass. "" when it is missing."""
+    return adult_sites.MAIGRET_DATA if os.path.isfile(adult_sites.MAIGRET_DATA or "") else ""
+
+
+def _base_command(tmpdir: str, db_file: str) -> list[str]:
+    return [
+        "maigret",
+        "-J", "simple",
+        "--timeout", "10",
+        "--no-color",
+        "--no-progressbar",
+        "--no-recursion",
+        "--db", db_file,
+        "--no-autoupdate",
+        "--folderoutput", tmpdir,
+    ]
+
+
+def build_command(username: str, tmpdir: str, db_file: str | None = None) -> list[str]:
+    """The normal pass: the top 500 sites by rank of a database that holds no adult or dating
+    site, with the adult tags excluded as well. This is the only command that runs unless the
+    investigator opted in."""
+    cmd = _base_command(tmpdir, db_file if db_file is not None else normal_db_file())
+    cmd.extend(["--top-sites", "500", "--exclude-tags", ",".join(SENSITIVE_TAGS)])
+    # "--" ends option parsing, so the username can never be read as a flag.
+    cmd.extend(["--", username])
+    return cmd
+
+
+def build_adult_command(username: str, tmpdir: str, db_file: str | None = None) -> list[str]:
+    """The adult pass: every enabled site in the installed database that carries one of the
+    adult or dating tags, whatever its rank. Maigret filters by tag first and ranks afterwards,
+    so --all-sites is what lifts the top-500 cut. --print-errors puts each failed site on stdout."""
+    cmd = _base_command(tmpdir, db_file if db_file is not None else adult_db_file())
+    cmd.extend(["--all-sites", "--tags", ",".join(ADULT_TAGS), "--print-errors"])
+    cmd.extend(["--", username])
+    return cmd
+
+
+_SITE_COUNT = re.compile(r"Starting a search on top (\d+) sites")
+_ERROR_LINE = re.compile(r"^\[\?\] (.{1,80}?): (?!https?://)", re.M)
+
+
+def _sites_checked(stdout: str) -> int | None:
+    """How many sites Maigret says it checked, from its own start line."""
+    m = _SITE_COUNT.search(stdout or "")
+    return int(m.group(1)) if m else None
+
+
+def _errored_sites(stdout: str) -> list[str]:
+    """Names of the sites Maigret could not check (a line "[?] Site: reason")."""
+    seen: list[str] = []
+    for name in _ERROR_LINE.findall(stdout or ""):
+        name = name.strip()
+        if name and name not in seen:
+            seen.append(name)
+    return seen[:200]
+
+
+def _host_site(url: str) -> str:
+    try:
+        return registrable_domain(urlsplit(url or "").hostname or "")
+    except ValueError:
+        return ""
+
+
+def adult_category(tags, url: str = "", name: str = "") -> str:
+    """"adult", "dating" or "" for a site: from Maigret's tags, or from core.adult_sites by the
+    site's name or host."""
+    by_tag = adult_sites.tag_category(tags)
+    listed = adult_sites.category(name, url)
+    if "adult" in (by_tag, listed):
+        return "adult"
+    return by_tag or listed
+
+
+_FOLLOWER_KEYS = ("follower_count", "followers_count", "followers", "subscriber_count", "subscribers", "fans_count")
+
+
+def adult_profile(ids: dict | None, site: str = "", username: str = "") -> dict | None:
+    """What an adult row may say about a profile: name, join date, follower count and a
+    plain-text bio. No image, no location, nothing else Maigret extracted."""
+    profile = profile_signal(ids, site=site, username=username)
+    if profile is None:
+        return None
+    followers = next((n for n in (adult_check._count(ids.get(k)) for k in _FOLLOWER_KEYS) if n is not None), None)
+    out = {
+        "name": adult_guard.plain_text(profile.get("name", ""), 120),
+        "created_at": profile.get("created_at", ""),
+        "followers": followers,
+        "bio": adult_guard.plain_text(profile.get("bio", "")),
+    }
+    return {k: v for k, v in out.items() if v not in ("", None)}
+
+
+async def _run_pass(cmd: list[str], tmpdir: str, timeout: float) -> tuple[dict | None, str, dict | None]:
+    """Run Maigret once. Returns (its JSON report or None, its stdout, error fields or None)."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=tmpdir,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return None, "", error_fields(code="timeout", message="Maigret ran out of time. Partial results were discarded.")
+    log_process("maigret", proc.returncode, stderr)
+
+    raw = None
+    for fname in sorted(os.listdir(tmpdir)):
+        if fname.endswith(".json"):
+            with open(os.path.join(tmpdir, fname)) as f:
+                try:
+                    raw = json.load(f)
+                    break
+                except json.JSONDecodeError:
                     continue
-                status_obj = info.get("status", {})
-                if not isinstance(status_obj, dict):
-                    continue
-                status_val = status_obj.get("status", "")
-                if str(status_val).lower() != "claimed":
-                    continue
+    return (raw if isinstance(raw, dict) else None), (stdout or b"").decode("utf-8", "replace"), None
 
-                site_name = status_obj.get("site_name", site_key)
-                url = info.get("url_user", status_obj.get("url", ""))
 
-                # Tags from status or site metadata
-                tags = status_obj.get("tags", [])
-                if not tags:
-                    site_meta = info.get("site", {})
-                    if isinstance(site_meta, dict):
-                        tags = site_meta.get("tags", [])
-                if isinstance(tags, list):
-                    category = ", ".join(tags) if tags else ""
-                else:
-                    category = str(tags) if tags else ""
+def _rows(raw: dict | None, username: str, nsfw: bool) -> list[dict]:
+    """Claimed sites from one Maigret report. An adult or dating row is dropped unless the
+    investigator opted in, and is cut down to text metadata when it is kept."""
+    results = []
+    # maigret simple JSON format:
+    # { "SiteName": { "status": { "status": "Claimed", "site_name": "...", "tags": [...] },
+    #                  "url_user": "...", "site": { "tags": [...] } } }
+    for site_key, info in (raw or {}).items():
+        if not isinstance(info, dict):
+            continue
+        status_obj = info.get("status", {})
+        if not isinstance(status_obj, dict):
+            continue
+        if str(status_obj.get("status", "")).lower() != "claimed":
+            continue
 
-                confidence = _classify_site(site_name)
-                profile = profile_signal(status_obj.get("ids"), site=site_name, username=username)
-                row = {
-                    "site": site_name,
-                    "url": url,
-                    "confidence": confidence,
-                    "category": category,
-                    "verified": profile is not None,
-                }
-                if profile:
-                    row["profile"] = profile
-                results.append(row)
+        site_name = status_obj.get("site_name", site_key)
+        url = info.get("url_user", status_obj.get("url", ""))
 
-        results = [r for r in results if not _is_maigret_false_positive(r["site"], r["url"])]
+        # Tags from status or site metadata
+        tags = status_obj.get("tags", [])
+        if not tags:
+            site_meta = info.get("site", {})
+            if isinstance(site_meta, dict):
+                tags = site_meta.get("tags", [])
+        if isinstance(tags, list):
+            category = ", ".join(tags) if tags else ""
+        else:
+            category = str(tags) if tags else ""
 
-        results.sort(key=lambda r: (not r["verified"], SORT_ORDER.get(r["confidence"], 1)))
-        possible = sum(1 for r in results if r["confidence"] != "false_positive")
+        if _is_maigret_false_positive(site_name, url):
+            continue
+        confidence = _classify_site(site_name)
+        adult = adult_category(tags, url, site_name)
+        if adult:
+            if not nsfw:
+                continue          # never reported without the opt-in, whichever pass found it
+            profile = adult_profile(status_obj.get("ids"), site=site_name, username=username)
+            row = {"site": site_name, "url": url, "confidence": confidence, "category": adult,
+                   "verified": profile is not None, "adult": True}
+            if profile:
+                row["profile"] = profile
+            results.append(adult_guard.strip_media(row))
+            continue
 
-        return {
-            "username": username,
-            "total": len(results),
-            "possible": possible,
-            "verified": sum(1 for r in results if r["verified"]),
-            "results": results,
+        profile = profile_signal(status_obj.get("ids"), site=site_name, username=username)
+        row = {
+            "site": site_name,
+            "url": url,
+            "confidence": confidence,
+            "category": category,
+            "verified": profile is not None,
         }
+        if profile:
+            row["profile"] = profile
+        results.append(row)
+    return results
+
+
+async def _run_maigret_impl(username: str, nsfw: bool = False, timeout: int = 180, adult_timeout: int = ADULT_TIMEOUT) -> dict:
+    nsfw = nsfw is True
+    empty = {"username": username, "results": [], "total": 0, "possible": 0, "verified": 0,
+             "nsfw": nsfw, "sites_checked": 0, "adult_checked": 0, "adult_errors": []}
+    if nsfw:
+        reason = adult_guard.minor_indicated(username)
+        if reason:
+            # The router answers 400 before this point. This is the second lock on the door.
+            return {**empty, "nsfw": False, **error_fields(code=adult_guard.ERROR_CODE, message=adult_guard.MESSAGE, detail=reason)}
+    if not MAIGRET_AVAILABLE or not normal_db_file() or (nsfw and not adult_db_file()):
+        # Without the installed database there is no way to know what would be queried.
+        return {**empty, **error_fields(code="not_installed")}
+
+    # Adult and dating sites are excluded unless the investigator explicitly opts in.
+    # (The old filter passed "--tags !nsfw", which is not a tag Maigret knows, so with the
+    # box unticked it matched no sites at all.)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        raw, stdout, failed = await _run_pass(build_command(username, tmpdir), tmpdir, timeout)
+    if failed:
+        return {**empty, **failed}
+    results = _rows(raw, username, nsfw)
+    sites_checked = _sites_checked(stdout)
+
+    # The opt-in adds a second pass over the adult and dating tags only. It has its own time
+    # limit, and when it fails the normal pass above is still returned.
+    adult = {"adult_checked": 0, "adult_errors": []}
+    if nsfw:
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                raw, stdout, failed = await _run_pass(build_adult_command(username, tmpdir), tmpdir, adult_timeout)
+        except Exception as e:  # noqa: BLE001 - the adult pass must never take the normal pass down
+            raw, stdout, failed = None, "", error_fields(e, detail=type(e).__name__)
+        if failed:
+            adult.update({f"adult_{k}": v for k, v in failed.items()})
+        else:
+            seen = {r["site"] for r in results}
+            # Only adult and dating rows are taken from this pass, whatever it returned.
+            results.extend(r for r in _rows(raw, username, True) if r.get("adult") and r["site"] not in seen)
+            checked = _sites_checked(stdout)
+            adult["adult_checked"] = checked or 0
+            adult["adult_errors"] = _errored_sites(stdout)
+            if sites_checked is not None and checked is not None:
+                sites_checked += checked
+
+    results.sort(key=lambda r: (not r["verified"], SORT_ORDER.get(r["confidence"], 1)))
+    possible = sum(1 for r in results if r["confidence"] != "false_positive")
+
+    return {
+        "username": username,
+        "total": len(results),
+        "possible": possible,
+        "verified": sum(1 for r in results if r["verified"]),
+        "results": results,
+        "nsfw": nsfw,
+        "sites_checked": sites_checked,
+        **adult,
+    }
 
 
 async def run_maigret(username: str, nsfw: bool = False, timeout: int = 180) -> dict:
-    """Guarded entry point: bounded by the global tool concurrency limit."""
+    """Guarded entry point: bounded by the global tool concurrency limit. Both passes run
+    inside one tool slot, one after the other.
+
+    `nsfw` is the adult and dating site opt-in. It is off unless the caller passes exactly True."""
     try:
         async with tool_slot("maigret"):
             return log_result("maigret", await _run_maigret_impl(username=username, nsfw=nsfw, timeout=timeout))

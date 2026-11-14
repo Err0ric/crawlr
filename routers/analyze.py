@@ -66,6 +66,10 @@ Bullets: each unanswered question (including attributes left out of the identity
 
 ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active techniques" (the investigator enabled them) listing account-recovery or password-reset enumeration checks worth running on the linked accounts, each marked with ⚠ and a one-line note on what it reveals and the risk of notifying the target."""
 
+# Added only when the request carries adult_sites, which the UI sends only for a case that had
+# the adult and dating site mode switched on. Without that field the prompt never mentions them.
+ADULT_SITES_SECTION = """The collected data includes a list headed ADULT AND DATING SITES. These are existence findings on adult and dating sites and nothing more. Report them only as "a handle with this name exists on X" or "X could not be checked". Do not infer or speculate about the person's sexuality, relationships, occupation, habits or character from them. Do not attribute them to the primary identity unless a strong signal listed under LINKED ties them to it; the same handle alone is not such a signal. Keep them out of the summary bullets, the profile block, the identity table and the platform footprint table. Put them in their own final section "## Adult and dating sites (existence checks only)", at most 3 sentences."""
+
 
 # What the report is about depends on the kind of target. A hash or a phone number is not a person,
 # so the model is told not to write about identity for those.
@@ -263,6 +267,38 @@ def _account_lines(req) -> list[str]:
     return lines
 
 
+def _adult_lines(req) -> list[str]:
+    """Adult and dating site rows, worded as existence checks. Empty when the field is absent."""
+    rows = getattr(req, "adult_sites", None) or []
+    if not rows:
+        return []
+    by: dict[str, list[str]] = {"exists": [], "unchecked": [], "no_page": [], "absent": []}
+    group = {"read": "exists", "reported": "exists", "blocked": "unchecked", "unknown": "unchecked", "no_public_url": "no_page", "not_found": "absent"}
+    for a in rows:
+        label = f"{a.site} ({a.category} site)" if a.category in ("adult", "dating") else a.site
+        if a.state == "reported":
+            label += " [reported by a tool, nothing read]"
+        by[group.get(a.state, "unchecked")].append(label)
+    lines = [f"ADULT AND DATING SITES ({len(rows)}), existence checks only. Nothing here says who owns an account:"]
+    if by["exists"]:
+        lines.append("A handle with this name exists on: " + ", ".join(by["exists"][:60]))
+    if by["unchecked"]:
+        lines.append("Could not be checked (unknown, not absent): " + ", ".join(by["unchecked"][:60]))
+    if by["no_page"]:
+        lines.append("No public page to check: " + ", ".join(by["no_page"][:60]))
+    if by["absent"]:
+        lines.append("No handle with this name on: " + ", ".join(by["absent"][:60]))
+    return lines
+
+
+class AdultSiteEvidence(BaseModel):
+    """One adult or dating site row. No name, no bio and no URL is ever sent."""
+    site: str = Field(max_length=120)
+    category: str = Field(default="", max_length=12)     # "adult" | "dating"
+    state: str = Field(default="unknown", max_length=16)  # "read" | "reported" | "blocked" | "unknown" | "no_public_url" | "not_found"
+    url_kind: str = Field(default="none", max_length=24)  # "verified_profile" | "templated_unverified" | "none"
+
+
 class AccountEvidence(BaseModel):
     site: str = Field(max_length=120)
     url: str = Field(default="", max_length=600)
@@ -279,6 +315,8 @@ class AnalyzeRequest(BaseModel):
     target_type: str = Field(default="", max_length=20)
     # What the UI's evidence ledger concluded, so the report and the screen agree.
     accounts: Optional[list[AccountEvidence]] = Field(default=None, max_length=400)
+    # Adult and dating site rows, only for a case that had that mode on. Never part of `accounts`.
+    adult_sites: Optional[list[AdultSiteEvidence]] = Field(default=None, max_length=200)
     # Source name -> "ok", "not found" or "failed: <reason>". Lets the model tell
     # "GitHub has no such user" apart from "GitHub could not be checked".
     source_status: Optional[dict[str, str]] = None
@@ -312,6 +350,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
     prompt_parts = [f"Target: {req.target}\n"]
 
     prompt_parts.extend(_account_lines(req))
+    prompt_parts.extend(_adult_lines(req))
     prompt_parts.extend(_status_lines(req))
 
     if req.holehe and req.holehe.get("results"):
@@ -524,6 +563,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
         INVESTIGATION_PROMPT
         + ("\n" + TARGET_FOCUS[req.target_type] if req.target_type in TARGET_FOCUS else "")
         + ("\n" + ACTIVE_TECHNIQUES_SECTION if req.active_techniques else "")
+        + ("\n" + ADULT_SITES_SECTION if req.adult_sites else "")
         + f"\n\nTarget: {req.target}\n\nCollected data:\n{recon_data}"
     )
 
