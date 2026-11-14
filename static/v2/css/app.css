@@ -914,3 +914,42 @@ details.more[open] > summary { margin-bottom: 6px; }
 .src-how.guess { border-style: dashed; }
 .source.off .src-how { color: var(--ink-4); }
 .how-legend b { font-family: var(--mono); font-weight: 500; color: var(--ink-2); }
+
+/* ==========================================================================
+   Link integrity (links.js). An external link carries an icon. A URL nothing
+   has checked is dashed and says "unverified URL". A row with no public page
+   is plain text with a hint. Existing tokens only.
+   ========================================================================== */
+.ext { display: inline-block; width: 0.75em; height: 0.75em; margin-left: 3px; vertical-align: -0.02em; flex: none; }
+.btn .ext { margin-left: 5px; }
+.lk-unverified, .lk-unverified:hover { text-decoration: underline dashed; text-underline-offset: 3px; }
+.lk-flag { color: var(--ink-3); font-size: var(--fs-0); font-weight: 400; margin-left: 6px; white-space: nowrap; }
+.lk-flag.busy { color: var(--ink-2); }
+.lk-state { color: var(--ink-3); font-size: var(--fs-0); margin-left: 8px; white-space: nowrap; }
+.lk-state.ok { color: var(--ok); }
+.lk-state.warn { color: var(--warn); }
+/* Ledger rows: the name is the link, and it looks like one. */
+.ev .what a.lk { font-weight: 500; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.ev .what a.lk-unverified { text-decoration-style: dashed; }
+.ev .what a.lk:hover { color: var(--violet); text-decoration-color: currentColor; }
+.ev .what a.ev-link, .brief-list a.ev-link, .finds a.ev-link { color: var(--violet); font-weight: 400; font-size: var(--fs-0); margin-left: 8px; white-space: nowrap; text-decoration: underline; text-underline-offset: 3px; }
+.ev-hint { display: block; color: var(--ink-3); font-size: var(--fs-0); margin-top: 2px; }
+.ev-hint b { color: var(--ink-2); font-weight: 500; margin-right: 4px; }
+.ev.gone .what { color: var(--ink-4); }
+.ev.gone .lk-state { color: var(--ink-3); }
+.fact .v a.lk, .tl-what a.lk { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.tile.unv { border-style: dashed; }
+.tile.gone .n { color: var(--ink-4); }
+.tile .lk-flag { margin-left: 0; }
+@media print { .ext { display: none; } }
+.ev.done .what a.lk { color: var(--ink-4); text-decoration: line-through; }
+/* "Check these links" in a group header, and the link check's status bar. */
+.tier-h { display: flex; align-items: center; border-bottom: 1px solid var(--line-soft); }
+.tier-h .tier-head { flex: 1; width: auto; min-width: 0; border-bottom: 0; }
+.tier.collapsed .tier-h { border-bottom-color: transparent; }
+.tier-check { flex: none; margin: 0 14px 0 4px; }
+.tier-check[hidden] { display: none; }
+.lk-status { position: sticky; bottom: calc(var(--tabbar-h) + 12px); z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-3); padding: 8px 14px; background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: var(--r-3); font-size: var(--fs-1); color: var(--ink-2); }
+.lk-status[hidden] { display: none; }
+.lk-status-text { flex: 1; min-width: 12ch; }
+@media print { .lk-status, .tier-check { display: none !important; } }

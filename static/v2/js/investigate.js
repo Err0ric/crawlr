@@ -6,7 +6,9 @@ import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseRepl
 import { investigateBrief } from "./brief.js";
 import { reportHtml } from "./report.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
+import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText, mdLink, mdNote } from "./links.js";
+import { makeLinkChecker } from "./linkcheck.js";
+import { patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
 import { buildCaseFile } from "./casefile.js";
 
 // ---- sources ---------------------------------------------------------------
@@ -24,6 +26,8 @@ export const SOURCES = [
   { id: "harvester", how: "index", name: "Domain harvest",  desc: "hosts and other addresses on this email's domain, from 8 public sources. Skipped for mail providers such as gmail.com", types: ["email"], on: true },
   { id: "hash", how: "index",      name: "Hash lookup",     desc: "MalwareBazaar, CIRCL, OTX, ThreatFox",  types: ["hash"],              on: true },
   { id: "phone", how: "index",     name: "Phone lookup",    desc: "carrier and line type",                 types: ["phone"],             on: true, pro: "numlookup", proOptional: true },
+  // Not part of the run: it starts when a ledger group with unchecked profile URLs is on screen.
+  { id: "linkcheck", how: "guess", name: "Link check",      desc: "checks that each reported profile URL really exists, when you open a group", types: ["username"], on: true },
   { id: "active", how: "record",    name: "Active techniques", desc: "profile scraping for Deep Dive. May notify the target.", types: ["username"], on: false, warn: true },
 ];
 
@@ -65,6 +69,7 @@ $("#sources").addEventListener("change", (e) => {
     setSrc(t, e.target.checked);
     e.target.closest(".source").classList.toggle("off", !e.target.checked);
     paintCount();
+    if (t === "linkcheck") { if (e.target.checked) checker.watch(); else { checker.reset(); renderLedger(); } }
   }
   if (x) setSrc(`maigret.${x}`, e.target.checked);
 });
@@ -76,13 +81,15 @@ const tabs = makeTabs($("#tabs"));
 // ---- state -------------------------------------------------------------------
 // prev: { keys, ts, ai, sig } from the last saved run of the same target, for the diff.
 // view: which identity cluster "What we know" shows; "" means the primary one.
-export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "" };
+// live: this case was run in this session, so its header and run log follow the tally.
+export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "", live: false, imported: false };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
 
-const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: "Phone lookup", enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison" };
-// Every count of sources on this page comes from this one tally.
-const tally = () => sourceTally(state.collected, SRC_NAME);
+const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: "Phone lookup", enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison", linkCheck: "Link check" };
+// Every count of sources on this page comes from this one tally. The link check is a source like
+// any other: its row is built from the stored results, or from the error if the verifier failed.
+const tally = () => sourceTally({ ...state.collected, linkCheck: linkCheckSource(state.collected) }, SRC_NAME);
 const failedSources = () => tally().rows.filter((r) => r.state === "failed");
 // Identical evidence means an identical AI answer, so a re-run can reuse the last one.
 const signature = (items, facts) => JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v])]);
@@ -105,7 +112,7 @@ function renderLedger() {
     : failedSources().length
       ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean negative. See the notice above and try again.</p></div>`
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
-  renderTiers($("#ledger"), items, ledgerTiers(state.target, state.type), checked(), nothing);
+  renderTiers($("#ledger"), items, ledgerTiers(state.target, state.type), checked(), nothing, { check: (tier) => checker.waiting(tier) });
   const emptyFacts = state.running ? "Collecting…" : "No facts extracted yet.";
   // A person case shows one identity at a time, so one person's name never sits beside another's.
   // state.view is only ever what the investigator picked; with no pick the primary cluster shows.
@@ -114,9 +121,63 @@ function renderLedger() {
   setTabCount($("#tabFindings"), "Findings", items.filter(isFinding).length);
   // The written brief waits for the run to finish, so it never describes half a picture.
   renderBrief($("#brief"), $("#briefBody"), state.running || !state.target ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), type: state.type, target: state.target }));
+  checker.watch();
 }
 bindLedger($("#ledger"), checkKey);
-$("#facts").addEventListener("change", (e) => { if (e.target.matches("[data-cluster-pick]")) { state.view = e.target.value; renderLedger(); $("#factsPick")?.focus(); } });
+
+// ---- link check -----------------------------------------------------------------------
+// Templated profile URLs are checked by the server (see linkcheck.js). For a run started in this
+// session that begins when the group is on screen. A case from History or from a case file is
+// never checked without a click: opening a file must not make anything fetch the links in it.
+// Results are stored in the case, so history, exports and case files keep them.
+const linkHandle = () => state.target.replace(/^@/, "");
+const policy = () => checkPolicy({ on: srcOn("linkcheck"), running: state.running, type: state.type, handleOk: /^[A-Za-z0-9._-]{1,64}$/.test(linkHandle()) && !linkHandle().startsWith("-"), live: state.live, imported: state.imported });
+let linkRow = null;
+// The case header and the run log summary, from the one tally.
+function summary() {
+  const { items } = evidence();
+  const t = tally(), found = items.filter(isFinding).length;
+  return { items, t, log: `${state.cancelled ? "Cancelled · partial results · " : ""}${tallyText(t)} · ${plural(found, "finding")}`, head: `${TYPE_LABEL[state.type]} · ${plural(found, "finding")} · ${tallyText(t)}${state.cancelled ? " · cancelled, partial" : ""}` };
+}
+function linkCheckDone(text, status, detail = "") {
+  if (linkRow && log.live) log.set(linkRow, text, status, detail);
+  if (state.live && !state.running) { const s = summary(); log.resummarize(s.log, s.t.failed); renderHead(s.head); }
+  renderSourceCards();
+  if (state.target) saveHistory();
+}
+const linkCounts = () => { const r = linkCheckSource({ linkChecks: state.collected.linkChecks })?.results || []; return `${fmtNum(r.filter((x) => x.state === "verified").length)} of ${plural(r.length, "page")} exist`; };
+const checker = makeLinkChecker({
+  ledger: $("#ledger"),
+  allowed: () => policy().allowed,
+  auto: () => policy().auto,
+  username: linkHandle,
+  rows: (tier) => pendingChecks(buildEvidence(state.collected, state.target, state.type).items, tier),
+  // A case file's links were chosen by whoever made the file, so say so before fetching them.
+  request: (tier, n, go) => {
+    if (!policy().confirm) { go(); return; }
+    openModal({ title: "Check the links in this case file?", body: h`<p class="modal-p">${checkConfirmText(n)}</p>`,
+      actions: [{ label: "Cancel", onClick: closeModal }, { label: "Check these links", primary: true, onClick: () => { closeModal(); go(); } }] });
+  },
+  onStart: () => { if (log.live) { if (linkRow?.isConnected) log.set(linkRow, "Link check", "run"); else linkRow = log.add("Link check"); } },
+  onBatch: (sent, results) => {
+    state.collected.linkChecks = mergeChecks(state.collected.linkChecks, sent, results);
+    const { items } = evidence();
+    for (const r of sent) { const it = items.find((i) => i.key === r.id); if (it) patchRow($("#ledger"), it); }
+    if (state.target) saveHistory();
+  },
+  onFail: (err) => {
+    // Unknown, never "not found": no row changes, and the failure is shown like any failed source.
+    state.collected.linkCheck = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
+    renderLedger();
+    linkCheckDone(`Link check: ${err.detail || err.message}`, "err", err.raw);
+  },
+  // "Try again" in the status bar: the failure is cleared and the same groups are asked again.
+  onRetry: () => { delete state.collected.linkCheck; renderLedger(); },
+  onIdle: ({ stopped }) => {
+    if (state.collected.linkCheck) { delete state.collected.linkCheck; renderLedger(); }
+    linkCheckDone(`Link check · ${linkCounts()}${stopped ? " · stopped" : ""}`, "done");
+  },
+});
 
 function renderSourceCards() {
   const c = state.collected;
@@ -125,7 +186,8 @@ function renderSourceCards() {
   const push = (id, d, extra) => { if (d !== undefined && d !== null && !d.skipped && sourceCards[id]) { const html = sourceCards[id](d, extra); if (html) cards.push(html); } };
   push("hash", c.hash); push("phone", c.phone);
   push("hibp", c.hibp); push("holehe", c.holehe); push("github", c.github, c.githubDeep); push("githubDeep", c.githubDeep, c.github); push("gravatar", c.gravatar);
-  push("sherlock", c.sherlock); push("maigret", c.maigret); push("platformCheck", c.platformCheck);
+  push("sherlock", c.sherlock, c.linkChecks); push("maigret", c.maigret, c.linkChecks); push("platformCheck", c.platformCheck, c.linkChecks);
+  push("linkCheck", linkCheckSource(c));
   push("enricher", c.enricher); push("avatarHash", c.avatarHash); push("profileScrape", c.profileScrape); push("hunter", c.hunter); push("harvester", c.harvester);
   if (c.nameSearch) cards.push(sourceCards.nameSearch(c.nameSearch));
   if (c.reverseImage) cards.push(sourceCards.reverseImage(c.reverseImage));
@@ -353,7 +415,8 @@ export async function run(targetRaw, typeOverride) {
   let prev = null;
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: signature(ev.items, ev.facts) }; }
 
-  Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "" });
+  checker.reset(); linkRow = null;
+  Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -423,9 +486,9 @@ export async function run(targetRaw, typeOverride) {
 
   setRunning(false);
   const { items, facts } = evidence();
-  const t = tally(), found = items.filter(isFinding).length;
-  log.finish(`${state.cancelled ? "Cancelled · partial results · " : ""}${tallyText(t)} · ${plural(found, "finding")}`, t.failed);
-  renderHead(`${TYPE_LABEL[type]} · ${plural(found, "finding")} · ${tallyText(t)}${state.cancelled ? " · cancelled, partial" : ""}`);
+  const sum = summary();
+  log.finish(sum.log, sum.t.failed);
+  renderHead(sum.head);
   // Same evidence as last time: show the report already paid for instead of asking again.
   if (!state.cancelled && prev?.ai && prev.sig === signature(items, facts)) state.ai = { ...prev.ai, reused: true };
   renderLedger(); renderSourceCards(); renderAiPanel();
@@ -448,7 +511,8 @@ function saveHistory() {
 export function loadHistory(idOrEntry) {
   const e = typeof idOrEntry === "string" ? getHistory().find((x) => x.id === idOrEntry) : idOrEntry;
   if (!e) return false;
-  Object.assign(state, { target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
+  checker.reset(); linkRow = null;
+  Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
   $("#targetInput").value = e.target;
   renderSources(state.type);
   $("#runlog").hidden = true; $("#tabs").hidden = false; tabs.set("findings");
@@ -458,8 +522,8 @@ export function loadHistory(idOrEntry) {
   return true;
 }
 export function clearCase() {
-  cancel();
-  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
+  cancel(); checker.reset(); linkRow = null;
+  Object.assign(state, { live: false, imported: false, target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
@@ -491,11 +555,11 @@ export function exportCase() {
   const main = identity.views.find((v) => v.primary);
   const others = identity.views.filter((v) => v.named && !v.primary);
   const md = [`# CrawlR case: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}${state.ran ? ` · collected ${new Date(state.ran).toISOString()}` : ""}`, tallyText(tally()), "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
-    "> Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts. A profile that exists is not proof of who owns it, and leads are places to look, not findings.", "",
+    "> Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts. A link marked (unverified URL) is a site address built from the handle that nothing has checked. A profile that exists is not proof of who owns it, and leads are places to look, not findings.", "",
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a negative result)`), ""] : []),
-    `## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${f.v} _(${f.source})_`) : ["- Nothing extracted"]), "",
+    `## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), "",
     ...(others.length ? ["## Other people using this handle", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
-    ...ledgerTiers(state.target, state.type).flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${i.url ? `[${i.what}](${i.url})` : i.what}${i.meta ? ` · ${i.meta}` : ""} _(${i.source})_`), ""] : []; }),
+    ...ledgerTiers(state.target, state.type).flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
     ...(state.ai ? ["## AI analysis", state.ai.summary, ""] : []),
     ...(state.deepDive ? ["## Deep Dive", state.deepDive.summary, ""] : []),
     ...($("#notes").value.trim() ? ["## Notes", $("#notes").value.trim(), ""] : []),
