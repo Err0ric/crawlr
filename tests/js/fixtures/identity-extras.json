@@ -1,0 +1,85 @@
+{
+ "_note": "Written to the PR 1 contract shapes. Addresses are example.org, hashes are invented.",
+ "githubDeep": {
+  "username": "torvalds",
+  "found": true,
+  "state": "partial",
+  "cached": false,
+  "social_accounts": [
+   {
+    "provider": "mastodon",
+    "url": "https://social.example.org/@torvalds"
+   }
+  ],
+  "readme_links": [],
+  "orgs": [
+   {
+    "login": "example-org",
+    "url": "https://github.com/example-org"
+   }
+  ],
+  "top_repos": [
+   {
+    "name": "linux",
+    "url": "https://github.com/torvalds/linux",
+    "stars": 190000,
+    "language": "C",
+    "description": "Linux kernel source tree",
+    "fork": false
+   }
+  ],
+  "languages": [
+   "C",
+   "Shell"
+  ],
+  "keys": {
+   "ssh": [],
+   "gpg": []
+  },
+  "commit_emails": [
+   {
+    "email": "committer@example.org",
+    "name": "Linus Torvalds",
+    "repo": "torvalds/linux"
+   }
+  ],
+  "sections": {
+   "social_accounts": "ok",
+   "readme_links": "ok",
+   "orgs": "ok",
+   "top_repos": "ok",
+   "ssh_keys": "rate_limited",
+   "gpg_keys": "rate_limited",
+   "commit_emails": "ok"
+  }
+ },
+ "avatarHash": {
+  "results": [
+   {
+    "id": "acct:github",
+    "hash": "c3c3e7e7ffff0f0f",
+    "default": false
+   },
+   {
+    "id": "acct:keybase",
+    "hash": "c3c3e7e7ffff0f0d",
+    "default": false
+   },
+   {
+    "id": "acct:x",
+    "hash": "0000000000000000",
+    "default": true
+   },
+   {
+    "id": "acct:duolingo",
+    "hash": "0000000000000000",
+    "default": true
+   },
+   {
+    "id": "acct:imgur",
+    "error": "The image is too large.",
+    "error_code": "too_large"
+   }
+  ]
+ }
+}

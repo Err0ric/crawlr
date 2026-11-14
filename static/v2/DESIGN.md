@@ -83,8 +83,13 @@ Checked at 375, 768, 1024 and 1440.
 
 - Findings first. The run log is a one-line strip above them once a run completes. It stays open if a source failed.
 - While running: "3 of 7 sources done", a bar, a clock, and a timer on each running source. Results appear as each source answers. The Run button becomes Cancel.
-- Four states that are never merged: **confirmed**, **possible**, **not found**, **failed**. A failed source gets a red row in the log, a notice above the findings, and its own card state. Raw upstream error text is only ever behind a "details" toggle.
-- Ledger tiers: Flags, Confirmed, Possible, Known noisy sites. Recon: Flags, Exposed services, Subdomains, Lookalike domains.
+- States that are never merged: **read** (a profile or record was read), **unverified**, **blocked by site**, **not found**, **failed**. A failed source gets a red row in the log, a notice above the findings, and its own card state. Raw upstream error text is only ever behind a "details" toggle.
+- Ledger tiers: Flags, Linked, Exists (matches), Exists (different person, collapsed), Unverified, Leads from profiles, Hosts on the email's domain (collapsed), Known noisy sites. Each row says why it sits where it does ("same name", "GitHub's own record for this handle", "Blocked by site").
+- **What we know** shows one person at a time. A labelled select switches between the people who share the handle; the primary identity is first and the panel says why it is primary. Facts from different people are never mixed.
+- **Leads** are places to look next, not findings. A handle or address lead has "Investigate this", a domain has "Open in Recon". Nothing is followed without a click, and a lead never starts another lead.
+- An email case does not run the username tools on the part before the @. That part is offered as a lead.
+- One count, one function: the case header, the run log summary and the By source tab all read `sourceTally`. Every source that ran has a card, including ones that found nothing or failed.
+- Search and tool inputs opt out of browser and password manager autofill. The key fields in Settings do not. Recon: Flags, Exposed services, Subdomains, Lookalike domains, Unrelated neighbours on a shared address (collapsed). A domain with no MX is "not graded" for email, with the null-mail records shown as a note.
 - **At a glance** sits above the tabs once a run finishes: a few sentences built from rules, each tagged Check, Good or Note. It never appears mid-run, so it never describes half a picture. It states what sources returned and does not guess; where profiles under one handle carry different names it says they may be different people.
 - In the topology graph a node is a button. Selecting one shows a bar with what can be done: run recon on it, or open it. One click is one run; nothing expands on its own.
 - Re-running a target shows what is new and what is gone since the last local run. This is manual only; CrawlR does not watch targets.

@@ -1,30 +1,30 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
-import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, download, slug } from "./core.js";
-import { buildEvidence, TIERS, accountsFor } from "./evidence.js";
+import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
+import { buildEvidence, ledgerTiers, accountsFor, isFinding, factsFor, avatarImages, sourcePlan, emailParts, isFreeMail } from "./evidence.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
 import { investigateBrief } from "./brief.js";
 import { reportHtml } from "./report.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
+import { makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
 import { buildCaseFile } from "./casefile.js";
 
 // ---- sources ---------------------------------------------------------------
 // AI analysis is not in this list on purpose: it never runs on its own. The investigator
 // asks for it from the AI panel once the sources are in, and sees what it will cost first.
 export const SOURCES = [
-  { id: "sherlock", how: "guess",  name: "Sherlock",        desc: "username across 400+ sites",            types: ["username", "email"], on: true },
-  { id: "maigret", how: "guess",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username", "email"], on: true, extra: { id: "nsfw", label: "include adult and dating sites", on: false } },
-  { id: "github", how: "record",    name: "GitHub",          desc: "profile, bio, linked email",            types: ["username"],          on: true },
-  { id: "platform", how: "guess",  name: "Platform check",  desc: "profile URL probes on major platforms", types: ["username", "email"], on: true },
+  { id: "sherlock", how: "guess",  name: "Sherlock",        desc: "username across 400+ sites",            types: ["username"],          on: true },
+  { id: "maigret", how: "guess",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username"], on: true, extra: { id: "nsfw", label: "include adult and dating sites", on: false } },
+  { id: "github", how: "record",    name: "GitHub",          desc: "profile, organisations, repos, linked accounts and commit emails", types: ["username"], on: true },
+  { id: "platform", how: "guess",  name: "Platform check",  desc: "reads the profile page on major platforms, and says when a site blocks the check", types: ["username"], on: true },
   { id: "holehe", how: "guess",    name: "Holehe",          desc: "accounts registered to this email",     types: ["email"],             on: true },
   { id: "hibp", how: "index",      name: "Breaches",        desc: "known credential exposures",            types: ["email"],             on: true },
   { id: "gravatar", how: "record",  name: "Gravatar",        desc: "avatar profile for this email",         types: ["email"],             on: true },
   { id: "hunter", how: "index",    name: "Hunter.io",       desc: "addresses on the email's domain",       types: ["email"],             on: false, pro: "hunter" },
-  { id: "harvester", how: "index", name: "Domain harvest",  desc: "other addresses on this email's domain, from 8 public sources", types: ["email"], on: true },
+  { id: "harvester", how: "index", name: "Domain harvest",  desc: "hosts and other addresses on this email's domain, from 8 public sources. Skipped for mail providers such as gmail.com", types: ["email"], on: true },
   { id: "hash", how: "index",      name: "Hash lookup",     desc: "MalwareBazaar, CIRCL, OTX, ThreatFox",  types: ["hash"],              on: true },
   { id: "phone", how: "index",     name: "Phone lookup",    desc: "carrier and line type",                 types: ["phone"],             on: true, pro: "numlookup", proOptional: true },
-  { id: "active", how: "record",    name: "Active techniques", desc: "profile scraping for Deep Dive. May notify the target.", types: ["username", "email"], on: false, warn: true },
+  { id: "active", how: "record",    name: "Active techniques", desc: "profile scraping for Deep Dive. May notify the target.", types: ["username"], on: false, warn: true },
 ];
 
 const srcState = store.get("crawlr_v2_sources", {});
@@ -75,25 +75,29 @@ const tabs = makeTabs($("#tabs"));
 
 // ---- state -------------------------------------------------------------------
 // prev: { keys, ts, ai, sig } from the last saved run of the same target, for the diff.
-export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0 };
+// view: which identity cluster "What we know" shows; "" means the primary one.
+export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "" };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
 
-const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: "Phone lookup", enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape" };
-const outcomes = () => Object.entries(state.collected).filter(([k, v]) => v && typeof v === "object" && SRC_NAME[k]).map(([k, v]) => ({ key: k, name: SRC_NAME[k], ...sourceOutcome(v) }));
-const failedSources = () => outcomes().filter((o) => o.state === "error");
+const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: "Phone lookup", enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison" };
+// Every count of sources on this page comes from this one tally.
+const tally = () => sourceTally(state.collected, SRC_NAME);
+const failedSources = () => tally().rows.filter((r) => r.state === "failed");
 // Identical evidence means an identical AI answer, so a re-run can reuse the last one.
 const signature = (items, facts) => JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v])]);
 
 // ---- ledger + facts -------------------------------------------------------------
 function evidence() {
-  const ev = buildEvidence(state.collected, state.target);
-  const diff = !state.running && state.prev ? diffRuns(state.prev.keys, ev.items) : null;
+  const ev = buildEvidence(state.collected, state.target, state.type);
+  // Leads and host inventory are not findings, so they are not part of "what changed".
+  const diff = !state.running && state.prev ? diffRuns(state.prev.keys, ev.items.filter(isFinding)) : null;
   if (diff) { const added = new Set(diff.added.map((i) => i.key)); for (const it of ev.items) it.isNew = added.has(it.key); }
   return { ...ev, diff };
 }
 function renderLedger() {
-  const { items, facts, diff } = evidence();
+  const ev = evidence();
+  const { items, facts, diff } = ev;
   $("#emptyState").hidden = true;
   $("#notices").innerHTML = failedNotice(failedSources()) + (diff ? diffNotice(diff, state.prev.ts) : "");
   const nothing = state.running
@@ -101,26 +105,32 @@ function renderLedger() {
     : failedSources().length
       ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean negative. See the notice above and try again.</p></div>`
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
-  renderTiers($("#ledger"), items, TIERS, checked(), nothing);
-  renderFacts($("#facts"), facts, state.running ? "Collecting…" : "No facts extracted yet.");
-  setTabCount($("#tabFindings"), "Findings", items.length);
+  renderTiers($("#ledger"), items, ledgerTiers(state.target, state.type), checked(), nothing);
+  const emptyFacts = state.running ? "Collecting…" : "No facts extracted yet.";
+  // A person case shows one identity at a time, so one person's name never sits beside another's.
+  // state.view is only ever what the investigator picked; with no pick the primary cluster shows.
+  if (ev.identity.views.length) renderIdentityFacts($("#facts"), ev.identity, (id) => factsFor(ev, id), state.view, emptyFacts);
+  else renderFacts($("#facts"), facts, emptyFacts);
+  setTabCount($("#tabFindings"), "Findings", items.filter(isFinding).length);
   // The written brief waits for the run to finish, so it never describes half a picture.
-  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, failed: failedSources(), type: state.type, target: state.target }));
+  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), type: state.type, target: state.target }));
 }
 bindLedger($("#ledger"), checkKey);
+$("#facts").addEventListener("change", (e) => { if (e.target.matches("[data-cluster-pick]")) { state.view = e.target.value; renderLedger(); $("#factsPick")?.focus(); } });
 
 function renderSourceCards() {
   const c = state.collected;
   const cards = [];
-  const push = (id, d) => { if (d !== undefined && d !== null && sourceCards[id]) { const html = sourceCards[id](d); if (html) cards.push(html); } };
+  // Every source that ran gets a card: with results, "answered, nothing found", or failed.
+  const push = (id, d, extra) => { if (d !== undefined && d !== null && !d.skipped && sourceCards[id]) { const html = sourceCards[id](d, extra); if (html) cards.push(html); } };
   push("hash", c.hash); push("phone", c.phone);
-  push("hibp", c.hibp); push("holehe", c.holehe); push("github", c.github); push("gravatar", c.gravatar);
+  push("hibp", c.hibp); push("holehe", c.holehe); push("github", c.github, c.githubDeep); push("githubDeep", c.githubDeep, c.github); push("gravatar", c.gravatar);
   push("sherlock", c.sherlock); push("maigret", c.maigret); push("platformCheck", c.platformCheck);
-  push("enricher", c.enricher); push("profileScrape", c.profileScrape); push("hunter", c.hunter); push("harvester", c.harvester);
+  push("enricher", c.enricher); push("avatarHash", c.avatarHash); push("profileScrape", c.profileScrape); push("hunter", c.hunter); push("harvester", c.harvester);
   if (c.nameSearch) cards.push(sourceCards.nameSearch(c.nameSearch));
   if (c.reverseImage) cards.push(sourceCards.reverseImage(c.reverseImage));
   $("#bySource").hidden = !cards.length; $("#bySourceEmpty").hidden = !!cards.length;
-  setTabCount($("#tabSources"), "By source", cards.length);
+  setTabCount($("#tabSources"), "By source", tally().ran);
   $("#sourceCards").innerHTML = cards.join("");
 }
 
@@ -139,6 +149,14 @@ function profileUrls() {
 }
 const hasData = () => Object.values(state.collected).some((v) => v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
 
+// What the report will cover, said for the kind of target on screen.
+const AI_PITCH = {
+  username: "Get a written report: who this most likely is, what links the accounts, and what to check next.",
+  email: "Get a written report: who this most likely is, what links the accounts, and what to check next.",
+  hash: "Get a written report: what this file is, how sure the sources are, and what to do with it.",
+  phone: "Get a written report: what the line type and carrier suggest and what to check next.",
+  name: "Get a search plan: how to narrow people-search results for this name and what to check first.",
+};
 function renderAiPanel() {
   const box = $("#aiPanel");
   const note = (t) => `<p class="empty flat">${esc(t)}</p>`;
@@ -146,7 +164,7 @@ function renderAiPanel() {
     if (state.aiBusy) { box.innerHTML = `<p class="empty flat" role="status">Asking ${esc(providerName())}…</p>`; return; }
     if (state.running) { box.innerHTML = note("Available when the sources finish. AI never runs on its own."); return; }
     if (!state.target || !hasData()) { box.innerHTML = note(state.target ? "Nothing to analyze yet." : "Run a target first. AI analysis is optional and only runs when you ask."); return; }
-    box.innerHTML = aiStartHtml("inv", "Get a written report: who this most likely is, what links the accounts, and what to check next.");
+    box.innerHTML = aiStartHtml("inv", AI_PITCH[state.type] || AI_PITCH.username);
     return;
   }
   const canDeep = srcOn("active") && profileUrls().length && aiAvailable();
@@ -163,7 +181,7 @@ function renderReport() {
   const sec = $("#reportSection");
   if (!state.ai?.summary) { sec.hidden = true; return; }
   sec.hidden = false;
-  const { items, facts } = buildEvidence(state.collected, state.target);
+  const { items, facts } = buildEvidence(state.collected, state.target, state.type);
   $("#reportBody").innerHTML = reportHtml({ ai: state.ai, target: state.target, items, facts, collected: state.collected });
   $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : state.ai.ai_source === "pasted" ? "from your own assistant" : "", state.ai.reused ? "from your last run, no credit used" : state.ai.cached ? "cached, no credit used" : ""].filter(Boolean).join(" · ");
 }
@@ -203,10 +221,11 @@ function openReport(which) {
 // Everything the model is told about what ran and how it went.
 function aiPayload(extra = {}) {
   const c = state.collected;
-  const { items } = buildEvidence(c, state.target);
-  const source_status = Object.fromEntries(outcomes().map((o) => [o.name, o.state === "error" ? `failed: ${o.text}` : o.state === "none" ? "not found" : "ok"]));
+  const { items } = buildEvidence(c, state.target, state.type);
+  const source_status = Object.fromEntries(tally().rows.filter((r) => r.state !== "skipped").map((r) => [r.name, statusForAi(r)]));
   return {
-    target: state.target, accounts: accountsFor(items), source_status,
+    target: state.target, target_type: state.type, accounts: accountsFor(items), source_status,
+    hash: c.hash || null, phone: c.phone || null, github_deep: c.githubDeep || null,
     sherlock: c.sherlock || null, maigret: c.maigret || null, holehe: c.holehe || null, harvester: c.harvester || null, hibp: c.hibp || null,
     gravatar: c.gravatar || null, github: c.github || null, enricher: c.enricher || null, platform_check: c.platformCheck || null,
     hunter: c.hunter || null, name_search: c.nameSearch ? { name: c.nameSearch } : null, active_techniques: srcOn("active"), ...extra,
@@ -273,8 +292,12 @@ function resultText(key, data) {
   if (key === "sherlock" || key === "maigret") {
     const ok = (data.results || []).filter((r) => r.confidence !== "false_positive");
     const v = ok.filter((r) => r.verified).length;
-    return ok.length ? [v && `${v} confirmed`, `${ok.length - v} possible`].filter(Boolean).join(", ") : "";
+    return ok.length ? [v && `${plural(v, "profile")} read`, `${ok.length - v} unverified`].filter(Boolean).join(", ") : "";
   }
+  if (key === "githubDeep") return "";
+  if (key === "avatarHash") { const r = data?.results || [], n = r.filter((x) => x.hash && !x.error).length; return n === r.length ? `${plural(n, "image")} compared` : ""; }
+  if (key === "platformCheck" && (data?.results || []).some((r) => r.state)) { const r = data.results, n = (st) => r.filter((x) => x.state === st).length; return [n("found") && `${n("found")} read`, n("blocked") && `${n("blocked")} blocked by site`, n("unknown") && `${n("unknown")} unclear`].filter(Boolean).join(", "); }
+  if (key === "harvester") return [data?.hosts?.length && plural(data.hosts.length, "host"), data?.emails?.length && plural(data.emails.length, "address", "addresses")].filter(Boolean).join(", ");
   const n = data?.total ?? data?.breaches?.length ?? data?.results?.filter?.((r) => r.found === true).length ?? (data?.found ? 1 : 0);
   return n ? `${fmtNum(n)} result${n === 1 ? "" : "s"}` : "";
 }
@@ -285,10 +308,14 @@ async function runSource(label, url, body, headers, key) {
     state.collected[key] = data;
     const o = sourceOutcome(data);
     const found = resultText(key, data);
+    // A source whose every part was blocked or errored did not answer: that is a failure, not "nothing found".
+    const cv = sourceCoverage(data);
     if (o.state === "error") log.set(row, `${label}: ${o.text}`, "err", o.detail);
     else if (o.state === "skipped") log.set(row, `${label} · skipped`, "skip");
-    else if (o.state === "none" || !found) log.set(row, `${label} · nothing found`, "none");
-    else log.set(row, `${label} · ${found}`, "done");
+    else if (cv && cv.total > 0 && cv.answered === 0) log.set(row, `${label} · ${cv.failedText}`, "err");
+    else if (cv && cv.answered < cv.total) log.set(row, `${label} · ${[found, coverageText(cv)].filter(Boolean).join(" · ")}`, "done");
+    else if (!sourceHasResults(data)) log.set(row, `${label} · nothing found`, "none");
+    else log.set(row, `${label} · ${found || "done"}`, "done");
     renderLedger(); renderSourceCards();
     return data;
   } catch (err) {
@@ -324,9 +351,9 @@ export async function run(targetRaw, typeOverride) {
   // The last saved run of this target, for "what changed" and to reuse its AI report.
   const last = getHistory().find((e) => e.type === "INVESTIGATE" && e.v2 && e.target.toLowerCase() === target.toLowerCase());
   let prev = null;
-  if (last) { const ev = buildEvidence(last.results || {}, last.target); prev = { keys: ev.items.map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: signature(ev.items, ev.facts) }; }
+  if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: signature(ev.items, ev.facts) }; }
 
-  Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now() });
+  Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "" });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -335,20 +362,21 @@ export async function run(targetRaw, typeOverride) {
   log.start();
   renderLedger(); renderAiPanel();
 
-  const on = (id) => srcOn(id);
+  // What runs for this kind of target is decided in one place (sourcePlan), then filtered by the switches.
+  const plan = new Set(sourcePlan(type, target));
+  const on = (id) => plan.has(id) && srcOn(id);
   const c = state.collected;
   const isEmail = type === "email", isUser = type === "username";
-  const domain = isEmail ? target.split("@")[1] : "";
-  // Username tools need a handle. For an email that is the part before the @ (without a +tag),
-  // which is only a lead: it is searched, and every hit stays "possible" unless a profile is read.
-  const handle = isEmail ? target.split("@")[0].replace(/\+.*$/, "") : target.replace(/^@/, "");
-  const handleOk = /^[A-Za-z0-9._-]{1,64}$/.test(handle) && !handle.startsWith("-");
-  const via = isEmail ? ` (handle ${handle})` : "";
+  const domain = isEmail ? emailParts(target).domain : "";
+  // An email's local part is not searched as a username: it is shown as a lead the investigator
+  // can choose to follow. Username tools only ever run on a handle that was typed.
+  const handle = target.replace(/^@/, "");
+  const handleOk = isUser && /^[A-Za-z0-9._-]{1,64}$/.test(handle) && !handle.startsWith("-");
 
   if (type === "hash") {
-    if (on("hash")) await runSource("Hash lookup", "/api/hash/hash", { hash: target }, {}, "hash");
+    if (srcOn("hash")) await runSource("Hash lookup", "/api/hash/hash", { hash: target }, {}, "hash");
   } else if (type === "phone") {
-    if (on("phone")) {
+    if (srcOn("phone")) {
       const k = getKey("numlookup");
       const d = await runSource("Phone lookup", "/api/phone/lookup", { phone: target }, k ? { "X-Numlookup-Key": k } : {}, "phone");
       if (!d && k && !state.cancelled) {
@@ -361,32 +389,43 @@ export async function run(targetRaw, typeOverride) {
     c.nameSearch = target; renderSourceCards(); log.add("People search links ready", "done");
   } else {
     const jobs = [];
-    if (!handleOk && (on("sherlock") || on("maigret"))) log.add(`Username tools skipped: "${handle}" has characters they can't search`, "skip");
-    if (handleOk && on("sherlock")) jobs.push(runSource(`Sherlock${via}`, "/api/recon/sherlock", { username: handle }, {}, "sherlock"));
-    if (handleOk && on("maigret")) jobs.push(runSource(`Maigret${via}`, "/api/recon/maigret", { username: handle, nsfw: nsfwOn() }, {}, "maigret"));
-    if (isUser && handleOk && on("github")) jobs.push(runSource("GitHub", "/api/recon/github", { username: handle }, {}, "github"));
-    if (isEmail && on("holehe")) jobs.push(runSource("Holehe", "/api/recon/holehe", { email: target }, {}, "holehe"));
-    if (isEmail && on("hibp")) jobs.push(runSource("Breaches", "/api/recon/hibp", { email: target }, {}, "hibp"));
-    if (isEmail && on("gravatar")) jobs.push(runSource("Gravatar", "/api/recon/gravatar", { email: target }, {}, "gravatar"));
-    if (isEmail && on("harvester")) jobs.push(runSource("Domain harvest", "/api/recon/harvester", { domain }, {}, "harvester"));
-    if (isEmail && on("hunter") && getKey("hunter")) jobs.push(runSource("Hunter.io", "/api/recon/hunter", { domain }, { "X-Hunter-Key": getKey("hunter") }, "hunter"));
+    if (isUser && !handleOk && (on("sherlock") || on("maigret"))) log.add(`Username tools skipped: "${handle}" has characters they can't search`, "skip");
+    if (handleOk && on("sherlock")) jobs.push(runSource("Sherlock", "/api/recon/sherlock", { username: handle }, {}, "sherlock"));
+    if (handleOk && on("maigret")) jobs.push(runSource("Maigret", "/api/recon/maigret", { username: handle, nsfw: nsfwOn() }, {}, "maigret"));
+    if (handleOk && on("github")) jobs.push(runSource("GitHub", "/api/recon/github", { username: handle }, {}, "github"));
+    if (on("holehe")) jobs.push(runSource("Holehe", "/api/recon/holehe", { email: target }, {}, "holehe"));
+    if (on("hibp")) jobs.push(runSource("Breaches", "/api/recon/hibp", { email: target }, {}, "hibp"));
+    if (on("gravatar")) jobs.push(runSource("Gravatar", "/api/recon/gravatar", { email: target }, {}, "gravatar"));
+    if (on("harvester")) jobs.push(runSource("Domain harvest", "/api/recon/harvester", { domain }, {}, "harvester"));
+    else if (isEmail && srcOn("harvester") && isFreeMail(domain)) {
+      // A mail provider's hosts say nothing about one of its users.
+      c.harvester = { skipped: true, message: `${domain} is a mail provider, so its hosts say nothing about this person.` };
+      log.add(`Domain harvest · skipped: ${domain} is a mail provider`, "skip");
+    }
+    if (on("hunter") && getKey("hunter")) jobs.push(runSource("Hunter.io", "/api/recon/hunter", { domain }, { "X-Hunter-Key": getKey("hunter") }, "hunter"));
     await Promise.all(jobs);
     if (!state.cancelled && handleOk) {
       const sites = [...(c.sherlock?.results || []), ...(c.maigret?.results || [])].filter((r) => r.confidence !== "false_positive").map((r) => r.site).slice(0, 1000);
       const after = [];
       if (sites.length) after.push(runSource("Profile enrichment", "/api/recon/enrich", { username: handle, sherlock_sites: sites }, {}, "enricher"));
       if (on("platform")) after.push(runSource("Platform check", "/api/recon/platform-check", { username: handle, sherlock_sites: sites }, {}, "platformCheck"));
+      // One follow-up call when GitHub has the user: organisations, repos, linked accounts, commit emails.
+      if (c.github?.found && sourceOutcome(c.github).state === "ok") after.push(runSource("GitHub details", "/api/recon/github-deep", { username: handle }, {}, "githubDeep"));
       await Promise.all(after);
     }
+    // Compare profile pictures once every profile is in. A passive read of public CDN images;
+    // it needs at least two to say anything. If it fails, clusters fall back to the other signals.
+    const images = state.cancelled ? [] : avatarImages(c, target, type);
+    if (images.length > 1) await runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash");
     const img = [target, ...(c.maigret?.results || []).map((r) => r.profile?.image)].find((u) => /^https?:\/\/\S+\.(jpe?g|png|gif|webp)(\?|$)/i.test(String(u || "")));
     if (img) { c.reverseImage = img; renderSourceCards(); }
   }
 
   setRunning(false);
   const { items, facts } = evidence();
-  const ran = outcomes().length || Object.keys(c).length;
-  log.finish(`${state.cancelled ? "Cancelled · partial results · " : ""}${plural(ran, "source")} · ${plural(items.length, "finding")}`);
-  renderHead(`${TYPE_LABEL[type]} · ${plural(items.length, "finding")}${state.cancelled ? " · cancelled, partial" : ""}`);
+  const t = tally(), found = items.filter(isFinding).length;
+  log.finish(`${state.cancelled ? "Cancelled · partial results · " : ""}${tallyText(t)} · ${plural(found, "finding")}`, t.failed);
+  renderHead(`${TYPE_LABEL[type]} · ${plural(found, "finding")} · ${tallyText(t)}${state.cancelled ? " · cancelled, partial" : ""}`);
   // Same evidence as last time: show the report already paid for instead of asking again.
   if (!state.cancelled && prev?.ai && prev.sig === signature(items, facts)) state.ai = { ...prev.ai, reused: true };
   renderLedger(); renderSourceCards(); renderAiPanel();
@@ -409,7 +448,7 @@ function saveHistory() {
 export function loadHistory(idOrEntry) {
   const e = typeof idOrEntry === "string" ? getHistory().find((x) => x.id === idOrEntry) : idOrEntry;
   if (!e) return false;
-  Object.assign(state, { target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp });
+  Object.assign(state, { target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
   $("#targetInput").value = e.target;
   renderSources(state.type);
   $("#runlog").hidden = true; $("#tabs").hidden = false; tabs.set("findings");
@@ -420,7 +459,7 @@ export function loadHistory(idOrEntry) {
 }
 export function clearCase() {
   cancel();
-  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false });
+  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
@@ -445,14 +484,18 @@ $("#purpose").addEventListener("input", noteSave);
 // ---- export ------------------------------------------------------------------------------
 export function exportCase() {
   if (!state.target) return;
-  const { items, facts } = buildEvidence(state.collected, state.target);
+  const ev = buildEvidence(state.collected, state.target, state.type);
+  const { items, facts, identity } = ev;
   const failed = failedSources();
   const purpose = $("#purpose").value.trim();
-  const md = [`# CrawlR case: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}${state.ran ? ` · collected ${new Date(state.ran).toISOString()}` : ""}`, "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
-    "> Findings come from third-party public sources and can be wrong. Possible items are leads, not facts.", "",
+  const main = identity.views.find((v) => v.primary);
+  const others = identity.views.filter((v) => v.named && !v.primary);
+  const md = [`# CrawlR case: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}${state.ran ? ` · collected ${new Date(state.ran).toISOString()}` : ""}`, tallyText(tally()), "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
+    "> Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts. A profile that exists is not proof of who owns it, and leads are places to look, not findings.", "",
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a negative result)`), ""] : []),
-    "## What we know", ...(facts.length ? facts.map((f) => `- **${f.k}:** ${f.v} _(${f.source})_`) : ["- Nothing extracted"]), "",
-    ...TIERS.flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${i.url ? `[${i.what}](${i.url})` : i.what}${i.meta ? ` · ${i.meta}` : ""} _(${i.source})_`), ""] : []; }),
+    `## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${f.v} _(${f.source})_`) : ["- Nothing extracted"]), "",
+    ...(others.length ? ["## Other people using this handle", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
+    ...ledgerTiers(state.target, state.type).flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${i.url ? `[${i.what}](${i.url})` : i.what}${i.meta ? ` · ${i.meta}` : ""} _(${i.source})_`), ""] : []; }),
     ...(state.ai ? ["## AI analysis", state.ai.summary, ""] : []),
     ...(state.deepDive ? ["## Deep Dive", state.deepDive.summary, ""] : []),
     ...($("#notes").value.trim() ? ["## Notes", $("#notes").value.trim(), ""] : []),

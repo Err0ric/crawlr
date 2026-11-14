@@ -40,18 +40,22 @@ function identityFields(md) {
   return `<div class="idfs">${rows.map(([k = "", v = "", c = "", e = ""]) => `<div class="idf"><div class="k">${inline(k)}${conf(c)}</div><div class="v">${inline(v)}</div>${e ? `<div class="e">${inline(e)}</div>` : ""}</div>`).join("")}</div>` + markdown(notTable(md));
 }
 
+const RANK = { linked: 0, matches: 1, unverified: 2, different: 3 };
+const TIER_WORD = { linked: "Linked", matches: "Exists (matches)", different: "Exists (different person)", unverified: "Unverified" };
 // Account tiles from evidence; the AI footprint table only adds the "why it matters" note.
 function accountTiles(accounts, footprintMd) {
   const why = new Map();
   for (const [p = "", , , w = ""] of (parseTable(footprintMd) || []).slice(1)) why.set(normSite(p), w);
   const keyed = (a) => why.get(normSite(a.what)) || why.get(normSite(a.key.slice(5)));
-  const sorted = [...accounts].sort((a, b) => (!!keyed(b) - !!keyed(a)) || (a.tier === "confirmed" ? -1 : 1) - (b.tier === "confirmed" ? -1 : 1));
+  const sorted = [...accounts].sort((a, b) => (!!keyed(b) - !!keyed(a)) || RANK[a.tier] - RANK[b.tier]);
   const tiles = sorted.map((a) => {
     const w = keyed(a);
-    return h`<a class="tile ${a.tier === "confirmed" ? "c" : "l"}${w ? " key" : ""}" href="${su(a.url) || "#"}" target="_blank" rel="noopener noreferrer" title="${short(a.url)} · ${(a.sources || [a.source]).join(", ")}">${raw(icon(a.what, a.url))}<span class="n">${a.what}</span><span class="s">${w || (a.sources || [a.source]).join(", ")}</span></a>`;
+    // A tile for another person's account says whose name is on it, whatever the model wrote.
+    const sub = a.tier === "different" ? `different person: ${a.person || "another name"}` : w || (a.sources || [a.source]).join(", ");
+    return h`<a class="tile ${a.tier === "linked" ? "c" : "l"}${w && a.tier !== "different" ? " key" : ""}" href="${su(a.url) || "#"}" target="_blank" rel="noopener noreferrer" title="${TIER_WORD[a.tier]} · ${short(a.url)} · ${(a.sources || [a.source]).join(", ")}">${raw(icon(a.what, a.url))}<span class="n">${a.what}</span><span class="s">${sub}</span></a>`;
   }).join("");
-  const nC = accounts.filter((a) => a.tier === "confirmed").length;
-  return `<div class="grid-legend"><span class="c">Confirmed ${nC}</span><span class="l">Possible ${accounts.length - nC}</span>${why.size ? `<span class="k">Key accounts first</span>` : ""}</div><div class="tiles">${tiles}</div>`
+  const n = (t) => accounts.filter((a) => a.tier === t).length;
+  return `<div class="grid-legend"><span class="c">Linked ${n("linked")}</span><span class="l">Exists (matches) ${n("matches")} · different person ${n("different")} · unverified ${n("unverified")}</span>${why.size ? `<span class="k">Key accounts first</span>` : ""}</div><div class="tiles">${tiles}</div>`
     + (footprintMd ? markdown(notTable(footprintMd)) : "");
 }
 
@@ -96,7 +100,8 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   const tags = profile.interests || [];
   const exp = profile.exposure;
   const lvl = { Low: 1, Medium: 2, High: 3 }[exp] || 0;
-  const confirmed = accounts.filter((a) => a.tier === "confirmed");
+  // Only accounts tied to the primary identity, or consistent with it, sit beside its name.
+  const confirmed = accounts.filter((a) => a.tier === "linked" || a.tier === "matches");
   const chips = confirmed.slice(0, 14).map((a) => `<a class="chip" href="${esc(su(a.url) || "#")}" target="_blank" rel="noopener noreferrer" title="${esc(a.what)}">${icon(a.what, a.url)}</a>`).join("");
   return `<div class="dossier">
     <div class="avatar">${avatar ? `<img src="${esc(avatar)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(initials(name || target))}</span></div>
@@ -118,7 +123,7 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
 const TITLE = { identity: "Identity", accounts: "Accounts", leads: "Next moves", exposure: "Exposure and risk", gaps: "Gaps", active: "Active techniques" };
 
 export function reportHtml({ ai, target, items, facts, collected }) {
-  const accounts = items.filter((i) => i.url && i.key?.startsWith("acct:") && (i.tier === "confirmed" || i.tier === "possible"));
+  const accounts = items.filter((i) => i.url && i.key?.startsWith("acct:") && i.tier in RANK);
   const parts = splitSections(ai.summary);
   if (parts.length < 2) return dossier({ target, profile: ai.profile, facts, accounts, collected }) + `<div class="report-scroll">${markdown(ai.summary)}</div>`;
   const by = {}; const other = [];

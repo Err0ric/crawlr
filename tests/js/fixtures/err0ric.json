@@ -1,0 +1,364 @@
+{
+ "_note": "Trimmed from a response recorded on 2026-11-14. Display names of unrelated people who share the handle are invented and their avatar URLs removed, except the names the audit cites. platformCheckV2 is written to the PR 1 contract shape, not recorded.",
+ "target": "Err0ric",
+ "type": "username",
+ "collected": {
+  "sherlock": {
+   "username": "Err0ric",
+   "total": 18,
+   "possible": 17,
+   "results": [
+    {
+     "site": "Bluesky",
+     "url": "https://bsky.app/profile/Err0ric.bsky.social",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "CashApp",
+     "url": "https://cash.app/$Err0ric",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Discord",
+     "url": "https://discord.com",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "GitHub",
+     "url": "https://www.github.com/Err0ric",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Steam Community (User)",
+     "url": "https://steamcommunity.com/id/Err0ric/",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "YouTube",
+     "url": "https://www.youtube.com/@Err0ric",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "threads",
+     "url": "https://www.threads.net/@Err0ric",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "7Cups",
+     "url": "https://www.7cups.com/@Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "F3.cool",
+     "url": "https://f3.cool/Err0ric/",
+     "confidence": "normal"
+    },
+    {
+     "site": "Giphy",
+     "url": "https://giphy.com/Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "HackerOne",
+     "url": "https://hackerone.com/Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "Houzz",
+     "url": "https://houzz.com/user/Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "Hugging Face",
+     "url": "https://huggingface.co/Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "Itch.io",
+     "url": "https://Err0ric.itch.io/",
+     "confidence": "normal"
+    },
+    {
+     "site": "LibraryThing",
+     "url": "https://www.librarything.com/profile/Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "OpenStreetMap",
+     "url": "https://www.openstreetmap.org/user/Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "VirusTotal",
+     "url": "https://www.virustotal.com/gui/user/Err0ric",
+     "confidence": "normal"
+    },
+    {
+     "site": "Trakt",
+     "url": "https://www.trakt.tv/users/Err0ric",
+     "confidence": "false_positive"
+    }
+   ]
+  },
+  "maigret": {
+   "username": "Err0ric",
+   "total": 14,
+   "possible": 14,
+   "verified": 6,
+   "results": [
+    {
+     "site": "Bluesky",
+     "url": "https://bsky.app/profile/Err0ric.bsky.social",
+     "confidence": "major_platform",
+     "category": "messaging, social",
+     "verified": true,
+     "profile": {
+      "name": "Err0ric",
+      "bio": "Cybersec",
+      "created_at": "2023-12-17T21:49:18.223Z",
+      "extractor": "Bluesky API"
+     }
+    },
+    {
+     "site": "Twitter",
+     "url": "https://twitter.com/Err0ric",
+     "confidence": "major_platform",
+     "category": "messaging, social",
+     "verified": true,
+     "profile": {
+      "name": "💎noNULL💎",
+      "created_at": "2022-09-21 22:18:27+00:00",
+      "extractor": "Twitter GraphQL API"
+     }
+    },
+    {
+     "site": "Steam",
+     "url": "https://steamcommunity.com/id/Err0ric",
+     "confidence": "major_platform",
+     "category": "gaming, social",
+     "verified": true,
+     "profile": {
+      "name": "err0ric",
+      "extractor": "Steam"
+     }
+    },
+    {
+     "site": "GitHub",
+     "url": "https://github.com/Err0ric",
+     "confidence": "major_platform",
+     "category": "business, coding, networking",
+     "verified": true,
+     "profile": {
+      "name": "Err0ric",
+      "location": "Seattle'ish",
+      "created_at": "2023-08-29T15:33:57Z",
+      "image": "https://avatars.githubusercontent.com/u/143530211?v=4",
+      "extractor": "GitHub API"
+     }
+    },
+    {
+     "site": "YouTube",
+     "url": "https://www.youtube.com/@Err0ric/about",
+     "confidence": "major_platform",
+     "category": "social, streaming, video",
+     "verified": true,
+     "profile": {
+      "name": "Eric",
+      "extractor": "YouTube ytInitialData"
+     }
+    },
+    {
+     "site": "Threads",
+     "url": "https://www.threads.com/@Err0ric",
+     "confidence": "major_platform",
+     "category": "social",
+     "verified": true,
+     "profile": {
+      "name": "Eric Henderson",
+      "bio": "🤘 💻",
+      "extractor": "Threads"
+     }
+    },
+    {
+     "site": "Discord",
+     "url": "https://discord.com",
+     "confidence": "major_platform",
+     "category": "gaming, messaging, social",
+     "verified": false
+    },
+    {
+     "site": "HuggingFace",
+     "url": "https://huggingface.co/Err0ric",
+     "confidence": "normal",
+     "category": "coding, llm, tech",
+     "verified": false
+    },
+    {
+     "site": "OpenStreetMap",
+     "url": "https://www.openstreetmap.org/user/Err0ric",
+     "confidence": "normal",
+     "category": "geosocial, maps, sharing",
+     "verified": false
+    },
+    {
+     "site": "Itch.io",
+     "url": "https://Err0ric.itch.io/",
+     "confidence": "normal",
+     "category": "apps, gaming",
+     "verified": false
+    },
+    {
+     "site": "Minecraft",
+     "url": "https://api.mojang.com/users/profiles/minecraft/Err0ric",
+     "confidence": "normal",
+     "category": "gaming",
+     "verified": false
+    },
+    {
+     "site": "kofi",
+     "url": "https://ko-fi.com/Err0ric",
+     "confidence": "normal",
+     "category": "business, freelance, social",
+     "verified": false
+    },
+    {
+     "site": "HackerOne",
+     "url": "https://hackerone.com/Err0ric",
+     "confidence": "normal",
+     "category": "coding, hacking, tech",
+     "verified": false
+    },
+    {
+     "site": "GitHubGist [GitHub]",
+     "url": "https://gist.github.com/Err0ric",
+     "confidence": "normal",
+     "category": "coding, sharing",
+     "verified": false
+    }
+   ]
+  },
+  "github": {
+   "username": "Err0ric",
+   "found": true,
+   "name": "Err0ric",
+   "bio": "",
+   "location": "Seattle'ish",
+   "company": "",
+   "email": "",
+   "blog": "",
+   "public_repos": 18,
+   "followers": 9,
+   "profile_url": "https://github.com/Err0ric",
+   "avatar_url": "https://avatars.githubusercontent.com/u/143530211?v=4",
+   "created_at": "2023-08-29T15:33:57Z",
+   "cached": true
+  },
+  "enricher": {
+   "username": "Err0ric",
+   "total": 1,
+   "profiles": [
+    {
+     "platform": "YouTube",
+     "display_name": "Eric",
+     "bio": "",
+     "url": "https://youtube.com/@Err0ric"
+    }
+   ]
+  },
+  "platformCheck": {
+   "username": "Err0ric",
+   "total": 2,
+   "checked": 4,
+   "results": [
+    {
+     "platform": "Facebook",
+     "url": "https://www.facebook.com/Err0ric",
+     "found": false
+    },
+    {
+     "platform": "Instagram",
+     "url": "https://www.instagram.com/Err0ric/",
+     "found": true
+    },
+    {
+     "platform": "X",
+     "url": "https://x.com/Err0ric",
+     "found": true
+    },
+    {
+     "platform": "LinkedIn",
+     "url": "https://www.linkedin.com/in/Err0ric",
+     "found": false
+    },
+    {
+     "platform": "OnlyFans",
+     "url": "https://onlyfans.com/Err0ric",
+     "found": null,
+     "manual": true
+    }
+   ]
+  }
+ },
+ "platformCheckV2": {
+  "username": "Err0ric",
+  "total": 2,
+  "checked": 6,
+  "results": [
+   {
+    "platform": "Facebook",
+    "url": "https://www.facebook.com/Err0ric",
+    "state": "unknown",
+    "found": null,
+    "evidence": "page gave no profile marker",
+    "display_name": "",
+    "public_url": true
+   },
+   {
+    "platform": "Instagram",
+    "url": "https://www.instagram.com/Err0ric/",
+    "state": "found",
+    "found": true,
+    "evidence": "profile page names @err0ric",
+    "display_name": "",
+    "public_url": true
+   },
+   {
+    "platform": "X",
+    "url": "https://x.com/Err0ric",
+    "state": "found",
+    "found": true,
+    "evidence": "profile page names @Err0ric",
+    "display_name": "",
+    "public_url": true
+   },
+   {
+    "platform": "LinkedIn",
+    "url": "https://www.linkedin.com/in/Err0ric",
+    "state": "blocked",
+    "found": null,
+    "evidence": "login wall",
+    "display_name": "",
+    "public_url": true
+   },
+   {
+    "platform": "TikTok",
+    "url": "https://www.tiktok.com/@Err0ric",
+    "state": "not_found",
+    "found": false,
+    "evidence": "page says the account does not exist",
+    "display_name": "",
+    "public_url": true
+   },
+   {
+    "platform": "OnlyFans",
+    "url": "https://onlyfans.com/Err0ric",
+    "state": "manual",
+    "found": null,
+    "manual": true,
+    "evidence": "",
+    "display_name": "",
+    "public_url": true
+   }
+  ]
+ }
+}

@@ -1,0 +1,113 @@
+{
+ "_note": "eicarOld is the response recorded on 2026-11-14 with free-text pulse names shortened. eicarNew and malicious are written to the PR 1 contract shape.",
+ "eicarOld": {
+  "hash": "44d88612fea8a8f36de82e1278abb02f",
+  "hash_type": "MD5",
+  "malware_bazaar": {
+   "found": false
+  },
+  "circl": {
+   "found": true,
+   "file_name": "eicar.com",
+   "file_size": "68",
+   "known_malicious": true
+  },
+  "alienvault": {
+   "found": true,
+   "pulse_count": 50,
+   "malware_families": [
+    "TrojanSpy",
+    "Mitre Attack",
+    "ET"
+   ]
+  },
+  "threatfox": {
+   "found": false
+  },
+  "virustotal_url": "https://www.virustotal.com/gui/file/44d88612fea8a8f36de82e1278abb02f",
+  "malware_families": [
+   "TrojanSpy",
+   "Mitre Attack",
+   "ET"
+  ],
+  "verdict": "MALICIOUS"
+ },
+ "eicarNew": {
+  "hash": "44d88612fea8a8f36de82e1278abb02f",
+  "hash_type": "MD5",
+  "malware_bazaar": {
+   "found": false
+  },
+  "circl": {
+   "found": true,
+   "file_name": "eicar.com",
+   "file_size": "68",
+   "known_malicious": true
+  },
+  "alienvault": {
+   "found": true,
+   "pulse_count": 50,
+   "malware_families": [
+    "TrojanSpy",
+    "Mitre Attack",
+    "ET"
+   ]
+  },
+  "threatfox": {
+   "found": false
+  },
+  "virustotal_url": "https://www.virustotal.com/gui/file/44d88612fea8a8f36de82e1278abb02f",
+  "malware_families": [],
+  "verdict": "TEST_FILE",
+  "known_test_file": {
+   "name": "EICAR antivirus test file",
+   "note": "A 68-byte file every antivirus product detects on purpose."
+  },
+  "family": "",
+  "family_sources": [],
+  "detection": null,
+  "file_type": "",
+  "file_name": "eicar.com",
+  "file_size": 68,
+  "first_seen": "",
+  "last_seen": "",
+  "community_tags": [
+   "TrojanSpy",
+   "Mitre Attack",
+   "ET"
+  ],
+  "verdict_basis": "known test file",
+  "failed_sources": [
+   "MalwareBazaar",
+   "ThreatFox"
+  ]
+ },
+ "malicious": {
+  "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "hash_type": "SHA-256",
+  "verdict": "MALICIOUS",
+  "known_test_file": null,
+  "family": "Emotet",
+  "family_sources": [
+   "MalwareBazaar",
+   "ThreatFox"
+  ],
+  "detection": {
+   "positives": 60,
+   "total": 70,
+   "source": "example"
+  },
+  "file_type": "exe",
+  "file_name": "invoice.exe",
+  "file_size": 204800,
+  "first_seen": "2024-01-02",
+  "last_seen": "2024-03-04",
+  "malware_families": [
+   "Emotet"
+  ],
+  "community_tags": [
+   "free text tag"
+  ],
+  "virustotal_url": "https://www.virustotal.com/gui/file/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+ }
+}

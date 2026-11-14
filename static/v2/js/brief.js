@@ -6,20 +6,38 @@
 // A row: { level: "flag" | "ok" | "info", text }   An action: { label, pivot, value } | { label, tab }
 
 import { reconTimeline, domainAgeDays } from "./timeline.js";
+import { breachList, hashView, hashCoverage, TEST_FILE_TEXT, isFreeMail, emailParts } from "./evidence.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 const list = (arr, n = 4) => arr.slice(0, n).join(", ") + (arr.length > n ? ` and ${arr.length - n} more` : "");
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
-export function investigateBrief({ collected: c, items, facts, failed, type, target }) {
+// identity: the clusters from buildEvidence ({ views, primary }). Without it the brief says
+// nothing about names, so it can never merge people on its own.
+export function investigateBrief({ collected: c, items, facts, identity, failed, type, target }) {
   const rows = [], actions = [];
   const add = (level, text) => rows.push({ level, text });
   const accounts = items.filter((i) => i.key?.startsWith("acct:"));
-  const confirmed = accounts.filter((i) => i.tier === "confirmed"), possible = accounts.filter((i) => i.tier === "possible");
+  const tier = (t) => accounts.filter((i) => i.tier === t);
+  const linked = tier("linked"), matches = tier("matches"), different = tier("different"), unverified = tier("unverified");
 
   if (type === "hash") {
-    const v = String(c.hash?.verdict || "").toUpperCase();
-    if (c.hash && !c.hash.error) add(v === "MALICIOUS" ? "flag" : v === "CLEAN" ? "ok" : "info", v === "MALICIOUS" ? `Known malware${c.hash.malware_families?.length ? ` (${list(c.hash.malware_families, 3)})` : ""}. Do not run this file.` : v === "CLEAN" ? "A known, benign file according to CIRCL." : "No source has seen this hash. That is not a clean bill of health: new or rare files are often unknown.");
+    const v = hashView(c.hash);
+    if (v) {
+      if (v.verdict === "TEST_FILE") add("ok", `${v.testFile.name}: ${TEST_FILE_TEXT}. It is not malware.`);
+      else if (v.verdict === "MALICIOUS") add("flag", `Known malware${v.family ? ` (${v.family})` : ""}. Do not run this file.`);
+      else if (v.verdict === "CLEAN") add("ok", "A known, benign file according to CIRCL.");
+      else {
+        // Only the sources that answered can be said not to have seen it.
+        const cov = hashCoverage(c.hash);
+        add("info", !cov.failed.length ? "No source has seen this hash. That is not a clean bill of health: new or rare files are often unknown."
+          : cov.answered ? `None of the ${cov.answered} ${cov.answered === 1 ? "source" : "sources"} that answered has seen this hash. That is not a clean bill of health: new or rare files are often unknown.`
+            : "No source could be asked about this hash, so nothing is known about it. Run it again.");
+      }
+      if (v.verdict === "MALICIOUS" && !v.detection) add("info", "There is no detection ratio from keyless sources, so the verdict rests on the sources named in the Hash lookup card.");
+      const down = c.hash.failed_sources || [];
+      if (down.length) add("info", `${list(down.map(String))} could not be asked, so ${down.length === 1 ? "it is" : "they are"} unknown, not "not found".`);
+    }
   } else if (type === "phone") {
     const p = c.phone || {};
     if (p.carrier || p.line_type) add(/voip/i.test(p.line_type || "") ? "flag" : "info", `${p.line_type || "Line"}${p.carrier ? ` on ${p.carrier}` : ""}${p.location || p.country ? `, ${[p.location, p.country].filter(Boolean).join(", ")}` : ""}.${/voip/i.test(p.line_type || "") ? " VOIP numbers are easy to get and discard." : ""}`);
@@ -27,27 +45,35 @@ export function investigateBrief({ collected: c, items, facts, failed, type, tar
   } else if (type === "name") {
     add("info", "CrawlR does not query people-search sites. The links under By source open them for you to search by hand.");
   } else {
-    if (confirmed.length || possible.length) add(confirmed.length ? "ok" : "info", `${plural(confirmed.length, "confirmed account")} and ${plural(possible.length, "possible account")}. Confirmed means the account exists; it does not say who owns it.`);
-    // Names read from profiles. Showing that they differ is the point: one handle, several people.
-    const names = new Map();
-    const seeName = (name, where) => { const k = norm(name); if (!k || k === norm(target) || k.length < 3) return; if (!names.has(k)) names.set(k, { name: String(name).trim(), where: [] }); if (!names.get(k).where.includes(where)) names.get(k).where.push(where); };
-    if (c.github?.found && !c.github.error) seeName(c.github.name, "GitHub");
-    if (c.gravatar?.found && !c.gravatar.error) seeName(c.gravatar.name || c.gravatar.display_name, "Gravatar");
-    for (const r of c.maigret?.results || []) if (r.verified) seeName(r.profile?.name, r.site);
-    for (const p of c.enricher?.profiles || []) seeName(p.display_name, p.platform);
-    const ns = [...names.values()];
-    if (ns.length > 1) add("flag", `Profiles under this handle show ${ns.length} different names (${list(ns.map((n) => `${n.name} on ${n.where[0]}`), 4)}). They may belong to different people. Do not treat the accounts as one person without more evidence.`);
-    else if (ns.length === 1 && ns[0].where.length > 1) add("ok", `The name "${ns[0].name}" appears on ${ns[0].where.length} profiles (${list(ns[0].where)}), which supports them being the same person.`);
-    else if (ns.length === 1) add("info", `One profile carries a name: "${ns[0].name}" on ${ns[0].where[0]}.`);
+    const read = linked.length + matches.length + different.length;
+    const noPrimary = !!identity?.noPrimary;
+    if (accounts.length && noPrimary) add("info", `${plural(matches.length, "profile")} ${matches.length === 1 ? "was" : "were"} read and ${unverified.length} ${unverified.length === 1 ? "account is" : "accounts are"} unverified. Each read profile exists, and nothing ties it to the target.`);
+    else if (accounts.length) add(linked.length ? "ok" : "info", `${plural(linked.length, "linked account")}, ${matches.length} that exist and match, ${different.length} that belong to a different person, and ${unverified.length} unverified. A profile that exists shows the handle is taken there; only a linked one is tied to this identity.`);
+    // People, not names: "Eric" and "Eric Henderson" are one person, two unrelated names are two.
+    const views = identity?.views || [];
+    const people = views.filter((v) => v.named);
+    const main = views.find((v) => v.primary);
+    const who = (v) => `${v.label} on ${list(v.sites, 3)}`;
+    if (noPrimary && people.length > 1) add("flag", `${plural(people.length, "different name")} appear under this handle (${list(people.map(who), 4)}), and none is tied to the target. There is no record for the target itself and no strong signal between the profiles, so no one is treated as the target.`);
+    else if (noPrimary && people.length === 1) add("info", `One name appears under this handle (${who(people[0])}). Nothing ties it to the target: there is no record for the target itself and no strong signal.`);
+    else if (main?.named && main.sites.length > 1) add("ok", `${main.sites.length} profiles carry the name "${main.label}" or are tied to it (${list(main.sites)}), which supports them being one person.`);
+    else if (main?.named) add("info", `The primary identity is "${main.label}", from ${main.sites[0]}.`);
+    // Only clusters whose name conflicts with the primary identity are other people. A name that
+    // does not conflict ("L. Torvalds", a nickname) is not counted as someone else.
+    const others = people.filter((v) => !v.primary && (v.different || !main?.named));
+    if (main?.named && others.length) add("flag", `${plural(others.length + 1, "different person", "different people")} use this handle: ${list([main, ...others].map(who), 4)}. Only the first is treated as the target. Do not read the others' accounts as the same person.`);
+    else if (main && !main.named && others.length) add("info", `The ${main.sites[0]} record carries no name. ${others.length === 1 ? `One name appears on other profiles (${who(others[0])})` : `${others.length} unrelated names appear on other profiles (${list(others.map(who), 4)})`}, and nothing ties ${others.length === 1 ? "it" : "any of them"} to that record yet.`);
+    const blocked = unverified.filter((i) => /^Blocked by site/.test(i.meta || ""));
+    if (blocked.length) add("info", `${list(blocked.map((i) => i.what))} blocked the check, so ${blocked.length === 1 ? "that account is" : "those accounts are"} unknown, not absent.`);
 
-    const breaches = c.hibp && !c.hibp.error ? c.hibp.breaches || [] : [];
-    if (breaches.length) add("flag", `This address is in ${plural(breaches.length, "known breach", "known breaches")} (${list(breaches, 5)}). Passwords used on those sites should be considered exposed.`);
+    const breaches = c.hibp && !c.hibp.error ? breachList(c.hibp) : [];
+    if (breaches.length) add("flag", `This address is in ${plural(breaches.length, "known breach", "known breaches")} (${list(breaches.map((b) => (b.year ? `${b.name} ${b.year}` : b.name)), 5)}). Passwords used on those sites should be considered exposed.`);
     else if (c.hibp && !c.hibp.error) add("ok", "Not in any breach known to the breach source.");
     const holehe = c.holehe && !c.holehe.error ? c.holehe.results || [] : [];
     if (holehe.length) add("info", `Registered on ${plural(holehe.length, "service")} according to Holehe (${list(holehe.map((r) => r.site || r.domain), 6)}).`);
     if (c.sherlock || c.maigret) {
-      const two = possible.filter((i) => (i.sources || []).length > 1).length;
-      if (two) add("info", `${plural(two, "possible account")} ${two === 1 ? "was" : "were"} reported by two tools. That is worth more than one, but still not verification.`);
+      const two = unverified.filter((i) => (i.sources || []).length > 1).length;
+      if (two) add("info", `${plural(two, "unverified account")} ${two === 1 ? "was" : "were"} reported by two tools. That is worth more than one, but still not verification.`);
     }
     if (!accounts.length && !breaches.length && !holehe.length && !failed.length && (c.sherlock || c.maigret || c.holehe)) add("info", "No source found anything for this target. Check the spelling, or try a variant of the handle.");
 
@@ -56,12 +82,46 @@ export function investigateBrief({ collected: c, items, facts, failed, type, tar
     if (email && norm(email) !== norm(target)) actions.push({ label: `Investigate ${email}`, pivot: "investigate", value: email });
     const site = facts.find((f) => f.k === "Website")?.v;
     try { const host = site ? new URL(/^https?:/.test(site) ? site : `https://${site}`).hostname.replace(/^www\./, "") : ""; if (host && !/(github|twitter|x|linkedin|instagram|facebook|youtube|medium|linktr)\./.test(host + ".")) actions.push({ label: `Recon ${host}`, pivot: "recon", value: host }); } catch { /* not a URL */ }
-    if (type === "email") { const d = target.split("@")[1]; if (d && !c.harvester?.skipped) actions.push({ label: `Recon ${d}`, pivot: "recon", value: d }); }
-    if (possible.length) add("info", "Next: open the possible accounts that matter and tick them off as you check them. The review boxes are saved with the case.");
+    if (type === "email") {
+      const { handle, domain } = emailParts(target);
+      if (domain && !c.harvester?.skipped && !isFreeMail(domain)) actions.push({ label: `Recon ${domain}`, pivot: "recon", value: domain });
+      const hosts = c.harvester && !c.harvester.error && !c.harvester.skipped ? (c.harvester.hosts || []).length : 0;
+      if (hosts) add("info", `${plural(hosts, "host")} on ${domain} ${hosts === 1 ? "is" : "are"} listed at the end of the findings. They describe the organisation, not this person.`);
+      if (handle) add("info", `Username tools were not run on "${handle}", the part before the @: it is a guess at a handle, not a finding. It is listed under Leads from profiles if you want to follow it.`);
+    }
+    const leads = items.filter((i) => i.tier === "lead").length;
+    if (leads && type !== "email") add("info", `${plural(leads, "lead")} from profiles (handles, addresses, domains, links) ${leads === 1 ? "is" : "are"} listed under the findings. Nothing is followed until you click.`);
+    if (unverified.length || read > linked.length) add("info", "Next: open the accounts that matter and tick them off as you check them. The review boxes are saved with the case.");
   }
   if (failed.length) add("flag", `${plural(failed.length, "source")} failed (${list(failed.map((f) => f.name))}), so this picture has gaps. Re-run to fill them.`);
   return { rows, actions };
 }
+
+const lc = (s) => String(s ?? "").trim().toLowerCase().replace(/\.$/, "");
+const arr = (v) => [].concat(v ?? []).flat().filter(Boolean);
+// Hosts this run saw answering: an address in DNS, a live HTTP response, a TLS handshake.
+export function resolvedHosts(c, target) {
+  const live = new Set();
+  const t = lc(target);
+  const rec = c?.dns && !c.dns.error ? c.dns.records || {} : {};
+  if (t && (arr(rec.A).length || arr(rec.AAAA).length || arr(rec.CNAME).length || (c?.headers?.found && !c.headers.error) || (c?.ssl?.found && !c.ssl.error) || (c?.redirects?.found && !c.redirects.error))) live.add(t);
+  for (const s of c?.subdomains?.subdomains || []) if (arr(s.ips).length) live.add(lc(s.subdomain));
+  return live;
+}
+// "none": the domain has no MX and takes no mail. "unknown": the MX lookup failed. Old saved
+// runs have no mail_enabled field, so an answered, empty MX list is read the same way.
+export function mailState(ep) {
+  if (!ep || ep.error) return "unknown";
+  if (ep.mail_enabled === false) return "none";
+  if (ep.mail_enabled === true) return "yes";
+  if (ep.mail_enabled === null) return "unknown";
+  return Array.isArray(ep.mx) && ep.mx.length === 0 && !ep.spf && !ep.dmarc ? "none" : "yes";
+}
+// A no-mail domain is still open to forged From lines unless it publishes the null records.
+// Open: the backend says spoofable, or suggests records to add. Otherwise it is already locked.
+export const noMailOpen = (ep) => ep?.spoofable === "yes" || (Array.isArray(ep?.suggested_records) && ep.suggested_records.length > 0);
+export const NULL_RECORDS = ["v=spf1 -all", "v=DMARC1; p=reject;", "0 ."];
+export const nullRecords = (ep) => { const r = (ep?.suggested_records || []).map((x) => (typeof x === "string" ? x : x?.value || x?.record || "")).filter(Boolean); return r.length ? r : NULL_RECORDS.slice(0, 2); };
 
 export function reconBrief({ collected: c, items, failed, type, target, today }) {
   const rows = [], actions = [];
@@ -78,11 +138,21 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
 
     if (c.dns?.cloudflare_proxied) add("info", "Behind Cloudflare. Open ports, the TLS certificate and HTTP headers describe Cloudflare's edge, not the origin server.");
     const ep = c.email_posture;
-    if (ok(ep) && ep.grade) add(ep.spoofable === "yes" ? "flag" : "ok", ep.spoofable === "yes" ? "Mail from this domain can be spoofed: there is no enforced DMARC policy. Phishing that uses the real domain in the From line would be delivered." : `Email spoofing is ${ep.spoofable === "no" ? "rejected" : "mostly caught"} (grade ${ep.grade}).`);
+    const mail = mailState(ep);
+    if (ok(ep) && mail === "none" && noMailOpen(ep)) add("info", `This domain has no MX records, so it does not receive mail, and it is not graded for spoofing. It publishes no policy that stops others using it in a From line: ${nullRecords(ep).slice(0, 2).join(" and ")} would close that.`);
+    else if (ok(ep) && mail === "none") add("ok", "This domain has no MX records, so it does not receive mail, and its SPF and DMARC records tell receivers to reject mail that claims to come from it. It is locked against spoofing.");
+    else if (ok(ep) && ep.grade && ep.grade !== "N/A") add(ep.spoofable === "yes" ? "flag" : "ok", ep.spoofable === "yes" ? "Mail from this domain can be spoofed: there is no enforced DMARC policy. Phishing that uses the real domain in the From line would be delivered." : `Email spoofing is ${ep.spoofable === "no" ? "rejected" : "mostly caught"} (grade ${ep.grade}).`);
     const age = domainAgeDays(c, today);
     if (age != null && age < 90) add("flag", `Registered ${age === 0 ? "today" : `${age} day${age === 1 ? "" : "s"} ago`}. A very new domain is common for phishing and throwaway infrastructure, and for any project that has just started. Weigh it with the other findings.`);
     const tk = c.takeover;
-    if (ok(tk) && tk.dangling) add("flag", `${plural(tk.dangling, "subdomain")} point${tk.dangling === 1 ? "s" : ""} at a cloud resource that no longer exists (${list((tk.candidates || []).filter((x) => x.status === "dangling").map((x) => x.host), 3)}). Verify by hand before reporting a takeover.`);
+    const live = resolvedHosts(c, target);
+    // A takeover row needs "dangling" from the backend, and is dropped if this run resolved the host.
+    const dangling = ok(tk) ? (tk.candidates || []).filter((x) => x.status === "dangling" && !live.has(lc(x.host))) : [];
+    if (dangling.length) add("flag", `${plural(dangling.length, "subdomain")} point${dangling.length === 1 ? "s" : ""} at a cloud resource that no longer exists (${list(dangling.map((x) => x.host), 3)}). Verify by hand before reporting a takeover.`);
+    const tkUnknown = ok(tk) ? Number(tk.unknown || 0) + (Array.isArray(tk.unchecked) ? tk.unchecked.length : Number(tk.unchecked || 0)) : 0;
+    if (tkUnknown) add("info", `${plural(tkUnknown, "host")} could not be checked for takeover because a DNS lookup failed. That is unknown, not safe.`);
+    const exp = c.shodan;
+    if (ok(exp) && exp.shared_host) add("info", `The address is shared ${exp.shared_host.provider || "hosting"}: ${plural((exp.neighbors || []).length, "other site")} answer${(exp.neighbors || []).length === 1 ? "s" : ""} on it, and the open ports are the provider's, not this site's.`);
 
     // hosts outside the main network
     const subs = c.subdomains?.subdomains || [], map = c.ipAsn || {};
@@ -95,7 +165,11 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
       if (outliers.length && main.hosts.size >= 3) add("info", `Most hosts sit in ${mainAsn}${main.org ? ` (${main.org})` : ""}. ${((n) => `${plural(n, "host")} ${n === 1 ? "sits" : "sit"}`)(outliers.reduce((n, [, v]) => n + v.hosts.size, 0))} elsewhere (${list(outliers.map(([a, v]) => `${[...v.hosts][0]} in ${a}`), 3)}), which often means a third-party service or a forgotten server.`);
     }
     const cs = c.subdomains?.ct_summary;
-    if (cs?.not_resolving?.length) add("info", `${plural(cs.not_resolving.length, "name")} in certificate logs no longer resolve${cs.not_resolving.length === 1 ? "s" : ""}${cs.not_resolving.length <= 3 ? ` (${cs.not_resolving.join(", ")})` : ""}. Retired hosts are worth a look in the Wayback Machine.`);
+    // Never say "no longer resolves" about a name this same run resolved.
+    const gone = (cs?.not_resolving || []).filter((x) => !live.has(lc(x)));
+    if (gone.length) add("info", `${plural(gone.length, "name")} in certificate logs no longer resolve${gone.length === 1 ? "s" : ""}${gone.length <= 3 ? ` (${gone.join(", ")})` : ""}. Retired hosts are worth a look in the Wayback Machine.`);
+    const unsure = (cs?.resolution_unknown || []).filter((x) => !live.has(lc(x)));
+    if (unsure.length) add("info", `${plural(unsure.length, "name")} in certificate logs could not be checked${unsure.length <= 3 ? ` (${unsure.join(", ")})` : ""}: the DNS lookup failed, so whether ${unsure.length === 1 ? "it resolves" : "they resolve"} is unknown.`);
     const la = c.lookalikes;
     if (ok(la) && la.registered) add(la.with_mail ? "flag" : "info", `${plural(la.registered, "lookalike domain")} ${la.registered === 1 ? "is" : "are"} registered${la.with_mail ? `, ${la.with_mail} of them able to receive mail` : ""}. Registered does not mean malicious; check who owns the mail-capable ones first.`);
     const wk = c.wellknown;

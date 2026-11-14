@@ -1,0 +1,303 @@
+{
+ "_note": "darkwire.tech, recorded on 2026-11-14. internetdbV2 and emailPostureV2 add the PR 1 contract fields to the recorded responses.",
+ "target": "darkwire.tech",
+ "type": "domain",
+ "collected": {
+  "dns": {
+   "domain": "darkwire.tech",
+   "total": 6,
+   "records": {
+    "A": [
+     "216.198.79.1"
+    ],
+    "NS": [
+     "salvador.ns.porkbun.com.",
+     "fortaleza.ns.porkbun.com.",
+     "curitiba.ns.porkbun.com.",
+     "maceio.ns.porkbun.com."
+    ],
+    "SOA": [
+     "curitiba.ns.porkbun.com. dns.cloudflare.com. 2416014279 10000 2400 604800 1800"
+    ]
+   },
+   "cloudflare_proxied": false
+  },
+  "subdomains": {
+   "domain": "darkwire.tech",
+   "total": 2,
+   "checked": 76,
+   "ct_found": 0,
+   "ct_entries": [
+    {
+     "subdomain": "api.darkwire.tech",
+     "issuer": "YE1",
+     "date": "2026-09-27",
+     "not_after": "2026-12-26",
+     "wildcard": false,
+     "names": 1,
+     "id": 29706499644
+    },
+    {
+     "subdomain": "api.darkwire.tech",
+     "issuer": "YE1",
+     "date": "2026-09-27",
+     "not_after": "2026-12-26",
+     "wildcard": false,
+     "names": 1,
+     "id": 29706505038
+    }
+   ],
+   "ct_summary": {
+    "total": 6,
+    "first_issued": "2025-11-13",
+    "last_issued": "2026-09-27",
+    "active": 3,
+    "expired": 3,
+    "wildcards": 1,
+    "issuers": [
+     {
+      "name": "YE1",
+      "count": 2
+     },
+     {
+      "name": "R13",
+      "count": 2
+     },
+     {
+      "name": "YR2",
+      "count": 1
+     },
+     {
+      "name": "R12",
+      "count": 1
+     }
+    ],
+    "by_year": [
+     {
+      "year": "2025",
+      "count": 3
+     },
+     {
+      "year": "2026",
+      "count": 3
+     }
+    ],
+    "not_resolving": [
+     "darkwire.tech"
+    ],
+    "first_seen": [
+     {
+      "name": "darkwire.tech",
+      "date": "2025-11-13"
+     },
+     {
+      "name": "api.darkwire.tech",
+      "date": "2026-09-27"
+     },
+     {
+      "name": "www.darkwire.tech",
+      "date": "2026-09-27"
+     }
+    ]
+   },
+   "subdomains": [
+    {
+     "subdomain": "www.darkwire.tech",
+     "ips": [
+      "64.29.17.1",
+      "216.198.79.1"
+     ],
+     "source": "DNS+CT"
+    },
+    {
+     "subdomain": "api.darkwire.tech",
+     "ips": [
+      "153.52.255.17"
+     ],
+     "source": "DNS+CT"
+    }
+   ]
+  },
+  "email_posture": {
+   "domain": "darkwire.tech",
+   "found": true,
+   "grade": "F",
+   "spoofable": "yes",
+   "summary": "The domain can be spoofed in the From line: there is no enforced DMARC policy.",
+   "findings": [
+    {
+     "level": "flag",
+     "title": "No SPF record",
+     "detail": "Any server can claim to send mail for this domain, and receivers have no list to check against."
+    },
+    {
+     "level": "flag",
+     "title": "No DMARC record",
+     "detail": "Receivers are not told to reject mail that fails SPF and DKIM, and the owner gets no reports."
+    },
+    {
+     "level": "info",
+     "title": "No DKIM key at common selectors",
+     "detail": "Selectors cannot be listed from DNS, so this is not proof that DKIM is missing. Check a real message's DKIM-Signature header."
+    },
+    {
+     "level": "info",
+     "title": "No MX records",
+     "detail": "The domain does not receive mail. It can still be spoofed as a sender unless SPF and DMARC say otherwise."
+    }
+   ],
+   "spf": null,
+   "dmarc": null,
+   "mx": [],
+   "dkim": [],
+   "dkim_selectors_checked": 32,
+   "mta_sts": "",
+   "tls_rpt": "",
+   "bimi": ""
+  },
+  "takeover": {
+   "domain": "darkwire.tech",
+   "found": true,
+   "checked": 3,
+   "dangling": 0,
+   "candidates": []
+  },
+  "shodan": {
+   "target": "darkwire.tech",
+   "ip": "216.198.79.1",
+   "found": true,
+   "source": "internetdb",
+   "ports": [
+    80,
+    443
+   ],
+   "vulns": [],
+   "vuln_count": 0,
+   "hostnames": [
+    "10c0b549a5d8fbfc.vercel-dns-017.com",
+    "nail-ao.com"
+   ],
+   "tags": [
+    "pqc"
+   ],
+   "cpes": []
+  },
+  "ssl": {
+   "domain": "darkwire.tech",
+   "found": true,
+   "ip": "216.198.79.1",
+   "common_name": "darkwire.tech",
+   "issuer": "Let's Encrypt",
+   "issuer_cn": "YR2",
+   "not_before": "Sep 27 15:48:32 2026 GMT",
+   "not_after": "Dec 26 15:48:31 2026 GMT",
+   "days_left": 41,
+   "sans": [
+    "darkwire.tech"
+   ],
+   "serial": "063B30A7D073541E788DA1FAC2525335131F",
+   "version": 3
+  },
+  "whois": {
+   "domain": "darkwire.tech",
+   "found": true,
+   "registrar": "Porkbun LLC",
+   "creation_date": "2026-03-06 03:55:32+00:00",
+   "expiration_date": "2028-03-06 23:59:59+00:00",
+   "updated_date": "2026-03-06 03:56:29+00:00",
+   "name_servers": [
+    "curitiba.ns.porkbun.com",
+    "fortaleza.ns.porkbun.com",
+    "maceio.ns.porkbun.com",
+    "salvador.ns.porkbun.com"
+   ],
+   "registrant": "",
+   "org": "",
+   "country": "",
+   "status": [
+    "clientDeleteProhibited https://icann.org/epp#clientDeleteProhibited",
+    "clientTransferProhibited https://icann.org/epp#clientTransferProhibited"
+   ],
+   "privacy_protected": false
+  }
+ },
+ "internetdbV2": {
+  "target": "darkwire.tech",
+  "ip": "216.198.79.1",
+  "found": true,
+  "source": "internetdb",
+  "ports": [
+   80,
+   443
+  ],
+  "vulns": [],
+  "vuln_count": 0,
+  "hostnames": [
+   "10c0b549a5d8fbfc.vercel-dns-017.com",
+   "nail-ao.com"
+  ],
+  "tags": [
+   "pqc"
+  ],
+  "cpes": [],
+  "shared_host": {
+   "provider": "Vercel",
+   "basis": "hostname_pattern"
+  },
+  "neighbors": [
+   "nail-ao.com"
+  ],
+  "ports_note": "This address is a shared Vercel edge. The open ports, software and CVEs seen on it belong to Vercel's servers and are the same for every site hosted there. They are not necessarily the target's own."
+ },
+ "emailPostureV2": {
+  "domain": "darkwire.tech",
+  "found": true,
+  "grade": "N/A",
+  "spoofable": "yes",
+  "summary": "This domain has no MX records, so it does not appear to send or receive mail. Its name can still be used in a forged From line until the null records are published.",
+  "findings": [
+   {
+    "level": "info",
+    "title": "Note: no SPF record",
+    "detail": "The domain sends no mail, so this is a small gap."
+   },
+   {
+    "level": "info",
+    "title": "Note: no DMARC record",
+    "detail": "The domain sends no mail, so this is a small gap."
+   },
+   {
+    "level": "info",
+    "title": "Suggested records",
+    "detail": "Publish TXT @ \"v=spf1 -all\", TXT _dmarc \"v=DMARC1; p=reject;\", MX @ \"0 .\""
+   }
+  ],
+  "spf": null,
+  "dmarc": null,
+  "mx": [],
+  "dkim": [],
+  "dkim_selectors_checked": 32,
+  "mta_sts": "",
+  "tls_rpt": "",
+  "bimi": "",
+  "mail_enabled": false,
+  "null_mx": false,
+  "suggested_records": [
+   {
+    "type": "TXT",
+    "name": "@",
+    "value": "v=spf1 -all"
+   },
+   {
+    "type": "TXT",
+    "name": "_dmarc",
+    "value": "v=DMARC1; p=reject;"
+   },
+   {
+    "type": "MX",
+    "name": "@",
+    "value": "0 ."
+   }
+  ]
+ }
+}

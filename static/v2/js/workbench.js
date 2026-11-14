@@ -19,7 +19,7 @@ export function makeLog(el) {
   const secs = (t0) => `${((performance.now() - t0) / 1000).toFixed(1)}s`;
   let timer = null;
   const rows = () => [...el.querySelectorAll(".lg")];
-  const counts = () => { const all = rows(); return { total: all.length, settled: all.filter((r) => !r.classList.contains("run")).length, failed: all.filter((r) => r.classList.contains("err")).length }; };
+  const counts = () => { const all = rows(); return { total: all.length, settled: all.filter((r) => !r.classList.contains("run")).length }; };
   function paint() {
     const { total, settled } = counts();
     const s = el.querySelector(".runlog-summary");
@@ -63,18 +63,18 @@ export function makeLog(el) {
       live.textContent = `${text}${status === "err" ? " (failed)" : ""}`;
       paint();
     },
-    finish(summary) {
+    // failed comes from sourceTally, so the strip and the case header cannot disagree.
+    finish(summary, failed = 0) {
       this.running = false; clearInterval(timer);
       const s = el.querySelector(".runlog-summary"); if (!s) return;
-      const { failed } = counts();
       for (const r of rows()) if (r.classList.contains("run")) { r.className = "lg skip"; r.querySelector(".ic").textContent = ICON.skip; }
-      s.querySelector(".st").textContent = summary + (failed ? ` · ${failed} failed` : "");
+      s.querySelector(".st").textContent = summary;
       s.classList.toggle("has-err", failed > 0);
       s.querySelector(".t").textContent = secs(this.t0);
       s.querySelector(".bar").hidden = true;
       // Collapse to one line when everything worked; stay open when something failed so it is seen.
       setOpen(failed > 0);
-      live.textContent = `Run finished. ${summary}${failed ? `, ${failed} failed` : ""}.`;
+      live.textContent = `Run finished. ${summary}.`;
     },
     open() { setOpen(true); },
     statusOf: (r) => Object.keys(LABEL).find((k) => r.classList.contains(k)),
@@ -103,11 +103,12 @@ export function renderTiers(el, items, tiers, done, emptyHtml) {
         </button></h2>
         <div class="tier-body" id="${bodyId}">
           <div class="tier-blurb">${t.blurb}</div>
+          ${t.note ? raw(h`<div class="tier-blurb">${t.note}</div>`) : ""}
           ${raw(rows.slice(0, limit).map((it, i) => h`
             <div class="ev ${done.has(it.key) ? "done" : ""} ${i >= PREVIEW ? "ev-extra" : ""}">
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
               <div class="what">${raw(it.url ? link(it.url, it.what) : esc(it.what))}${it.isNew ? raw('<span class="tag violet">new</span>') : ""}${it.meta ? raw(h`<span class="meta">${it.meta}</span>`) : ""}</div>
-              <span class="src">${it.source}</span>
+              <span class="src">${it.action ? raw(h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>`) : ""}${it.source}</span>
             </div>`).join(""))}
           ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
           ${rows.length > limit ? raw(h`<div class="ev-more">${fmtNum(rows.length - limit)} more not shown. Export for the full list.</div>`) : ""}
@@ -183,6 +184,30 @@ export function renderFacts(el, facts, emptyText = "No facts extracted yet.") {
     : h`<p class="empty flat">${emptyText}</p>`;
 }
 
+// "What we know" for a person case: the facts of one identity cluster at a time, primary first.
+// A labelled select switches to another cluster's facts. `pick` is the view id to show.
+export function renderIdentityFacts(el, { views, primary, noPrimary }, factsOf, pick, emptyText) {
+  const picked = views.find((v) => v.id === pick);
+  const view = picked || views.find((v) => v.id === primary) || (noPrimary ? null : views[0]);
+  const label = (v) => `${v.label}${v.primary ? " (primary)" : ""} · ${v.sites.slice(0, 3).join(", ")}${v.sites.length > 3 ? ` +${v.sites.length - 3}` : ""}`;
+  const box = document.createElement("div");
+  const select = (first) => h`<div class="who-pick"><label for="${el.id}Pick">Showing</label><select class="input" id="${el.id}Pick" data-cluster-pick>${raw(first)}${raw(views.map((v) => h`<option value="${v.id}" ${view && v.id === view.id ? "selected" : ""}>${label(v)}</option>`).join(""))}</select></div>`;
+  // No anchor record and no strong signal: nobody is picked, and no one's facts are shown as the target's.
+  const named = views.filter((v) => v.named).length;
+  const none = noPrimary ? h`<p class="who-why">${named > 1 ? `${named} different names appear under this handle, and none is tied to the target.` : "Profiles were read, and nothing ties them to the target."} There is no record for the target itself and no strong signal between profiles, so no primary identity is chosen.</p>` : "";
+  if (!view) {
+    renderFacts(box, factsOf(null), "Pick a name above to see what its profiles say.");
+    el.innerHTML = select(h`<option value="" selected>No primary identity</option>`) + none + box.innerHTML;
+    return null;
+  }
+  renderFacts(box, factsOf(view.id), view.id === "unassigned" ? "These profiles carry no facts." : "No facts on these profiles.");
+  const why = view.primary ? `Primary identity because ${view.why}.` : view.id === "unassigned" ? "Profiles that were read but carry no name, so nothing ties them to anyone." : noPrimary ? "One of the names under this handle. Nothing ties these profiles to the target." : "Not the primary identity: the name on these profiles conflicts with it, or nothing ties them to it.";
+  const joined = view.signals.length ? ` Joined by: ${[...new Set(view.signals.map((s) => `${s.a} and ${s.b} (${s.detail})`))].slice(0, 4).join("; ")}.` : "";
+  el.innerHTML = (views.length > 1 || noPrimary ? select(noPrimary ? h`<option value="">No primary identity</option>` : "") : h`<p class="who-one">${label(view)}</p>`)
+    + none + h`<p class="who-why">${why}${joined}</p>` + box.innerHTML;
+  return view.id;
+}
+
 // Fact collector with de-duplication on (label, value).
 export function factCollector() {
   const facts = [];
@@ -216,7 +241,7 @@ export async function standaloneHtml(title, mainEl, asideEl) {
   try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
   css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
   const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
-  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Possible" items are leads, not facts.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
+  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Unverified" items are leads, not facts, and a profile that exists is not proof of who owns it.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
 }
 
 // ---- tabs ---------------------------------------------------------------------------

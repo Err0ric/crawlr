@@ -1,0 +1,207 @@
+{
+ "_note": "Trimmed from responses recorded on 2026-11-14 (harvester cut to 8 of 56 hosts). hibpV2 is written to the PR 1 contract shape.",
+ "target": "torvalds@linux-foundation.org",
+ "type": "email",
+ "collected": {
+  "holehe": {
+   "email": "torvalds@linux-foundation.org",
+   "total": 5,
+   "results": [
+    {
+     "site": "devrant",
+     "domain": "devrant.com",
+     "method": "register"
+    },
+    {
+     "site": "gravatar",
+     "domain": "en.gravatar.com",
+     "method": "other"
+    },
+    {
+     "site": "office365",
+     "domain": "office365.com",
+     "method": "other"
+    },
+    {
+     "site": "spotify",
+     "domain": "spotify.com",
+     "method": "register"
+    },
+    {
+     "site": "wordpress",
+     "domain": "wordpress.com",
+     "method": "login"
+    }
+   ]
+  },
+  "hibp": {
+   "email": "torvalds@linux-foundation.org",
+   "total": 10,
+   "breaches": [
+    "AntiPublicCombo",
+    "Evite",
+    "Verifications",
+    "Chess-2026",
+    "PeopleDataLabs",
+    "1.4BillionRecords",
+    "LinkedInScrape-2021",
+    "Adapt",
+    "ExploitIN",
+    "LinkedIn"
+   ]
+  },
+  "gravatar": {
+   "email": "torvalds@linux-foundation.org",
+   "found": true,
+   "display_name": "reallylinustorvalds",
+   "name": "",
+   "location": "Portland, OR",
+   "profile_url": "https://gravatar.com/reallylinustorvalds",
+   "avatar_url": "https://www.gravatar.com/avatar/fb47627bc8c0bcdb36321edfbf02e916?s=200"
+  },
+  "harvester": {
+   "domain": "linux-foundation.org",
+   "hosts": [
+    "accessibility.linux-foundation.org",
+    "aws-us-west-2-lfit-openldap-1.linux-foundation.org",
+    "aws-us-west-2-lfit-openldap-2.linux-foundation.org",
+    "aws-us-west-2-lfit-openldap-3.linux-foundation.org",
+    "aws-us-west-2-lfit-openldap-4.linux-foundation.org",
+    "bugzilla.linux-foundation.org",
+    "developer.linux-foundation.org",
+    "developerbugs.linux-foundation.org"
+   ],
+   "emails": [],
+   "total_hosts": 56,
+   "host_sources": {
+    "accessibility.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ],
+    "aws-us-west-2-lfit-openldap-1.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ],
+    "aws-us-west-2-lfit-openldap-2.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ],
+    "aws-us-west-2-lfit-openldap-3.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ],
+    "aws-us-west-2-lfit-openldap-4.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ],
+    "bugzilla.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ],
+    "developer.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ],
+    "developerbugs.linux-foundation.org": [
+     "CertSpotter",
+     "HackerTarget",
+     "RapidDNS"
+    ]
+   },
+   "sources": {
+    "crt.sh": {
+     "hosts": 1,
+     "emails": 0,
+     "ms": 0
+    },
+    "URLScan": {
+     "hosts": 0,
+     "emails": 0,
+     "ms": 602
+    },
+    "CertSpotter": {
+     "hosts": 25,
+     "emails": 0,
+     "ms": 681
+    },
+    "HackerTarget": {
+     "hosts": 50,
+     "emails": 0,
+     "ms": 694
+    },
+    "RapidDNS": {
+     "hosts": 47,
+     "emails": 0,
+     "ms": 825
+    },
+    "AlienVault OTX": {
+     "error": "timed out"
+    },
+    "Anubis": {
+     "error": "timed out"
+    },
+    "Wayback": {
+     "error": "timed out"
+    }
+   }
+  }
+ },
+ "hibpV2": {
+  "email": "torvalds@linux-foundation.org",
+  "total": 3,
+  "source": "XposedOrNot",
+  "details": "ok",
+  "breaches": [
+   {
+    "name": "LinkedInScrape-2021",
+    "date": "2021-04-08",
+    "year": 2021,
+    "data_classes": [
+     "Email addresses",
+     "Names",
+     "Job titles"
+    ],
+    "records": 125698496,
+    "verified": true,
+    "sensitive": false,
+    "domain": "linkedin.com",
+    "url": "https://xposedornot.com/xposed/#LinkedInScrape-2021",
+    "type": "scrape"
+   },
+   {
+    "name": "LinkedIn",
+    "date": "2012-05-05",
+    "year": 2012,
+    "data_classes": [
+     "Email addresses",
+     "Passwords"
+    ],
+    "records": 164611595,
+    "verified": true,
+    "sensitive": false,
+    "domain": "linkedin.com",
+    "url": "https://xposedornot.com/xposed/#LinkedIn",
+    "type": "breach"
+   },
+   {
+    "name": "AntiPublicCombo",
+    "date": "",
+    "year": null,
+    "data_classes": [],
+    "records": null,
+    "verified": null,
+    "sensitive": null,
+    "domain": "",
+    "url": "https://xposedornot.com/xposed/#AntiPublicCombo",
+    "type": ""
+   }
+  ]
+ }
+}

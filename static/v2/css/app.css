@@ -280,6 +280,12 @@ input[type=checkbox] { accent-color: var(--violet-2); width: 16px; height: 16px;
 .ev.done .what, .ev.done .what a { color: var(--ink-4); text-decoration: line-through; }
 .ev-more { padding: 6px 14px 10px 50px; color: var(--ink-3); font-size: var(--fs-0); }
 .tier-blurb { padding: 4px 14px 8px; color: var(--ink-3); font-size: var(--fs-0); }
+/* a lead row's one action, and the identity switcher in "What we know" (no new colors) */
+.ev .src .ev-act { margin-right: 8px; }
+.who-pick { display: grid; gap: 4px; margin-bottom: 8px; font-size: var(--fs-0); color: var(--ink-3); }
+.who-pick select { width: 100%; min-height: 32px; font-size: var(--fs-1); color: var(--ink); }
+.who-one { font-size: var(--fs-1); font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
+.who-why { font-size: var(--fs-0); color: var(--ink-3); margin: 0 0 10px; }
 
 /* run log strip */
 .runlog {
@@ -809,7 +815,7 @@ input[type=search]::-webkit-search-cancel-button, input[type=search]::-webkit-se
   #rTopology { display: none !important; }
   .workspace { display: block; }
   .brief .tag { border: 1px solid var(--line); }
-  .main-head::after { content: "CrawlR case export. Findings come from third-party public sources and can be wrong. Possible items are leads, not facts."; flex-basis: 100%; color: var(--ink-3); font-size: 9pt; }
+  .main-head::after { content: "CrawlR case export. Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts."; flex-basis: 100%; color: var(--ink-3); font-size: 9pt; }
 }
 
 /* target size (WCAG 2.5.8): stacked links and disclosure toggles get 24px rows */

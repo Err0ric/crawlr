@@ -96,3 +96,96 @@ def test_adult_sites_default_is_off_in_the_ui():
     assert 'label: "include adult and dating sites", on: false' in src
     assert 'srcState["maigret.nsfw"] === true' in src
     assert 'srcState["maigret.nsfw"] !== false' not in src
+
+
+# ---- the AI prompt uses the ledger's vocabulary ---------------------------------------
+from routers.analyze import AnalyzeRequest, investigation_prompt
+
+
+def _data(**body):
+    return investigation_prompt(AnalyzeRequest(**body)).split("Collected data:")[1]
+
+
+def test_prompt_groups_accounts_by_ledger_tier():
+    data = _data(target="torvalds", accounts=[
+        {"site": "GitHub", "url": "https://github.com/torvalds", "status": "linked", "note": "GitHub's own record for this handle"},
+        {"site": "Snapchat", "url": "https://www.snapchat.com/add/torvalds", "status": "matches", "note": "name on profile: Linus Torvalds"},
+        {"site": "Medium", "url": "https://medium.com/@torvalds", "status": "different", "note": "name on profile: Patricia Torvalds"},
+        {"site": "PayPal", "url": "https://paypal.me/torvalds", "status": "unverified"},
+    ])
+    linked, rest = data.split("EXISTS (MATCHES) accounts (1)")
+    matches, rest = rest.split("EXISTS (DIFFERENT PERSON) accounts (1)")
+    different, unverified = rest.split("UNVERIFIED accounts (1)")
+    assert "LINKED accounts (1)" in linked and "GitHub" in linked and "Snapchat" not in linked
+    assert "Snapchat" in matches and "Patricia" not in matches
+    assert "Patricia Torvalds" in different and "other people who share the handle, not the target" in different
+    assert "PayPal" in unverified
+
+
+def test_prompt_tells_the_model_what_each_group_allows():
+    prompt = investigation_prompt(AnalyzeRequest(target="t"))
+    assert "LINKED, EXISTS (MATCHES), EXISTS (DIFFERENT PERSON) and UNVERIFIED" in prompt
+    assert "Never use their names, locations, bios or links to describe the target" in prompt
+    assert "CONFIRMED" not in prompt and "POSSIBLE" not in prompt
+
+
+@pytest.mark.parametrize("old,new", [("confirmed", "EXISTS (MATCHES) accounts (1)"), ("possible", "UNVERIFIED accounts (1)"), ("nonsense", "UNVERIFIED accounts (1)")])
+def test_old_and_unknown_statuses_never_become_linked(old, new):
+    data = _data(target="t", accounts=[{"site": "Bluesky", "status": old}])
+    assert new in data and "LINKED" not in data
+
+
+def test_breaches_in_the_prompt_accept_both_shapes():
+    old = _data(target="a@example.org", hibp={"breaches": ["Adobe", "LinkedIn"]})
+    assert "Breach check found 2 breaches: Adobe, LinkedIn" in old
+    new = _data(target="a@example.org", hibp={"breaches": [
+        {"name": "LinkedIn", "date": "2012-05-05", "year": 2012, "data_classes": ["Email addresses", "Passwords"]},
+        {"name": "Undated", "date": "", "year": None}]})
+    assert "Breach check found 2 breaches: LinkedIn (2012), Undated" in new
+
+
+def test_deep_dive_and_correlate_breach_lines_accept_objects():
+    from routers.analyze import _breach_names, _summarize_target_data
+    assert _breach_names({"breaches": [{"name": "Evite", "date": "2019-02-28"}, "Old"]}) == ["Evite (2019)", "Old"]
+    assert "Breaches: Evite (2019)" in _summarize_target_data("a@example.org", {"hibp": {"breaches": [{"name": "Evite", "year": 2019}]}})
+
+
+def test_hash_prompt_is_about_the_file_not_a_person():
+    prompt = investigation_prompt(AnalyzeRequest(target="44d88612fea8a8f36de82e1278abb02f", target_type="hash", hash={
+        "hash_type": "MD5", "verdict": "TEST_FILE", "known_test_file": {"name": "EICAR antivirus test file", "note": ""},
+        "family": "", "detection": None, "community_tags": ["TrojanSpy"]}))
+    assert "This target is a file hash, not a person" in prompt
+    data = prompt.split("Collected data:")[1]
+    assert "verdict: TEST_FILE" in data and "it is not malware" in data
+    assert "detection ratio: none available from keyless sources" in data
+    assert "Community tags (free text" in data and "TrojanSpy" in data
+
+
+def test_person_targets_keep_the_identity_question():
+    prompt = investigation_prompt(AnalyzeRequest(target="jdoe", target_type="username"))
+    assert "not a person" not in prompt and "## Identity assessment" in prompt
+
+
+def test_platform_check_states_reach_the_prompt():
+    data = _data(target="jdoe", platform_check={"results": [
+        {"platform": "Instagram", "url": "https://www.instagram.com/jdoe/", "state": "found", "found": True, "display_name": "J Doe"},
+        {"platform": "LinkedIn", "url": "https://www.linkedin.com/in/jdoe", "state": "blocked", "found": None, "evidence": "login wall"},
+        {"platform": "X", "url": "https://x.com/jdoe", "state": "not_found", "found": False}]})
+    assert "read a profile page" in data and "Instagram" in data and "name on profile: J Doe" in data
+    assert "blocked or could not tell on (unknown, not absent): LinkedIn [login wall]" in data
+    assert "found no profile on: X" in data
+
+
+def test_blocked_and_partial_sources_are_never_listed_as_successful():
+    data = _data(target="jdoe", source_status={
+        "Sherlock": "ok", "GitHub": "not found",
+        "Platform check": "blocked: blocked by every site checked",
+        "Avatar comparison": "failed: no image could be read",
+        "Hash lookup": "partial: 2 of 4 sources answered"})
+    ok_line = next(l for l in data.splitlines() if l.startswith("Sources that ran successfully"))
+    assert "Sherlock" in ok_line and "GitHub" in ok_line
+    assert "Platform check" not in ok_line and "Avatar comparison" not in ok_line and "Hash lookup" not in ok_line
+    failed = next(l for l in data.splitlines() if l.startswith("Sources that FAILED"))
+    assert "Platform check (blocked by every site checked)" in failed and "Avatar comparison (no image could be read)" in failed
+    partial = next(l for l in data.splitlines() if l.startswith("Sources that answered only IN PART"))
+    assert "Hash lookup (partial: 2 of 4 sources answered)" in partial and "unknown, not a negative result" in partial
