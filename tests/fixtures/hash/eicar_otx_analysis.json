@@ -1,0 +1,88 @@
+{
+ "analysis": {
+  "hash": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+  "datetime_int": "2026-04-06T06:37:50",
+  "metadata": {
+   "tlp": "WHITE",
+   "priority": true
+  },
+  "plugins": {
+   "clamav": {
+    "results": {
+     "detection": "Eicar-Test-Signature",
+     "alerts": [
+      "Malware infection"
+     ]
+    }
+   },
+   "metaextract": {
+    "results": {}
+   },
+   "msdefender": {
+    "results": {
+     "detection": "Virus:DOS/EICAR_Test_File",
+     "alerts": [
+      "Malware infection"
+     ]
+    }
+   },
+   "yarad": {
+    "results": {
+     "detection": [
+      {
+       "rule_name": "SUSP_Just_EICAR",
+       "category": [],
+       "strings": [
+        [
+         0,
+         "$s1",
+         "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+        ]
+       ],
+       "severity": 0
+      },
+      {
+       "rule_name": "eicar_av_test",
+       "category": [],
+       "strings": [
+        [
+         0,
+         "$eicar",
+         "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+        ]
+       ],
+       "severity": 0
+      }
+     ]
+    }
+   },
+   "exiftool": {
+    "results": {}
+   },
+   "cuckoo": {
+    "result": {
+     "info": {
+      "combined_score": 6
+     }
+    }
+   }
+  },
+  "info": {
+   "results": {
+    "md5": "44d88612fea8a8f36de82e1278abb02f",
+    "sha1": "3395856ce81f2b7382dee72602f798b642f14140",
+    "sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+    "ssdeep": "3:a+JraNvsgzsVqSwHq9:tJuOgzsko",
+    "filesize": 68,
+    "file_type": "EICAR virus test files",
+    "file_class": null,
+    "tags": []
+   }
+  },
+  "has_dynamic": false,
+  "has_S3": true,
+  "analysis_time": 0
+ },
+ "page_type": null,
+ "malware": {}
+}

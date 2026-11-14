@@ -1,0 +1,587 @@
+{
+ "_recorded": "2026-11-14, GET https://otx.alienvault.com/api/v1/indicators/file/44d88612fea8a8f36de82e1278abb02f/general, trimmed: pulse names and authors replaced, tags cut",
+ "type": "md5",
+ "type_title": "FileHash-MD5",
+ "indicator": "44d88612fea8a8f36de82e1278abb02f",
+ "validation": [
+  {
+   "source": "whitelist",
+   "message": "Whitelisted hash: MISP",
+   "name": "Whitelisted hash"
+  }
+ ],
+ "false_positive": [],
+ "pulse_info": {
+  "count": 50,
+  "pulses": [
+   {
+    "id": "6916d97edb28b2616ffac3ab",
+    "name": "Community pulse 1",
+    "tags": [
+     "whois record",
+     "ssl certificate",
+     "historical ssl",
+     "resolutions",
+     "referrer",
+     "communicating"
+    ],
+    "malware_families": [
+     {
+      "id": "Tsara Brashears",
+      "display_name": "Tsara Brashears",
+      "target": null
+     },
+     {
+      "id": "Mitre Attack",
+      "display_name": "Mitre Attack",
+      "target": null
+     },
+     {
+      "id": "ET",
+      "display_name": "ET",
+      "target": null
+     },
+     {
+      "id": "Beach Research",
+      "display_name": "Beach Research",
+      "target": null
+     },
+     {
+      "id": "TrojanSpy",
+      "display_name": "TrojanSpy",
+      "target": null
+     }
+    ],
+    "cloned_from": "654971c396ca4306a6534b12",
+    "created": "2025-11-14T07:25:50.524000",
+    "modified": "2026-10-20T07:14:00.620000",
+    "author": {
+     "username": "analyst-1"
+    }
+   },
+   {
+    "id": "6aa8875963573e64ffa113bd",
+    "name": "Community pulse 2",
+    "tags": [
+     "whois record",
+     "ssl certificate",
+     "historical ssl",
+     "resolutions",
+     "referrer",
+     "communicating"
+    ],
+    "malware_families": [
+     {
+      "id": "Tsara Brashears",
+      "display_name": "Tsara Brashears",
+      "target": null
+     },
+     {
+      "id": "Mitre Attack",
+      "display_name": "Mitre Attack",
+      "target": null
+     },
+     {
+      "id": "ET",
+      "display_name": "ET",
+      "target": null
+     },
+     {
+      "id": "Beach Research",
+      "display_name": "Beach Research",
+      "target": null
+     },
+     {
+      "id": "TrojanSpy",
+      "display_name": "TrojanSpy",
+      "target": null
+     }
+    ],
+    "cloned_from": "654971c396ca4306a6534b12",
+    "created": "2026-09-14T23:46:33.025000",
+    "modified": "2026-09-14T23:46:33.025000",
+    "author": {
+     "username": "analyst-1"
+    }
+   },
+   {
+    "id": "6a2d8d06c162afe209cca676",
+    "name": "Community pulse 3",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-06-13T17:01:53.660000",
+    "modified": "2026-07-13T17:04:00.535000",
+    "author": {
+     "username": "analyst-2"
+    }
+   },
+   {
+    "id": "698ccef65de079ed10f80c7a",
+    "name": "Community pulse 4",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-02-11T18:48:22.434000",
+    "modified": "2026-07-10T00:07:38.655000",
+    "author": {
+     "username": "analyst-3"
+    }
+   },
+   {
+    "id": "6a289e3b5a86aaeebd251213",
+    "name": "Community pulse 5",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-06-09T23:13:56.852000",
+    "modified": "2026-07-09T00:03:07.066000",
+    "author": {
+     "username": "analyst-4"
+    }
+   },
+   {
+    "id": "6a055367b192e9c534122f7b",
+    "name": "Community pulse 6",
+    "tags": [
+     "windows",
+     "malware",
+     "ioc",
+     "threat-hunting"
+    ],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-05-14T04:45:24.127000",
+    "modified": "2026-06-13T04:18:01.060000",
+    "author": {
+     "username": "analyst-5"
+    }
+   },
+   {
+    "id": "69f6df04798105b7eac99c0f",
+    "name": "Community pulse 7",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-05-03T05:37:05.999000",
+    "modified": "2026-06-02T00:28:15.681000",
+    "author": {
+     "username": "analyst-6"
+    }
+   },
+   {
+    "id": "69eecd6ef82d63887674b0f9",
+    "name": "Community pulse 8",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-04-27T02:43:54.491000",
+    "modified": "2026-05-27T02:18:45.246000",
+    "author": {
+     "username": "analyst-7"
+    }
+   },
+   {
+    "id": "69e99fa1c52b6d2fbe6d8811",
+    "name": "Community pulse 9",
+    "tags": [
+     "auditoria",
+     "academico",
+     "malware",
+     "cobalt-strike",
+     "cryptomining"
+    ],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-04-23T04:27:08.432000",
+    "modified": "2026-05-23T04:13:23.120000",
+    "author": {
+     "username": "analyst-8"
+    }
+   },
+   {
+    "id": "69e81e5393fba6a9c47c920e",
+    "name": "Community pulse 10",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-04-22T01:03:11.435000",
+    "modified": "2026-05-22T02:03:39.507000",
+    "author": {
+     "username": "analyst-9"
+    }
+   },
+   {
+    "id": "69e81e534ebba8779bfe550b",
+    "name": "Community pulse 11",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-04-22T01:03:11.793000",
+    "modified": "2026-05-22T02:03:39.507000",
+    "author": {
+     "username": "analyst-9"
+    }
+   },
+   {
+    "id": "69e81e4f599856672826be43",
+    "name": "Community pulse 12",
+    "tags": [],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-04-22T01:03:06.553000",
+    "modified": "2026-05-22T02:03:39.507000",
+    "author": {
+     "username": "analyst-9"
+    }
+   },
+   {
+    "id": "69e71ebd702704e87cdd1189",
+    "name": "Community pulse 13",
+    "tags": [
+     "lab",
+     "Windows",
+     "training"
+    ],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-04-21T06:52:41.748000",
+    "modified": "2026-05-21T00:04:31.159000",
+    "author": {
+     "username": "analyst-10"
+    }
+   },
+   {
+    "id": "69e71ec365c821a72f95705c",
+    "name": "Community pulse 14",
+    "tags": [
+     "lab",
+     "Windows",
+     "training"
+    ],
+    "malware_families": [],
+    "cloned_from": null,
+    "created": "2026-04-21T06:52:46.020000",
+    "modified": "2026-05-21T00:04:31.159000",
+    "author": {
+     "username": "analyst-10"
+    }
+   },
+   {
+    "id": "69e035f38aa8db105f8525d6",
+    "name": "Community pulse 15",
+    "tags": [
+     "test"
+    ],
+    "malware_families": [
+     {
+      "id": "eicar",
+      "display_name": "eicar",
+      "target": null
+     }
+    ],
+    "cloned_from": null,
+    "created": "2026-04-16T01:05:51.983000",
+    "modified": "2026-04-16T01:05:51.983000",
+    "author": {
+     "username": "analyst-11"
+    }
+   },
+   {
+    "id": "6806c80eeea4691ad45a5d03",
+    "name": "Community pulse 16",
+    "tags": [
+     "TEST"
+    ],
+    "malware_families": [
+     {
+      "id": "Trojan:O97M/EICAR_Test_File",
+      "display_name": "Trojan:O97M/EICAR_Test_File",
+      "target": "/malware/Trojan:O97M/EICAR_Test_File"
+     }
+    ],
+    "cloned_from": null,
+    "created": "2025-04-21T22:34:54.192000",
+    "modified": "2025-04-21T22:34:54.192000",
+    "author": {
+     "username": "analyst-12"
+    }
+   },
+   {
+    "id": "66d95bd10bfcc8c3dd66a44d",
+    "name": "Community pulse 17",
+    "tags": [
+     "whois record",
+     "ssl certificate",
+     "historical ssl",
+     "resolutions",
+     "referrer",
+     "communicating"
+    ],
+    "malware_families": [
+     {
+      "id": "Tsara Brashears",
+      "display_name": "Tsara Brashears",
+      "target": null
+     },
+     {
+      "id": "Mitre Attack",
+      "display_name": "Mitre Attack",
+      "target": null
+     },
+     {
+      "id": "ET",
+      "display_name": "ET",
+      "target": null
+     },
+     {
+      "id": "Beach Research",
+      "display_name": "Beach Research",
+      "target": null
+     },
+     {
+      "id": "TrojanSpy",
+      "display_name": "TrojanSpy",
+      "target": null
+     }
+    ],
+    "cloned_from": "654971c396ca4306a6534b12",
+    "created": "2024-09-05T07:20:49.138000",
+    "modified": "2024-09-05T09:51:10.113000",
+    "author": {
+     "username": "analyst-13"
+    }
+   },
+   {
+    "id": "6645ed3b6befade15bbf05ca",
+    "name": "Community pulse 18",
+    "tags": [
+     "onenote",
+     "figure",
+     "office",
+     "onenote sample",
+     "wildfire",
+     "microsoft"
+    ],
+    "malware_families": [
+     {
+      "id": "OneNote",
+      "display_name": "OneNote",
+      "target": null
+     }
+    ],
+    "cloned_from": null,
+    "created": "2024-05-16T11:25:47.389000",
+    "modified": "2024-05-16T11:25:47.389000",
+    "author": {
+     "username": "analyst-14"
+    }
+   },
+   {
+    "id": "6645ed3bee45e8cd3169f56f",
+    "name": "Community pulse 19",
+    "tags": [
+     "onenote",
+     "figure",
+     "office",
+     "onenote sample",
+     "wildfire",
+     "microsoft"
+    ],
+    "malware_families": [
+     {
+      "id": "OneNote",
+      "display_name": "OneNote",
+      "target": null
+     }
+    ],
+    "cloned_from": null,
+    "created": "2024-05-16T11:25:47.227000",
+    "modified": "2024-05-16T11:25:47.227000",
+    "author": {
+     "username": "analyst-14"
+    }
+   },
+   {
+    "id": "6645ed3a733c862c9173bd20",
+    "name": "Community pulse 20",
+    "tags": [
+     "onenote",
+     "figure",
+     "office",
+     "onenote sample",
+     "wildfire",
+     "microsoft"
+    ],
+    "malware_families": [
+     {
+      "id": "OneNote",
+      "display_name": "OneNote",
+      "target": null
+     }
+    ],
+    "cloned_from": null,
+    "created": "2024-05-16T11:25:46.711000",
+    "modified": "2024-05-16T11:25:46.711000",
+    "author": {
+     "username": "analyst-14"
+    }
+   },
+   {
+    "id": "6645ed391647a47f85006e18",
+    "name": "Community pulse 21",
+    "tags": [
+     "onenote",
+     "figure",
+     "office",
+     "onenote sample",
+     "wildfire",
+     "microsoft"
+    ],
+    "malware_families": [
+     {
+      "id": "OneNote",
+      "display_name": "OneNote",
+      "target": null
+     }
+    ],
+    "cloned_from": null,
+    "created": "2024-05-16T11:25:45.193000",
+    "modified": "2024-05-16T11:25:45.193000",
+    "author": {
+     "username": "analyst-14"
+    }
+   },
+   {
+    "id": "6645ed35b3343624267b968b",
+    "name": "Community pulse 22",
+    "tags": [
+     "onenote",
+     "figure",
+     "office",
+     "onenote sample",
+     "wildfire",
+     "microsoft"
+    ],
+    "malware_families": [
+     {
+      "id": "OneNote",
+      "display_name": "OneNote",
+      "target": null
+     }
+    ],
+    "cloned_from": null,
+    "created": "2024-05-16T11:25:40.995000",
+    "modified": "2024-05-16T11:25:40.995000",
+    "author": {
+     "username": "analyst-14"
+    }
+   },
+   {
+    "id": "65e0ee3c026bf0e346f62f80",
+    "name": "Community pulse 23",
+    "tags": [
+     "referrer",
+     "contacted urls",
+     "contacted",
+     "shaw telecom",
+     "shaw business",
+     "city"
+    ],
+    "malware_families": [
+     {
+      "id": "Emotet",
+      "display_name": "Emotet",
+      "target": null
+     },
+     {
+      "id": "Mirai",
+      "display_name": "Mirai",
+      "target": null
+     },
+     {
+      "id": "Worm:Win32/Gamarue",
+      "display_name": "Worm:Win32/Gamarue",
+      "target": "/malware/Worm:Win32/Gamarue"
+     }
+    ],
+    "cloned_from": "65de91e67d0d575c27960e12",
+    "created": "2024-02-29T20:51:08.655000",
+    "modified": "2024-03-30T20:02:03.506000",
+    "author": {
+     "username": "analyst-15"
+    }
+   },
+   {
+    "id": "65de91e67d0d575c27960e12",
+    "name": "Community pulse 24",
+    "tags": [
+     "referrer",
+     "contacted urls",
+     "contacted",
+     "shaw telecom",
+     "shaw business",
+     "city"
+    ],
+    "malware_families": [
+     {
+      "id": "Emotet",
+      "display_name": "Emotet",
+      "target": null
+     },
+     {
+      "id": "Mirai",
+      "display_name": "Mirai",
+      "target": null
+     },
+     {
+      "id": "Worm:Win32/Gamarue",
+      "display_name": "Worm:Win32/Gamarue",
+      "target": "/malware/Worm:Win32/Gamarue"
+     }
+    ],
+    "cloned_from": "65dbc4eff93b04cbde5fa549",
+    "created": "2024-02-28T01:52:38.822000",
+    "modified": "2024-03-26T22:05:46.190000",
+    "author": {
+     "username": "analyst-13"
+    }
+   },
+   {
+    "id": "65dbc4eff93b04cbde5fa549",
+    "name": "Community pulse 25",
+    "tags": [
+     "referrer",
+     "contacted urls",
+     "contacted",
+     "shaw telecom",
+     "shaw business",
+     "city"
+    ],
+    "malware_families": [
+     {
+      "id": "Emotet",
+      "display_name": "Emotet",
+      "target": null
+     },
+     {
+      "id": "Mirai",
+      "display_name": "Mirai",
+      "target": null
+     },
+     {
+      "id": "Worm:Win32/Gamarue",
+      "display_name": "Worm:Win32/Gamarue",
+      "target": "/malware/Worm:Win32/Gamarue"
+     }
+    ],
+    "cloned_from": null,
+    "created": "2024-02-25T22:53:35.853000",
+    "modified": "2024-03-26T22:05:46.190000",
+    "author": {
+     "username": "analyst-15"
+    }
+   }
+  ]
+ }
+}

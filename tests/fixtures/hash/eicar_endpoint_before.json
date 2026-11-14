@@ -1,0 +1,36 @@
+{
+ "hash": "44d88612fea8a8f36de82e1278abb02f",
+ "hash_type": "MD5",
+ "malware_bazaar": {
+  "found": false
+ },
+ "circl": {
+  "found": true,
+  "file_name": "eicar.com",
+  "file_size": "68",
+  "known_malicious": true
+ },
+ "alienvault": {
+  "found": true,
+  "pulse_count": 50,
+  "malware_families": [
+   "Tsara Brashears",
+   "Mitre Attack",
+   "ET",
+   "Beach Research",
+   "TrojanSpy"
+  ]
+ },
+ "threatfox": {
+  "found": false
+ },
+ "virustotal_url": "https://www.virustotal.com/gui/file/44d88612fea8a8f36de82e1278abb02f",
+ "malware_families": [
+  "Tsara Brashears",
+  "Mitre Attack",
+  "ET",
+  "Beach Research",
+  "TrojanSpy"
+ ],
+ "verdict": "MALICIOUS"
+}

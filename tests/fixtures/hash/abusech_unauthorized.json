@@ -1,0 +1,7 @@
+{
+ "_recorded": "2026-11-14, POST to mb-api.abuse.ch and threatfox-api.abuse.ch with no Auth-Key: HTTP 401",
+ "status": 401,
+ "body": {
+  "error": "Unauthorized"
+ }
+}
