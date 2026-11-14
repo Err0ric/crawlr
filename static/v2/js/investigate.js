@@ -1,6 +1,6 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
-import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
+import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
 import { makeAdultSwitch, adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultForAi, adultSummary, adultCheckText, guardText, ADULT_SWITCH, ADULT_SWITCH_DESC, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
@@ -10,7 +10,8 @@ import { openModal, closeModal } from "./ui.js";
 import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText } from "./links.js";
 import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
-import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
+import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards } from "./workbench.js";
+import { investigateTiles } from "./present.js";
 import { buildCaseFile } from "./casefile.js";
 
 // ---- sources ---------------------------------------------------------------
@@ -126,6 +127,8 @@ const tabs = makeTabs($("#tabs"));
 // prev: { keys, ts, ai, sig } from the last saved run of the same target, for the diff.
 // view: which identity cluster "What we know" shows; "" means the primary one.
 // live: this case was run in this session, so its header and run log follow the tally.
+// pending: sources of the run in flight that have not answered yet (label by key), for the placeholders.
+const pending = new Map();
 export const state = { nameInvalid: "", target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "", live: false, imported: false, adultMode: false, adultBlocked: "" };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
@@ -174,7 +177,7 @@ function renderLedger() {
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
   // The adult group says what its count is made of, under its heading.
   const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? { ...t, note: adultSummary(adultItems(items)) } : t)), items);
-  renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier) });
+  renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [] });
   paintSummary(ev);
   checker.watch();
 }
@@ -192,10 +195,34 @@ function paintSummary(ev) {
   else renderFacts($("#facts"), facts, emptyFacts);
   if (state.type === "name") setTabCount($("#tabFindings"), "Candidates", items.filter((i) => i.tier === "people").length);
   else setTabCount($("#tabFindings"), "Findings", items.filter(isFinding).length);
+  // The identity header: whose profiles these are. Username and email cases only.
+  const head = !isName && (state.type === "username" || state.type === "email") ? identityHead(ev.identity, state.view) : "";
+  $("#identity").innerHTML = head; $("#identity").hidden = !head;
+  // The verdict tiles wait for the run to finish, like the brief: a count mid-run is half a picture.
+  $("#caseBar").hidden = !state.target;
+  renderVerdict($("#verdict"), state.running || !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, failedKeys: failedSources().map((f) => f.key), extra: tileExtra() }));
   // The written brief waits for the run to finish, so it never describes half a picture.
   renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), type: state.type, target: state.target }));
 }
 bindLedger($("#ledger"), checkKey);
+// What the tiles of a hash, phone or name case show, from the same functions the cards use.
+function tileExtra() {
+  const c = state.collected;
+  if (state.type === "hash") { const v = hashView(c.hash); if (!v) return {}; const cov = hashCoverage(c.hash); return { hash: { verdict: v.verdict, detection: v.detection || null, answered: cov.answered, asked: cov.answered + cov.failed.length } }; }
+  if (state.type === "phone") return { phone: { lineType: String(c.phone?.line_type || ""), carrier: String(c.phone?.carrier || "") } };
+  if (state.type === "name") { const cv = sourceCoverage(c.nameResult); return { name: cv ? { answered: cv.answered, asked: cv.total } : { answered: 0, asked: 0 } }; }
+  return {};
+}
+bindVerdict($("#verdict"), { ledger: $("#ledger"), setTab: (t) => tabs.set(t), tabEl: (t) => $(`#tabs [data-tab="${t}"]`) });
+// One identity at a time: the select in "What we know" and the buttons in the identity header
+// set the same view. Focus stays on the control that was used.
+function showIdentity(id, focusSel) {
+  state.view = id || "";
+  paintSummary(evidence());
+  $(focusSel)?.focus({ preventScroll: true });
+}
+$("#facts").addEventListener("change", (e) => { if (e.target.matches("[data-cluster-pick]")) showIdentity(e.target.value, "#factsPick"); });
+$("#identity").addEventListener("click", (e) => { const b = e.target.closest("[data-cluster-btn]"); if (b) showIdentity(b.dataset.clusterBtn, `#identity [data-cluster-btn="${CSS.escape(b.dataset.clusterBtn)}"]`); });
 
 // ---- link check -----------------------------------------------------------------------
 // Templated profile URLs are checked by the server (see linkcheck.js). For a run started in this
@@ -272,9 +299,11 @@ function renderSourceCards() {
   push("enricher", c.enricher); push("avatarHash", c.avatarHash); push("profileScrape", c.profileScrape); push("hunter", c.hunter); push("harvester", c.harvester);
   push("nameResult", c.nameResult);
   if (c.reverseImage) cards.push(sourceCards.reverseImage(c.reverseImage));
-  $("#bySource").hidden = !cards.length; $("#bySourceEmpty").hidden = !!cards.length;
+  // A source that has not answered yet holds its place with a placeholder card.
+  const waiting = state.running ? skeletonCards([...pending.values()]) : "";
+  $("#bySource").hidden = !cards.length && !waiting; $("#bySourceEmpty").hidden = !!cards.length || !!waiting;
   setTabCount($("#tabSources"), "By source", tally().ran);
-  $("#sourceCards").innerHTML = cards.join("");
+  $("#sourceCards").innerHTML = cards.join("") + waiting;
 }
 
 function renderHead(meta) {
@@ -459,10 +488,14 @@ function adultRefused(reason) {
 // person typing, not a source that failed, so nothing is stored for it.
 async function runSource(label, url, body, headers, key, opts = {}) {
   const row = log.add(label);
+  pending.set(row, label);
+  renderLedger(); renderSourceCards();
   try {
     // With the mode off any adult row in an answer is dropped here, before it is stored. With it
     // on, those rows keep their text fields and nothing else.
-    const data = scrubResponse(key, await post(url, body, headers, state.controller?.signal), state.adultMode);
+    const answer = await post(url, body, headers, state.controller?.signal);
+    pending.delete(row);
+    const data = scrubResponse(key, answer, state.adultMode);
     if (data === null) { log.set(row, `${label} · not kept`, "skip"); return null; }
     state.collected[key] = data;
     const o = sourceOutcome(data);
@@ -478,6 +511,7 @@ async function runSource(label, url, body, headers, key, opts = {}) {
     renderLedger(); renderSourceCards();
     return data;
   } catch (err) {
+    pending.delete(row);
     if (err.code === "cancelled") { log.set(row, `${label} · cancelled`, "skip"); return null; }
     if (opts.badInput && (err.status === 400 || err.status === 422)) { log.set(row, `${label} · not run: that is not a usable name`, "skip"); opts.badInput(err); return null; }
     if (err.code === "minor_guard") { adultRefused(err.reason); log.set(row, `${label} · adult and dating sites not checked for this handle`, "skip"); renderLedger(); return GUARDED; }
@@ -493,7 +527,9 @@ function setRunning(on) {
   state.running = on;
   const b = $("#runBtn");
   b.textContent = on ? "Cancel run" : "Run investigation";
-  b.classList.toggle("btn-primary", !on); b.classList.toggle("btn-danger", on);
+  // Cancel is a ghost button: the run is the thing in progress, not a second primary action.
+  b.classList.toggle("btn-primary", !on); b.classList.toggle("btn-cancel", on);
+  if (!on) pending.clear();
   $("#main").setAttribute("aria-busy", on);
 }
 export function cancel() {
@@ -514,7 +550,7 @@ export async function run(targetRaw, typeOverride) {
   let prev = null;
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: aiSignature(scrubNames(last.results || {}, last.target), last.target, last.kind) }; }
 
-  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = "";
+  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear();
   // The switch as it stands for this handle, and only if the handle passes the minor guard.
   const adult = adultOn(type, target, adultSwitch.view(target, type).on);
   Object.assign(state, { target, type, collected: adult ? { adultMode: true } : {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
@@ -598,7 +634,8 @@ export async function run(targetRaw, typeOverride) {
     // Compare profile pictures once every profile is in. A passive read of public CDN images;
     // it needs at least two to say anything. If it fails, clusters fall back to the other signals.
     const images = state.cancelled ? [] : avatarImages(c, target, type);
-    if (images.length > 1) await runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash");
+    // One picture is still fetched: it cannot be compared, but its thumbnail is shown on the card.
+    if (images.length > 0) await runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash");
     const img = [target, ...(withoutAdult(c).maigret?.results || []).map((r) => r.profile?.image)].find((u) => /^https?:\/\/\S+\.(jpe?g|png|gif|webp)(\?|$)/i.test(String(u || "")));
     if (img) { c.reverseImage = img; renderSourceCards(); }
   }
@@ -694,6 +731,7 @@ export function clearCase() {
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
   $("#brief").hidden = true; $("#tabs").hidden = true; tabs.set("findings"); $("#bySourceEmpty").hidden = false;
+  $("#caseBar").hidden = true; $("#verdict").innerHTML = ""; $("#identity").hidden = true; $("#identity").innerHTML = "";
 }
 
 // ---- notes --------------------------------------------------------------------------

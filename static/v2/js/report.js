@@ -1,7 +1,7 @@
 // Investigation report: dossier card on top, then one scrolling report.
 // Everything the model says is escaped through markdown()/inline(); account tiles and
 // avatars come from collected data, never from the model.
-import { h, raw, esc, safeUrl, link } from "./core.js";
+import { h, raw, esc, safeUrl, link, mark } from "./core.js";
 import { UNVERIFIED_TEXT, checkText } from "./links.js";
 import { markdown, splitSections, inline } from "./ai.js";
 import { adultListHtml, splitAdultProse, ADULT_SECTION } from "./adult.js";
@@ -20,12 +20,8 @@ const short = (u) => String(u).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/
 const initials = (s) => (String(s).replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2) || "?").toUpperCase();
 const normSite = (s) => String(s).toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z0-9]/g, "");
 
-// Favicon with a letter fallback (the <img> is removed on error by the delegated handler below).
-const icon = (name, url) => {
-  const d = host(url);
-  return `<span class="fav" aria-hidden="true"><span class="fav-l">${esc(initials(name))}</span>${d ? `<img src="https://icons.duckduckgo.com/ip3/${esc(d)}.ico" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}</span>`;
-};
-document.addEventListener("error", (e) => { if (e.target?.matches?.(".fav img, .dossier .avatar img")) e.target.remove(); }, true);
+// Favicon with a letter fallback: the one site mark helper in core.js.
+const icon = (name, url) => mark(name, { url, cls: "fav" });
 
 // "| a | b |" markdown table -> rows of cells (header first), or null.
 function parseTable(md) {

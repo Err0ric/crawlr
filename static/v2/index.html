@@ -56,42 +56,62 @@
 <div id="content" tabindex="-1">
 <!-- ============ Landing ============ -->
 <main class="landing" id="landing">
-  <h1>Investigate a target in your browser.</h1>
-  <p class="sub">Type a username, email, domain, IP, phone number or hash. CrawlR picks the right public sources, runs them, and sorts what comes back by how much it tells you.</p>
-  <form class="search" id="landingForm" role="search">
+  <div class="landing-top">
+    <div>
+      <h1>Open a case on a handle, an address, a domain or a file.</h1>
+      <p class="sub">CrawlR asks the public sources that fit the target, then files what comes back by how sure it is: read and tied to the person, read and matching, or only reported.</p>
+      <form class="search" id="landingForm" role="search">
     <label class="sr-only" for="landingInput">Target to investigate</label>
     <input class="input mono" id="landingInput" placeholder="Type or paste a target" aria-describedby="landingDetect" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
     <button class="btn btn-primary" type="submit">Run</button>
   </form>
   <div class="detect" id="landingDetect" aria-live="polite"></div>
 
-  <div class="examples">
-    <h2 class="mini-h">Try one</h2>
-    <div class="row">
-      <button class="ex" type="button" data-example="torvalds"><span class="k">username</span>torvalds</button>
-      <button class="ex" type="button" data-example="test@example.com"><span class="k">email</span>test@example.com</button>
-      <button class="ex" type="button" data-example="example.com"><span class="k">domain</span>example.com</button>
-      <button class="ex" type="button" data-example="44d88612fea8a8f36de82e1278abb02f"><span class="k">hash</span>44d88612…abb02f</button>
+      <div class="examples">
+        <h2 class="mini-h" id="tryH">Try one</h2>
+        <div class="row" role="group" aria-labelledby="tryH">
+          <button class="ex" type="button" data-example="torvalds" data-example-mode="investigate"><span class="k">Handle</span>torvalds</button>
+          <button class="ex" type="button" data-example="test@example.com" data-example-mode="investigate"><span class="k">Address</span>test@example.com</button>
+          <button class="ex" type="button" data-example="example.com" data-example-mode="recon"><span class="k">Domain</span>example.com</button>
+          <button class="ex" type="button" data-example="44d88612fea8a8f36de82e1278abb02f" data-example-mode="investigate"><span class="k">File hash</span>44d8…b02f</button>
+        </div>
+      </div>
+      <p class="empty-note mt">An example opens its workbench with the box filled: a domain goes to Recon. Nothing runs until you press Run.</p>
     </div>
+    <section class="key" aria-labelledby="keyH">
+      <h2 id="keyH">How to read a case</h2>
+      <p>Every row carries one of five standings. The line says how it is known, the color says which.</p>
+      <ul class="key-rows">
+        <li class="key-row tone-flag"><span><span class="cp tone-flag">Flag</span></span><span>Changes the risk picture: a breach, a known CVE, a malware verdict.</span></li>
+        <li class="key-row tone-linked"><span><span class="cp tone-linked">Linked</span></span><span>Tied to the person by a strong signal, or the record for the target itself.</span></li>
+        <li class="key-row tone-match"><span><span class="cp tone-match">Matches</span></span><span>A profile was read and nothing on it conflicts.</span></li>
+        <li class="key-row tone-different"><span><span class="cp tone-different">Different person</span></span><span>A profile was read and the name on it conflicts.</span></li>
+        <li class="key-row tone-unverified line-dashed"><span><span class="cp tone-unverified line-dashed">Unverified</span></span><span>A tool reported it and nothing was read. A lead to check.</span></li>
+      </ul>
+      <p class="key-foot">A solid line means a source read or checked it. A dashed line means it was reported and nothing checked it. A failed source is shown as failed, never as "not found".</p>
+    </section>
   </div>
 
   <div class="routes">
-    <h2 class="mini-h">Where a target goes</h2>
-    <div class="route-grid">
-      <a class="route" href="#investigate" data-goto="investigate"><b>Investigate</b><span>People and handles: username, email, phone number, file hash, name. A name lists the people who share it in five public directories, as candidates to pick from.</span></a>
-      <a class="route" href="#recon" data-goto="recon"><b>Recon</b><span>Infrastructure: domain, IP address, ASN.</span></a>
+    <div>
+      <h2 class="mini-h">Where a target goes</h2>
+      <div class="route-grid">
+        <a class="route" href="#investigate" data-goto="investigate"><b>Investigate</b><span>People and handles: username, email, phone number, file hash, name. A name lists the people who share it in five public directories, as candidates to pick from.</span></a>
+        <a class="route" href="#recon" data-goto="recon"><b>Recon</b><span>Infrastructure: domain, IP address, ASN.</span></a>
+      </div>
     </div>
-    <h2 class="mini-h">Tools that need no target</h2>
-    <div class="route-grid three">
-      <a class="route" href="#headers" data-goto="headers"><b>Email headers</b><span>Check SPF, DKIM and DMARC and trace the route.</span></a>
-      <a class="route" href="#dorks" data-goto="dorks"><b>Search query builder</b><span>Write Google operators from what you know.</span></a>
-      <a class="route" href="#decoders" data-goto="decoders"><b>Decoders</b><span>Base64, URL encoding, hashes, VIN.</span></a>
+    <div>
+      <h2 class="mini-h">Tools that need no target</h2>
+      <div class="route-grid three">
+        <a class="route" href="#headers" data-goto="headers"><b>Email headers</b><span>Check SPF, DKIM and DMARC and trace the route.</span></a>
+        <a class="route" href="#dorks" data-goto="dorks"><b>Search query builder</b><span>Write Google operators from what you know.</span></a>
+        <a class="route" href="#decoders" data-goto="decoders"><b>Decoders</b><span>Base64, URL encoding, hashes, VIN.</span></a>
+      </div>
     </div>
   </div>
 
   <div class="how">
     <div><b>No account, no key</b>Every open source runs as-is. Your cases stay in this browser.</div>
-    <div><b>Evidence, ranked</b>Linked means tied to the person by a strong signal. Exists means a profile was read. Unverified means a lead to check. A failed source is shown as failed, never as "not found".</div>
     <div><b>AI only when you ask</b>A written report is one click away once the sources finish, and you see what it costs first.</div>
   </div>
 </main>
@@ -124,19 +144,26 @@
 
   <div class="workspace">
   <main class="main" id="main" aria-busy="false">
-    <div class="main-head" id="mainHead" hidden>
-      <h1 id="caseTarget"></h1>
-      <span class="meta" id="caseMeta"></span>
-      <span class="spacer"></span>
-      <button class="btn btn-sm" id="exportBtn" type="button">Export</button>
-      <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">New case</button>
-    </div>
+    <section class="casesheet" aria-label="Case">
+      <div class="main-head" id="mainHead" hidden>
+        <h1 id="caseTarget"></h1>
+        <span class="meta" id="caseMeta"></span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" id="exportBtn" type="button">Export</button>
+        <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">New case</button>
+      </div>
+      <div class="case-bar" id="caseBar" hidden>
+        <div class="verdict-strip" id="verdict" role="group" aria-label="Counts for this case"></div>
+        <button class="btn btn-block case-details" type="button" data-case-details="aside" aria-haspopup="dialog">Case details</button>
+      </div>
+      <div class="identity" id="identity" hidden></div>
+      <section class="brief" id="brief" hidden aria-labelledby="briefH">
+        <div class="brief-head"><h2 id="briefH">At a glance</h2><span class="tag">no AI</span></div>
+        <div id="briefBody"></div>
+      </section>
+    </section>
     <div class="print-only case-print" id="casePrint"></div>
     <div class="runlog collapsed" id="runlog" hidden></div>
-    <section class="card brief" id="brief" hidden aria-labelledby="briefH">
-      <div class="card-head"><h2 class="card-title" id="briefH">At a glance</h2><span class="tag">no AI</span></div>
-      <div class="card-body" id="briefBody"></div>
-    </section>
     <section class="card report-card" id="reportSection" hidden tabindex="-1" aria-labelledby="reportTitle">
       <div class="card-head">
         <h2 class="card-title" id="reportTitle">Investigation report</h2>
@@ -155,7 +182,17 @@
       <div class="ledger" id="ledger"></div>
       <div class="empty hero" id="emptyState">
         <h1 class="empty-h">No case open</h1>
-        <p>Type a username, email, phone number, file hash or name above and run. Linked accounts, breaches and extracted facts appear here, ranked. A name lists the people who share it as candidates, not as findings about one person.</p>
+        <p>Type a handle, an address, a phone number, a file hash or a name above and run. Accounts, breaches and facts are filed by how sure each one is.</p>
+        <div class="empty-try">
+          <span class="k" id="invTryH">Fill the box with an example</span>
+          <div class="row" role="group" aria-labelledby="invTryH">
+            <button class="ex" type="button" data-fill="#targetInput" data-value="torvalds"><span class="k">Handle</span>torvalds</button>
+            <button class="ex" type="button" data-fill="#targetInput" data-value="test@example.com"><span class="k">Address</span>test@example.com</button>
+            <button class="ex" type="button" data-fill="#targetInput" data-value="44d88612fea8a8f36de82e1278abb02f"><span class="k">File hash</span>44d88612…abb02f</button>
+            <button class="ex" type="button" data-fill="#targetInput" data-value="Linus Torvalds"><span class="k">Name</span>Linus Torvalds</button>
+          </div>
+          <span class="empty-note">Nothing runs until you press Run. A name lists the people who share it as candidates, not as findings about one person.</span>
+        </div>
       </div>
     </div>
     <div id="panelSources" role="tabpanel" aria-labelledby="tabSources" tabindex="-1" class="panel" hidden>
@@ -209,19 +246,25 @@
 
   <div class="workspace">
   <main class="main" id="rMain" aria-busy="false">
-    <div class="main-head" id="rMainHead" hidden>
-      <h1 id="rCaseTarget"></h1>
-      <span class="meta" id="rCaseMeta"></span>
-      <span class="spacer"></span>
-      <button class="btn btn-sm" id="rExportBtn" type="button">Export</button>
-      <button class="btn btn-ghost btn-sm" id="rClearBtn" type="button">New case</button>
-    </div>
+    <section class="casesheet" aria-label="Case">
+      <div class="main-head" id="rMainHead" hidden>
+        <h1 id="rCaseTarget"></h1>
+        <span class="meta" id="rCaseMeta"></span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" id="rExportBtn" type="button">Export</button>
+        <button class="btn btn-ghost btn-sm" id="rClearBtn" type="button">New case</button>
+      </div>
+      <div class="case-bar" id="rCaseBar" hidden>
+        <div class="verdict-strip" id="rVerdict" role="group" aria-label="Counts for this case"></div>
+        <button class="btn btn-block case-details" type="button" data-case-details="rAside" aria-haspopup="dialog">Case details</button>
+      </div>
+      <section class="brief" id="rBrief" hidden aria-labelledby="rBriefH">
+        <div class="brief-head"><h2 id="rBriefH">At a glance</h2><span class="tag">no AI</span></div>
+        <div id="rBriefBody"></div>
+      </section>
+    </section>
     <div class="print-only case-print" id="rCasePrint"></div>
     <div class="runlog collapsed" id="rRunlog" hidden></div>
-    <section class="card brief" id="rBrief" hidden aria-labelledby="rBriefH">
-      <div class="card-head"><h2 class="card-title" id="rBriefH">At a glance</h2><span class="tag">no AI</span></div>
-      <div class="card-body" id="rBriefBody"></div>
-    </section>
     <div class="tabs" id="rTabs" role="tablist" aria-label="Result views" hidden>
       <button type="button" role="tab" id="rTabFindings" data-tab="findings" aria-selected="true" aria-controls="rFindings">Findings</button>
       <button type="button" role="tab" id="rTabSources" data-tab="sources" aria-selected="false" aria-controls="rSourcesPanel" tabindex="-1">By source</button>
@@ -233,7 +276,16 @@
       <div class="ledger" id="rLedger"></div>
       <div class="empty hero" id="rEmpty">
         <h1 class="empty-h">No target yet</h1>
-        <p>Type a domain, IP or ASN above and run. Flags such as known CVEs, risky open services, spoofable email and expiring certificates come first.</p>
+        <p>Type a domain, an IP address or an ASN above and run. Known CVEs, risky open services, spoofable mail and expiring certificates come first.</p>
+        <div class="empty-try">
+          <span class="k" id="recTryH">Fill the box with an example</span>
+          <div class="row" role="group" aria-labelledby="recTryH">
+            <button class="ex" type="button" data-fill="#rTargetInput" data-value="example.com"><span class="k">Domain</span>example.com</button>
+            <button class="ex" type="button" data-fill="#rTargetInput" data-value="1.1.1.1"><span class="k">IP address</span>1.1.1.1</button>
+            <button class="ex" type="button" data-fill="#rTargetInput" data-value="AS13335"><span class="k">ASN</span>AS13335</button>
+          </div>
+          <span class="empty-note">Nothing runs until you press Run. The port scan stays off unless you switch it on.</span>
+        </div>
       </div>
     </div>
     <div id="rSourcesPanel" role="tabpanel" aria-labelledby="rTabSources" tabindex="-1" class="panel" hidden>
@@ -292,9 +344,9 @@
     </details>
   </section>
   <section class="tool-out" id="hdrOut" aria-live="polite" aria-label="Header analysis results">
-    <div class="empty"><h2 class="empty-h">Nothing analyzed yet</h2><p>Results show a verdict first, then any flags, the sender's origin and every hop in the route.</p></div>
+    <div class="empty"><h2 class="empty-h">Nothing analyzed yet</h2><p>Paste raw headers on the left and analyze. The verdict comes first, then any flags, the sender's origin and every hop in the route.</p><button class="btn" type="button" data-hdr-sample>Load a sample</button></div>
   </section>
-  <template id="hdrEmptyTpl"><div class="empty"><h2 class="empty-h">Nothing analyzed yet</h2><p>Results show a verdict first, then any flags, the sender's origin and every hop in the route.</p></div></template>
+  <template id="hdrEmptyTpl"><div class="empty"><h2 class="empty-h">Nothing analyzed yet</h2><p>Paste raw headers on the left and analyze. The verdict comes first, then any flags, the sender's origin and every hop in the route.</p><button class="btn" type="button" data-hdr-sample>Load a sample</button></div></template>
 </main>
 
 <!-- ============ Dorks ============ -->
@@ -332,20 +384,20 @@
 <main class="tool tool-wide" id="decoders" hidden>
   <header class="tool-head"><h1>Decoders</h1><p class="lede">Small conversions that come up mid-investigation. Base64, URL and hashing run entirely in your browser. VIN decoding asks NHTSA's public database directly.</p></header>
   <div class="dec-grid">
-    <article class="card"><div class="card-head"><h2 class="card-title"><label for="b64In">Base64</label></h2></div><div class="card-body">
+    <article class="dec"><div class="dec-in"><h2><label for="b64In">Base64</label></h2>
       <textarea class="textarea mono" id="b64In" rows="3" placeholder="Text or Base64" name="b64-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
-      <div class="tool-actions"><button class="btn btn-sm" id="b64Enc" type="button">Encode</button><button class="btn btn-sm" id="b64Dec" type="button">Decode</button></div>
-      <div id="b64Out" aria-live="polite"></div></div></article>
-    <article class="card"><div class="card-head"><h2 class="card-title"><label for="urlIn">URL encoding</label></h2></div><div class="card-body">
+      <div class="tool-actions"><button class="btn btn-sm" id="b64Enc" type="button">Encode</button><button class="btn btn-sm" id="b64Dec" type="button">Decode</button></div></div>
+      <div class="dec-res" id="b64Out" aria-live="polite"></div></article>
+    <article class="dec"><div class="dec-in"><h2><label for="urlIn">URL encoding</label></h2>
       <textarea class="textarea mono" id="urlIn" rows="3" placeholder="Text or %-encoded string" name="url-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
-      <div class="tool-actions"><button class="btn btn-sm" id="urlEnc" type="button">Encode</button><button class="btn btn-sm" id="urlDec" type="button">Decode</button></div>
-      <div id="urlOut" aria-live="polite"></div></div></article>
-    <article class="card dec-span"><div class="card-head"><h2 class="card-title"><label for="hashIn">Hash a string</label></h2></div><div class="card-body">
-      <div class="inline-form"><input class="input mono" id="hashIn" placeholder="Text to hash" type="search" name="hash-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="hashGo" type="button">Hash</button></div>
-      <div id="hashOut" aria-live="polite"></div></div></article>
-    <article class="card"><div class="card-head"><h2 class="card-title"><label for="vinIn">VIN</label></h2><span class="tag">NHTSA</span></div><div class="card-body">
-      <div class="inline-form"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" type="search" name="vin" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="vinGo" type="button">Decode</button></div>
-      <div id="vinOut" aria-live="polite"></div></div></article>
+      <div class="tool-actions"><button class="btn btn-sm" id="urlEnc" type="button">Encode</button><button class="btn btn-sm" id="urlDec" type="button">Decode</button></div></div>
+      <div class="dec-res" id="urlOut" aria-live="polite"></div></article>
+    <article class="dec"><div class="dec-in"><h2><label for="hashIn">Hash a string</label></h2>
+      <div class="inline-form"><input class="input mono" id="hashIn" placeholder="Text to hash" type="search" name="hash-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="hashGo" type="button">Hash</button></div></div>
+      <div class="dec-res" id="hashOut" aria-live="polite"></div></article>
+    <article class="dec"><div class="dec-in"><h2><label for="vinIn">VIN</label> <span class="tag">NHTSA</span></h2>
+      <div class="inline-form"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" type="search" name="vin" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="vinGo" type="button">Decode</button></div></div>
+      <div class="dec-res" id="vinOut" aria-live="polite"></div></article>
   </div>
 </main>
 </div>

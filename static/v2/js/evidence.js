@@ -36,6 +36,7 @@
 // A fact: { k, v, source, url?, link_kind }  (name, location, employer…), shown in "What we know".
 // Facts belong to an identity cluster, so one person's name is never shown beside another's.
 
+import { cardSnippet, safeThumb } from "./present.js";
 import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT, mdLink, mdNote } from "./links.js";
 import { TYPE_LABEL } from "./core.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
@@ -153,9 +154,11 @@ export function collectProfiles(collected, target, type = inferType(collected, t
     const id = `acct:${canonSite(site)}`;
     if (id === "acct:") return null;
     let cur = map.get(id);
-    if (!cur) { cur = { id, site: SITE_DISPLAY[canonSite(site)] || String(site), url: "", handle: searched, name: "", location: "", bio: "", image: "", links: [], websites: [], anchor: "", sources: [], facts: [], leads: [], evidence: "" }; map.set(id, cur); }
+    if (!cur) { cur = { id, site: SITE_DISPLAY[canonSite(site)] || String(site), url: "", handle: searched, name: "", location: "", bio: "", image: "", links: [], websites: [], anchor: "", sources: [], facts: [], leads: [], evidence: "", created: "", repos: null, followers: null, thumb: "" }; map.set(id, cur); }
     if (!cur.sources.includes(source)) cur.sources.push(source);
-    for (const k of ["url", "location", "bio", "image", "anchor", "evidence"]) if (!cur[k] && p[k]) cur[k] = String(p[k]);
+    for (const k of ["url", "location", "bio", "image", "anchor", "evidence", "created"]) if (!cur[k] && p[k]) cur[k] = String(p[k]);
+    // Counts a source returned for this profile. Shown on the card as they came, never estimated.
+    for (const k of ["repos", "followers"]) if (cur[k] === null && Number.isFinite(p[k]) && p[k] >= 0) cur[k] = p[k];
     if (p.handle) cur.handle = String(p.handle);
     // Keep the first name that says something; a handle echoed back is not a name.
     if (p.name && (!cur.name || (!meaningfulName(cur.name, [cur.handle, searched]) && meaningfulName(p.name, [cur.handle, searched])))) cur.name = String(p.name).trim();
@@ -174,7 +177,7 @@ export function collectProfiles(collected, target, type = inferType(collected, t
   const gh = c.github;
   if (gh?.found && !failed(gh)) {
     const tw = String(gh.twitter_username || "").replace(/^@/, "");
-    const p = put("GitHub", "GitHub", { url: gh.profile_url, name: gh.name, location: gh.location, bio: gh.bio, image: gh.avatar_url, anchor: type === "email" ? "" : "github", links: [tw && `https://x.com/${tw}`].filter(Boolean), websites: [gh.blog].filter(Boolean) });
+    const p = put("GitHub", "GitHub", { url: gh.profile_url, name: gh.name, location: gh.location, bio: gh.bio, image: gh.avatar_url, created: gh.created_at, repos: gh.public_repos, followers: gh.followers, anchor: type === "email" ? "" : "github", links: [tw && `https://x.com/${tw}`].filter(Boolean), websites: [gh.blog].filter(Boolean) });
     nameFact(p, "Name", gh.name, "GitHub", gh.profile_url);
     fact(p, "Location", gh.location, "GitHub", gh.profile_url);
     fact(p, "Employer", gh.company, "GitHub", gh.profile_url);
@@ -217,7 +220,7 @@ export function collectProfiles(collected, target, type = inferType(collected, t
     if (!r.verified || r.confidence === "false_positive") continue;
     const pr = r.profile || {};
     const bio = cleanBio(pr.bio, pr.bio_boilerplate || r.bio_boilerplate);
-    const p = put(r.site || r.name || "", "Maigret", { url: r.url, name: pr.name, location: pr.location, bio, image: pr.image, links: pr.links || [] });
+    const p = put(r.site || r.name || "", "Maigret", { url: r.url, name: pr.name, location: pr.location, bio, image: pr.image, created: pr.created_at, followers: typeof pr.followers === "number" ? pr.followers : null, links: pr.links || [] });
     nameFact(p, "Name", pr.name, r.site, r.url);
     fact(p, "Location", pr.location, r.site, r.url);
     fact(p, "Bio", bio.slice(0, 160), r.site, r.url);
@@ -254,7 +257,7 @@ export function collectProfiles(collected, target, type = inferType(collected, t
 
   // Avatar hashes, when the comparison ran.
   const av = c.avatarHash;
-  if (av && !failed(av)) for (const r of av.results || []) { const p = map.get(r.id); if (p && r.hash && !r.error) { p.avatarHash = String(r.hash); p.avatarDefault = !!r.default; } }
+  if (av && !failed(av)) for (const r of av.results || []) { const p = map.get(r.id); if (p && r.hash && !r.error) { p.avatarHash = String(r.hash); p.avatarDefault = !!r.default; if (!r.default) p.thumb = safeThumb(r.thumb); } }
   return [...map.values()];
 }
 
@@ -414,6 +417,22 @@ export function buildEvidence(collected, target, typeArg) {
     if (lk.hint) row.hint = lk.hint;
     // The link check's answer for this row, when it has one (see links.js).
     applyCheck(row, checks[row.key], { subjects: [searchedHandle] });
+    // What the evidence card shows: the handle, the facts a source read on this profile, and why
+    // the row sits in its tier. `meta` keeps the same statements as one line for exports and the AI.
+    if (row.tier !== "noise") {
+      const named = p && meaningfulName(p.name, [p.handle, searched]) ? p.name : "";
+      const snip = cardSnippet(row, p && row.kinds.has("read") ? { ...p, shownName: named } : null);
+      const read = p && r && row.kinds.has("read");
+      const why = row.kinds.has("registered") ? "registered with this email"
+        : read ? (p.anchor === "github" ? "GitHub's own record for this handle" : p.anchor === "gravatar" ? "Gravatar's record for this email"
+          : r.tier === "different" ? "the name on it conflicts with the primary identity" : r.why && r.why !== "no name on the profile" ? r.why : named ? "" : "no name on the profile")
+          : "";
+      // What a tool said about a row nothing read: why the check stopped, or the site's category.
+      const said = read ? [] : [...new Set(reported)].filter(Boolean);
+      const note = [...said.filter((x) => /^(Blocked by site|Could not tell|profile URL answered)/.test(x)), ...said.filter((x) => !/^(Blocked by site|Could not tell|profile URL answered)/.test(x)).map((x) => `Listed under ${x}.`)].join(" ");
+      row.card = { handle: String(p?.handle || searchedHandle || ""), ...snip, why: snip.basis && why === "no name on the profile" ? "" : why, note };
+      if (p?.thumb) row.thumb = p.thumb;
+    }
     markUnsendable(row);
     delete row.kinds; delete row.notes; delete row.readUrl;
   }
@@ -507,11 +526,11 @@ export function buildEvidence(collected, target, typeArg) {
   const sitesOf = (ids) => ids.map((id) => byId.get(id)?.site).filter(Boolean);
   const views = result.clusters.map((cl) => ({
     // different: at least one of its profiles carries a name that conflicts with the primary identity.
-    id: cl.id, label: cl.label, named: cl.named, primary: cl.primary, different: cl.members.some((id) => rel.get(id)?.tier === "different"), why: cl.why || "", sites: sitesOf(cl.members), names: cl.names, locations: cl.locations,
+    id: cl.id, label: cl.label, named: cl.named, primary: cl.primary, different: cl.members.some((id) => rel.get(id)?.tier === "different"), why: cl.why || "", sites: sitesOf(cl.members), names: cl.names, locations: cl.locations, thumb: cl.members.map((id) => byId.get(id)?.thumb).find(Boolean) || "",
     signals: cl.links.flatMap((l) => l.signals.map((s) => ({ ...s, a: byId.get(l.a)?.site, b: byId.get(l.b)?.site }))),
     facts: dedupeFacts(cl.members.flatMap((id) => byId.get(id)?.facts || [])),
   }));
-  if (result.unassigned.length) views.push({ id: "unassigned", label: "Profiles with no name", named: false, primary: false, why: "", sites: sitesOf(result.unassigned), names: [], locations: [], signals: [], facts: dedupeFacts(result.unassigned.flatMap((id) => byId.get(id)?.facts || [])) });
+  if (result.unassigned.length) views.push({ id: "unassigned", label: "Profiles with no name", named: false, primary: false, why: "", sites: sitesOf(result.unassigned), names: [], locations: [], thumb: "", signals: [], facts: dedupeFacts(result.unassigned.flatMap((id) => byId.get(id)?.facts || [])) });
   // noPrimary: profiles were read, but there is no anchor and no strong signal, so nobody is picked.
   const identity = { views, primary: primary ? primary.id : null, people: views.filter((v) => v.named).length, noPrimary: !primary && views.length > 0 };
   // Without a primary identity no person's facts are shown as the target's.

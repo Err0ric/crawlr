@@ -33,7 +33,7 @@ function restoreFocus() {
 
 // required: the dialog can only be left through one of its actions (used by the consent gate).
 export function openModal({ title, body, actions = [], wide = false, required = false, focus }) {
-  closeModal({ restore: false });
+  closeModal({ restore: false }); closeSheet({ restore: false });
   openers.push(document.activeElement);
   const el = document.createElement("div");
   el.className = "modal-backdrop"; el.id = "modal";
@@ -65,7 +65,7 @@ export function closeModal({ restore = true } = {}) {
 }
 
 export function openDrawer({ title, body }) {
-  closeDrawer({ restore: false }); closeModal({ restore: false });
+  closeDrawer({ restore: false }); closeModal({ restore: false }); closeSheet({ restore: false });
   openers.push(document.activeElement);
   const bd = document.createElement("div"); bd.className = "drawer-backdrop"; bd.id = "drawerBackdrop";
   const el = document.createElement("div"); el.className = "drawer"; el.id = "drawer";
@@ -79,6 +79,37 @@ export function openDrawer({ title, body }) {
   el.querySelector("[data-close]").focus();
   return el;
 }
+// A sheet shows an element that already lives in the page (the case summary column, on a phone)
+// as a dialog: the element is moved into the overlay root and put back where it was on close, so
+// its fields, listeners and ids are untouched. Focus moves in, Tab is trapped, Escape closes, the
+// page behind is inert and focus returns to the opener.
+let sheetHome = null;
+export function openSheet({ title, el }) {
+  closeSheet({ restore: false }); closeDrawer({ restore: false }); closeModal({ restore: false });
+  openers.push(document.activeElement);
+  sheetHome = document.createComment("sheet"); el.before(sheetHome);
+  const bd = document.createElement("div"); bd.className = "sheet-backdrop"; bd.id = "sheetBackdrop";
+  const box = document.createElement("div"); box.className = "sheet"; box.id = "sheet";
+  box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "sheetTitle");
+  box.innerHTML = h`<div class="sheet-head"><h2 id="sheetTitle">${title}</h2><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Close ${title}">✕</button></div><div class="sheet-body"></div>`;
+  box.querySelector(".sheet-body").appendChild(el);
+  bd.addEventListener("click", () => closeSheet());
+  box.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSheet(); });
+  trapFocus(box, closeSheet);
+  root().append(bd, box);
+  syncInert();
+  box.querySelector("[data-close]").focus();
+  return box;
+}
+export function closeSheet({ restore = true } = {}) {
+  const box = $("#sheet"); if (!box) return;
+  const el = box.querySelector(".sheet-body").firstElementChild;
+  if (el && sheetHome?.parentNode) sheetHome.replaceWith(el);
+  sheetHome = null;
+  box.remove(); $("#sheetBackdrop")?.remove(); syncInert();
+  if (restore) restoreFocus(); else openers.pop();
+}
+
 export function closeDrawer({ restore = true } = {}) {
   const d = $("#drawer"); if (!d) return;
   d.remove(); $("#drawerBackdrop")?.remove(); syncInert();

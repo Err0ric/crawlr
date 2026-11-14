@@ -172,7 +172,7 @@ ok(L.classifyLink({ url: "https://example.org/find?q=jdoe@example.org", want: "e
   ok(link("https://example.org/?a=1&b=<2>", "<b>x</b>").includes("&lt;b&gt;x&lt;/b&gt;") && !link("https://example.org/\"onmouseover=\"x", "y").includes('"onmouseover="x"'), "text and URLs are escaped");
   ok(/class="lk btn btn-sm"/.test(link("https://example.org/a", "Open", "btn btn-sm")), "a class can be added");
   const labelled = evWhat({ what: "445/tcp", url: "https://internetdb.shodan.io/1.2.3.4", link_kind: "evidence", link_label: "InternetDB record", meta: "" });
-  ok(/^445\/tcp <a href="https:\/\/internetdb\.shodan\.io\/1\.2\.3\.4"[^>]*class="lk ev-link"[^>]*>InternetDB record/.test(labelled), "an evidence link is a labelled anchor after the text");
+  ok(/^<span class="ev-title">445\/tcp <a href="https:\/\/internetdb\.shodan\.io\/1\.2\.3\.4"[^>]*class="lk ev-link"[^>]*>InternetDB record/.test(labelled), "an evidence link is a labelled anchor after the text");
 }
 
 // ---- the link check: each state ----------------------------------------------------------------
