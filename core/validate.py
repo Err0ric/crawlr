@@ -9,6 +9,7 @@ here so every module sees the same value.
 
 import ipaddress
 import re
+import unicodedata
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException
@@ -44,6 +45,37 @@ def email(value: str) -> str:
     v = (value or "").strip()
     if len(v) > 254 or not EMAIL_RE.fullmatch(v) or v.startswith("-") or ".." in v:
         raise _bad("Enter a valid email address.")
+    return v
+
+
+# "example.com" and "first.last" are made of name characters but are not names.
+_DOTTED_RE = re.compile(r"\w{2,}\.\w{2,}")
+_NAME_PUNCT = "-'."
+PERSON_NAME_MAX = 80
+
+
+def person_name(value: str) -> str:
+    """A person's name as typed: letters from any script, spaces, hyphens, apostrophes and
+    periods. Returned NFC-normalized with runs of spaces collapsed. Anything that looks like
+    a URL, an email address, a handle or a number is refused, so this never reaches a source
+    as a search operator."""
+    msg = "Enter a name of 2 to 80 letters. Spaces, hyphens, apostrophes and periods are allowed."
+    v = unicodedata.normalize("NFC", value or "")
+    v = v.replace("\u2019", "'").replace("\u02bc", "'")
+    if any(unicodedata.category(ch) == "Cc" for ch in v):
+        raise _bad(msg)
+    v = " ".join("".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in v).split())
+    if not 2 <= len(v) <= PERSON_NAME_MAX:
+        raise _bad(msg)
+    for ch in v:
+        # Combining marks are part of the letters in many scripts (Devanagari, Thai, Arabic).
+        if not (ch == " " or ch in _NAME_PUNCT or ch.isalpha() or unicodedata.category(ch) in ("Mn", "Mc")):
+            raise _bad(msg)
+    if sum(ch.isalpha() for ch in v) < 2:
+        raise _bad(msg)
+    for token in v.split(" "):
+        if token.startswith("-") or not any(ch.isalpha() for ch in token) or _DOTTED_RE.search(token):
+            raise _bad(msg)
     return v
 
 
