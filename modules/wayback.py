@@ -101,7 +101,7 @@ async def run_wayback(domain: str) -> dict:
             resp = await client.get(
                 "https://web.archive.org/cdx/search/cdx",
                 params={"url": f"{domain}/*", "output": "json", "fl": "original", "collapse": "urlkey", "limit": 4000},
-                timeout=20,
+                timeout=12,   # best effort: a slow archive must not hold up the run
             )
             if resp.status_code == 200:
                 rows = resp.json()

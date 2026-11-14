@@ -10,6 +10,7 @@ import asyncio
 
 import dns.resolver
 
+from core.dnspool import dns_thread
 from core.validate import registrable_domain
 
 MAX_CANDIDATES = 260
@@ -86,11 +87,8 @@ def _lookup(cand: str) -> dict | None:
 
 async def run_lookalikes(domain: str) -> dict:
     candidates = generate(domain)
-    sem = asyncio.Semaphore(40)
-
     async def one(c):
-        async with sem:
-            return await asyncio.to_thread(_lookup, c)
+        return await dns_thread(_lookup, c)
 
     found = []
     for cand, res in zip(candidates, await asyncio.gather(*(one(c) for c in candidates))):

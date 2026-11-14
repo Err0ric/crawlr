@@ -10,6 +10,7 @@ import secrets
 import dns.resolver
 import dns.reversename
 
+from core.dnspool import dns_thread
 from core.validate import registrable_domain
 
 
@@ -47,7 +48,7 @@ def parse_caa(records: list[str]) -> dict:
 
 
 async def run_dns_depth(domain: str) -> dict:
-    th = asyncio.to_thread
+    th = dns_thread
     apex = registrable_domain(domain)
     probe = f"crawlr-{secrets.token_hex(6)}.{domain}"
     caa, caa_apex, dnskey, ds, wildcard, a, aaaa, ns = await asyncio.gather(

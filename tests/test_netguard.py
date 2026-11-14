@@ -13,6 +13,7 @@ def run(coro):
 
 
 def fake_dns(monkeypatch, table: dict[str, list[str]]):
+    monkeypatch.setattr(ng, "_public_dns_blocking", lambda host: [])
     async def getaddrinfo(self, host, port, **kw):
         if host not in table:
             raise socket.gaierror("nope")
@@ -203,3 +204,23 @@ def test_ip_literal_targets_work(monkeypatch):
     assert run(resolve_public_ip("8.8.8.8")) == "8.8.8.8"
     with pytest.raises(BlockedTarget):
         run(resolve_public_ip("192.168.0.1"))
+
+
+def test_system_resolver_failure_falls_back_to_public_dns(monkeypatch):
+    fake_dns(monkeypatch, {})                                        # system resolver knows nothing
+    monkeypatch.setattr(ng, "_public_dns_blocking", lambda host: {"ok.example.com": ["93.184.216.34"], "bad.example.com": ["10.0.0.7"]}.get(host, []))
+    assert run(resolve_public("ok.example.com")) == ["93.184.216.34"]
+    with pytest.raises(BlockedTarget):                               # the fallback answer is vetted too
+        run(resolve_public("bad.example.com"))
+    with pytest.raises(LookupError):
+        run(resolve_public("nope.example.com"))
+
+
+def test_bulk_dns_uses_the_shared_bounded_pool():
+    import inspect
+    from core import dnspool
+    from modules import dns_depth, dns_lookup, email_posture, lookalikes, subdomain_enum, takeover
+    assert 1 <= dnspool.DNS_POOL_SIZE <= 64
+    for mod in (dns_depth, dns_lookup, email_posture, lookalikes, subdomain_enum, takeover):
+        src = inspect.getsource(mod)
+        assert "dns_thread" in src and "asyncio.to_thread" not in src, mod.__name__

@@ -230,11 +230,11 @@ async def wellknown_scan(req: DomainRequest):
     return await run_wellknown(validate.host(req.domain))
 
 
-@router.post("/summarize")
-async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+def recon_prompt(req: ReconAnalyzeRequest) -> str:
+    """The full prompt for a recon summary. Shared by the AI endpoint and the keyless copy path."""
 
     prompt_parts = [f"Target domain/IP: {req.target}\n"]
-    failed = [name for name in ("dns", "whois", "ssl", "headers", "subdomains", "asn", "portscan", "asn_detail", "shodan")
+    failed = [name for name in ("dns", "whois", "ssl", "headers", "subdomains", "asn", "portscan", "asn_detail", "shodan", "email_posture", "dns_depth", "takeover", "lookalikes", "wellknown")
               if isinstance(getattr(req, name), dict) and getattr(req, name).get("error")]
     if failed:
         prompt_parts.append(
@@ -359,7 +359,11 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
         if ports:
             port_strs = []
             for p in ports[:15]:
-                svc = f"{p['port']}/{p.get('transport','tcp')}"
+                # InternetDB lists bare port numbers; full Shodan lists objects with a product.
+                if not isinstance(p, dict):
+                    port_strs.append(f"{p}/tcp")
+                    continue
+                svc = f"{p.get('port', '?')}/{p.get('transport','tcp')}"
                 if p.get("product"):
                     svc += f" ({p['product']}"
                     if p.get("version"):
@@ -376,43 +380,49 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
     prompt_parts.extend(extra_recon_lines(req))
     recon_data = "\n".join(prompt_parts)
 
+    return (
+        "You are an infrastructure security analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
+        '{\n'
+        '  "short_summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"],\n'
+        '  "full_report": "markdown string"\n'
+        '}\n\n'
+        "**short_summary**: Exactly 4 bullet strings. STRICT RULES:\n"
+        "- Each bullet starts with a category label followed by a dash (e.g. 'Missing Headers –', 'Open Ports –', 'SSL Risk –')\n"
+        "- Maximum 15 words per bullet\n"
+        "- Every bullet MUST reference specific data from the scan (actual port numbers, header names, subdomain names, CVE IDs, IP addresses)\n"
+        "- NO generic observations. Bad: 'Several security headers missing'. Good: 'Missing Headers – no CSP, X-Frame-Options, or HSTS detected'\n"
+        "- Plain text only, no markdown\n\n"
+        "**full_report**: A markdown string with this structure:\n\n"
+        "## Attack Surface Summary\n"
+        "Brief overview of the target's external footprint, hosting, and exposure.\n\n"
+        "## Key Findings\n"
+        "→ Misconfigurations, missing security headers, expiring certs, open sensitive ports\n"
+        "→ Notable subdomains (dev, staging, admin panels)\n"
+        "→ Technology stack inferences, hosting provider and CDN details\n"
+        "→ Information leakage from headers, DNS, or WHOIS\n\n"
+        "## Recommendations\n"
+        "→ 3-5 specific actionable next steps for further reconnaissance or testing\n"
+        "→ Suggest tools and techniques for each step\n\n"
+        "Use **bold** for emphasis in the full_report. Use → prefix for action items. "
+        "Keep it concise and actionable.\n\n"
+        f"Recon data:\n{recon_data}"
+    )
+
+
+@router.post("/prompt")
+async def recon_prompt_only(req: ReconAnalyzeRequest):
+    """Returns the prompt without calling any model. No key and no quota."""
+    return {"prompt": recon_prompt(req)}
+
+
+@router.post("/summarize")
+async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
     t0 = time.time()
 
     ai = await run_ai(
         request, x_api_key, x_ai_provider, "analysis",
         max_tokens=2048,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    "You are an infrastructure security analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
-                    '{\n'
-                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"],\n'
-                    '  "full_report": "markdown string"\n'
-                    '}\n\n'
-                    "**short_summary**: Exactly 4 bullet strings. STRICT RULES:\n"
-                    "- Each bullet starts with a category label followed by a dash (e.g. 'Missing Headers –', 'Open Ports –', 'SSL Risk –')\n"
-                    "- Maximum 15 words per bullet\n"
-                    "- Every bullet MUST reference specific data from the scan (actual port numbers, header names, subdomain names, CVE IDs, IP addresses)\n"
-                    "- NO generic observations. Bad: 'Several security headers missing'. Good: 'Missing Headers – no CSP, X-Frame-Options, or HSTS detected'\n"
-                    "- Plain text only, no markdown\n\n"
-                    "**full_report**: A markdown string with this structure:\n\n"
-                    "## Attack Surface Summary\n"
-                    "Brief overview of the target's external footprint, hosting, and exposure.\n\n"
-                    "## Key Findings\n"
-                    "→ Misconfigurations, missing security headers, expiring certs, open sensitive ports\n"
-                    "→ Notable subdomains (dev, staging, admin panels)\n"
-                    "→ Technology stack inferences, hosting provider and CDN details\n"
-                    "→ Information leakage from headers, DNS, or WHOIS\n\n"
-                    "## Recommendations\n"
-                    "→ 3-5 specific actionable next steps for further reconnaissance or testing\n"
-                    "→ Suggest tools and techniques for each step\n\n"
-                    "Use **bold** for emphasis in the full_report. Use → prefix for action items. "
-                    "Keep it concise and actionable.\n\n"
-                    f"Recon data:\n{recon_data}"
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": recon_prompt(req)}],
     )
 
     elapsed = round(time.time() - t0, 1)

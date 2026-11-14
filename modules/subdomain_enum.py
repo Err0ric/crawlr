@@ -3,6 +3,7 @@ import dns.resolver
 import re
 from datetime import datetime, timezone
 
+from core.dnspool import dns_thread
 from modules.crtsh import fetch_crtsh
 from core.logging import get_logger
 
@@ -92,8 +93,6 @@ async def run_subdomains(domain: str) -> dict:
     resolver.timeout = 3
     resolver.lifetime = 3
 
-    sem = asyncio.Semaphore(20)
-
     def _lookup(fqdn: str) -> list[str]:
         try:
             return [str(r) for r in resolver.resolve(fqdn, "A")]
@@ -101,9 +100,8 @@ async def run_subdomains(domain: str) -> dict:
             return []
 
     async def lookup(fqdn: str) -> list[str]:
-        # dnspython is blocking: threads keep the event loop free, the semaphore keeps it polite.
-        async with sem:
-            return await asyncio.to_thread(_lookup, fqdn)
+        # dnspython is blocking: the shared DNS pool keeps the event loop free and the volume polite.
+        return await dns_thread(_lookup, fqdn)
 
     found = []
     seen_fqdns = set()

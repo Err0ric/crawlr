@@ -11,6 +11,8 @@ import re
 
 import dns.resolver
 
+from core.dnspool import dns_thread
+
 MAX_SPF_LOOKUPS = 10
 # Selectors used by the large mail providers and common defaults. DKIM selectors cannot be
 # listed from DNS, so a miss here does not prove the domain has no DKIM.
@@ -168,7 +170,7 @@ def _dkim_lookup(domain: str, selector: str) -> dict:
 
 
 async def run_email_posture(domain: str) -> dict:
-    th = asyncio.to_thread
+    th = dns_thread
     spf_all, dmarc_all, mx, sts, rpt, bimi, *dkim = await asyncio.gather(
         th(_txt, domain), th(_txt, f"_dmarc.{domain}"), th(_mx, domain), th(_txt, f"_mta-sts.{domain}"),
         th(_txt, f"_smtp._tls.{domain}"), th(_txt, f"default._bimi.{domain}"),

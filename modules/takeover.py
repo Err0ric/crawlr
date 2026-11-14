@@ -16,6 +16,8 @@ import asyncio
 
 import dns.resolver
 
+from core.dnspool import dns_thread
+
 # CNAME suffix -> service. Services where an unclaimed name can be registered by anyone.
 SERVICES = {
     "github.io": "GitHub Pages", "herokuapp.com": "Heroku", "herokudns.com": "Heroku", "s3.amazonaws.com": "Amazon S3",
@@ -73,11 +75,8 @@ async def run_takeover(domain: str, hosts: list[str]) -> dict:
         if (h == domain or h.endswith("." + domain)) and h not in wanted:
             wanted.append(h)
     wanted = wanted[:MAX_HOSTS]
-    sem = asyncio.Semaphore(25)
-
     async def one(h):
-        async with sem:
-            return await asyncio.to_thread(_check, h)
+        return await dns_thread(_check, h)
 
     hits = [x for x in await asyncio.gather(*(one(h) for h in wanted)) if x]
     hits.sort(key=lambda x: (x["status"] != "dangling", x["host"]))

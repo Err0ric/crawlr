@@ -3,6 +3,8 @@ import ipaddress
 
 import dns.resolver
 
+from core.dnspool import dns_thread
+
 RECORD_TYPES = ["A", "AAAA", "MX", "NS", "TXT", "CNAME", "SOA"]
 
 # Cloudflare IPv4 ranges (from https://www.cloudflare.com/ips-v4/)
@@ -38,7 +40,7 @@ async def run_dns(domain: str) -> dict:
             return []
 
     # dnspython is blocking: run the seven lookups side by side in threads.
-    answers = await asyncio.gather(*(asyncio.to_thread(query, t) for t in RECORD_TYPES))
+    answers = await asyncio.gather(*(dns_thread(query, t) for t in RECORD_TYPES))
     for rtype, records in zip(RECORD_TYPES, answers):
         if records:
             results[rtype] = records
