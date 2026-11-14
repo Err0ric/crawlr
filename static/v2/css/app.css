@@ -796,7 +796,7 @@ input[type=search]::-webkit-search-cancel-button, input[type=search]::-webkit-se
     color-scheme: light;
   }
   body { padding: 0 !important; font-size: 11pt; }
-  .topbar, .tabbar, .rail, .rail-toggle, .toast, #overlays, .skip, .runlog, .tabs, .btn, .ev-check, .notes, .jump, #landing, .tool { display: none !important; }
+  .topbar, .tabbar, .rail, .rail-toggle, .toast, #overlays, .skip, .runlog, .tabs, .btn, .ev-check, .notes, .jump, .lg-detail, .ai-pitch, .ai-cost, #landing, .tool { display: none !important; }
   .bench { display: block; min-height: 0; }
   .bench .main { display: flex !important; padding: 0; }
   .aside { position: static; height: auto; overflow: visible; border: 0; padding: 16px 0 0; display: block; }
