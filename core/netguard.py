@@ -77,6 +77,9 @@ async def resolve_public(host: str, port: int = 443) -> list[str]:
         # The system resolver can fail under load or on a flaky network. Ask public DNS once
         # before reporting the name as unresolvable. The answer goes through the same checks.
         addrs = await _public_dns(host)
+        if not addrs:
+            await asyncio.sleep(1.0)
+            addrs = await _public_dns(host)
     if not addrs:
         raise LookupError(f"{host} does not resolve")
     # One private answer poisons the whole set: mixed answers are how rebinding hides.

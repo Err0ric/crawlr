@@ -14,6 +14,8 @@ def run(coro):
 
 def fake_dns(monkeypatch, table: dict[str, list[str]]):
     monkeypatch.setattr(ng, "_public_dns_blocking", lambda host: [])
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(ng.asyncio, "sleep", lambda s: real_sleep(0))
     async def getaddrinfo(self, host, port, **kw):
         if host not in table:
             raise socket.gaierror("nope")
@@ -224,3 +226,43 @@ def test_bulk_dns_uses_the_shared_bounded_pool():
     for mod in (dns_depth, dns_lookup, email_posture, lookalikes, subdomain_enum, takeover):
         src = inspect.getsource(mod)
         assert "dns_thread" in src and "asyncio.to_thread" not in src, mod.__name__
+
+
+def test_resolution_is_retried_once(monkeypatch):
+    import dns.resolver
+    import modules.resolver as resolver
+    import modules.whois_lookup as wl
+    monkeypatch.setattr(resolver, "RETRY_PAUSE", 0)
+    monkeypatch.setattr(wl, "RETRY_PAUSE", 0)
+    calls = []
+
+    def flaky(name):
+        calls.append(name)
+        if len(calls) == 1:
+            raise dns.resolver.NXDOMAIN("blip")
+        return "93.184.216.34"
+
+    monkeypatch.setattr(resolver, "_resolve_blocking", flaky)
+    assert run(resolver.resolve_domain("example.com")) == "93.184.216.34" and len(calls) == 2
+
+    def always(name):
+        raise dns.resolver.NXDOMAIN("gone")
+
+    monkeypatch.setattr(resolver, "_resolve_blocking", always)
+    with pytest.raises(dns.resolver.NXDOMAIN):                      # a real failure still fails, after one retry
+        run(resolver.resolve_domain("nope.example.com"))
+
+    tries = []
+
+    class Record(dict):
+        registrar = "R"; creation_date = "2001-01-01"; expiration_date = "2030-01-01"; updated_date = ""; name_servers = []; status = []
+
+    def flaky_whois(domain):
+        tries.append(domain)
+        if len(tries) == 1:
+            raise socket.gaierror(8, "nodename nor servname provided, or not known")
+        return Record()
+
+    monkeypatch.setattr(wl.whois, "whois", flaky_whois)
+    out = run(wl.run_whois("example.com"))
+    assert out["found"] is True and out["registrar"] == "R" and len(tries) == 2

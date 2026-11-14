@@ -22,7 +22,7 @@ MESSAGES = {
     "rate_limited": "Rate limited by the source. Try again in a few minutes.",
     "timeout": "The source took too long to answer.",
     "unreachable": "Could not connect to the source.",
-    "dns": "That name does not resolve.",
+    "dns": "A name lookup failed. Check the spelling, or try again: DNS may be having trouble.",
     "tls": "The TLS handshake failed.",
     "blocked_target": "CrawlR only connects to public internet hosts.",
     "auth": "The source rejected the key. Check it in Settings.",

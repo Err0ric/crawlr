@@ -1,8 +1,11 @@
 import asyncio
+import socket
 
 import whois
 
 from core.errors import error_fields
+
+RETRY_PAUSE = 1.5
 
 PRIVACY_KEYWORDS = [
     "privacy", "redacted", "whoisguard", "withheld", "protected",
@@ -27,7 +30,12 @@ def _detect_privacy(w) -> bool:
 async def run_whois(domain: str) -> dict:
     try:
         # python-whois opens a blocking socket; keep it off the event loop.
-        w = await asyncio.wait_for(asyncio.to_thread(whois.whois, domain), timeout=20)
+        try:
+            w = await asyncio.wait_for(asyncio.to_thread(whois.whois, domain), timeout=20)
+        except (socket.gaierror, ConnectionError, OSError):
+            # A resolver or network blip, common right after a heavy scan. Try once more.
+            await asyncio.sleep(RETRY_PAUSE)
+            w = await asyncio.wait_for(asyncio.to_thread(whois.whois, domain), timeout=20)
         def first(val):
             if isinstance(val, list):
                 return str(val[0]) if val else ""
