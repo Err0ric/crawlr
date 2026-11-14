@@ -25,6 +25,8 @@ for f in static/v2/js/*.js; do node --check "$f"; done
 node tests/js/detect.test.mjs
 node tests/js/contrast.test.mjs
 node tests/js/brief.test.mjs
+node tests/js/timeline.test.mjs
+node tests/js/casefile.test.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally to match `runtime.txt`.
@@ -39,7 +41,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 | `core/` | Shared helpers: outbound request guard, input validation, error mapping, the AI call path, house AI key and quotas, logging, subprocess limits |
 | `middleware/` | Request ID and access log, security headers, body size limit, rate limiting, client IP |
 | `static/v2/` | The UI: vanilla ES modules, no build step. Self-hosted fonts in `fonts/`, d3 in `vendor/` |
-| `tests/` | pytest suite plus `tests/js` for the target detector, the color contrast check and the brief rules |
+| `tests/` | pytest suite plus `tests/js` for the target detector, the color contrast check, the brief rules, the recon timeline and case files |
 
 ## Rules for working in this repo
 
@@ -50,6 +52,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - Frontend: every remote value goes through `h`, `esc` or `link` from `static/v2/js/core.js`. Never write source data with raw `innerHTML`. No inline scripts or event handlers: the CSP is `script-src 'self'`.
 - Backend: any module that connects to a user-supplied host or URL goes through `core/netguard.py` (`safe_fetch` or `resolve_public_ip`). Usernames, emails and hosts go through `core/validate.py` before they reach a command line or an upstream URL. Failures are returned with `core.errors.error_fields`, never `str(exception)`.
 - AI endpoints call `core.ai_call.run_ai`. AI never runs without an explicit click in the UI.
+- A case file is outside data. It goes through `parseCaseFile` in `static/v2/js/casefile.js` before anything is shown or stored.
 - A failed source is not a negative result. Keep "failed", "not found" and "found" as three separate states end to end.
 - Do not log target values (usernames, emails, domains) on the server.
 - Bulk DNS work (more than a handful of queries) goes through `core.dnspool.dns_thread`, not `asyncio.to_thread`.

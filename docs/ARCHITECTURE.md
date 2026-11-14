@@ -119,6 +119,8 @@ Three ways to get a written report, none automatic:
 | `renderers.js` | Per-source cards for the "By source" section |
 | `workbench.js` | Pieces shared by every mode: run log with progress, tiered ledger, facts panel, failed-source notice, run diff, result tabs, brief renderer, HTML export |
 | `brief.js` | "At a glance": the rules-based written brief for Investigate and Recon. No model |
+| `timeline.js` | Recon timeline: dated facts from WHOIS, certificate logs, TLS, the Wayback Machine, security.txt and the ASN registry, in order. Pure functions, no DOM |
+| `casefile.js` | Portable case files: `buildCaseFile` for export, `parseCaseFile` to check an opened file (size, shape, target type, known keys) before it becomes a History entry |
 | `report.js` | Investigation report: dossier card plus one scrolling report |
 | `ai.js` | AI response normalization, the markdown renderer used by every report, and the AI panel's start state (one-click analysis, copy prompt, paste reply) |
 | `tools.js` | Headers analyzer, dork builder, decoders (Base64, URL, hash, VIN) |

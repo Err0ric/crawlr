@@ -194,11 +194,12 @@ Effort: S is under a day, M is a few days, L is a week or more. "Who has it" lis
 
 ## 4. Ranked feature proposals
 
-Status (2026-11-13, after the recon tools and redesign PR):
+Status (2026-11-14, after the recon tools and redesign PR):
 
-- Built: 1 (re-run diff), 2 (print and HTML export), 3 (graph pivots, infrastructure nodes only, one click per run), 5 (certificate history and one shared crt.sh query).
-- Partly built: 4 (confirmed versus possible, failed as its own state, "reported by 2 tools"; no per-source reliability table yet) and 6 (the "At a glance" brief applies a first set of rules, including the outlier-network and certificate-names-not-resolving rules proposed here; it also flags when profiles under one handle carry different names, as a caution against merging people, not as a link between them).
-- Not built: 7 (WhatsMyName, needs owner approval as a new source), 8 (portable case files), 9 (timeline).
+- Built: 1 (re-run diff), 2 (print and HTML export), 3 (graph pivots, infrastructure nodes only, one click per run), 5 (certificate history and one shared crt.sh query), 8 (portable case files, opened from History and checked before use; not encrypted yet), 9 (timeline, for domain, IP and ASN cases only).
+- Partly built: 4 (confirmed versus possible, failed as its own state, "reported by 2 tools", and every source labelled direct, index or heuristic in the Sources panel; the ledger is not reordered by it) and 6 (the "At a glance" brief applies a first set of rules, including the outlier-network and certificate-names-not-resolving rules proposed here; it also flags when profiles under one handle carry different names, as a caution against merging people, not as a link between them).
+- Not built: 7 (WhatsMyName: a new third-party source, and the project was archived on 2026-11-09, so it is not planned).
+- From the checklist in section 5: an optional purpose line per case that prints on exports, and the collection time on every export.
 - Added beyond this list, all from DNS or sources already in use: email security posture, DNS hardening, subdomain takeover candidates, lookalike domains, published files (security.txt, robots.txt, favicon hash), archived path mining, and a keyless path for AI reports.
 
 ### 1. Re-run diff against the previous local case (build first)

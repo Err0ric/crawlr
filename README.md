@@ -69,6 +69,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Shodan | Banners, org, geo | Your key |
 | Wayback, redirects, tech fingerprint | History, archived paths worth a look, redirect chain, detected stack | None |
 | At a glance | Rules-based brief of the run, no AI | None |
+| Timeline | Every dated fact from the run in order: registration, first certificates, archive copies, upcoming expiries | None |
 | AI summary | Attack-surface summary and next steps | Free tier, your key, or no key (copy the prompt) |
 
 ## Free tier and your own keys
@@ -107,6 +108,8 @@ for f in static/v2/js/*.js; do node --check "$f"; done
 node tests/js/detect.test.mjs
 node tests/js/contrast.test.mjs
 node tests/js/brief.test.mjs
+node tests/js/timeline.test.mjs
+node tests/js/casefile.test.mjs
 ```
 
 ## How it is built
@@ -116,7 +119,9 @@ FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and 
 ## Privacy
 
 - No accounts, no analytics, no tracking.
-- Investigation history and notes stay in your browser. Exports (Markdown, JSON, HTML, print to PDF) are built in the browser too.
+- Investigation history and notes stay in your browser. Exports (Markdown, HTML, print to PDF and a JSON case file) are built in the browser too.
+- A case file opens on another machine from History. It is read in the browser and never uploaded.
+- Each case has an optional purpose line that is saved with it and printed on every export.
 - The server keeps no record of what you look up: targets are not written to its logs. Short-lived in-memory caches (AI answers, GitHub profiles) are lost on restart.
 - Active techniques that connect to the target's own systems (the port scan, profile scraping for deep dive) are off by default and labeled.
 
@@ -132,10 +137,8 @@ Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
 Ranked proposals with sources are in [docs/research.md](docs/research.md). Next candidates:
 
-- Per-source reliability labels
 - Client-side correlation rules beyond the current brief
-- A timeline view for domain cases
-- Portable case files (export on one machine, open read-only on another)
+- Passphrase-encrypted case files
 - Case mode for Trace Labs competitions
 
 ## License and author

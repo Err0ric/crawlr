@@ -65,11 +65,14 @@ Results first. Each workbench is:
 case bar   [ target ............ ] [ Run ] [ Sources 4 of 5 ]      sticky under the header
            detected type, or a choice of types
 main       case title, run log strip, "At a glance", report        | summary column (300):
-           tabs: Findings | By source | (Topology in Recon)        | What we know, AI, Notes
+           tabs: Findings | By source | (Timeline, Topology)      | What we know, AI, Purpose, Notes
 ```
 
 - The **case bar** replaced the left rail. The target and Run are always one glance away, and results get the width the rail used. Sources are a setting people change rarely, so they sit behind a button that shows how many are on. The panel is a plain disclosure: Escape and a click outside close it, and focus returns to the button.
 - **Tabs** replaced the long page where source cards sat under the ledger. Tab labels carry counts.
+- **Timeline** (Recon only) lists every dated fact a source returned, oldest first, with a Today row dividing what happened from what is due. Each row names its source and says how long ago or how soon. It shows only reported dates, and it is not built for person targets: a dated history of someone's accounts would be a profile.
+- **Sources panel.** Every source carries one of three words for how it knows: `direct` (asks the system that holds the answer), `index` (a third party's copy, which can be out of date) or `heuristic` (inferred from how a site responds, so a hit is a lead). The legend sits at the top of the panel. Heuristic uses a dashed border so the difference is not carried by color.
+- **Purpose** is one optional line above Notes: why the lookup is being done. It is saved with the case and printed on every export.
 - Either workbench accepts any target. A domain typed in Investigate opens in Recon, and a username typed in Recon opens in Investigate, with a toast saying so. Choosing a type by hand ("search this domain as a username") turns the routing off for that run.
 - Under 1180px the summary column drops beneath the results.
 - Under 760px the mode links move to a fixed bottom tab bar, History and Settings become icon buttons, the case bar scrolls with the page, and the sources panel becomes a bottom sheet above the tab bar.
@@ -111,5 +114,9 @@ Pasting an API key into a website is a lot to ask, so the panel always offers a 
 - Links inside text are underlined, so they are not identified by color alone.
 
 ## Print and export
+
+Purpose, notes and the collection time are mirrored into a `.print-only` block, because inputs print badly and are stripped from the HTML export. The timeline prints under its own heading.
+
+The JSON export is a **case file**. "Open a case file" in History reads one back in the browser (never uploaded), checks it and adds it to History marked "from a case file". A file that is refused gets a dialog saying why, and History stays open.
 
 "Print or PDF" uses a print stylesheet: light, no chrome, every tier expanded, link URLs printed after their text. The HTML export is the same markup in one self-contained file. Both carry a line saying findings can be wrong and possible items are leads.
