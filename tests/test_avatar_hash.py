@@ -394,3 +394,11 @@ def test_route_validates_the_request(monkeypatch):
         assert c.post("/api/recon/avatar-hash", json={"images": [{"id": "x", "url": HOST + "/" + "a" * 600}]}).status_code == 422
         assert c.post("/api/recon/avatar-hash", json={"images": [{"url": f"{HOST}/a.png"}]}).status_code == 422
         assert c.post("/api/recon/avatar-hash", json={}).status_code == 422
+
+
+def test_pictures_on_adult_or_dating_hosts_are_never_fetched(monkeypatch):
+    calls = []
+    serve(monkeypatch, {}, calls)
+    out = run([{"id": "a", "url": "https://cdn.fansly.com/someone/avatar.jpg"}, {"id": "b", "url": "https://www.pornhub.com/x.png"}])
+    assert [r.get("error_code") for r in out] == ["adult_site", "adult_site"]
+    assert calls == []

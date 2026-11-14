@@ -23,6 +23,7 @@ import httpx
 from PIL import Image
 
 from core.errors import classify_status, error_fields
+from core.adult_sites import is_adult_site
 from core.netguard import safe_fetch
 
 MAX_IMAGES = 30
@@ -276,6 +277,9 @@ def hamming(a: str, b: str) -> int:
 # ---- entry point -------------------------------------------------------------------
 
 async def _one(client: httpx.AsyncClient, sem: asyncio.Semaphore, url: str) -> dict:
+    # Pictures from adult and dating sites are never fetched, whatever the caller sends.
+    if is_adult_site(url=url):
+        return error_fields(code="adult_site", message="CrawlR does not fetch pictures from adult or dating sites.", detail="adult_site")
     cached = _cache_get(url)
     if cached is not None:
         return cached

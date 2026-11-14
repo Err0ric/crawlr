@@ -300,10 +300,10 @@ def test_run_reports_every_state_in_the_contract_shape(monkeypatch):
     }), calls)
     out = asyncio.run(pc.run_platform_check("torvalds"))
     rows = by_platform(out)
-    assert list(rows) == ["Facebook", "Instagram", "X", "Threads", "TikTok", "LinkedIn", "OnlyFans"]
+    assert list(rows) == ["Facebook", "Instagram", "X", "Threads", "TikTok", "LinkedIn"]
     assert {p: r["state"] for p, r in rows.items()} == {
         "Facebook": "unknown", "Instagram": "found", "X": "found", "Threads": "blocked",
-        "TikTok": "not_found", "LinkedIn": "blocked", "OnlyFans": "manual"}
+        "TikTok": "not_found", "LinkedIn": "blocked"}
     assert out["username"] == "torvalds" and out["total"] == 2 and out["checked"] == 6
     for r in out["results"]:
         assert {"platform", "url", "state", "found", "evidence", "display_name", "public_url"} <= set(r)
@@ -311,8 +311,9 @@ def test_run_reports_every_state_in_the_contract_shape(monkeypatch):
         assert r["evidence"] and r["public_url"] is True
     assert rows["Instagram"]["url"] == "https://www.instagram.com/torvalds/" and rows["Instagram"]["display_name"] == "Sam Example"
     assert rows["Threads"]["evidence"] == "login wall"
-    assert rows["OnlyFans"]["manual"] is True and rows["OnlyFans"]["url"] == "https://onlyfans.com/torvalds"
-    assert not any("onlyfans" in c for c in calls)            # manual means never fetched
+    # no adult site in an ordinary run: not as a row, not as a link, not as a request
+    assert "onlyfans" not in str(out).lower() and not any("onlyfans" in c for c in calls)
+    assert not any(r.get("manual") or r["state"] == "manual" for r in out["results"])
 
 
 def test_every_request_is_a_get_with_navigation_headers(monkeypatch):
@@ -386,7 +387,7 @@ def test_sherlock_sites_are_skipped(monkeypatch):
     calls = []
     fake_sites(monkeypatch, site_responder({}), calls)
     out = asyncio.run(pc.run_platform_check("torvalds", ["Facebook", "Twitter", "threads", "GitHub"]))
-    assert [r["platform"] for r in out["results"]] == ["Instagram", "TikTok", "LinkedIn", "OnlyFans"]
+    assert [r["platform"] for r in out["results"]] == ["Instagram", "TikTok", "LinkedIn"]
     assert out["checked"] == 3
     assert not any(h in c for c in calls for h in ("facebook.com", "x.com", "threads.com"))
     # "X" covers the X row as well
@@ -434,9 +435,14 @@ def test_platform_check_endpoint(c, monkeypatch):
     rows = by_platform(body)
     assert rows["Instagram"]["state"] == "found" and rows["Instagram"]["found"] is True
     assert rows["Instagram"]["display_name"] == "Eric Henderson" and body["total"] == 1
-    assert "Facebook" not in rows and rows["OnlyFans"]["state"] == "manual"
+    assert "Facebook" not in rows and "OnlyFans" not in rows
 
 
 def test_no_adult_platforms_were_added():
-    assert [p["name"] for p in pc.MANUAL_PLATFORMS] == ["OnlyFans"]
+    # OnlyFans used to be a manual link here. Adult and dating sites live only in
+    # modules/adult_check.py, behind the opt-in.
+    from modules import adult_check
+    assert pc.MANUAL_PLATFORMS == []
+    hosts = {adult_check._site(r["url"]) for r in pc.RULES}
+    assert not (hosts & adult_check.HOSTS) and "onlyfans.com" in adult_check.HOSTS
     assert [r["name"] for r in pc.RULES] == ["Facebook", "Instagram", "X", "Threads", "TikTok", "LinkedIn"]

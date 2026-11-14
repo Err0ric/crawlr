@@ -142,33 +142,6 @@ async def _scrape_twitch(username: str, client: httpx.AsyncClient) -> dict | Non
         return None
 
 
-async def _scrape_onlyfans(username: str, client: httpx.AsyncClient) -> dict | None:
-    try:
-        r = await client.get(
-            f"https://onlyfans.com/{username}",
-            headers=HEADERS,
-            follow_redirects=True,
-        )
-        if r.status_code != 200:
-            return None
-        soup = BeautifulSoup(r.text, "html.parser")
-        og_title = soup.find("meta", property="og:title")
-        og_desc = soup.find("meta", property="og:description")
-        name = og_title["content"] if og_title and og_title.get("content") else ""
-        desc = og_desc["content"] if og_desc and og_desc.get("content") else ""
-        # Filter generic / not-found pages
-        if not name or name.lower() == "onlyfans" or "onlyfans" == name.strip().lower():
-            return None
-        return {
-            "platform": "OnlyFans",
-            "display_name": name,
-            "bio": desc[:300],
-            "url": f"https://onlyfans.com/{username}",
-        }
-    except Exception:
-        return None
-
-
 async def _scrape_patreon(username: str, client: httpx.AsyncClient) -> dict | None:
     try:
         r = await client.get(
@@ -223,12 +196,13 @@ async def _scrape_cashapp(username: str, client: httpx.AsyncClient) -> dict | No
         return None
 
 
+# No adult or dating site belongs here: this runs on every ordinary investigation, with no
+# opt-in and no minor guard. Those sites are checked only by modules/adult_check.py.
 SCRAPERS = {
     "Reddit": _scrape_reddit,
     "TikTok": _scrape_tiktok,
     "YouTube": _scrape_youtube,
     "Twitch": _scrape_twitch,
-    "OnlyFans": _scrape_onlyfans,
     "Patreon": _scrape_patreon,
     "CashApp": _scrape_cashapp,
 }
@@ -239,7 +213,6 @@ SITE_MAP = {
     "TikTok": "TikTok",
     "YouTube": "YouTube",
     "Twitch": "Twitch",
-    "OnlyFans": "OnlyFans",
     "Patreon": "Patreon",
     "Cash App": "CashApp",
 }

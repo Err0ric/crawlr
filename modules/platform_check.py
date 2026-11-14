@@ -177,10 +177,10 @@ RULES = [
     },
 ]
 
-# Platforms that can't be reliably checked programmatically: manual link only.
-MANUAL_PLATFORMS = [
-    {"name": "OnlyFans", "url": "https://onlyfans.com/{username}"},
-]
+# Platforms that can't be reliably checked programmatically: manual link only. None today.
+# Adult and dating sites are never listed here: they live in modules/adult_check.py, behind
+# the opt-in, so an ordinary run never shows one.
+MANUAL_PLATFORMS: list[dict] = []
 
 PLATFORMS = RULES   # the old name, kept for anything that imports it
 
