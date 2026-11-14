@@ -1,6 +1,7 @@
 // Pieces shared by every workbench mode: run log, tiered ledger, facts panel, run diff.
 import { $$, h, raw, esc, link, linkOf, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
 import { checkText } from "./links.js";
+import { ADULT_SECTION } from "./adult.js";
 
 // ---- run log ------------------------------------------------------------------
 // One row per source. While a run is in flight the strip shows "3 of 7 sources" with a
@@ -100,7 +101,8 @@ const PREVIEW = 15;
 // after the text. A row with link_kind "none" is plain text, with a hint on how to check by hand.
 const CHECK_CLS = { verified: "ok", not_found: "", blocked: "warn", unknown: "", no_public_url: "" };
 export function evWhat(it) {
-  const name = it.link_label ? esc(it.what) : linkOf(it);
+  // An adult or dating site row carries the site's initials as its mark. Never an image.
+  const name = (it.glyph ? h`<span class="site-glyph" aria-hidden="true">${it.glyph}</span>` : "") + (it.link_label ? esc(it.what) : linkOf(it));
   const labelled = it.link_label ? ` ${link(it.url, it.link_label, "ev-link", { kind: it.link_kind })}` : "";
   const more = it.more?.url ? ` ${link(it.more.url, it.more.label, "ev-link", { kind: "evidence" })}` : "";
   const state = checkText(it);
@@ -287,8 +289,11 @@ export async function standaloneHtml(title, mainEl, asideEl) {
   let css = "";
   try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
   css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
-  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
-  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Unverified" items are leads, not facts, and a profile that exists is not proof of who owns it.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
+  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true));
+    // Adult and dating site rows go after every other finding, under a heading that says what they are.
+    c.querySelectorAll('.tier[data-tier="adult"]').forEach((t) => { const title = t.querySelector(".tier-title"); if (title) title.textContent = ADULT_SECTION; t.parentElement?.append(t); });
+    return c.innerHTML; };
+  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.tier[data-tier="adult"] .tier-title::after{content:none !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Unverified" items are leads, not facts, and a profile that exists is not proof of who owns it.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
 }
 
 // ---- tabs ---------------------------------------------------------------------------
