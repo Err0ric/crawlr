@@ -43,6 +43,7 @@ FastAPI (main.py)
 | Prefix | Router | Endpoints | Notes |
 |---|---|---|---|
 | `/api/recon` | `routers/recon.py` | sherlock, maigret, holehe, harvester, hibp, gravatar, github, enrich, platform-check, hunter, shodan, internetdb, scrape-profiles | sherlock, maigret, holehe run as subprocesses under `core/subprocess_guard.py`. Hunter and Shodan need the user's key (`X-Hunter-Key`, `X-Shodan-Key`) |
+| `/api/recon` | `routers/recon_identity.py` | github-deep, avatar-hash | Follow-up lookups that feed identity clustering. Both are cached for 24 hours |
 | `/api/infra` | `routers/recon_infra.py` | dns, whois, ssl, headers, subdomains, email-posture, dns-depth, takeover, lookalikes, wellknown, asn, asn-detail, ip-asn, portscan, wayback, redirects, techfingerprint, summarize, prompt | Domain, IP and ASN recon. `summarize` is AI; `prompt` returns the same prompt without calling a model |
 | `/api/analyze` | `routers/analyze.py` | summarize, deep-dive, deep, correlate, email-headers, prompt, parse | All AI, through `core/ai_call.py`. Uses the user's key or the house key. Provider failures return `{detail, code}` with a matching status |
 | `/api/hash` | `routers/hash_lookup.py` | hash | MalwareBazaar, CIRCL, OTX, ThreatFox |
@@ -54,7 +55,7 @@ FastAPI (main.py)
 
 | Area | Files |
 |---|---|
-| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py` |
+| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py` |
 | Infrastructure | `email_posture.py`, `dns_depth.py`, `takeover.py`, `lookalikes.py`, `wellknown.py`, `crtsh.py`, `dns_lookup.py`, `resolver.py`, `whois_lookup.py`, `ssl_check.py`, `headers_check.py`, `subdomain_enum.py`, `harvester.py`, `asn_lookup.py`, `asn_detail.py`, `port_scan.py`, `internetdb.py`, `shodan_lookup.py`, `wayback.py`, `redirect_chain.py`, `tech_fingerprint.py` |
 | AI | `ai_provider.py`: async Anthropic and Gemini calls, typed `AIError`, response cache keyed per caller |
 
@@ -70,6 +71,8 @@ FastAPI (main.py)
 | `core/ai_call.py` | The one path for AI endpoints: pick key, check cache, check and spend free quota, call, refund on failure |
 | `core/ai_text.py` | Fence stripping and JSON extraction for model output |
 | `core/dnspool.py` | One bounded thread pool for bulk DNS work, so a burst of lookups cannot starve the rest of a run |
+| `core/boilerplate.py` | Recognises platform marketing text ("streams live on Twitch!") so it is never shown as a person's bio |
+| `core/shared_hosting.py` | Tells a shared edge address (Vercel, Cloudflare, Fastly, CloudFront, Netlify, GitHub Pages) from the target's own, so neighbours and edge ports are not read as the target's |
 | `core/house_key.py` | Free AI tier: server-side Gemini key, per-IP daily quotas, global daily cap |
 | `core/subprocess_guard.py` | Caps concurrent CLI tools (`MAX_CONCURRENT_TOOLS`), queue timeout, result logging |
 | `core/logging.py` | Structured JSON logging |
@@ -86,7 +89,9 @@ Every source ends in one of three states, and they are kept apart from the modul
 | Not found | `found: false` with no error | "nothing found" in the run log, a neutral card | may be cited as a negative |
 | Failed | `error`, `error_code`, `error_detail` (`found` is `null` where it applies) | red run-log row, a notice above the findings, a "failed" card | listed under "FAILED, treat as unknown" |
 
-Account evidence has its own two levels. **Confirmed** means a profile signal verified the account: Maigret parsed profile data, GitHub's API returned the user, the enricher read a display name, or a registration check passed. **Possible** means a tool reported the handle and nothing verified it.
+Account evidence is ranked by how it ties to the person, not only by whether the account exists. `identity.js` groups every profile that was read into people: two profiles join on a cross-link, the same profile picture or a shared personal link, or on a name that fits with nothing conflicting. The group holding the authoritative record (GitHub's answer for the handle, Gravatar's for the email) is the primary identity. **Linked** is that record or a profile tied to it by a strong signal. **Exists (matches)** is a read profile whose name fits or that carries no name. **Exists (different person)** is a read profile whose name conflicts. **Unverified** means a tool reported the handle and nothing was read, or the site blocked the check.
+
+Platform check rows carry one of five states: `found`, `not_found`, `blocked`, `unknown`, `manual`. Only a content marker makes a row `found`. Subdomain and takeover checks call a name absent only when two resolvers agree; a lookup that failed is `unknown`.
 
 ## AI without a key
 
@@ -103,6 +108,7 @@ Three ways to get a written report, none automatic:
 - AI, Hunter, Shodan and Numlookup keys are entered in Settings and kept in the browser's `localStorage`.
 - They are sent with each request to the CrawlR server, which passes them to the matching provider. The server does not store them.
 - The house Gemini key lives only in the server environment (`GEMINI_API_KEY`).
+- `ABUSECH_AUTH_KEY` (optional, server-side, free from abuse.ch) lets the hash lookup ask MalwareBazaar and ThreatFox, which refuse anonymous requests. Without it they are reported as failed, not as "not found".
 - `GITHUB_TOKEN` (optional, server-side) raises the GitHub API limit. No part of any key is logged.
 
 ## Frontend (`static/v2/js`)
@@ -115,7 +121,9 @@ Three ways to get a written report, none automatic:
 | `investigate.js` | Investigate mode: run and cancel sources, build the ledger, AI on request, deep dive, history, run diff, notes, export |
 | `recon.js` | Recon mode for a domain, IP or ASN; loads the self-hosted d3 for the topology tab |
 | `graph.js` | D3 topology graph. Nodes are focusable and emit `crawlr:node` when selected, which Recon turns into a pivot bar |
-| `evidence.js` | Turns module responses into ranked evidence (`flag`, `confirmed`, `possible`, `noise`) and extracted facts. Confirmed needs a verified profile signal |
+| `evidence.js` | Turns module responses into ranked evidence (`flag`, `linked`, `matches`, `different`, `unverified`, `noise`, plus `lead` and `hosts`), facts per identity, and the source plan for each target type. Pure functions, no DOM |
+| `identity.js` | Groups read profiles into people and picks the primary identity. Pure functions, no DOM |
+| `reconfindings.js` | Recon findings and tiers, including shared-address neighbours. Pure functions, no DOM |
 | `renderers.js` | Per-source cards for the "By source" section |
 | `workbench.js` | Pieces shared by every mode: run log with progress, tiered ledger, facts panel, failed-source notice, run diff, result tabs, brief renderer, HTML export |
 | `brief.js` | "At a glance": the rules-based written brief for Investigate and Recon. No model |

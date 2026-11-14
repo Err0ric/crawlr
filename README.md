@@ -23,7 +23,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 
 | Mode | Input | What you get |
 |---|---|---|
-| **Investigate** | Username, email, name, phone, hash | Accounts, breaches, profiles and facts ranked into flags, confirmed, possible and known noisy sites. A source that fails is shown as failed, never as "not found". AI report on request |
+| **Investigate** | Username, email, name, phone, hash | Accounts, breaches, profiles and facts ranked into flags, linked, exists (matches), exists (different person), unverified and known noisy sites. Profiles are grouped by person, so facts from someone who merely shares the handle are kept apart. A source that fails is shown as failed, never as "not found". AI report on request |
 | **Recon** | Domain, IP or ASN | DNS, WHOIS, TLS, header grade, subdomains, email spoofing check, takeover candidates, lookalike domains, certificate history, ASN and prefixes, exposure data, a topology graph you can pivot from, optional top-20 port check |
 | **Headers** | Raw email headers | SPF, DKIM and DMARC results, hop-by-hop route with delays, sender origin, spoofing and phishing flags, verdict |
 | **Dorks** | Name, username, email, location, employer, keywords | A Google dork built live, with site filters; open it or copy it |
@@ -34,15 +34,16 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Source | What it does | Key |
 |---|---|---|
 | Sherlock | Username across 400+ sites | None |
-| Maigret | Username across the top 500 sites. Reads profile data where it can, which is what makes a hit "confirmed". Adult and dating sites are off unless you opt in | None |
+| Maigret | Username across the top 500 sites. Reads profile data where it can, which is what lets an account be compared with the others. Adult and dating sites are off unless you opt in | None |
 | Holehe | Which services an email is registered with | None |
 | Domain harvest | Hosts and addresses on an email's domain (crt.sh, CertSpotter, HackerTarget, RapidDNS, urlscan, OTX, Anubis, Wayback) | None |
-| Breaches | Known breaches for an email (XposedOrNot) | None |
-| GitHub | Profile, repos, linked email. Rate limits are reported as rate limits | None (optional server `GITHUB_TOKEN`) |
+| Breaches | Known breaches for an email (XposedOrNot), with date, data classes, record count and a link, newest first | None |
+| GitHub | Profile, repos, linked email. A details lookup adds organisations, top repositories and languages, linked social accounts, README links, key fingerprints and public commit emails. Rate limits are reported as rate limits | None (optional server `GITHUB_TOKEN`) |
 | Gravatar | Profile and avatar for an email | None |
-| Platform check | Profile URL probes on major platforms (a weak signal, shown as possible) | None |
+| Platform check | Instagram, X, Threads, TikTok, Facebook and LinkedIn, decided from what the page says, not from the status code. A site that walls the request is shown as "Blocked by site" | None |
+| Avatar comparison | Fingerprints public profile pictures so two accounts with the same picture can be linked. Placeholder pictures are ignored | None |
 | Profile scraper | Bios, display names and links from found profiles (active technique, off by default) | None |
-| Hash lookup | MalwareBazaar, CIRCL, AlienVault OTX, ThreatFox | None |
+| Hash lookup | CIRCL, AlienVault OTX, and MalwareBazaar and ThreatFox when the server has an abuse.ch key. Recognises the EICAR test file. Community tags are kept apart from malware families | None (optional server `ABUSECH_AUTH_KEY`) |
 | Phone lookup | Number normalization, carrier info, people-search links | Optional Numlookup key |
 | Hunter.io | Email addresses and patterns for a domain | Your key |
 | At a glance | A short written brief built from rules, with no AI: what stands out, what is uncertain, what failed | None |
@@ -110,6 +111,8 @@ node tests/js/contrast.test.mjs
 node tests/js/brief.test.mjs
 node tests/js/timeline.test.mjs
 node tests/js/casefile.test.mjs
+node tests/js/identity.test.mjs
+node tests/js/evidence.test.mjs
 ```
 
 ## How it is built
