@@ -33,8 +33,11 @@ function restoreFocus() {
 
 // required: the dialog can only be left through one of its actions (used by the consent gate).
 export function openModal({ title, body, actions = [], wide = false, required = false, focus }) {
-  closeModal({ restore: false }); closeSheet({ restore: false });
+  closeModal({ restore: false });
   openers.push(document.activeElement);
+  // A dialog opened from the phone drawer sits over it: the drawer stays, goes inert, and gets
+  // focus back on the control that opened the dialog.
+  $("#sheet")?.setAttribute("inert", "");
   const el = document.createElement("div");
   el.className = "modal-backdrop"; el.id = "modal";
   el.innerHTML = h`
@@ -61,6 +64,7 @@ export function openModal({ title, body, actions = [], wide = false, required = 
 export function closeModal({ restore = true } = {}) {
   const m = $("#modal"); if (!m) return;
   m.remove(); syncInert();
+  $("#sheet")?.removeAttribute("inert");
   if (restore) restoreFocus(); else openers.pop();
 }
 
@@ -87,6 +91,7 @@ let sheetHome = null;
 export function openSheet({ title, el }) {
   closeSheet({ restore: false }); closeDrawer({ restore: false }); closeModal({ restore: false });
   openers.push(document.activeElement);
+  document.documentElement.classList.add("sheet-open");      // the page behind does not scroll
   sheetHome = document.createComment("sheet"); el.before(sheetHome);
   const bd = document.createElement("div"); bd.className = "sheet-backdrop"; bd.id = "sheetBackdrop";
   const box = document.createElement("div"); box.className = "sheet"; box.id = "sheet";
@@ -107,6 +112,7 @@ export function closeSheet({ restore = true } = {}) {
   if (el && sheetHome?.parentNode) sheetHome.replaceWith(el);
   sheetHome = null;
   box.remove(); $("#sheetBackdrop")?.remove(); syncInert();
+  document.documentElement.classList.remove("sheet-open");
   if (restore) restoreFocus(); else openers.pop();
 }
 

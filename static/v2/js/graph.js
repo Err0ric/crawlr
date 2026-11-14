@@ -4,7 +4,9 @@ const MONO = "IBM Plex Mono, ui-monospace, Menlo, monospace";
 function _css(prop) { return getComputedStyle(document.documentElement).getPropertyValue(prop).trim(); }
 
   function renderAsnGraph(container, data, target) {
-    const colorASN = '#a855f7', colorV4 = '#d97706', colorV6 = '#14b8a6';
+    // Neutral ink tones from the page's tokens. Purple and amber mean something else on a case page
+    // (the primary action, a flag), so the graph does not use them. Every shape also carries its label.
+    const colorASN = _css('--ink'), colorV4 = _css('--ink-2'), colorV6 = _css('--ink-3');
     const v4 = (data.prefixes_v4 || []).slice(0, 40);
     const v6 = (data.prefixes_v6 || []).slice(0, 20);
     const orgLabel = data.org ? `${data.asn} · ${data.org}` : data.asn;
@@ -64,7 +66,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     // Draw center ASN node
     const cg = g.append('g').attr('transform', `translate(${laneX[0]}, ${centerY})`);
     cg.append('rect').attr('width', centerW).attr('height', 44).attr('rx', 4)
-      .attr('fill', 'rgba(124,58,237,0.14)').attr('stroke', colorASN).attr('stroke-width', 2).attr('stroke-opacity', 0.9);
+      .attr('fill', _css('--bg-hover')).attr('stroke', colorASN).attr('stroke-width', 2).attr('stroke-opacity', 0.9);
     const asnLabel = data.asn || target;
     cg.append('text').attr('x', centerW / 2).attr('y', 18).attr('text-anchor', 'middle')
       .attr('fill', _css('--ink')).attr('font-family', MONO).attr('font-size', '13px').attr('font-weight', '600')
@@ -104,9 +106,9 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
 
       const ng = g.append('g').attr('transform', `translate(${laneX[1]}, ${y})`);
       ng.append('rect').attr('width', bw).attr('height', boxH).attr('rx', 3)
-        .attr('fill', 'rgba(217,119,6,0.08)').attr('stroke', colorV4).attr('stroke-width', 1).attr('stroke-opacity', 0.5);
+        .attr('fill', _css('--bg-hover')).attr('stroke', colorV4).attr('stroke-width', 1).attr('stroke-opacity', 0.5);
       ng.append('text').attr('x', 8).attr('y', boxH / 2 + 4)
-        .attr('fill', '#f59e0b').attr('font-family', MONO).attr('font-size', '12px')
+        .attr('fill', _css('--ink')).attr('font-family', MONO).attr('font-size', '12px')
         .text(prefix);
       if (count) {
         ng.append('text').attr('x', bw - 6).attr('y', boxH / 2 + 3).attr('text-anchor', 'end')
@@ -146,9 +148,9 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
 
       const ng = g.append('g').attr('transform', `translate(${laneX[2]}, ${y})`);
       ng.append('rect').attr('width', bw).attr('height', boxH).attr('rx', 3)
-        .attr('fill', 'rgba(20,184,166,0.08)').attr('stroke', colorV6).attr('stroke-width', 1).attr('stroke-opacity', 0.5);
+        .attr('fill', _css('--bg-hover')).attr('stroke', colorV6).attr('stroke-width', 1).attr('stroke-opacity', 0.5);
       ng.append('text').attr('x', 8).attr('y', boxH / 2 + 4)
-        .attr('fill', '#14b8a6').attr('font-family', MONO).attr('font-size', '11px')
+        .attr('fill', _css('--ink-3')).attr('font-family', MONO).attr('font-size', '11px')
         .text(prefix.length > 26 ? prefix.slice(0, 25) + '…' : prefix);
       if (count) {
         ng.append('text').attr('x', bw - 6).attr('y', boxH / 2 + 3).attr('text-anchor', 'end')
@@ -199,7 +201,9 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
 
     if (/^AS\d+$/i.test(target) && d.asn_detail) { renderAsnGraph(container, d.asn_detail, target); return; }
 
-    const colorMap = { domain: '#a855f7', a: '#a855f7', mx: '#d97706', ns: '#14b8a6', subdomain: '#7c3aed', ip: '#6b7280', asn: '#4b5563', cname: '#8b5cf6', cf_ip: '#f59e0b' };
+    // Neutral ink tones from the page's tokens: no purple (the primary action) and no amber (a flag).
+    // Node kinds are told apart by their label and the legend, and a Cloudflare address carries a CF badge.
+    const colorMap = { domain: _css('--ink'), a: _css('--ink-2'), mx: _css('--ink-3'), ns: _css('--ink-3'), subdomain: _css('--ink-2'), ip: _css('--line-strong'), asn: _css('--ink-4'), cname: _css('--ink-3'), cf_ip: _css('--ink') };
     const asnInfo = d.asn || {};
 
     // Build hierarchical tree data
@@ -424,9 +428,9 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
       const ng = g.append('g').attr('transform', `translate(${pos.x}, ${pos.y})`);
 
       // Box
-      const fillColor = n.type === 'domain' ? 'rgba(124,58,237,0.14)'
-        : (isCf || isCfAsn) ? 'rgba(245,158,11,0.08)'
-        : isSub ? 'rgba(124,58,237,0.08)' : _css('--bg');
+      const fillColor = n.type === 'domain' ? _css('--bg-hover')
+        : (isCf || isCfAsn) ? _css('--bg-hover')
+        : isSub ? _css('--bg-hover') : _css('--bg');
       ng.append('rect')
         .attr('width', bw).attr('height', bh).attr('rx', 3)
         .attr('fill', fillColor)
@@ -437,10 +441,10 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
       if (isCf) {
         ng.append('rect')
           .attr('x', bw - 24).attr('y', 2).attr('width', 22).attr('height', 12).attr('rx', 2)
-          .attr('fill', 'rgba(245,158,11,0.25)').attr('stroke', '#f59e0b').attr('stroke-width', 0.5);
+          .attr('fill', _css('--bg-hover')).attr('stroke', _css('--ink')).attr('stroke-width', 0.5);
         ng.append('text')
           .attr('x', bw - 13).attr('y', 11).attr('text-anchor', 'middle')
-          .attr('fill', '#f59e0b').attr('font-family', MONO).attr('font-size', '9px').attr('font-weight', 'bold')
+          .attr('fill', _css('--ink')).attr('font-family', MONO).attr('font-size', '9px').attr('font-weight', 'bold')
           .text('CF');
       }
 
@@ -455,7 +459,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
       ng.append('text')
         .attr('x', labelX).attr('y', bh / 2 + 4)
         .attr('text-anchor', 'middle')
-        .attr('fill', isCfAsn ? '#f59e0b' : (isCf ? '#f59e0b' : (n.type === 'domain' ? _css('--ink') : (isSub ? _css('--violet') : (n.type === 'asn' ? _css('--ink-4') : _css('--ink-2'))))))
+        .attr('fill', isCfAsn ? _css('--ink') : (isCf ? _css('--ink') : (n.type === 'domain' ? _css('--ink') : (isSub ? _css('--ink-2') : (n.type === 'asn' ? _css('--ink-4') : _css('--ink-2'))))))
         .attr('font-family', MONO)
         .attr('font-size', fontSize)
         .text(label);

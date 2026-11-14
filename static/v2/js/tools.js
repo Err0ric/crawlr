@@ -1,4 +1,5 @@
 // Headers analyzer, dork builder, decoders.
+import { writeHistory } from "./present.js";
 import { $, $$, h, raw, esc, link, store, toast, post, postAi, aiAvailable, aiCost, providerName, looksLikeHeaders, fmtNum } from "./core.js";
 import { md5 } from "./md5.js";
 
@@ -88,7 +89,7 @@ function saveHeaderHistory(text) {
   const subj = lastHeaders?.key_headers?.Subject || lastHeaders?.key_headers?.From || "Email headers";
   list.unshift({ id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: String(subj).slice(0, 120), type: "email_headers", timestamp: Date.now(), results: lastHeaders, raw: text.slice(0, 20000), v2: true });
   while (list.length > 50) list.pop();
-  if (!store.set("crawlr_history", list)) { list.splice(Math.floor(list.length / 2)); store.set("crawlr_history", list); }
+  writeHistory(list, "", (l) => store.set("crawlr_history", l));
 }
 export function loadHeaderHistory(e) {
   $("#hdrInput").value = e.raw || "";

@@ -117,7 +117,7 @@ const CARDS = {
     const r = d?.results || [], ok = r.filter((x) => x.hash && !x.error), dflt = ok.filter((x) => x.default), bad = r.filter((x) => x.error);
     const name = (id) => String(id).replace(/^acct:/, "");
     return card("Avatar comparison", tag(`${fmtNum(ok.length)} of ${fmtNum(r.length)} compared`, ok.length ? "ok" : ""),
-      h`<p class="muted">Profile pictures were fetched from public image hosts and reduced to a 64-bit fingerprint. Two profiles with nearly the same picture are tied together in the ledger.</p>`
+      h`<p class="muted">Profile pictures were fetched by CrawlR's server from public image hosts and reduced to a 64-bit fingerprint. Two profiles with nearly the same picture are tied together in the ledger. A real picture also leaves a small grayscale thumbnail, which is what the case page shows: it is kept with this case in History and in an exported case file, and your browser never contacts the picture's host.</p>`
       + kv([["Compared", esc(ok.filter((x) => !x.default).map((x) => name(x.id)).join(", "))], ["Default or placeholder", esc(dflt.map((x) => name(x.id)).join(", "))], ["Could not be read", bad.map((x) => h`${name(x.id)} <span class="dim">${x.error}</span>`).join("<br>")]])
       + h`<p class="muted small">A default or placeholder picture never ties two profiles together. A picture that could not be read is unknown, not different.</p>`);
   },

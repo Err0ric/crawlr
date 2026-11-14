@@ -46,6 +46,9 @@ for (const [theme, t] of [["dark", dark], ["light", light], ["light(auto)", ligh
   check(theme, "--switch-on on --bg-raised", solid("switch-on"), solid("bg-raised"), 3);
   check(theme, "--switch-on on --bg", solid("switch-on"), solid("bg"), 3);
 }
+// Linked (green) and Matches (teal) must stay apart in hue, in both themes: they sit side by side.
+const hue = (hex) => { const [r, g, b] = rgb(hex).slice(0, 3).map((v) => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (!d) return 0; const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; };
+for (const [theme, t] of [["dark", dark], ["light", light]]) { checked++; const d = Math.abs(hue(t.linked) - hue(t.match)); if (Math.min(d, 360 - d) < 40) { bad++; console.log(`FAIL ${theme} --linked and --match are ${Math.min(d, 360 - d).toFixed(0)} degrees of hue apart (needs 40)`); } }
 if (JSON.stringify(light) !== JSON.stringify(lightAuto)) { bad++; console.log("FAIL light tokens differ between prefers-color-scheme and data-theme"); }
 console.log(bad ? `${bad} of ${checked} contrast checks failed` : `all ${checked} contrast checks pass`);
 if (bad) process.exit(1);

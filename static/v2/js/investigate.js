@@ -11,7 +11,7 @@ import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmT
 import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
 import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards } from "./workbench.js";
-import { investigateTiles } from "./present.js";
+import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
 import { buildCaseFile } from "./casefile.js";
 
 // ---- sources ---------------------------------------------------------------
@@ -129,6 +129,8 @@ const tabs = makeTabs($("#tabs"));
 // live: this case was run in this session, so its header and run log follow the tally.
 // pending: sources of the run in flight that have not answered yet (label by key), for the placeholders.
 const pending = new Map();
+// asked: the keys of every source this run started, so a cancelled run knows which never answered.
+const asked = new Set();
 export const state = { nameInvalid: "", target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "", live: false, imported: false, adultMode: false, adultBlocked: "" };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
@@ -177,7 +179,7 @@ function renderLedger() {
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
   // The adult group says what its count is made of, under its heading.
   const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? { ...t, note: adultSummary(adultItems(items)) } : t)), items);
-  renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [] });
+  renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [], imported: state.imported, handle: state.type === "username" ? state.target.replace(/^@/, "") : "" });
   paintSummary(ev);
   checker.watch();
 }
@@ -200,9 +202,12 @@ function paintSummary(ev) {
   $("#identity").innerHTML = head; $("#identity").hidden = !head;
   // The verdict tiles wait for the run to finish, like the brief: a count mid-run is half a picture.
   $("#caseBar").hidden = !state.target;
-  renderVerdict($("#verdict"), state.running || !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, failedKeys: failedSources().map((f) => f.key), extra: tileExtra() }));
+  const rows = tally().rows, keysOf = (st) => rows.filter((r) => r.state === st).map((r) => r.key);
+  // Sources that were asked and had not answered when the run was cancelled: unknown, never zero.
+  const missing = (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string");
+  renderVerdict($("#verdict"), !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: keysOf("failed"), partialKeys: keysOf("partial"), missingKeys: missing, extra: tileExtra() }));
   // The written brief waits for the run to finish, so it never describes half a picture.
-  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), type: state.type, target: state.target }));
+  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed" || r.state === "partial").map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target }));
 }
 bindLedger($("#ledger"), checkKey);
 // What the tiles of a hash, phone or name case show, from the same functions the cards use.
@@ -315,7 +320,7 @@ function renderHead(meta) {
 // ---- AI panel ---------------------------------------------------------------------
 // Never an adult or dating site: Deep Dive reads the pages it is given (see deepDiveUrls).
 const profileUrls = () => deepDiveUrls(state.collected);
-const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "nameQualifiers", "nameProfiles"].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
+const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "nameQualifiers", "nameProfiles", "notAnswered"].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
 
 // What the report will cover, said for the kind of target on screen.
 const AI_PITCH = {
@@ -352,7 +357,7 @@ function renderReport() {
   if (!state.ai?.summary) { sec.hidden = true; return; }
   sec.hidden = false;
   const { items, facts } = buildEvidence(state.collected, state.target, state.type);
-  $("#reportBody").innerHTML = reportHtml({ ai: state.ai, target: state.target, items, facts, collected: state.collected, type: state.type });
+  $("#reportBody").innerHTML = reportHtml({ ai: state.ai, target: state.target, items, facts, collected: state.collected, imported: state.imported, type: state.type });
   $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : state.ai.ai_source === "pasted" ? "from your own assistant" : "", state.ai.reused ? "from your last run, no credit used" : state.ai.cached ? "cached, no credit used" : ""].filter(Boolean).join(" · ");
 }
 $("#reportToggle").addEventListener("click", (e) => {
@@ -488,7 +493,7 @@ function adultRefused(reason) {
 // person typing, not a source that failed, so nothing is stored for it.
 async function runSource(label, url, body, headers, key, opts = {}) {
   const row = log.add(label);
-  pending.set(row, label);
+  pending.set(row, label); asked.add(key);
   renderLedger(); renderSourceCards();
   try {
     // With the mode off any adult row in an answer is dropped here, before it is stored. With it
@@ -550,7 +555,7 @@ export async function run(targetRaw, typeOverride) {
   let prev = null;
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: aiSignature(scrubNames(last.results || {}, last.target), last.target, last.kind) }; }
 
-  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear();
+  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear();
   // The switch as it stands for this handle, and only if the handle passes the minor guard.
   const adult = adultOn(type, target, adultSwitch.view(target, type).on);
   Object.assign(state, { target, type, collected: adult ? { adultMode: true } : {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
@@ -640,6 +645,10 @@ export async function run(targetRaw, typeOverride) {
     if (img) { c.reverseImage = img; renderSourceCards(); }
   }
 
+  // A source that was asked and never answered (the run was cancelled) is recorded with the case,
+  // so its counts read "unknown" or "at least" now and when the case is opened again.
+  const silent = state.cancelled ? [...asked].filter((k) => !(k in c)) : [];
+  if (silent.length) c.notAnswered = { keys: silent };
   setRunning(false);
   const { items, facts } = evidence();
   const sum = summary();
@@ -702,7 +711,10 @@ function saveHistory() {
   const idx = list.findIndex((e) => e.id === entry.id);
   if (idx >= 0) { entry.timestamp = list[idx].timestamp; if (list[idx].imported) entry.imported = list[idx].imported; list[idx] = entry; } else list.unshift(entry);
   while (list.length > HISTORY_MAX) list.pop();
-  if (!store.set(HISTORY_KEY, list)) { list.splice(Math.floor(list.length / 2)); store.set(HISTORY_KEY, list); }
+  // At most 30 checked thumbnails are stored with a case. When storage is full they are dropped
+  // first, from older runs and then this one, before any run is dropped (see writeHistory).
+  if (entry.results?.avatarHash) entry.results = { ...entry.results, avatarHash: boundAvatarHash(entry.results.avatarHash) };
+  writeHistory(list, entry.id, (l) => store.set(HISTORY_KEY, l));
 }
 // Takes a saved case's id, or the entry itself (a case file that could not be stored).
 export function loadHistory(idOrEntry) {

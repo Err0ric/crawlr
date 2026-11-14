@@ -19,7 +19,9 @@ const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
 // identity: the clusters from buildEvidence ({ views, primary }). Without it the brief says
 // nothing about names, so it can never merge people on its own.
-export function investigateBrief({ collected: c, items, facts, identity, failed, type, target }) {
+// incomplete: names of sources that failed, answered only in part, or never answered. While there
+// are any, a count is a lower bound: the brief says "at least" and never calls a zero good.
+export function investigateBrief({ collected: c, items, facts, identity, failed, incomplete = [], type, target }) {
   const rows = [], actions = [];
   const add = (level, text, ev) => rows.push(sealLink({ level, text, ev }, { subjects: [target] }));
   const accounts = items.filter((i) => i.key?.startsWith("acct:"));
@@ -55,6 +57,7 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     const read = linked.length + matches.length + different.length;
     const noPrimary = !!identity?.noPrimary;
     if (accounts.length && noPrimary) add("info", `${plural(matches.length, "profile")} ${matches.length === 1 ? "was" : "were"} read and ${unverified.length} ${unverified.length === 1 ? "account is" : "accounts are"} unverified. Each read profile exists, and nothing ties it to the target.`);
+    else if (accounts.length && incomplete.length) add("info", `At least ${[linked.length && plural(linked.length, "linked account"), matches.length && `${matches.length} that exist and match`, different.length && `${different.length} that belong to a different person`, unverified.length && `${unverified.length} unverified`].filter(Boolean).join(", ")}. ${list(incomplete)} did not fully answer, so these are lower bounds and any count not listed is unknown, not zero.`);
     else if (accounts.length) add(linked.length ? "ok" : "info", `${plural(linked.length, "linked account")}, ${matches.length} that exist and match, ${different.length} that belong to a different person, and ${unverified.length} unverified. A profile that exists shows the handle is taken there; only a linked one is tied to this identity.`);
     // People, not names: "Eric" and "Eric Henderson" are one person, two unrelated names are two.
     const views = identity?.views || [];

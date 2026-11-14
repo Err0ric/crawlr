@@ -1,7 +1,7 @@
 // Shared primitives. Everything that touches the DOM with remote data goes
 // through esc() or h(). Nothing else may call innerHTML with raw strings.
 
-import { safeThumb } from "./present.js";
+import { safeThumb, iconDomain } from "./present.js";
 
 export const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -362,12 +362,13 @@ export const HOW_LEGEND = Object.values(HOW).map((v) => `<b>${esc(v.word)}</b> $
 // avatar comparison made (checked again here); a favicon comes from the icon service by host name
 // alone, never with a handle; and the initials sit underneath both, so a missing or failed image
 // leaves the badge. Callers pass favicon: false for rows that must stay text (adult and dating
-// sites, name candidates). The <img> is removed on error by the listener below: no inline handler.
+// sites, name candidates). The image element is removed on error by the listener below: no inline handler.
 export const initialsOf = (s) => (String(s ?? "").replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2) || "?").toUpperCase();
-const iconHost = (u) => { try { const x = new URL(String(u)); const host = x.hostname.toLowerCase().replace(/^www\./, ""); return /^https?:$/.test(x.protocol) && /^[a-z0-9.-]{3,253}$/.test(host) && host.includes(".") ? host : ""; } catch { return ""; } };
-export function mark(name, { url = "", thumb = "", favicon = true, cls = "" } = {}) {
+// favicon is off unless the caller says the row may have one (see mayFavicon in present.js); the
+// icon is asked for by registrable domain only, and never for a domain that carries the handle.
+export function mark(name, { url = "", thumb = "", favicon = false, handle = "", cls = "" } = {}) {
   const img = safeThumb(thumb);
-  const host = favicon && !img && url ? iconHost(url) : "";
+  const host = favicon && !img && url ? iconDomain(url, handle) : "";
   return `<span class="mark${cls ? ` ${esc(cls)}` : ""}" aria-hidden="true"><span class="mark-l">${esc(initialsOf(name))}</span>${img ? `<img class="mark-thumb" src="${esc(img)}" alt="" width="48" height="48" decoding="async">` : host ? `<img class="mark-fav" src="https://icons.duckduckgo.com/ip3/${esc(host)}.ico" alt="" width="18" height="18" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}</span>`;
 }
 globalThis.document?.addEventListener?.("error", (e) => { if (e.target?.matches?.(".mark img, .dossier .avatar img")) e.target.remove(); }, true);

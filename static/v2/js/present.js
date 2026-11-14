@@ -16,6 +16,66 @@ export const CERTAINTY = {
   unverified: { word: "Unverified",       tone: "unverified", line: "dashed" },
 };
 export const certaintyOf = (tier) => CERTAINTY[tier] || { word: "", tone: "", line: "solid" };
+// How one row is drawn. The tier decides, with one refinement: an Unverified row whose templated
+// URL the link check looked at. The tier stays Unverified, because nothing was read about who
+// owns the page, but the row no longer says "nothing checked this":
+//   page checked     solid neutral edge, solid pill "Page checked"
+//   page not found   solid muted edge, greyed pill "Page not found"
+//   blocked, or could not be checked: unchanged, dashed "Unverified" (the reason is on the row)
+export function rowCertainty(it) {
+  const c = certaintyOf(it?.tier);
+  if (it?.tier === "unverified" && it.check === "verified") return { word: "Page checked", tone: "", line: "solid", checked: true };
+  if (it?.tier === "unverified" && (it.check === "not_found" || it.gone)) return { word: "Page not found", tone: "", line: "solid", gone: true };
+  return c;
+}
+
+// ---- favicons -----------------------------------------------------------------------------
+// The host a site icon may be asked for, or "". It is always the registrable domain of the
+// site (never a subdomain: sites such as DeviantArt put the handle there), never an IP address,
+// a single-label or internal name, and never a domain that has the handle as a label.
+const TWO_LEVEL = new Set("co.uk org.uk ac.uk gov.uk me.uk com.au net.au org.au co.nz co.jp ne.jp or.jp com.br com.mx com.ar com.tr com.cn com.hk com.tw com.sg co.in co.kr co.za com.ua co.il com.pl".split(" "));
+const INTERNAL_TLD = new Set("local localhost internal intranet lan home corp private test example invalid onion arpa".split(" "));
+export function iconDomain(url, handle = "") {
+  let u;
+  try { u = new URL(String(url)); } catch { return ""; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+  const host = u.hostname.toLowerCase().replace(/\.$/, "");
+  if (!/^[a-z0-9.-]{4,253}$/.test(host) || /^[0-9.]+$/.test(host) || host.includes(":")) return "";
+  const labels = host.split(".");
+  if (labels.length < 2 || labels.some((l) => !l) || INTERNAL_TLD.has(labels[labels.length - 1]) || /^\d+$/.test(labels[labels.length - 1])) return "";
+  const take = labels.length >= 3 && TWO_LEVEL.has(labels.slice(-2).join(".")) ? 3 : 2;
+  const reg = labels.slice(-take);
+  const h = String(handle ?? "").trim().replace(/^@/, "").toLowerCase();
+  if (h.length >= 2 && reg.slice(0, -1).some((l) => l === h || l.includes(h))) return "";
+  return reg.join(".");
+}
+// Which rows may ask for a site icon at all: account rows only, never an adult or dating row,
+// and never in a case opened from a case file (its hosts were chosen by whoever made the file)
+// until the investigator runs it.
+export const mayFavicon = (it, { imported = false } = {}) => !imported && !!it && String(it.key || "").startsWith("acct:") && !!it.card && it.tier !== "adult" && !it.glyph && !it.adult;
+
+// ---- thumbnails and storage ------------------------------------------------------------------
+// Thumbnails are the first thing dropped when the browser's storage is full: every stored run
+// except `keepId` loses them, oldest first matters less than keeping the runs themselves.
+export function withoutThumbs(list, keepId = "") {
+  return (Array.isArray(list) ? list : []).map((e) => {
+    const av = e?.results?.avatarHash;
+    if (!e || e.id === keepId || !av || !Array.isArray(av.results) || !av.results.some((r) => r && "thumb" in r)) return e;
+    return { ...e, results: { ...e.results, avatarHash: { ...av, results: av.results.map((r) => { if (!r || !("thumb" in r)) return r; const { thumb, ...rest } = r; return rest; }) } } };
+  });
+}
+// Writes History. When the browser refuses (storage full) thumbnails go first, then the current
+// run's, and only then is the older half of History dropped, as before.
+export function writeHistory(list, keepId, write) {
+  if (write(list)) return list;
+  let next = withoutThumbs(list, keepId);
+  if (write(next)) return next;
+  next = withoutThumbs(next, "");
+  if (write(next)) return next;
+  next = next.slice(0, Math.max(1, Math.floor(next.length / 2)));
+  write(next);
+  return next;
+}
 
 // ---- thumbnails --------------------------------------------------------------------------
 // A profile picture is only ever shown from the small data URI the server's avatar comparison
@@ -92,17 +152,21 @@ export function cardSnippet(row, profile, now = new Date()) {
 //   jump   { tier } opens that group, { tab } opens that tab
 // failedKeys: keys in `collected` whose source failed (from sourceTally).
 const ran = (c, k) => c && c[k] !== undefined && c[k] !== null && !(c[k] && c[k].skipped);
-function tile(id, label, n, { tone = "", line = "solid", feeds = [], collected = {}, failed = new Set(), jump = null, sub = "" } = {}) {
-  const fed = feeds.filter((k) => ran(collected, k));
-  const down = fed.filter((k) => failed.has(k));
-  const state = n > 0 ? "count" : !fed.length && feeds.length ? "off" : down.length ? "unknown" : "zero";
-  const failedText = `${down.length === 1 ? "a source" : `${down.length} sources`} failed`;
+// down: why a count cannot be trusted as a total. A feed that failed, answered only in part, or
+// was asked and never answered (a cancelled run) makes a zero "unknown" and a count "at least".
+function tile(id, label, n, { tone = "", line = "solid", feeds = [], collected = {}, failed = new Set(), partial = new Set(), missing = new Set(), jump = null, sub = "" } = {}) {
+  const fed = feeds.filter((k) => ran(collected, k) || missing.has(k));
+  const f = fed.filter((k) => failed.has(k)).length, m = fed.filter((k) => missing.has(k) && !ran(collected, k)).length, pt = fed.filter((k) => partial.has(k) && !failed.has(k)).length;
+  const down = f + m + pt;
+  const state = n > 0 ? "count" : !fed.length && feeds.length ? "off" : down ? "unknown" : "zero";
+  const why = f ? (f === 1 ? "a source failed" : `${f} sources failed`) : m ? (m === 1 ? "a source did not answer before the run was cancelled" : `${m} sources did not answer before the run was cancelled`) : pt === 1 ? "a source answered only in part" : `${pt} sources answered only in part`;
+  const atLeast = state === "count" && down > 0;
   return {
-    id, label, jump, state,
+    id, label, jump, state, atLeast, caveat: state === "unknown" || atLeast,
     value: state === "unknown" ? "unknown" : state === "off" ? "not checked" : n,
     tone: state === "count" ? tone : "",
     line: state === "unknown" || state === "off" ? "dashed" : state === "zero" ? "solid" : line,
-    sub: state === "unknown" ? `${failedText}, so this is not zero` : state === "count" && down.length ? `at least: ${failedText}` : sub,
+    sub: state === "unknown" ? `${why}, so this is not zero` : atLeast ? `at least: ${why}` : sub,
   };
 }
 const word = (id, label, value, { tone = "", unknown = false, sub = "", jump = null } = {}) => ({ id, label, value: unknown ? "unknown" : value, tone: unknown ? "" : tone, line: unknown ? "dashed" : "solid", state: unknown ? "unknown" : "word", sub, jump });
@@ -111,10 +175,14 @@ const word = (id, label, value, { tone = "", unknown = false, sub = "", jump = n
 //   hash:  { verdict, detection: { positives, total } | null, answered, asked }
 //   phone: { lineType, carrier }
 //   name:  { answered, asked }   (directories)
-export function investigateTiles({ items = [], collected = {}, type = "", failedKeys = [], extra = {} } = {}) {
+// running: a run is in flight, so there are no tiles (a count mid-run is half a picture).
+// partialKeys: sources that answered only in part. missingKeys: sources that were asked and had
+// not answered when the run was cancelled.
+export function investigateTiles({ items = [], collected = {}, type = "", failedKeys = [], partialKeys = [], missingKeys = [], running = false, extra = {} } = {}) {
+  if (running) return [];
   const failed = new Set(failedKeys);
   const n = (t) => items.filter((i) => i.tier === t).length;
-  const o = { collected, failed };
+  const o = { collected, failed, partial: new Set(partialKeys), missing: new Set(missingKeys) };
   if (type === "hash") {
     const x = extra.hash;
     if (!x) return [];
@@ -142,13 +210,20 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
       tile("notable", "Public figure", n("notable"), { ...o, feeds: ["nameResult"], jump: { tier: "notable" }, sub: "exact match in Wikidata" }),
     ];
   }
-  const people = ["github", "gravatar", "maigret", "enricher", "platformCheck", "holehe"];
+  const people = ["github", "githubDeep", "gravatar", "maigret", "enricher", "platformCheck", "holehe", "avatarHash"];
+  // A templated URL the link check found is still Unverified (nothing was read about who owns it),
+  // and the tile says how many of those pages were checked.
+  const pages = items.filter((i) => i.tier === "unverified" && i.check === "verified").length;
   const linked = tile("linked", "Linked", n("linked"), { ...o, tone: "linked", feeds: people, jump: { tier: "linked" }, sub: "tied to the primary identity" });
-  const unverified = tile("unverified", "Unverified", n("unverified"), { ...o, tone: "unverified", line: "dashed", feeds: ["sherlock", "maigret", "platformCheck", "hunter", "harvester"], jump: { tier: "unverified" }, sub: "reported, nothing read" });
+  const unverified = tile("unverified", "Unverified", n("unverified"), { ...o, tone: "unverified", line: "dashed", feeds: ["sherlock", "maigret", "platformCheck", "hunter", "harvester"], jump: { tier: "unverified" }, sub: pages ? `reported, ${pages} ${pages === 1 ? "page" : "pages"} checked` : "reported, nothing read" });
   const leads = tile("lead", "Leads", n("lead"), { ...o, feeds: people, jump: { tier: "lead" }, sub: "places to look next" });
   if (type === "email") {
     const breaches = items.filter((i) => String(i.key || "").startsWith("breach:")).length;
-    return [linked, tile("breaches", "Breaches", breaches, { ...o, tone: "flag", feeds: ["hibp"], jump: { tier: "flag" }, sub: "known exposures of this address" }), unverified, leads];
+    // Flags takes the third place when the case has flags that are not breaches; otherwise that
+    // tile would repeat the breach count, and Unverified says more.
+    const otherFlags = n("flag") - breaches;
+    return [linked, tile("breaches", "Breaches", breaches, { ...o, tone: "flag", feeds: ["hibp"], jump: { tier: "flag" }, sub: "known exposures of this address" }),
+      otherFlags > 0 ? tile("flags", "Flags", otherFlags, { ...o, tone: "flag", feeds: ["hibp"], jump: { tier: "flag" }, sub: "besides the breaches" }) : unverified, leads];
   }
   const diff = n("different");
   return [linked,
@@ -157,13 +232,13 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
 }
 
 // Recon. extra: { certDays: number | null }
-export function reconTiles({ items = [], collected = {}, type = "domain", failedKeys = [], extra = {} } = {}) {
-  if (type === "asn") return [];
+export function reconTiles({ items = [], collected = {}, type = "domain", failedKeys = [], partialKeys = [], missingKeys = [], running = false, extra = {} } = {}) {
+  if (type === "asn" || running) return [];
   const failed = new Set(failedKeys);
-  const o = { collected, failed };
+  const o = { collected, failed, partial: new Set(partialKeys), missing: new Set(missingKeys) };
   const n = (t) => items.filter((i) => i.tier === t).length;
   const key = (re) => items.filter((i) => re.test(String(i.key || ""))).length;
-  const every = Object.keys(collected).filter((k) => k !== "ipAsn");
+  const every = [...new Set([...Object.keys(collected).filter((k) => k !== "ipAsn" && k !== "notAnswered"), ...missingKeys])];
   const out = [
     tile("flags", "Flags", n("flag"), { ...o, tone: "flag", feeds: every, jump: { tier: "flag" }, sub: "read these first" }),
     tile("services", "Open ports", key(/^port:/), { ...o, feeds: ["shodan", "portscan"], jump: { tier: items.some((i) => i.tier === "surface") ? "surface" : "flag" }, sub: "seen from outside" }),

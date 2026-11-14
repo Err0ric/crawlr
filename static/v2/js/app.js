@@ -285,7 +285,7 @@ function openSettings() {
 
 // ---- history drawer ---------------------------------------------------------------------
 $("#historyBtn").addEventListener("click", openHistory);
-const KIND = { INVESTIGATE: "investigate", RECON: "recon", email_headers: "email headers" };
+const KIND = { INVESTIGATE: "Investigate", RECON: "Recon", email_headers: "Email headers" };
 // The finding keys of one saved run, built by the code that draws the case, for "what changed".
 function runKeys(e) {
   if (e.type === "RECON") return buildFindings(e.results || {}, e.target, detect(e.target)).items.map((i) => i.key);
@@ -311,10 +311,10 @@ function openHistory() {
         return h`
         <li class="hist-group">
           <div class="hist-row">
-            <button type="button" class="hist-open" data-id="${g.last.id}"><span class="t">${g.target}</span><span class="m"><span>${KIND[g.type] || String(g.type || "").toLowerCase()}</span><span>${plural(g.count, "run")}</span><span>last ${when(g.last.timestamp)}</span>${raw(marks(g.count === 1 ? g.last : { imported: g.imported, v2: true }))}</span>${diff ? raw(h`<span class="d">${diff}</span>`) : ""}</button>
+            <button type="button" class="hist-open" data-id="${g.last.id}"><span class="t">${g.target}</span><span class="m"><span>${KIND[g.type] || String(g.type || "")}</span><span>${plural(g.count, "run")}</span><span>last ${when(g.last.timestamp)}</span>${raw(marks(g.count === 1 ? g.last : { imported: g.imported, v2: true }))}</span>${diff ? raw(h`<span class="d">${diff}</span>`) : ""}</button>
             ${g.count === 1 ? raw(drop(g.last, `case ${g.target}`)) : ""}
           </div>
-          ${g.count > 1 ? raw(h`<details class="hist-runs"><summary>Show the ${g.count} runs</summary><ul>${raw(g.runs.map((e, i) => h`
+          ${g.count > 1 ? raw(h`<details class="hist-runs"><summary>Show the ${g.count} runs</summary><button class="btn btn-sm hist-all" type="button" data-del-group="${g.key}">Delete all ${g.count} runs</button><ul>${raw(g.runs.map((e, i) => h`
             <li class="hist-row"><button type="button" class="hist-open" data-id="${e.id}"><span class="t">${when(e.timestamp)}</span><span class="m"><span>${i === 0 ? "latest run" : `run ${g.count - i} of ${g.count}`}</span>${raw(marks(e))}</span></button>${raw(drop(e, `the run of ${g.target} from ${when(e.timestamp)}`))}</li>`).join(""))}</ul></details>`) : ""}
         </li>`; }).join(""))}</ul>
       <button class="btn btn-sm hist-clear" type="button" id="histClear">Clear all history</button>`
@@ -325,6 +325,14 @@ function openHistory() {
     if (e.target.id === "histImport") { el.querySelector("#histFile").click(); return; }
     const d = e.target.closest("[data-del]");
     if (d) { store.set("crawlr_history", getHistory().filter((x) => x.id !== d.dataset.del)); closeDrawer({ restore: false }); openHistory(); return; }
+    const dg = e.target.closest("[data-del-group]");
+    if (dg) {
+      const g = groupHistory(getHistory()).find((x) => x.key === dg.dataset.delGroup); if (!g) return;
+      const ids = new Set(g.runs.map((r) => r.id));
+      openModal({ title: `Delete all ${g.count} runs?`, body: h`<p class="modal-p">Removes every saved run of <span class="mono">${g.target}</span> and its notes from this browser. This can't be undone.</p>`,
+        actions: [{ label: "Keep", onClick: closeModal }, { label: `Delete ${g.count} runs`, primary: true, onClick: () => { store.set("crawlr_history", getHistory().filter((x) => !ids.has(x.id))); closeModal({ restore: false }); openHistory(); toast("Runs deleted"); } }] });
+      return;
+    }
     if (e.target.id === "histClear") { openModal({ title: "Clear all history?", body: `<p class="modal-p">Removes every saved case and its notes from this browser. This can't be undone.</p>`, actions: [{ label: "Keep", onClick: closeModal }, { label: "Clear all", primary: true, onClick: () => { store.del("crawlr_history"); closeModal({ restore: false }); toast("History cleared"); } }] }); return; }
     const r = e.target.closest(".hist-open");
     if (r) {

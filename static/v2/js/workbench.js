@@ -1,6 +1,6 @@
 // Pieces shared by every workbench mode: run log, tiered ledger, facts panel, run diff.
 import { $$, h, raw, esc, link, linkOf, mark, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
-import { certaintyOf } from "./present.js";
+import { rowCertainty, mayFavicon } from "./present.js";
 import { checkText } from "./links.js";
 import { ADULT_SECTION, adultHost } from "./adult.js";
 
@@ -129,9 +129,13 @@ export const evSrc = (it) => (it.fetch ? h`<button type="button" class="btn btn-
   + String(it.source ?? "").split(", ").filter(Boolean).map((x) => h`<span class="chip">${x}</span>`).join("");
 // The square mark of an evidence card: the server-made thumbnail, else the site's favicon, else
 // initials. A row on an adult or dating host never asks for an image of any kind.
-const rowMark = (it) => mark(it.what, { url: it.link_kind === "none" ? "" : it.url, thumb: it.thumb, favicon: it.tier !== "adult" && !it.glyph && !adultHost(it.url) });
-const rowClass = (it) => { const c = certaintyOf(it.tier); return `${it.card ? "rich" : ""} ${c.tone ? `tone-${c.tone}` : ""} ${c.line === "dashed" ? "line-dashed" : ""}`; };
-const pillOf = (it) => { const c = certaintyOf(it.tier); return c.word ? h`<span class="cp tone-${c.tone} ${c.line === "dashed" ? "line-dashed" : ""}">${c.word}</span>` : ""; };
+// opts.imported: the case came from a case file and has not been run here, so no icon is asked for.
+// opts.handle: the searched handle, so a domain that carries it is never sent to the icon service.
+export const rowMark = (it, opts = {}) => mark(it.what, { url: it.link_kind === "none" ? "" : it.url, thumb: it.thumb, handle: opts.handle || it.card?.handle || "", favicon: mayFavicon(it, opts) && !adultHost(it.url) });
+const ROW_STATE = ["tone-flag", "tone-linked", "tone-match", "tone-different", "tone-unverified", "line-dashed", "is-checked", "is-gone"];
+const rowState = (it) => { const c = rowCertainty(it); return [c.tone ? `tone-${c.tone}` : "", c.line === "dashed" ? "line-dashed" : "", c.checked ? "is-checked" : "", c.gone ? "is-gone" : ""].filter(Boolean); };
+const rowClass = (it) => `${it.card ? "rich" : ""} ${rowState(it).join(" ")}`;
+export const pillOf = (it) => { const c = rowCertainty(it); return c.word ? h`<span class="cp ${c.tone ? `tone-${c.tone}` : ""} ${c.line === "dashed" ? "line-dashed" : ""} ${c.checked ? "is-checked" : ""} ${c.gone ? "is-gone" : ""}">${c.word}</span>` : ""; };
 // Placeholders for sources that are still out. They carry no result styling, and screen readers
 // get the run log's live region instead.
 export const skeletonRows = (pending) => (pending?.length ? h`<div class="sk-wrap"><p class="sk-cap">Waiting for ${pending.length === 1 ? pending[0] : `${pending.length} sources`}${pending.length > 1 ? `: ${pending.slice(0, 6).join(", ")}${pending.length > 6 ? " and more" : ""}` : ""}. Rows appear as each one answers.</p>${raw(['w60', 'w80', 'w40'].map((w) => `<div class="sk-row" aria-hidden="true"><span class="sk sq"></span><span class="sk-lines"><span class="sk ${w}"></span><span class="sk w40"></span></span><span class="sk"></span></div>`).join(""))}</div>` : "");
@@ -151,6 +155,11 @@ export function patchRow(el, it, doc = globalThis.document, opts = {}) {
   const active = doc?.activeElement;
   const was = active && active === box ? "box" : active && what.contains(active) ? "link" : active && src && src.contains(active) ? "act" : "";
   what.innerHTML = evWhat(it);
+  // The link check changes how the row is drawn: its edge and its pill follow (see rowCertainty).
+  if (row.classList?.remove && row.querySelector) {
+    row.classList.remove(...ROW_STATE); const st = rowState(it); if (st.length) row.classList.add(...st);
+    const pill = row.querySelector(".ev-side > .cp"); if (pill) pill.outerHTML = pillOf(it);
+  }
   if (src) {
     src.innerHTML = evSrc(it);
     const name = row.querySelector(".ev-check .sr-only");
@@ -189,7 +198,7 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
           ${raw(rows.slice(0, limit).map((it, i) => h`
             <div class="ev ${raw(rowClass(it))} ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}">
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
-              ${it.card ? raw(rowMark(it)) : ""}
+              ${it.card ? raw(rowMark(it, opts)) : ""}
               <div class="what">${raw(evWhat(it))}</div>
               <div class="ev-side">${raw(pillOf(it))}<span class="src">${raw(evSrc(it))}</span></div>
             </div>`).join(""))}
@@ -319,8 +328,9 @@ export function identityHead({ views, primary, noPrimary }, pick) {
 // where the failure is.
 export function verdictHtml(tiles) {
   return tiles.map((t) => {
+    const caveat = t.caveat ? " caveat" : "";
     const jump = t.state === "zero" ? "disabled" : t.state === "unknown" || t.state === "off" || t.jump?.tab ? h`data-jump-tab="${t.jump?.tab || "sources"}"` : t.jump?.tier ? h`data-jump-tier="${t.jump.tier}"` : "disabled";
-    return h`<button type="button" class="vt state-${t.state} ${t.tone ? `tone-${t.tone}` : ""} ${t.line === "dashed" ? "line-dashed" : ""}" ${raw(jump)}><span class="vt-n">${typeof t.value === "number" ? fmtNum(t.value) : t.value}</span><span class="vt-l">${t.label}</span>${t.sub ? raw(h`<span class="vt-s">${t.sub}</span>`) : ""}</button>`;
+    return h`<button type="button" class="vt state-${t.state} ${t.tone ? `tone-${t.tone}` : ""} ${t.line === "dashed" ? "line-dashed" : ""}" ${raw(jump)}><span class="vt-n">${t.atLeast ? raw('<span class="sr-only">at least </span>') : ""}${typeof t.value === "number" ? fmtNum(t.value) : t.value}${t.atLeast ? raw('<span aria-hidden="true">+</span>') : ""}</span><span class="vt-l">${t.label}</span>${t.sub ? raw(h`<span class="vt-s${caveat}">${t.sub}</span>`) : ""}</button>`;
   }).join("");
 }
 export function renderVerdict(el, tiles) {
@@ -373,6 +383,10 @@ export function itemCollector() {
   return { items, add };
 }
 
+// What the HTML export removes from the page's markup. No image with a remote address survives:
+// site icons go, and so would any other image that is not an embedded thumbnail.
+export const EXPORT_STRIP = '[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs, .sk-wrap, .sk-card, .who-switch, .case-details, .mark img.mark-fav, img:not([src^="data:image/"])';
+
 // ---- print / standalone HTML export --------------------------------------------------
 // The same markup as the screen, with every collapsed section opened, wrapped in a page
 // that carries its own stylesheet. Nothing is uploaded: the file is built in the browser.
@@ -381,7 +395,7 @@ export async function standaloneHtml(title, mainEl, asideEl) {
   let css = "";
   try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
   css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
-  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs, .sk-wrap, .sk-card, .who-switch, .mark img.mark-fav").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true));
+  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll(EXPORT_STRIP).forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true));
     // Adult and dating site rows go after every other finding, under a heading that says what they are.
     c.querySelectorAll('.tier[data-tier="adult"]').forEach((t) => { const title = t.querySelector(".tier-title"); if (title) title.textContent = ADULT_SECTION; t.parentElement?.append(t); });
     return c.innerHTML; };
