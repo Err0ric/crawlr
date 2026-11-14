@@ -321,9 +321,6 @@ export function searchLinks(name, qualifiers = {}) {
     { site: "Facebook", kind: "people search", url: `https://www.facebook.com/search/people/?q=${enc(n)}`, keys: [] },
     { site: "TruePeopleSearch", kind: "people search", url: `https://www.truepeoplesearch.com/results?name=${enc(n)}${loc ? `&citystatezip=${enc(loc)}` : ""}`, keys: loc ? ["location"] : [] },
     { site: "FastPeopleSearch", kind: "people search", url: `https://www.fastpeoplesearch.com/name/${enc(n)}`, keys: [] },
-    { site: "Spokeo", kind: "people search", url: `https://www.spokeo.com/${enc(n)}`, keys: [] },
-    { site: "BeenVerified", kind: "people search", url: `https://www.beenverified.com/people/${enc(n)}/`, keys: [] },
-    { site: "WhitePages", kind: "people search", url: `https://www.whitepages.com/name/${enc(n)}`, keys: [] },
   ].map((s) => ({ site: s.site, url: s.url, meta: `${s.kind} · ${sent(s.keys)}` }));
 }
 

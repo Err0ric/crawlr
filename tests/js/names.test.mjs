@@ -225,12 +225,12 @@ for (const c of [withProfiles(kase("public figure"), "torvalds", "ltorvalds-note
 // ---- search the web ----------------------------------------------------------------------------------
 {
   const s = tierOf(ev(dana), "websearch"), url = (site) => s.find((i) => i.what === site).url;
-  eq(s.map((i) => i.what), ["Google", "Bing", "DuckDuckGo", "LinkedIn", "Facebook", "TruePeopleSearch", "FastPeopleSearch", "Spokeo", "BeenVerified", "WhitePages"], "search engines first, then the people-search sites");
+  eq(s.map((i) => i.what), ["Google", "Bing", "DuckDuckGo", "LinkedIn", "Facebook", "TruePeopleSearch", "FastPeopleSearch"], "search engines first, then the people-search sites");
   ok(s.every((i) => i.link_kind === "search" && L.LINK_KINDS.includes("search")), "search rows have a link kind of their own");
   ok(url("Google") === "https://www.google.com/search?q=%22Dana%20Whitfield%22%20Leeds%20%22Northgate%20University%22%20hydrology", "the query is the quoted name plus the qualifiers, percent-encoded");
   ok(new URL(url("Google")).searchParams.get("q") === '"Dana Whitfield" Leeds "Northgate University" hydrology' && new URL(url("DuckDuckGo")).searchParams.get("q") === '"Dana Whitfield" Leeds "Northgate University" hydrology', "it decodes to what was typed");
   ok(new URL(url("LinkedIn")).searchParams.get("keywords") === "Dana Whitfield Northgate University" && new URL(url("TruePeopleSearch")).searchParams.get("name") === "Dana Whitfield" && new URL(url("TruePeopleSearch")).searchParams.get("citystatezip") === "Leeds", "people-search sites get the qualifier they have a field for");
-  ok(s.find((i) => i.what === "Google").meta === "web search · sends the name and your location, employer and keyword" && s.find((i) => i.what === "Spokeo").meta === "people search · sends the name" && s.find((i) => i.what === "LinkedIn").meta === "people search · sends the name and your employer", "each row says what it sends");
+  ok(s.find((i) => i.what === "Google").meta === "web search · sends the name and your location, employer and keyword" && s.find((i) => i.what === "FastPeopleSearch").meta === "people search · sends the name" && s.find((i) => i.what === "LinkedIn").meta === "people search · sends the name and your employer", "each row says what it sends");
   ok(s.every((i) => { const a = evWhat(i); return /target="_blank"/.test(a) && /rel="noopener noreferrer nofollow"/.test(a) && /data-link-kind="search"/.test(a) && /opens in a new tab/.test(a); }), "they open in a new tab like every other link");
   const plain = tierOf(ev(linus), "websearch");
   ok(plain[0].url === "https://www.google.com/search?q=%22Linus%20Torvalds%22" && plain[0].meta === "web search · sends the name", "with no qualifiers only the name goes");
@@ -254,7 +254,7 @@ for (const c of [withProfiles(kase("public figure"), "torvalds", "ltorvalds-note
 {
   const c = kase("old saved case"), e = ev(c);
   eq([...new Set(e.items.map((i) => i.tier))], ["websearch"], "an old case (only the typed name) still lists the outbound searches");
-  ok(e.items.length === 10 && e.items[5].url === "https://www.truepeoplesearch.com/results?name=Jordan%20Example", "built from the saved name");
+  ok(e.items.length === 7 && e.items[5].url === "https://www.truepeoplesearch.com/results?name=Jordan%20Example", "built from the saved name");
   ok(/No directory was searched for this case/.test(briefText(c)), "and its brief says no directory was searched");
   ok(aiPayloadFor(c.collected, c.target, c.type).name_candidates === undefined && aiPayloadFor(c.collected, c.target, c.type).name_search.name === "Jordan Example", "its AI request is what it always was");
   ok(ev({ collected: {}, target: "Not Searched", type: "name" }).items.length === 0, "a name the server refused has no rows at all: nothing is built from the target box");
@@ -314,7 +314,7 @@ for (const c of [withProfiles(kase("public figure"), "torvalds", "ltorvalds-note
   ok(/## Public figure \(1\)\n_Wikidata lists a person[^\n]+_\n- Linus Torvalds · \[Wikipedia\]\(https:\/\/en\.wikipedia\.org\/wiki\/Linus_Torvalds\) · \[Wikidata\]\(https:\/\/www\.wikidata\.org\/wiki\/Q34253\) · Finnish software engineer \(born 1969\) _\(Wikidata\)_/.test(md), "Markdown: the public figure");
   ok(/## People with this name \(10\)/.test(md) && /- \[Linus Torvalds\]\(https:\/\/github\.com\/torvalds\) · @torvalds · Portland, OR · Linux Foundation · exact name _\(GitHub\)_/.test(md), "Markdown: the candidates as the ledger lists them");
   ok(/## Handles to try \(8\)\n_Built from the name\. Nothing has been checked[^\n]+_\n- linustorvalds · given name \+ family name _\(built from the name\)_/.test(md), "Markdown: handles, with their warning");
-  ok(/## Search the web \(10\)\n_These open a search on another site\. The name and anything you typed above go to that site\._\n- \[Google\]\(https:\/\/www\.google\.com\/search\?q=%22Linus%20Torvalds%22\)/.test(md), "Markdown: the outbound searches, labelled");
+  ok(/## Search the web \(7\)\n_These open a search on another site\. The name and anything you typed above go to that site\._\n- \[Google\]\(https:\/\/www\.google\.com\/search\?q=%22Linus%20Torvalds%22\)/.test(md), "Markdown: the outbound searches, labelled");
   ok(md.indexOf("## Public figure") < md.indexOf("## People with this name") && md.indexOf("## People with this name") < md.indexOf("## Handles to try") && md.indexOf("## Handles to try") < md.indexOf("## Search the web"), "Markdown: same order as the screen");
   ok(!md.includes(String.fromCharCode(0x2014)), "Markdown: no em dash");
 
