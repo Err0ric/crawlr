@@ -29,6 +29,7 @@ import httpx
 
 from core.logging import get_logger
 from core.subprocess_guard import log_result
+from modules.crtsh import fetch_crtsh
 
 log = get_logger(__name__)
 
@@ -155,7 +156,7 @@ def _q(d: str) -> str:
     return quote(d, safe="")
 
 
-async def _src_crtsh(c, d):        return parse_crtsh(await _get(c, f"https://crt.sh/?q=%25.{_q(d)}&output=json"), d), set()
+async def _src_crtsh(c, d):        return parse_crtsh(await fetch_crtsh(d), d), set()   # shared with the subdomain finder
 async def _src_certspotter(c, d):  return parse_certspotter(await _get(c, f"https://api.certspotter.com/v1/issuances?domain={_q(d)}&include_subdomains=true&expand=dns_names"), d), set()
 async def _src_hackertarget(c, d): return parse_hackertarget(await _get(c, f"https://api.hackertarget.com/hostsearch/?q={_q(d)}", as_json=False), d), set()
 async def _src_rapiddns(c, d):     return parse_rapiddns(await _get(c, f"https://rapiddns.io/subdomain/{_q(d)}?full=1", as_json=False), d), set()

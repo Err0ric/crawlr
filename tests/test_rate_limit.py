@@ -33,7 +33,7 @@ def test_prefix_needs_a_path_separator():
 
 def test_previously_uncovered_endpoints_are_limited():
     for path in ("/api/recon/holehe", "/api/recon/scrape-profiles", "/api/recon/enrich", "/api/infra/portscan",
-                 "/api/infra/dns", "/api/email/analyze", "/api/hash/hash", "/api/vehicles/plate", "/api/phone/lookup"):
+                 "/api/infra/dns", "/api/email/analyze", "/api/hash/hash", "/api/phone/lookup"):
         assert match_limit(path) is not None, path
 
 
@@ -55,12 +55,12 @@ def test_rejects_over_the_limit_and_recovers_after_the_window():
 
 def test_rejected_requests_do_not_extend_the_block():
     mw = _mw()
-    limit, window = RATE_LIMITS["/api/vehicles"]
+    limit, window = RATE_LIMITS["/api/phone"]
     for i in range(limit):
-        mw.check("1.1.1.1", "/api/vehicles/plate", now=0.0)
+        mw.check("1.1.1.1", "/api/phone/lookup", now=0.0)
     for i in range(50):  # hammering while blocked must not push the unblock time out
-        assert mw.check("1.1.1.1", "/api/vehicles/plate", now=1.0 + i * 0.1) is not None
-    assert mw.check("1.1.1.1", "/api/vehicles/plate", now=window + 1.0) is None
+        assert mw.check("1.1.1.1", "/api/phone/lookup", now=1.0 + i * 0.1) is not None
+    assert mw.check("1.1.1.1", "/api/phone/lookup", now=window + 1.0) is None
 
 
 def test_key_table_is_bounded(monkeypatch):

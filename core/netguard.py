@@ -67,20 +67,42 @@ async def resolve_public(host: str, port: int = 443) -> list[str]:
     if host in BLOCKED_NAMES or host.endswith(BLOCKED_SUFFIXES) or "." not in host:
         raise BlockedTarget(f"{host} is not a public hostname")
     loop = asyncio.get_running_loop()
+    addrs: list[str] = []
     try:
         infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except socket.gaierror as e:
-        raise LookupError(f"{host} does not resolve") from e
-    addrs: list[str] = []
-    for _family, _type, _proto, _canon, sockaddr in infos:
-        if sockaddr[0] not in addrs:
-            addrs.append(sockaddr[0])
+        for _family, _type, _proto, _canon, sockaddr in infos:
+            if sockaddr[0] not in addrs:
+                addrs.append(sockaddr[0])
+    except socket.gaierror:
+        # The system resolver can fail under load or on a flaky network. Ask public DNS once
+        # before reporting the name as unresolvable. The answer goes through the same checks.
+        addrs = await _public_dns(host)
+        if not addrs:
+            await asyncio.sleep(1.0)
+            addrs = await _public_dns(host)
     if not addrs:
         raise LookupError(f"{host} does not resolve")
     # One private answer poisons the whole set: mixed answers are how rebinding hides.
     if not all(is_public_ip(a) for a in addrs):
         raise BlockedTarget(f"{host} resolves to a non-public address")
     return sorted(addrs, key=lambda a: ":" in a)
+
+
+def _public_dns_blocking(host: str) -> list[str]:
+    import dns.resolver
+    r = dns.resolver.Resolver()
+    r.nameservers = ["1.1.1.1", "8.8.8.8"]
+    r.timeout = 3
+    r.lifetime = 4
+    try:
+        return [str(x) for x in r.resolve(host, "A")]
+    except Exception:
+        return []
+
+
+async def _public_dns(host: str) -> list[str]:
+    from core.dnspool import dns_thread
+    return await dns_thread(_public_dns_blocking, host)
 
 
 @dataclass

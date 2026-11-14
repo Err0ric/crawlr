@@ -1,7 +1,10 @@
 import asyncio
 import dns.resolver
-import httpx
 import re
+from datetime import datetime, timezone
+
+from core.dnspool import dns_thread
+from modules.crtsh import fetch_crtsh
 from core.logging import get_logger
 
 log = get_logger(__name__)
@@ -26,21 +29,13 @@ COMMON_SUBDOMAINS = [
 
 
 async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
-    """Query crt.sh certificate transparency logs.
-    Returns (unique_subdomains, raw_ct_entries)."""
+    """Certificate transparency names and certificates for a domain.
+    Returns (unique_subdomains, certificates). The crt.sh request is shared with the
+    passive harvester through modules.crtsh, so a recon run asks crt.sh once."""
     raw_entries = []
     try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            resp = await client.get(
-                "https://crt.sh/", params={"q": f"%.{domain}", "output": "json"},
-                headers={"User-Agent": "Mozilla/5.0"},
-            )
-            if resp.status_code != 200:
-                return [], []
-            entries = resp.json()
-    except Exception as e:
-        # The target is deliberately left out of the log line.
-        log.warning("crt.sh query failed", extra={"err": type(e).__name__})
+        entries = await fetch_crtsh(domain)
+    except Exception:
         return [], []
 
     subs = set()
@@ -76,11 +71,15 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
             # Extract CN from issuer
             cn_match = re.search(r'CN=([^,]+)', issuer)
             issuer_short = cn_match.group(1).strip() if cn_match else issuer[:40]
-            not_before = entry.get("not_before", "")[:10]
+            not_before = (entry.get("not_before") or "")[:10]
             raw_entries.append({
                 "subdomain": first_name,
                 "issuer": issuer_short,
                 "date": not_before,
+                "not_after": (entry.get("not_after") or "")[:10],
+                "wildcard": "*." in name_value,
+                "names": len([n for n in name_value.split("\n") if n.strip()]),
+                "id": entry.get("id"),
             })
 
     subs.discard(domain_lower)
@@ -94,8 +93,6 @@ async def run_subdomains(domain: str) -> dict:
     resolver.timeout = 3
     resolver.lifetime = 3
 
-    sem = asyncio.Semaphore(20)
-
     def _lookup(fqdn: str) -> list[str]:
         try:
             return [str(r) for r in resolver.resolve(fqdn, "A")]
@@ -103,9 +100,8 @@ async def run_subdomains(domain: str) -> dict:
             return []
 
     async def lookup(fqdn: str) -> list[str]:
-        # dnspython is blocking: threads keep the event loop free, the semaphore keeps it polite.
-        async with sem:
-            return await asyncio.to_thread(_lookup, fqdn)
+        # dnspython is blocking: the shared DNS pool keeps the event loop free and the volume polite.
+        return await dns_thread(_lookup, fqdn)
 
     found = []
     seen_fqdns = set()
@@ -139,6 +135,44 @@ async def run_subdomains(domain: str) -> dict:
         "total": len(found),
         "checked": len(COMMON_SUBDOMAINS),
         "ct_found": ct_count,
-        "ct_entries": ct_entries,
+        "ct_entries": ct_entries[:400],
+        "ct_summary": summarize_certificates(ct_entries, {f["subdomain"] for f in found if f["ips"]}),
         "subdomains": found,
+    }
+
+
+def summarize_certificates(entries: list[dict], resolving: set[str], today: str | None = None) -> dict | None:
+    """Timeline facts from certificate transparency: when certificates were first and last
+    issued, who issued them, how many are still valid, and which certified names no
+    longer resolve (often retired or internal hosts)."""
+    if not entries:
+        return None
+    today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    dated = sorted(e["date"] for e in entries if e.get("date"))
+    issuers: dict[str, int] = {}
+    by_year: dict[str, int] = {}
+    for e in entries:
+        issuers[e["issuer"]] = issuers.get(e["issuer"], 0) + 1
+        if e.get("date"):
+            by_year[e["date"][:4]] = by_year.get(e["date"][:4], 0) + 1
+    active = [e for e in entries if e.get("not_after") and e["not_after"] >= today]
+    names = {e["subdomain"] for e in entries}
+    # The day each name was first certified: when a host appeared. Computed over every
+    # entry, because the list sent to the browser is capped to the most recent ones.
+    first_seen: dict[str, str] = {}
+    for e in entries:
+        d, n = e.get("date") or "", e.get("subdomain") or ""
+        if d and n and (n not in first_seen or d < first_seen[n]):
+            first_seen[n] = d
+    return {
+        "total": len(entries),
+        "first_issued": dated[0] if dated else "",
+        "last_issued": dated[-1] if dated else "",
+        "active": len(active),
+        "expired": len(entries) - len(active),
+        "wildcards": sum(1 for e in entries if e.get("wildcard")),
+        "issuers": sorted(({"name": k, "count": v} for k, v in issuers.items()), key=lambda x: -x["count"])[:8],
+        "by_year": [{"year": y, "count": c} for y, c in sorted(by_year.items())],
+        "not_resolving": sorted(n for n in names if n not in resolving)[:60],
+        "first_seen": [{"name": n, "date": d[:10]} for n, d in sorted(first_seen.items(), key=lambda x: (x[1], x[0]))][:250],
     }

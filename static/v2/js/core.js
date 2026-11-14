@@ -92,7 +92,7 @@ export const aiLabel = () => {
     const left = freeLeft();
     return { text: `Free AI · ${left}`, long: `Free AI: ${left} of ${quota.state.limits?.analysis ?? left} analyses left today. Open settings.`, cls: left > 0 ? "violet" : "warn" };
   }
-  return { text: "AI off", long: "AI analysis is off. Add a key in settings.", cls: "" };
+  return { text: "AI off", long: "AI off. Add a key in settings to turn on AI analysis.", cls: "" };
 };
 // What one AI call will cost the user, said before they spend it.
 export const aiCost = (bucket = "analysis") => {
@@ -221,3 +221,13 @@ export function download(name, content, type) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 export const slug = (s) => String(s).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60) || "case";
+
+// ---- how a source knows ---------------------------------------------------------------
+// Three plain words, shown beside every source, so a hit can be weighed by where it came from.
+export const HOW = {
+  record: { word: "direct", means: "asks the system that holds the answer" },
+  index: { word: "index", means: "a third party's copy, which can be out of date" },
+  guess: { word: "heuristic", means: "inferred from how a site responds, so a hit is a lead to check" },
+};
+export const howTag = (k) => (HOW[k] ? `<span class="src-how ${k}">${esc(HOW[k].word)}</span>` : "");
+export const HOW_LEGEND = Object.values(HOW).map((v) => `<b>${esc(v.word)}</b> ${esc(v.means)}`).join(". ") + ".";

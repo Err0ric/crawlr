@@ -33,6 +33,8 @@ RATE_LIMITS = {
     # active techniques
     "/api/recon/scrape-profiles": (4, 60),
     "/api/infra/portscan": (6, 60),
+    "/api/infra/lookalikes": (4, 60),     # a few hundred DNS queries per call
+    "/api/infra/takeover": (6, 60),
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),
@@ -42,7 +44,6 @@ RATE_LIMITS = {
     "/api/email": (30, 60),
     "/api/hash": (30, 60),
     "/api/phone": (15, 60),
-    "/api/vehicles": (10, 60),
 }
 MAX_KEYS = 20_000
 SWEEP_EVERY = 500      # requests between sweeps

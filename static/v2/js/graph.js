@@ -460,6 +460,14 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
         .attr('font-size', fontSize)
         .text(label);
 
+      // Selecting a node offers to run it (one click, one run; nothing recurses on its own).
+      const pivotable = ['subdomain', 'ip', 'asn', 'cf_asn', 'domain'].includes(n.type) || isSub;
+      if (pivotable) {
+        const pick = () => container.dispatchEvent(new CustomEvent('crawlr:node', { bubbles: true, detail: { type: n.type, label: n.label } }));
+        ng.attr('tabindex', 0).attr('role', 'button').attr('aria-label', `${n.type.replace('_', ' ')} ${n.label}. Press Enter for actions.`).style('cursor', 'pointer')
+          .on('click', pick).on('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      }
+
       // Hover tooltip
       ng.on('mouseover', (e) => {
         let info = n.label;

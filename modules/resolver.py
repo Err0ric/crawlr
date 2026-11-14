@@ -5,6 +5,7 @@ import ipaddress
 
 import dns.resolver
 
+from core.dnspool import dns_thread
 from core.netguard import BlockedTarget, is_public_ip
 
 
@@ -31,12 +32,22 @@ def _resolve_blocking(domain: str) -> str:
     raise dns.resolver.NXDOMAIN(f"Could not resolve {domain}")
 
 
+RETRY_PAUSE = 1.5
+
+
 async def resolve_domain(domain: str) -> str:
-    """Resolve a domain to one IPv4 address. An IP literal is returned as-is."""
+    """Resolve a domain to one IPv4 address. An IP literal is returned as-is.
+    A failure is retried once after a short pause: right after a heavy scan the local
+    resolver can stall for a moment, and that should not cost a source its result."""
     lit = _literal(domain)
     if lit is not None:
         return lit
-    return await asyncio.to_thread(_resolve_blocking, domain.strip().rstrip(".").lower())
+    name = domain.strip().rstrip(".").lower()
+    try:
+        return await dns_thread(_resolve_blocking, name)
+    except dns.resolver.NXDOMAIN:
+        await asyncio.sleep(RETRY_PAUSE)
+        return await dns_thread(_resolve_blocking, name)
 
 
 async def resolve_public_ip(domain: str) -> str:

@@ -59,12 +59,23 @@ Three **tools** need no target and are visually separated in the header: Headers
 
 ## Layout
 
-Desktop: rail (272) | main | aside (300). Rail and aside are sticky and scroll on their own. Under 1180px the aside drops beneath the main column.
+Results first. Each workbench is:
 
-Under 760px:
+```
+case bar   [ target ............ ] [ Run ] [ Sources 4 of 5 ]      sticky under the header
+           detected type, or a choice of types
+main       case title, run log strip, "At a glance", report        | summary column (300):
+           tabs: Findings | By source | (Timeline, Topology)      | What we know, AI, Purpose, Notes
+```
 
-- The mode links move to a fixed bottom tab bar with all five destinations. History and Settings become icon buttons. The AI pill stays on one line ("Free AI · 5").
-- With no case open, the target form sits in the page. With a case open it becomes a bottom sheet behind a "Target and sources" button, so it never covers results unless asked. The sheet has a Done button and closes on Escape; the floating button hides while it is open.
+- The **case bar** replaced the left rail. The target and Run are always one glance away, and results get the width the rail used. Sources are a setting people change rarely, so they sit behind a button that shows how many are on. The panel is a plain disclosure: Escape and a click outside close it, and focus returns to the button.
+- **Tabs** replaced the long page where source cards sat under the ledger. Tab labels carry counts.
+- **Timeline** (Recon only) lists every dated fact a source returned, oldest first, with a Today row dividing what happened from what is due. Each row names its source and says how long ago or how soon. It shows only reported dates, and it is not built for person targets: a dated history of someone's accounts would be a profile.
+- **Sources panel.** Every source carries one of three words for how it knows: `direct` (asks the system that holds the answer), `index` (a third party's copy, which can be out of date) or `heuristic` (inferred from how a site responds, so a hit is a lead). The legend sits at the top of the panel. Heuristic uses a dashed border so the difference is not carried by color.
+- **Purpose** is one optional line above Notes: why the lookup is being done. It is saved with the case and printed on every export.
+- Either workbench accepts any target. A domain typed in Investigate opens in Recon, and a username typed in Recon opens in Investigate, with a toast saying so. Choosing a type by hand ("search this domain as a username") turns the routing off for that run.
+- Under 1180px the summary column drops beneath the results.
+- Under 760px the mode links move to a fixed bottom tab bar, History and Settings become icon buttons, the case bar scrolls with the page, and the sources panel becomes a bottom sheet above the tab bar.
 
 Checked at 375, 768, 1024 and 1440.
 
@@ -73,12 +84,16 @@ Checked at 375, 768, 1024 and 1440.
 - Findings first. The run log is a one-line strip above them once a run completes. It stays open if a source failed.
 - While running: "3 of 7 sources done", a bar, a clock, and a timer on each running source. Results appear as each source answers. The Run button becomes Cancel.
 - Four states that are never merged: **confirmed**, **possible**, **not found**, **failed**. A failed source gets a red row in the log, a notice above the findings, and its own card state. Raw upstream error text is only ever behind a "details" toggle.
-- Ledger tiers: Flags, Confirmed, Possible, Known noisy sites.
+- Ledger tiers: Flags, Confirmed, Possible, Known noisy sites. Recon: Flags, Exposed services, Subdomains, Lookalike domains.
+- **At a glance** sits above the tabs once a run finishes: a few sentences built from rules, each tagged Check, Good or Note. It never appears mid-run, so it never describes half a picture. It states what sources returned and does not guess; where profiles under one handle carry different names it says they may be different people.
+- In the topology graph a node is a button. Selecting one shows a bar with what can be done: run recon on it, or open it. One click is one run; nothing expands on its own.
 - Re-running a target shows what is new and what is gone since the last local run. This is manual only; CrawlR does not watch targets.
 
 ## AI
 
 AI never runs on its own. The AI panel shows a button and, under it, what pressing it costs ("Uses 1 of your 5 free analysis credits left today" or "Uses your Claude key"). An identical re-run reuses the last report and says so.
+
+Pasting an API key into a website is a lot to ask, so the panel always offers a second path that needs none: **Copy prompt** puts the full prompt (instructions plus the findings) on the clipboard for any assistant the person already uses, and a box takes the reply back and formats it as the same report. If the browser blocks the clipboard, the prompt opens in a dialog to copy by hand.
 
 ## Rules
 
@@ -99,5 +114,9 @@ AI never runs on its own. The AI panel shows a button and, under it, what pressi
 - Links inside text are underlined, so they are not identified by color alone.
 
 ## Print and export
+
+Purpose, notes and the collection time are mirrored into a `.print-only` block, because inputs print badly and are stripped from the HTML export. The timeline prints under its own heading.
+
+The JSON export is a **case file**. "Open a case file" in History reads one back in the browser (never uploaded), checks it and adds it to History marked "from a case file". A file that is refused gets a dialog saying why, and History stays open.
 
 "Print or PDF" uses a print stylesheet: light, no chrome, every tier expanded, link URLs printed after their text. The HTML export is the same markup in one self-contained file. Both carry a line saying findings can be wrong and possible items are leads.

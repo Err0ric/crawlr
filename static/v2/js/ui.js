@@ -52,6 +52,9 @@ export function openModal({ title, body, actions = [], wide = false, required = 
   trapFocus(el, required ? null : closeModal);
   root().appendChild(el);
   syncInert();
+  // A long dialog scrolls inside its body. Make that region reachable from the keyboard.
+  const bodyEl = el.querySelector(".modal-body");
+  if (bodyEl.scrollHeight > bodyEl.clientHeight + 1) { bodyEl.tabIndex = 0; bodyEl.setAttribute("role", "group"); bodyEl.setAttribute("aria-label", `${title}, scrollable`); }
   (el.querySelector(focus || "input,textarea,button.btn-primary:not([disabled])") || el.querySelector(FOCUSABLE))?.focus();
   return el;
 }

@@ -27,3 +27,6 @@ jobs:
           for f in static/v2/js/*.js; do node --check "$f"; done
           node tests/js/detect.test.mjs
           node tests/js/contrast.test.mjs
+          node tests/js/brief.test.mjs
+          node tests/js/timeline.test.mjs
+          node tests/js/casefile.test.mjs

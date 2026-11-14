@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from core.ai_call import run_ai
 from core.ai_text import parse_json_object, summary_and_report
+from routers.recon_infra import extra_recon_lines
 
 router = APIRouter()
 
@@ -220,10 +221,9 @@ def ping():
     return {"status": "analyze router live"}
 
 
-@router.post("/summarize")
-async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
-    bucket = "analysis"
-
+def investigation_prompt(req: AnalyzeRequest) -> str:
+    """The full prompt for an investigation report. Used by the AI endpoint and by the
+    keyless "copy for your own AI" path, so both ask exactly the same question."""
     prompt_parts = [f"Target: {req.target}\n"]
 
     prompt_parts.extend(_account_lines(req))
@@ -367,22 +367,42 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
         )
 
     recon_data = "\n".join(prompt_parts)
+    return (
+        INVESTIGATION_PROMPT
+        + ("\n" + ACTIVE_TECHNIQUES_SECTION if req.active_techniques else "")
+        + f"\n\nTarget: {req.target}\n\nCollected data:\n{recon_data}"
+    )
 
+
+@router.post("/prompt")
+async def investigation_prompt_only(req: AnalyzeRequest):
+    """Returns the prompt without calling any model. No key, no quota: the investigator pastes
+    it into an assistant they already use."""
+    return {"prompt": investigation_prompt(req)}
+
+
+class ParseRequest(BaseModel):
+    text: str = Field(max_length=120_000)
+
+
+@router.post("/parse")
+async def parse_pasted_reply(req: ParseRequest):
+    """Formats a model reply the investigator pasted back in. Calls no model."""
+    short_summary, full_report = parse_tagged_report(req.text)
+    if not full_report.strip():
+        raise HTTPException(status_code=400, detail="That reply is empty.")
+    return {"summary": full_report, "short_summary": short_summary, "profile": parse_profile(req.text), "model": "pasted reply", "ai_source": "pasted", "cached": False}
+
+
+@router.post("/summarize")
+async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+    bucket = "analysis"
     t0 = time.time()
 
     ai = await run_ai(
         request, x_api_key, x_ai_provider, bucket,
         max_tokens=4096,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    INVESTIGATION_PROMPT
-                    + ("\n" + ACTIVE_TECHNIQUES_SECTION if req.active_techniques else "")
-                    + f"\n\nTarget: {req.target}\n\nCollected data:\n{recon_data}"
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": investigation_prompt(req)}],
     )
 
     elapsed = round(time.time() - t0, 1)
@@ -696,6 +716,11 @@ class DeepAnalysisRequest(BaseModel):
     portscan: Optional[dict] = None
     asn_detail: Optional[dict] = None
     shodan: Optional[dict] = None
+    email_posture: Optional[dict] = None
+    dns_depth: Optional[dict] = None
+    takeover: Optional[dict] = None
+    lookalikes: Optional[dict] = None
+    wellknown: Optional[dict] = None
 
 
 @router.post("/deep")
@@ -776,7 +801,7 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
             parts.append(f"org: {s['org']}")
         ports = s.get("ports", [])
         if ports:
-            port_strs = [f"{p['port']}/{p.get('transport','tcp')}" for p in ports[:15]]
+            port_strs = [f"{p.get('port', '?')}/{p.get('transport','tcp')}" if isinstance(p, dict) else f"{p}/tcp" for p in ports[:15]]
             parts.append(f"services: {', '.join(port_strs)}")
         vulns = s.get("vulns", [])
         if vulns:
@@ -784,6 +809,7 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
         if parts:
             prompt_parts.append(f"Shodan: {', '.join(parts)}")
 
+    prompt_parts.extend(extra_recon_lines(req))
     recon_data = "\n".join(prompt_parts)
 
     t0 = time.time()

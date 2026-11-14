@@ -16,8 +16,6 @@ from fastapi import HTTPException
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\.[A-Za-z]{2,63}$")
 HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$")
-PLATE_RE = re.compile(r"^[A-Z0-9 -]{1,10}$")
-US_STATE_RE = re.compile(r"^[A-Z]{2}$")
 
 # Second-level public suffixes that are common enough to matter for "same site" checks.
 # This is deliberately small; it only has to stop a.co.uk and b.co.uk from looking related.
@@ -84,20 +82,6 @@ def http_url(value: str) -> str:
     if parts.username or parts.password:
         raise _bad("URLs with credentials are not supported.")
     host(parts.hostname or "")
-    return v
-
-
-def plate(value: str) -> str:
-    v = (value or "").strip().upper()
-    if not PLATE_RE.fullmatch(v):
-        raise _bad("Enter a plate of up to 10 letters and digits.")
-    return v
-
-
-def us_state(value: str) -> str:
-    v = (value or "").strip().upper()
-    if not US_STATE_RE.fullmatch(v):
-        raise _bad("Pick a two-letter state code.")
     return v
 
 

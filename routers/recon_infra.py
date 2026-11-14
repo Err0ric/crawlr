@@ -15,6 +15,11 @@ from modules.port_scan import run_portscan
 from modules.wayback import run_wayback
 from modules.redirect_chain import run_redirect_chain
 from modules.tech_fingerprint import run_tech_fingerprint
+from modules.email_posture import run_email_posture
+from modules.dns_depth import run_dns_depth
+from modules.takeover import run_takeover
+from modules.lookalikes import run_lookalikes
+from modules.wellknown import run_wellknown
 import asyncio
 import httpx
 import time
@@ -45,6 +50,11 @@ class ReconAnalyzeRequest(BaseModel):
     portscan: Optional[dict] = None
     asn_detail: Optional[dict] = None
     shodan: Optional[dict] = None
+    email_posture: Optional[dict] = None
+    dns_depth: Optional[dict] = None
+    takeover: Optional[dict] = None
+    lookalikes: Optional[dict] = None
+    wellknown: Optional[dict] = None
 
 
 @router.post("/dns")
@@ -152,11 +162,79 @@ async def tech_fingerprint_scan(req: DomainRequest):
     return await run_tech_fingerprint(domain)
 
 
-@router.post("/summarize")
-async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
+def extra_recon_lines(req) -> list[str]:
+    """Prompt lines for the newer recon checks. Only sources that ran without failing are used."""
+    ok = lambda d: isinstance(d, dict) and not d.get("error")
+    lines: list[str] = []
+    ep = getattr(req, "email_posture", None)
+    if ok(ep):
+        issues = [f["title"] for f in ep.get("findings", []) if f.get("level") == "flag"]
+        lines.append(f"Email security: grade {ep.get('grade', '?')}, spoofable: {ep.get('spoofable', '?')}" + (f". Issues: {'; '.join(issues[:6])}" if issues else ""))
+    dd = getattr(req, "dns_depth", None)
+    if ok(dd):
+        lines.append(
+            f"DNS: DNSSEC {'enabled' if dd.get('dnssec', {}).get('signed') and dd.get('dnssec', {}).get('ds') else 'not enabled'}, "
+            f"CAA {'present' if dd.get('caa') else 'absent'}, wildcard DNS {'yes' if dd.get('wildcard', {}).get('present') else 'no'}"
+        )
+    tk = getattr(req, "takeover", None)
+    if ok(tk) and tk.get("candidates"):
+        rows = [f"{c['host']} -> {c['cname']} ({c['service']}, {c['status']})" for c in tk["candidates"][:10]]
+        lines.append(f"Subdomain takeover candidates (DNS only, unverified): {'; '.join(rows)}")
+    la = getattr(req, "lookalikes", None)
+    if ok(la) and la.get("results"):
+        rows = [f"{r['domain']}{' (receives mail)' if r.get('mail') else ''}" for r in la["results"][:15]]
+        lines.append(f"Registered lookalike domains ({la.get('registered', len(rows))}, not proof of abuse): {', '.join(rows)}")
+    wk = getattr(req, "wellknown", None)
+    if ok(wk):
+        if wk.get("security_txt"):
+            lines.append(f"security.txt present, contact: {', '.join(wk['security_txt'].get('contact', [])[:3])}")
+        elif wk.get("found"):
+            lines.append("No security.txt published")
+        if (wk.get("robots") or {}).get("interesting"):
+            lines.append(f"robots.txt disallows: {', '.join(wk['robots']['interesting'][:15])}")
+    return lines
+
+
+@router.post("/email-posture")
+async def email_posture_scan(req: DomainRequest):
+    """SPF, DMARC, DKIM, MTA-STS, TLS-RPT and BIMI from DNS. Does not contact mail servers."""
+    return await run_email_posture(validate.host(req.domain, allow_ip=False))
+
+
+@router.post("/dns-depth")
+async def dns_depth_scan(req: DomainRequest):
+    """CAA, DNSSEC, wildcard detection and reverse DNS."""
+    return await run_dns_depth(validate.host(req.domain, allow_ip=False))
+
+
+class TakeoverRequest(BaseModel):
+    domain: str = Field(max_length=320)
+    hosts: list[str] = Field(max_length=400)
+
+
+@router.post("/takeover")
+async def takeover_scan(req: TakeoverRequest):
+    """Subdomains whose CNAME points at a claimable cloud service. DNS only."""
+    return await run_takeover(validate.host(req.domain, allow_ip=False), [h[:260] for h in req.hosts])
+
+
+@router.post("/lookalikes")
+async def lookalikes_scan(req: DomainRequest):
+    """Registered typo and lookalike variants of the domain. DNS only."""
+    return await run_lookalikes(validate.host(req.domain, allow_ip=False))
+
+
+@router.post("/wellknown")
+async def wellknown_scan(req: DomainRequest):
+    """security.txt, robots.txt and the favicon hash. Three requests to the target's web server."""
+    return await run_wellknown(validate.host(req.domain))
+
+
+def recon_prompt(req: ReconAnalyzeRequest) -> str:
+    """The full prompt for a recon summary. Shared by the AI endpoint and the keyless copy path."""
 
     prompt_parts = [f"Target domain/IP: {req.target}\n"]
-    failed = [name for name in ("dns", "whois", "ssl", "headers", "subdomains", "asn", "portscan", "asn_detail", "shodan")
+    failed = [name for name in ("dns", "whois", "ssl", "headers", "subdomains", "asn", "portscan", "asn_detail", "shodan", "email_posture", "dns_depth", "takeover", "lookalikes", "wellknown")
               if isinstance(getattr(req, name), dict) and getattr(req, name).get("error")]
     if failed:
         prompt_parts.append(
@@ -281,7 +359,11 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
         if ports:
             port_strs = []
             for p in ports[:15]:
-                svc = f"{p['port']}/{p.get('transport','tcp')}"
+                # InternetDB lists bare port numbers; full Shodan lists objects with a product.
+                if not isinstance(p, dict):
+                    port_strs.append(f"{p}/tcp")
+                    continue
+                svc = f"{p.get('port', '?')}/{p.get('transport','tcp')}"
                 if p.get("product"):
                     svc += f" ({p['product']}"
                     if p.get("version"):
@@ -295,45 +377,52 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
         if parts:
             prompt_parts.append(f"Shodan: {', '.join(parts)}")
 
+    prompt_parts.extend(extra_recon_lines(req))
     recon_data = "\n".join(prompt_parts)
 
+    return (
+        "You are an infrastructure security analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
+        '{\n'
+        '  "short_summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"],\n'
+        '  "full_report": "markdown string"\n'
+        '}\n\n'
+        "**short_summary**: Exactly 4 bullet strings. STRICT RULES:\n"
+        "- Each bullet starts with a category label followed by a dash (e.g. 'Missing Headers –', 'Open Ports –', 'SSL Risk –')\n"
+        "- Maximum 15 words per bullet\n"
+        "- Every bullet MUST reference specific data from the scan (actual port numbers, header names, subdomain names, CVE IDs, IP addresses)\n"
+        "- NO generic observations. Bad: 'Several security headers missing'. Good: 'Missing Headers – no CSP, X-Frame-Options, or HSTS detected'\n"
+        "- Plain text only, no markdown\n\n"
+        "**full_report**: A markdown string with this structure:\n\n"
+        "## Attack Surface Summary\n"
+        "Brief overview of the target's external footprint, hosting, and exposure.\n\n"
+        "## Key Findings\n"
+        "→ Misconfigurations, missing security headers, expiring certs, open sensitive ports\n"
+        "→ Notable subdomains (dev, staging, admin panels)\n"
+        "→ Technology stack inferences, hosting provider and CDN details\n"
+        "→ Information leakage from headers, DNS, or WHOIS\n\n"
+        "## Recommendations\n"
+        "→ 3-5 specific actionable next steps for further reconnaissance or testing\n"
+        "→ Suggest tools and techniques for each step\n\n"
+        "Use **bold** for emphasis in the full_report. Use → prefix for action items. "
+        "Keep it concise and actionable.\n\n"
+        f"Recon data:\n{recon_data}"
+    )
+
+
+@router.post("/prompt")
+async def recon_prompt_only(req: ReconAnalyzeRequest):
+    """Returns the prompt without calling any model. No key and no quota."""
+    return {"prompt": recon_prompt(req)}
+
+
+@router.post("/summarize")
+async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
     t0 = time.time()
 
     ai = await run_ai(
         request, x_api_key, x_ai_provider, "analysis",
         max_tokens=2048,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    "You are an infrastructure security analyst. Based on the recon data below, respond with ONLY valid JSON (no markdown fencing, no extra text) with exactly two keys:\n\n"
-                    '{\n'
-                    '  "short_summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"],\n'
-                    '  "full_report": "markdown string"\n'
-                    '}\n\n'
-                    "**short_summary**: Exactly 4 bullet strings. STRICT RULES:\n"
-                    "- Each bullet starts with a category label followed by a dash (e.g. 'Missing Headers –', 'Open Ports –', 'SSL Risk –')\n"
-                    "- Maximum 15 words per bullet\n"
-                    "- Every bullet MUST reference specific data from the scan (actual port numbers, header names, subdomain names, CVE IDs, IP addresses)\n"
-                    "- NO generic observations. Bad: 'Several security headers missing'. Good: 'Missing Headers – no CSP, X-Frame-Options, or HSTS detected'\n"
-                    "- Plain text only, no markdown\n\n"
-                    "**full_report**: A markdown string with this structure:\n\n"
-                    "## Attack Surface Summary\n"
-                    "Brief overview of the target's external footprint, hosting, and exposure.\n\n"
-                    "## Key Findings\n"
-                    "→ Misconfigurations, missing security headers, expiring certs, open sensitive ports\n"
-                    "→ Notable subdomains (dev, staging, admin panels)\n"
-                    "→ Technology stack inferences, hosting provider and CDN details\n"
-                    "→ Information leakage from headers, DNS, or WHOIS\n\n"
-                    "## Recommendations\n"
-                    "→ 3-5 specific actionable next steps for further reconnaissance or testing\n"
-                    "→ Suggest tools and techniques for each step\n\n"
-                    "Use **bold** for emphasis in the full_report. Use → prefix for action items. "
-                    "Keep it concise and actionable.\n\n"
-                    f"Recon data:\n{recon_data}"
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": recon_prompt(req)}],
     )
 
     elapsed = round(time.time() - t0, 1)

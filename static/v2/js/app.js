@@ -1,9 +1,10 @@
 // Entry point: navigation, landing, settings, history drawer, AI pill, theme, terms.
-import { $, $$, h, raw, esc, store, toast, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
+import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
 import { openModal, closeModal, openDrawer, closeDrawer } from "./ui.js";
 import { run, cancel, renderSources, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
+import { parseCaseFile, MAX_CASE_BYTES } from "./casefile.js";
 
 // ---- theme ---------------------------------------------------------------------
 // The stylesheet follows the system setting on its own. This only applies an explicit choice.
@@ -44,16 +45,16 @@ function show(view, { focus = true } = {}) {
   current = view;
   $("#landing").hidden = view !== "landing";
   VIEWS.forEach((b) => ($(`#${b}`).hidden = view !== b));
-  closeRail();
-  $("#railToggle").hidden = !BENCHES.includes(view);
+  closeRail(); measureCasebar();
   $$("[data-mode]").forEach((a) => a.removeAttribute("aria-current"));
   $$(`[data-mode="${view}"]`).forEach((a) => a.setAttribute("aria-current", "page"));
   document.title = TITLES[view] || TITLES.landing;
   if (VIEWS.includes(view) && location.hash !== `#${view}`) history.replaceState(null, "", `${location.pathname}#${view}`);
   if (!focus) return;
   // Move focus to the natural starting point of the view (wide screens: the first field).
-  const idleBench = BENCHES.includes(view) && $(`#${view}`).classList.contains("idle");
-  const sel = FOCUS[view] || (idleBench ? `#${view} .rail .target` : "");
+  // an empty workbench starts in its target field; one with a case open starts at the results
+  const idleBench = BENCHES.includes(view) && !(view === "recon" ? recon.state.target : state.target);
+  const sel = FOCUS[view] || (idleBench ? `#${view} .casebar .target` : "");
   setTimeout(() => { if ($("#overlays").children.length) return; (sel && $(sel)?.offsetParent ? $(sel) : $("#content")).focus({ preventScroll: true }); }, 50);
 }
 window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.includes(v)) show(v); });
@@ -62,27 +63,42 @@ $("#brand").addEventListener("click", (e) => { e.preventDefault(); clearCase(); 
 $$("[data-mode]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.mode); }));
 $(".skip").addEventListener("click", (e) => { e.preventDefault(); $("#content").focus(); });
 
-// A bench with no case shows its target form inline; once a case is open, small screens
-// tuck the form into a sheet behind the "Target and sources" button so results get the room.
-function syncIdle() {
-  $("#investigate").classList.toggle("idle", !state.target);
-  $("#recon").classList.toggle("idle", !recon.state.target);
-}
+// The Sources panel drops from the case bar (a sheet on phones). It is a plain disclosure:
+// the button says whether it is open, Escape and a click outside close it.
+const railBtn = () => $(".bench:not([hidden]) .sources-btn");
 function openRail() {
   const rail = $(".bench:not([hidden]) .rail"); if (!rail) return;
-  rail.classList.add("open"); document.body.classList.add("rail-open"); $("#railToggle").setAttribute("aria-expanded", "true");
-  rail.querySelector(".target")?.focus();
+  rail.hidden = false; rail.classList.add("open"); document.body.classList.add("rail-open");
+  railBtn()?.setAttribute("aria-expanded", "true");
+  (rail.querySelector("[data-toggle]") || rail.querySelector("button"))?.focus();
 }
-function closeRail() {
-  $$(".rail.open").forEach((r) => r.classList.remove("open"));
+function closeRail({ refocus = false } = {}) {
+  const open = $$(".rail.open");
+  open.forEach((r) => { r.classList.remove("open"); r.hidden = true; });
   document.body.classList.remove("rail-open");
-  $("#railToggle").setAttribute("aria-expanded", "false");
+  $$(".sources-btn").forEach((b) => b.setAttribute("aria-expanded", "false"));
+  if (refocus && open.length) railBtn()?.focus();
 }
-$("#railToggle").addEventListener("click", () => ($(".rail.open") ? closeRail() : openRail()));
-document.addEventListener("click", (e) => { if (e.target.closest("[data-close-rail]")) { closeRail(); $("#railToggle").focus(); } });
+// Sticky things below the case bar (result tabs, the summary column) need its height.
+function measureCasebar() {
+  const c = $(".bench:not([hidden]) .casebar");
+  const sticky = c && getComputedStyle(c).position === "sticky";
+  document.documentElement.style.setProperty("--casebar-h", `${sticky ? c.offsetHeight : 0}px`);
+}
+const casebarWatch = new ResizeObserver(measureCasebar);
+$$(".casebar").forEach((c) => casebarWatch.observe(c));
+window.addEventListener("resize", measureCasebar);
+const syncIdle = () => {};   // kept for callers; the layout no longer depends on whether a case is open
+$$(".sources-btn").forEach((b) => b.addEventListener("click", () => ($(".rail.open") ? closeRail({ refocus: true }) : openRail())));
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-close-rail]")) { closeRail({ refocus: true }); return; }
+  if ($(".rail.open") && !e.target.closest(".rail, .sources-btn")) closeRail();
+});
 // preventDefault matters: the target field is type=search, and browsers clear a search field on Escape.
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $(".rail.open") && !$("#overlays").children.length) { e.preventDefault(); closeRail(); $("#railToggle").focus(); } });
-document.addEventListener("crawlr:close-rail", closeRail);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $(".rail.open") && !$("#overlays").children.length) { e.preventDefault(); closeRail({ refocus: true }); } });
+document.addEventListener("crawlr:close-rail", () => closeRail());
+
+$$("[data-how-legend]").forEach((el) => { el.innerHTML = HOW_LEGEND; });
 
 // ---- landing -------------------------------------------------------------------
 const detectBox = $("#landingDetect");
@@ -153,11 +169,20 @@ $("#targetDetected").addEventListener("click", (e) => { const b = e.target.close
 $("#runBtn").addEventListener("click", () => {
   if (state.running) { cancel(); return; }
   closeRail();
-  run($("#targetInput").value, typeOverride || undefined).then(syncIdle); syncIdle();
+  const v = $("#targetInput").value.trim();
+  // Any target can be typed in either workbench: a domain, IP or ASN typed here opens in Recon
+  // unless the investigator chose to search it as a handle.
+  if (v && !typeOverride && RECON_TYPES.includes(detect(v))) { toast(`${TYPE_LABEL[detect(v)]}: opened in Recon.`); startRecon(v); return; }
+  run(v, typeOverride || undefined);
 });
+// The same in the other direction: a username or email typed into Recon opens in Investigate.
+$("#rRunBtn").addEventListener("click", (e) => {
+  if (recon.state.running) return;
+  const v = $("#rTargetInput").value.trim(), t = detect(v);
+  if (v && INVESTIGATE_TYPES.includes(t)) { e.stopImmediatePropagation(); toast(`${TYPE_LABEL[t]}: opened in Investigate.`); startInvestigate(v); }
+}, true);
 $("#clearBtn").addEventListener("click", () => { clearCase(); typeOverride = ""; syncIdle(); $("#targetInput").focus(); });
 $("#rClearBtn").addEventListener("click", () => { syncIdle(); $("#rTargetInput").focus(); });
-$("#rRunBtn").addEventListener("click", () => setTimeout(syncIdle, 0));
 $("#exportBtn").addEventListener("click", exportCase);
 // carry a domain/IP typed into Investigate over to Recon
 document.addEventListener("click", (e) => { if (e.target.closest("[data-carry]")) { const v = $("#targetInput").value.trim(); $("#rTargetInput").value = v; $("#rTargetInput").dispatchEvent(new Event("input")); } });
@@ -202,6 +227,11 @@ function openSettings() {
       <section>
         <h3 class="set-h">Your data</h3>
         <p class="set-p">Cases, notes and keys live in this browser's storage and nowhere else. CrawlR has no accounts. Clear saved cases from History.</p>
+      </section>
+      <section>
+        <h3 class="set-h">Responsible use</h3>
+        <p class="set-p">What CrawlR is for, what it must not be used for, and what it does and does not record.</p>
+        <button class="btn btn-sm" type="button" data-open-use>Read the acceptable-use statement</button>
       </section>`,
   });
   roving(el, "[role=radio]", (b) => b.click());
@@ -225,17 +255,19 @@ function openHistory() {
   const list = getHistory();
   const el = openDrawer({
     title: "History",
-    body: list.length ? h`
+    body: IMPORT_HTML + (list.length ? h`
       <p class="set-p">Kept in this browser only, newest first. Up to 50 cases.</p>
       <ul class="hist">${raw(list.map((e) => h`
         <li class="hist-row">
-          <button type="button" class="hist-open" data-id="${e.id}"><span class="t">${e.target}</span><span class="m">${KIND[e.type] || String(e.type || "").toLowerCase()} · ${new Date(e.timestamp).toLocaleString()}${e.v2 ? "" : " · saved by the old interface"}</span></button>
+          <button type="button" class="hist-open" data-id="${e.id}"><span class="t">${e.target}</span><span class="m">${KIND[e.type] || String(e.type || "").toLowerCase()} · ${new Date(e.timestamp).toLocaleString()}${e.imported ? " · from a case file" : ""}${e.v2 ? "" : " · saved by the old interface"}</span></button>
           <button class="btn btn-ghost btn-icon" type="button" data-del="${e.id}" aria-label="Delete case ${e.target}">✕</button>
         </li>`).join(""))}</ul>
       <button class="btn btn-sm hist-clear" type="button" id="histClear">Clear all history</button>`
-      : `<p class="empty flat">No cases yet. History is kept in this browser only.</p>`,
+      : `<p class="empty flat">No cases yet. History is kept in this browser only.</p>`),
   });
+  el.querySelector("#histFile").addEventListener("change", (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importCase(f); });
   el.addEventListener("click", (e) => {
+    if (e.target.id === "histImport") { el.querySelector("#histFile").click(); return; }
     const d = e.target.closest("[data-del]");
     if (d) { store.set("crawlr_history", getHistory().filter((x) => x.id !== d.dataset.del)); closeDrawer({ restore: false }); openHistory(); return; }
     if (e.target.id === "histClear") { openModal({ title: "Clear all history?", body: `<p class="modal-p">Removes every saved case and its notes from this browser. This can't be undone.</p>`, actions: [{ label: "Keep", onClick: closeModal }, { label: "Clear all", primary: true, onClick: () => { store.del("crawlr_history"); closeModal({ restore: false }); toast("History cleared"); } }] }); return; }
@@ -245,13 +277,53 @@ function openHistory() {
       closeDrawer({ restore: false });
       const entry = getHistory().find((x) => x.id === r.dataset.id);
       if (!entry) return;
-      if (entry.type === "RECON") { recon.loadHistory(entry); syncIdle(); show("recon", { focus: false }); }
-      else if (entry.type === "INVESTIGATE") { loadHistory(entry.id); syncIdle(); show("investigate", { focus: false }); }
-      else if (entry.type === "email_headers") { show("headers", { focus: false }); tools.loadHeaderHistory(entry); }
-      $("#content").focus({ preventScroll: true });
+      openEntry(entry);
     }
   });
 }
+function openEntry(entry) {
+  if (entry.type === "RECON") { recon.loadHistory(entry); syncIdle(); show("recon", { focus: false }); }
+  else if (entry.type === "INVESTIGATE") { loadHistory(entry); syncIdle(); show("investigate", { focus: false }); }
+  else if (entry.type === "email_headers") { show("headers", { focus: false }); tools.loadHeaderHistory(entry); }
+  $("#content").focus({ preventScroll: true });
+}
+
+// ---- case files ---------------------------------------------------------------------------
+// A case exported on one machine opens on another. The file is read in the browser and is
+// never uploaded. It is checked like any other outside data before it is shown.
+const IMPORT_HTML = `<div class="hist-import">
+    <button class="btn btn-sm" type="button" id="histImport">Open a case file</button>
+    <input type="file" id="histFile" accept=".json,application/json" hidden aria-hidden="true" tabindex="-1">
+    <p class="set-p">To move a case to another machine, export it as a case file and open the file here. It is read in this browser and never uploaded.</p>
+  </div>`;
+const importError = (msg) => openModal({ title: "Could not open that file", body: h`<p class="modal-p">${msg}</p>`, actions: [{ label: "Close", primary: true, onClick: closeModal }] });
+async function importCase(file) {
+  if (state.running || recon.state.running) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
+  if (file.size > MAX_CASE_BYTES) { importError("That file is too large to be a CrawlR case (limit 3 MB)."); return; }
+  let text = "";
+  try { text = await file.text(); } catch { importError("The browser could not read that file."); return; }
+  const res = parseCaseFile(text);
+  if (!res.ok) { importError(res.error); return; }
+  // Add it without touching the other cases. If storage is full the case still opens, unsaved.
+  const saved = store.set("crawlr_history", [res.entry, ...getHistory()].slice(0, 50));
+  closeDrawer({ restore: false });
+  openEntry(res.entry);
+  toast(saved ? `Opened ${res.entry.target}. It is now in History.` : "Opened, but not saved: this browser's storage is full. Delete a few cases from History to keep it.", 5000);
+}
+
+// ---- acceptable use -----------------------------------------------------------------------
+// The same commitments as the first-run gate, in full, reachable at any time.
+const USE_HTML = `<div class="terms">
+  <p><b>CrawlR is for</b> security work on systems you own or are authorized to test, checking your own exposure, research, journalism, incident response and training exercises such as CTFs.</p>
+  <p><b>Do not use it to</b> harass, stalk, dox or locate a private individual, to scan or probe systems without permission, or to try credentials found in breaches. CrawlR never logs in to anything, never triggers a password reset and never contacts a person.</p>
+  <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and stay off until you turn them on.</p>
+  <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Confirmed" means an account exists, not who owns it. "Possible" means a tool reported it and nothing verified it. A source that failed says nothing either way.</p>
+  <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
+  <p><b>Collect only what your purpose needs.</b> Public does not mean harmless: separate public facts can identify someone once combined. You are responsible for how you use what you find, under the law where you are and where the target is.</p>
+  <p>CrawlR is not a people-search service. Name and phone lookups only open links for you to search by hand.</p>
+</div>`;
+function openUse() { openModal({ title: "Acceptable use", wide: true, body: USE_HTML, actions: [{ label: "Close", primary: true, onClick: closeModal }] }); }
+document.addEventListener("click", (e) => { if (e.target.closest("[data-open-use]")) { closeDrawer({ restore: false }); openUse(); } });
 
 // ---- terms ---------------------------------------------------------------------------------
 // The gate cannot be dismissed with Escape, the backdrop or a close button: the only way
@@ -267,6 +339,7 @@ function termsIfNeeded() {
       <p>Results come from third parties and can be wrong. "Possible" findings are leads to check, not facts, and a confirmed account shows that a handle exists, not who owns it.</p>
       <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled and stay off until you turn them on. Only scan hosts you own or are authorized to test.</p>
       <p>Your cases and notes stay in this browser. Don't collect more about a person than your purpose needs.</p>
+      <p>The full acceptable-use statement is always under Settings.</p>
       <label class="terms-ok"><input type="checkbox" id="termsOk"> I understand and will use CrawlR responsibly.</label>
     </div>`,
     actions: [{ label: "Continue", primary: true, disabled: true, onClick: (m) => { if (!m.querySelector("#termsOk").checked) return; store.set("crawlr_terms_v1", Date.now()); closeModal({ restore: false }); show(current || "landing"); } }],
