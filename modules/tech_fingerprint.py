@@ -1,6 +1,9 @@
 import httpx
 import re
 
+from core.errors import error_fields
+from core.netguard import safe_fetch
+
 
 SIGNATURES = {
     "cms": {
@@ -102,10 +105,10 @@ async def run_tech_fingerprint(domain: str) -> dict:
     }
 
     try:
-        async with httpx.AsyncClient(
-            timeout=10, follow_redirects=True, verify=False
-        ) as client:
-            resp = await client.get(url)
+        # verify=False is deliberate: sites with broken certificates are still worth fingerprinting.
+        # safe_fetch vets and pins every hop, so this cannot reach internal hosts.
+        async with httpx.AsyncClient(timeout=10, verify=False) as client:
+            resp = (await safe_fetch(client, url)).response
 
         # Lowercase headers dict for matching
         headers_lower = {k.lower(): v for k, v in resp.headers.items()}
@@ -137,6 +140,6 @@ async def run_tech_fingerprint(domain: str) -> dict:
             result["found"] = True
 
     except Exception as e:
-        result["error"] = str(e)
+        result.update(error_fields(e))
 
     return result

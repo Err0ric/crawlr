@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import re
 import email
 import email.utils
@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 class HeaderRequest(BaseModel):
-    headers: str
+    headers: str = Field(max_length=200_000)
 
 
 def parse_received_chain(raw: str) -> list[dict]:

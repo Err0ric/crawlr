@@ -1,6 +1,8 @@
 import hashlib
 import httpx
 
+from core.errors import error_fields
+
 
 async def run_gravatar(email: str, timeout: int = 10) -> dict:
     email_hash = hashlib.md5(email.lower().strip().encode()).hexdigest()
@@ -28,4 +30,4 @@ async def run_gravatar(email: str, timeout: int = 10) -> dict:
                 result["name"] = " ".join(p for p in parts if p)
             return result
     except Exception as e:
-        return {"email": email, "found": False, "error": str(e)}
+        return {"email": email, "found": False, **error_fields(e)}

@@ -3,49 +3,70 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CrawlR</title>
-<meta name="description" content="Browser-based OSINT investigation. Type a username, email, domain, IP, phone number or hash and CrawlR runs the right sources.">
+<title>CrawlR: OSINT investigation in your browser</title>
+<meta name="description" content="Browser-based OSINT investigation. Type a username, email, domain, IP, phone number or hash and CrawlR runs the right public sources and ranks what comes back.">
+<link rel="canonical" href="{{SITE_URL}}/">
+<meta name="theme-color" content="#16151f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f6fb" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark light">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CrawlR">
+<meta property="og:title" content="CrawlR: OSINT investigation in your browser">
+<meta property="og:description" content="Browser-based OSINT investigation. Type a username, email, domain, IP, phone number or hash and CrawlR runs the right public sources and ranks what comes back.">
+<meta property="og:url" content="{{SITE_URL}}/">
+<meta property="og:image" content="{{SITE_URL}}/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CrawlR: type a target, get ranked evidence from public sources.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CrawlR: OSINT investigation in your browser">
+<meta name="twitter:description" content="Browser-based OSINT investigation. Type a username, email, domain, IP, phone number or hash and CrawlR runs the right public sources and ranks what comes back.">
+<meta name="twitter:image" content="{{SITE_URL}}/static/og.png">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preload" href="/static/v2/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/v2/fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/v2/css/app.css">
+<link rel="modulepreload" href="/static/v2/js/core.js">
 </head>
 <body>
+<a class="skip" href="#content">Skip to content</a>
 
 <header class="topbar">
   <a class="brand" href="/" id="brand" aria-label="CrawlR home">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
     <span>Crawl<span class="r">R</span></span>
   </a>
-  <nav class="nav" aria-label="Modes">
-    <a href="#investigate" data-mode="investigate">Investigate</a>
-    <a href="#recon" data-mode="recon">Recon</a>
+  <nav class="nav" aria-label="Modes and tools">
+    <a href="#investigate" data-mode="investigate" title="People and handles: username, email, phone, hash, name">Investigate</a>
+    <a href="#recon" data-mode="recon" title="Infrastructure: domain, IP, ASN">Recon</a>
+    <span class="nav-sep" aria-hidden="true"></span>
+    <span class="nav-label" aria-hidden="true">Tools</span>
     <a href="#headers" data-mode="headers">Headers</a>
     <a href="#dorks" data-mode="dorks">Dorks</a>
     <a href="#decoders" data-mode="decoders">Decoders</a>
   </nav>
   <div class="grow"></div>
   <div class="right">
-    <button class="pill" id="aiPill" type="button" title="AI availability. Click to manage keys."><span class="dot"></span><span id="aiPillText">AI off</span></button>
-    <button class="btn btn-ghost btn-sm" id="historyBtn" type="button">History</button>
-    <button class="btn btn-ghost btn-sm" id="settingsBtn" type="button">Settings</button>
+    <button class="pill" id="aiPill" type="button"><span class="dot" aria-hidden="true"></span><span id="aiPillText">AI off</span></button>
+    <button class="btn btn-ghost btn-sm topbtn" id="historyBtn" type="button" aria-label="History"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg><span>History</span></button>
+    <button class="btn btn-ghost btn-sm topbtn" id="settingsBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Settings</span></button>
   </div>
 </header>
 
+<div id="content" tabindex="-1">
 <!-- ============ Landing ============ -->
 <main class="landing" id="landing">
   <h1>Investigate a target in your browser.</h1>
-  <p class="sub">Type a username, email, domain, IP, phone number or hash. CrawlR picks the right sources, runs them, and sorts what comes back by how much it tells you.</p>
-  <form class="search" id="landingForm">
-    <label class="sr-only" for="landingInput">Target</label>
-    <input class="input mono" id="landingInput" placeholder="username, email, domain, IP, ASN, phone, hash" autocomplete="off" spellcheck="false" autofocus>
+  <p class="sub">Type a username, email, domain, IP, phone number or hash. CrawlR picks the right public sources, runs them, and sorts what comes back by how much it tells you.</p>
+  <form class="search" id="landingForm" role="search">
+    <label class="sr-only" for="landingInput">Target to investigate</label>
+    <input class="input mono" id="landingInput" placeholder="username, email, domain, IP, ASN, phone, hash" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="landingDetect">
     <button class="btn btn-primary" type="submit">Run</button>
   </form>
-  <div class="detect" id="landingDetect"></div>
+  <div class="detect" id="landingDetect" aria-live="polite"></div>
 
   <div class="examples">
-    <p>Try one:</p>
+    <h2 class="mini-h">Try one</h2>
     <div class="row">
       <button class="ex" type="button" data-example="torvalds"><span class="k">username</span>torvalds</button>
       <button class="ex" type="button" data-example="test@example.com"><span class="k">email</span>test@example.com</button>
@@ -54,24 +75,39 @@
     </div>
   </div>
 
+  <div class="routes">
+    <h2 class="mini-h">Where a target goes</h2>
+    <div class="route-grid">
+      <a class="route" href="#investigate" data-goto="investigate"><b>Investigate</b><span>People and handles: username, email, phone number, file hash, name.</span></a>
+      <a class="route" href="#recon" data-goto="recon"><b>Recon</b><span>Infrastructure: domain, IP address, ASN.</span></a>
+    </div>
+    <h2 class="mini-h">Tools that need no target</h2>
+    <div class="route-grid three">
+      <a class="route" href="#headers" data-goto="headers"><b>Email headers</b><span>Check SPF, DKIM and DMARC and trace the route.</span></a>
+      <a class="route" href="#dorks" data-goto="dorks"><b>Search query builder</b><span>Write Google operators from what you know.</span></a>
+      <a class="route" href="#decoders" data-goto="decoders"><b>Decoders</b><span>Base64, URL encoding, hashes, VIN.</span></a>
+    </div>
+  </div>
+
   <div class="how">
-    <div><b>No account, no key</b>Every open source runs as-is. AI analysis has a small daily free allowance.</div>
-    <div><b>Evidence, ranked</b>Confirmed accounts and breaches come first. Unverified hits are kept but tucked away.</div>
-    <div><b>Your keys, your browser</b>Add Claude, Gemini, Shodan or Hunter keys in Settings. They stay in your browser.</div>
+    <div><b>No account, no key</b>Every open source runs as-is. Your cases stay in this browser.</div>
+    <div><b>Evidence, ranked</b>Confirmed means verified. Possible means a lead to check. A failed source is shown as failed, never as "not found".</div>
+    <div><b>AI only when you ask</b>A written report is one click away once the sources finish, and you see what it costs first.</div>
   </div>
 </main>
 
 <!-- ============ Investigate workbench ============ -->
-<div class="bench" id="investigate" hidden>
-  <aside class="rail" id="rail">
+<div class="bench idle" id="investigate" hidden>
+  <aside class="rail" id="rail" aria-label="Target and sources">
+    <div class="rail-head"><h2>Target and sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
     <section>
-      <h2>Target</h2>
-      <label class="sr-only" for="targetInput">Target</label>
-      <input class="input target" id="targetInput" placeholder="username, email, hash, phone" autocomplete="off" spellcheck="false">
-      <div class="detected" id="targetDetected"></div>
+      <h2 id="targetH">Target</h2>
+      <label class="sr-only" for="targetInput">Target: username, email, hash, phone or name</label>
+      <input class="input target" id="targetInput" placeholder="username, email, hash, phone" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="detected" id="targetDetected" aria-live="polite"></div>
     </section>
-    <section>
-      <h2>Sources</h2>
+    <section aria-labelledby="sourcesH">
+      <h2 id="sourcesH">Sources</h2>
       <div id="sources"></div>
     </section>
     <div class="run">
@@ -79,7 +115,7 @@
     </div>
   </aside>
 
-  <main class="main" id="main">
+  <main class="main" id="main" aria-busy="false">
     <div class="main-head" id="mainHead" hidden>
       <h1 id="caseTarget"></h1>
       <span class="meta" id="caseMeta"></span>
@@ -88,54 +124,58 @@
       <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">New case</button>
     </div>
     <div class="runlog collapsed" id="runlog" hidden></div>
-    <section class="card report-card" id="reportSection" hidden>
+    <section class="card report-card" id="reportSection" hidden tabindex="-1" aria-labelledby="reportTitle">
       <div class="card-head">
-        <h3>Investigation report</h3>
+        <h2 class="card-title" id="reportTitle">Investigation report</h2>
         <span class="ai-meta" id="reportMeta"></span>
         <button class="btn btn-ghost btn-sm" id="reportCopy" type="button">Copy</button>
-        <button class="btn btn-ghost btn-sm" id="reportToggle" type="button" aria-expanded="true">Collapse</button>
+        <button class="btn btn-ghost btn-sm" id="reportToggle" type="button" aria-expanded="true" aria-controls="reportBody">Collapse</button>
       </div>
       <div class="card-body report" id="reportBody"></div>
     </section>
+    
+    <div class="notices" id="notices"></div>
     <div class="ledger" id="ledger"></div>
     <div class="empty" id="emptyState">
-      <h3>No case open</h3>
-      <p>Enter a target on the left and run. Confirmed accounts, breaches and extracted facts will appear here, ranked.</p>
+      <h1 class="empty-h">No case open</h1>
+      <p>Enter a target and run. Confirmed accounts, breaches and extracted facts appear here, ranked.</p>
     </div>
-    <section id="bySource" hidden>
-      <h2 class="rail-h">By source</h2>
+    <section id="bySource" hidden class="by-source" aria-labelledby="bySourceH">
+      <h2 class="rail-h" id="bySourceH">By source</h2>
       <div class="sources-grid" id="sourceCards"></div>
     </section>
+    
   </main>
 
-  <aside class="aside" id="aside">
-    <section>
-      <h2>What we know</h2>
-      <div class="facts" id="facts"><p class="empty" style="padding:0">Nothing yet.</p></div>
+  <aside class="aside" id="aside" aria-label="Case summary">
+    <section aria-labelledby="factsH">
+      <h2 id="factsH">What we know</h2>
+      <div class="facts" id="facts"><p class="empty flat">Nothing yet.</p></div>
     </section>
-    <section>
-      <h2>AI analysis</h2>
-      <div id="aiPanel"><p class="empty" style="padding:0">Runs automatically after the sources finish.</p></div>
+    <section aria-labelledby="aiH">
+      <h2 id="aiH">AI analysis</h2>
+      <div id="aiPanel" aria-live="polite"><p class="empty flat">Run a target first. AI analysis is optional and only runs when you ask.</p></div>
     </section>
     <section class="notes">
-      <h2>Notes</h2>
+      <h2><label for="notes">Notes</label></h2>
       <textarea class="textarea" id="notes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
-      <div class="foot"><span id="notesStatus">Saved</span><span id="notesCount">0 chars</span></div>
+      <div class="foot"><span id="notesStatus" aria-live="polite">Saved</span><span id="notesCount">0 chars</span></div>
     </section>
   </aside>
 </div>
 
 <!-- ============ Recon workbench ============ -->
-<div class="bench" id="recon" hidden>
-  <aside class="rail" id="rRail">
+<div class="bench idle" id="recon" hidden>
+  <aside class="rail" id="rRail" aria-label="Target and sources">
+    <div class="rail-head"><h2>Target and sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
     <section>
-      <h2>Target</h2>
-      <label class="sr-only" for="rTargetInput">Domain, IP or ASN</label>
-      <input class="input target" id="rTargetInput" placeholder="example.com, 8.8.8.8, AS15169" autocomplete="off" spellcheck="false">
-      <div class="detected" id="rTargetDetected"></div>
+      <h2 id="rTargetH">Target</h2>
+      <label class="sr-only" for="rTargetInput">Target: domain, IP address or ASN</label>
+      <input class="input target" id="rTargetInput" placeholder="example.com, 8.8.8.8, AS15169" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="detected" id="rTargetDetected" aria-live="polite"></div>
     </section>
-    <section>
-      <h2>Sources</h2>
+    <section aria-labelledby="rSourcesH">
+      <h2 id="rSourcesH">Sources</h2>
       <div id="rSources"></div>
     </section>
     <div class="run">
@@ -143,7 +183,7 @@
     </div>
   </aside>
 
-  <main class="main">
+  <main class="main" id="rMain" aria-busy="false">
     <div class="main-head" id="rMainHead" hidden>
       <h1 id="rCaseTarget"></h1>
       <span class="meta" id="rCaseMeta"></span>
@@ -152,50 +192,51 @@
       <button class="btn btn-ghost btn-sm" id="rClearBtn" type="button">New case</button>
     </div>
     <div class="runlog collapsed" id="rRunlog" hidden></div>
-    <div class="tabs" id="rTabs" role="tablist">
-      <button type="button" role="tab" data-tab="findings" aria-selected="true">Findings</button>
-      <button type="button" role="tab" data-tab="topology" aria-selected="false">Topology</button>
+    <div class="tabs" id="rTabs" role="tablist" aria-label="Recon views">
+      <button type="button" role="tab" id="rTabFindings" data-tab="findings" aria-selected="true" aria-controls="rFindings">Findings</button>
+      <button type="button" role="tab" id="rTabTopology" data-tab="topology" aria-selected="false" aria-controls="rTopology" tabindex="-1">Topology</button>
     </div>
-    <div id="rFindings">
-      <div class="ledger" id="rLedger"></div>
-      <div class="empty" id="rEmpty">
-        <h3>No target yet</h3>
-        <p>Enter a domain, IP or ASN on the left and run. Flags such as known CVEs, risky open services and expiring certificates come first.</p>
-      </div>
-      <section id="rBySource" hidden style="margin-top:var(--s-4)">
-        <h2 class="rail-h">By source</h2>
-        <div class="sources-grid" id="rSourceCards"></div>
-      </section>
+    <div id="rFindings" role="tabpanel" aria-labelledby="rTabFindings" tabindex="0">
+    <div class="notices" id="rNotices"></div>
+    <div class="ledger" id="rLedger"></div>
+    <div class="empty" id="rEmpty">
+      <h1 class="empty-h">No target yet</h1>
+      <p>Enter a domain, IP or ASN and run. Flags such as known CVEs, risky open services and expiring certificates come first.</p>
     </div>
-    <div id="rTopology" hidden>
-      <div class="graph" id="rGraph"></div>
-      <p class="graph-note">Scroll to zoom, drag to pan. Hover a node for details. Orange marks Cloudflare.</p>
+    <section id="rBySource" hidden class="by-source" aria-labelledby="rBySourceH">
+      <h2 class="rail-h" id="rBySourceH">By source</h2>
+      <div class="sources-grid" id="rSourceCards"></div>
+    </section>
+    </div>
+    <div id="rTopology" role="tabpanel" aria-labelledby="rTabTopology" tabindex="0" hidden>
+      <div class="graph" id="rGraph" role="img" aria-label="Topology graph of the domain, its subdomains, addresses and networks. The same data is listed under Findings."></div>
+      <p class="graph-note">Scroll to zoom, drag to pan. Hover a node for details. Orange marks Cloudflare. Everything shown here is also listed under Findings.</p>
     </div>
   </main>
 
-  <aside class="aside">
-    <section>
-      <h2>What we know</h2>
-      <div class="facts" id="rFacts"><p class="empty" style="padding:0">Nothing yet.</p></div>
+  <aside class="aside" id="rAside" aria-label="Case summary">
+    <section aria-labelledby="rFactsH">
+      <h2 id="rFactsH">What we know</h2>
+      <div class="facts" id="rFacts"><p class="empty flat">Nothing yet.</p></div>
     </section>
-    <section>
-      <h2>AI analysis</h2>
-      <div id="rAiPanel"><p class="empty" style="padding:0">Runs automatically after the sources finish.</p></div>
+    <section aria-labelledby="rAiH">
+      <h2 id="rAiH">AI analysis</h2>
+      <div id="rAiPanel" aria-live="polite"><p class="empty flat">Run a target first. AI analysis is optional and only runs when you ask.</p></div>
     </section>
     <section class="notes">
-      <h2>Notes</h2>
+      <h2><label for="rNotes">Notes</label></h2>
       <textarea class="textarea" id="rNotes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
-      <div class="foot"><span id="rNotesStatus">Saved</span><span id="rNotesCount">0 chars</span></div>
+      <div class="foot"><span id="rNotesStatus" aria-live="polite">Saved</span><span id="rNotesCount">0 chars</span></div>
     </section>
   </aside>
 </div>
 
 <!-- ============ Headers ============ -->
-<div class="tool" id="headers" hidden>
+<main class="tool" id="headers" hidden>
   <section class="tool-in">
     <h1>Email headers</h1>
     <p class="lede">Paste the raw headers of a message to check SPF, DKIM and DMARC, trace the route it took, and flag spoofing tells.</p>
-    <label class="sr-only" for="hdrInput">Raw headers</label>
+    <label class="sr-only" for="hdrInput">Raw email headers</label>
     <textarea class="textarea mono" id="hdrInput" rows="16" placeholder="Received: from mail.example.com …&#10;From: …&#10;Subject: …" spellcheck="false"></textarea>
     <div class="tool-actions">
       <button class="btn btn-primary" id="hdrRun" type="button">Analyze headers</button>
@@ -206,14 +247,14 @@
       <ul><li><b>Gmail:</b> open the message, the three-dot menu, Show original.</li><li><b>Outlook (web):</b> the three-dot menu, View, View message source.</li><li><b>Outlook (desktop):</b> File, Properties, Internet headers.</li><li><b>Apple Mail:</b> View, Message, All Headers.</li></ul>
     </details>
   </section>
-  <section class="tool-out" id="hdrOut">
-    <div class="empty"><h3>Nothing analyzed yet</h3><p>Results show a verdict first, then any flags, the sender's origin and every hop in the route.</p></div>
+  <section class="tool-out" id="hdrOut" aria-live="polite" aria-label="Header analysis results">
+    <div class="empty"><h2 class="empty-h">Nothing analyzed yet</h2><p>Results show a verdict first, then any flags, the sender's origin and every hop in the route.</p></div>
   </section>
-  <template id="hdrEmptyTpl"><div class="empty"><h3>Nothing analyzed yet</h3><p>Results show a verdict first, then any flags, the sender's origin and every hop in the route.</p></div></template>
-</div>
+  <template id="hdrEmptyTpl"><div class="empty"><h2 class="empty-h">Nothing analyzed yet</h2><p>Results show a verdict first, then any flags, the sender's origin and every hop in the route.</p></div></template>
+</main>
 
 <!-- ============ Dorks ============ -->
-<div class="tool" id="dorks" hidden>
+<main class="tool" id="dorks" hidden>
   <section class="tool-in">
     <h1>Search query builder</h1>
     <p class="lede">Fill in what you know. CrawlR writes the Google operators; every field is optional.</p>
@@ -228,10 +269,10 @@
     <h2 class="sub-h">Limit to sites</h2>
     <div id="dkPlatforms" class="plats"></div>
   </section>
-  <section class="tool-out">
+  <section class="tool-out" aria-label="Generated query">
     <div class="card query-card">
-      <div class="card-head"><h3>Query</h3><button class="btn btn-ghost btn-sm" id="dkClear" type="button">Clear all</button></div>
-      <div class="card-body"><code id="dkQuery" class="query placeholder"></code></div>
+      <div class="card-head"><h2 class="card-title">Query</h2><button class="btn btn-ghost btn-sm" id="dkClear" type="button">Clear all</button></div>
+      <div class="card-body"><code id="dkQuery" class="query placeholder" aria-live="polite"></code></div>
       <div class="query-actions">
         <button class="btn btn-primary" id="dkSearch" type="button" disabled>Search Google</button>
         <button class="btn" id="dkBing" type="button" disabled>Bing</button>
@@ -241,85 +282,42 @@
       </div>
     </div>
   </section>
-</div>
+</main>
 
 <!-- ============ Decoders ============ -->
-<div class="tool tool-wide" id="decoders" hidden>
+<main class="tool tool-wide" id="decoders" hidden>
   <header class="tool-head"><h1>Decoders</h1><p class="lede">Small conversions that come up mid-investigation. Base64, URL and hashing run entirely in your browser.</p></header>
   <div class="dec-grid">
-    <article class="card"><div class="card-head"><h3>Base64</h3></div><div class="card-body">
+    <article class="card"><div class="card-head"><h2 class="card-title"><label for="b64In">Base64</label></h2></div><div class="card-body">
       <textarea class="textarea mono" id="b64In" rows="3" placeholder="Text or Base64" spellcheck="false"></textarea>
       <div class="tool-actions"><button class="btn btn-sm" id="b64Enc" type="button">Encode</button><button class="btn btn-sm" id="b64Dec" type="button">Decode</button></div>
-      <div id="b64Out"></div></div></article>
-    <article class="card"><div class="card-head"><h3>URL encoding</h3></div><div class="card-body">
+      <div id="b64Out" aria-live="polite"></div></div></article>
+    <article class="card"><div class="card-head"><h2 class="card-title"><label for="urlIn">URL encoding</label></h2></div><div class="card-body">
       <textarea class="textarea mono" id="urlIn" rows="3" placeholder="Text or %-encoded string" spellcheck="false"></textarea>
       <div class="tool-actions"><button class="btn btn-sm" id="urlEnc" type="button">Encode</button><button class="btn btn-sm" id="urlDec" type="button">Decode</button></div>
-      <div id="urlOut"></div></div></article>
-    <article class="card dec-span"><div class="card-head"><h3>Hash a string</h3></div><div class="card-body">
-      <div style="display:flex;gap:8px"><input class="input mono" id="hashIn" placeholder="Text to hash" spellcheck="false"><button class="btn" id="hashGo" type="button">Hash</button></div>
-      <div id="hashOut"></div></div></article>
-    <article class="card"><div class="card-head"><h3>VIN</h3><span class="tag">NHTSA</span></div><div class="card-body">
-      <div style="display:flex;gap:8px"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" spellcheck="false" autocomplete="off"><button class="btn" id="vinGo" type="button">Decode</button></div>
-      <div id="vinOut"></div></div></article>
-    <article class="card"><div class="card-head"><h3>License plate</h3><span class="tag">US</span></div><div class="card-body">
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="input mono" id="plateIn" placeholder="Plate" style="flex:1 1 120px" maxlength="10" spellcheck="false" autocomplete="off">
-        <select class="input" id="plateState" style="flex:1 1 160px"><option value="">State</option>
-          <option value="AL">Alabama</option>
-          <option value="AK">Alaska</option>
-          <option value="AZ">Arizona</option>
-          <option value="AR">Arkansas</option>
-          <option value="CA">California</option>
-          <option value="CO">Colorado</option>
-          <option value="CT">Connecticut</option>
-          <option value="DE">Delaware</option>
-          <option value="DC">District of Columbia</option>
-          <option value="FL">Florida</option>
-          <option value="GA">Georgia</option>
-          <option value="HI">Hawaii</option>
-          <option value="ID">Idaho</option>
-          <option value="IL">Illinois</option>
-          <option value="IN">Indiana</option>
-          <option value="IA">Iowa</option>
-          <option value="KS">Kansas</option>
-          <option value="KY">Kentucky</option>
-          <option value="LA">Louisiana</option>
-          <option value="ME">Maine</option>
-          <option value="MD">Maryland</option>
-          <option value="MA">Massachusetts</option>
-          <option value="MI">Michigan</option>
-          <option value="MN">Minnesota</option>
-          <option value="MS">Mississippi</option>
-          <option value="MO">Missouri</option>
-          <option value="MT">Montana</option>
-          <option value="NE">Nebraska</option>
-          <option value="NV">Nevada</option>
-          <option value="NH">New Hampshire</option>
-          <option value="NJ">New Jersey</option>
-          <option value="NM">New Mexico</option>
-          <option value="NY">New York</option>
-          <option value="NC">North Carolina</option>
-          <option value="ND">North Dakota</option>
-          <option value="OH">Ohio</option>
-          <option value="OK">Oklahoma</option>
-          <option value="OR">Oregon</option>
-          <option value="PA">Pennsylvania</option>
-          <option value="RI">Rhode Island</option>
-          <option value="SC">South Carolina</option>
-          <option value="SD">South Dakota</option>
-          <option value="TN">Tennessee</option>
-          <option value="TX">Texas</option>
-          <option value="UT">Utah</option>
-          <option value="VT">Vermont</option>
-          <option value="VA">Virginia</option>
-          <option value="WA">Washington</option>
-          <option value="WV">West Virginia</option>
-          <option value="WI">Wisconsin</option>
-          <option value="WY">Wyoming</option>
-        </select><button class="btn" id="plateGo" type="button">Look up</button></div>
-      <div id="plateOut"></div></div></article>
+      <div id="urlOut" aria-live="polite"></div></div></article>
+    <article class="card dec-span"><div class="card-head"><h2 class="card-title"><label for="hashIn">Hash a string</label></h2></div><div class="card-body">
+      <div class="inline-form"><input class="input mono" id="hashIn" placeholder="Text to hash" spellcheck="false"><button class="btn" id="hashGo" type="button">Hash</button></div>
+      <div id="hashOut" aria-live="polite"></div></div></article>
+    <article class="card"><div class="card-head"><h2 class="card-title"><label for="vinIn">VIN</label></h2><span class="tag">NHTSA</span></div><div class="card-body">
+      <div class="inline-form"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" spellcheck="false" autocomplete="off"><button class="btn" id="vinGo" type="button">Decode</button></div>
+      <div id="vinOut" aria-live="polite"></div></div></article>
+    <article class="card"><div class="card-head"><h2 class="card-title">License plate</h2><span class="tag">US</span></div><div class="card-body">
+      <div class="inline-form wrap"><label class="sr-only" for="plateIn">Plate number</label><input class="input mono plate" id="plateIn" placeholder="Plate" maxlength="10" spellcheck="false" autocomplete="off">
+        <label class="sr-only" for="plateState">State</label><select class="input state" id="plateState"><option value="">State</option></select><button class="btn" id="plateGo" type="button">Look up</button></div>
+      <div id="plateOut" aria-live="polite"></div></div></article>
   </div>
+</main>
 </div>
-<button class="btn btn-primary rail-toggle" id="railToggle" type="button" hidden>Target &amp; sources</button>
+
+<button class="btn btn-primary rail-toggle" id="railToggle" type="button" hidden aria-expanded="false">Target and sources</button>
+<nav class="tabbar" aria-label="Modes and tools">
+  <a href="#investigate" data-mode="investigate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg><span>Investigate</span></a>
+  <a href="#recon" data-mode="recon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span>Recon</span></a>
+  <a href="#headers" data-mode="headers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><span>Headers</span></a>
+  <a href="#dorks" data-mode="dorks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>Dorks</span></a>
+  <a href="#decoders" data-mode="decoders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg><span>Decoders</span></a>
+</nav>
 
 <!-- ============ Overlays ============ -->
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

@@ -78,7 +78,8 @@ class tool_slot:
 
 def busy_result(**fields) -> dict:
     """Standard payload returned to the client when a tool slot could not be acquired."""
-    return {**fields, "error": "busy", "message": "CrawlR is at capacity right now. Try again in a minute."}
+    msg = "CrawlR is at capacity right now. Try again in a minute."
+    return {**fields, "error": msg, "error_code": "busy", "error_detail": "", "message": msg}
 
 
 def log_result(tool: str, result: dict) -> dict:
@@ -89,8 +90,8 @@ def log_result(tool: str, result: dict) -> dict:
             extra={
                 "tool": tool,
                 "total": result.get("total", len(result.get("results", []) or [])),
-                "confirmed": result.get("confirmed"),
-                "error": result.get("error"),
+                "possible": result.get("possible"),
+                "error": result.get("error_code") or result.get("error"),
             },
         )
     except Exception:  # never let logging break a response

@@ -1,5 +1,7 @@
 import httpx
 
+from core.errors import error_fields
+
 
 async def run_hunter(domain: str, api_key: str, timeout: int = 15) -> dict:
     """Query Hunter.io for email addresses associated with a domain."""
@@ -33,4 +35,4 @@ async def run_hunter(domain: str, api_key: str, timeout: int = 15) -> dict:
                 "emails": emails,
             }
     except Exception as e:
-        return {"domain": domain, "total": 0, "emails": [], "error": str(e)}
+        return {"domain": domain, "total": 0, "emails": [], **error_fields(e)}

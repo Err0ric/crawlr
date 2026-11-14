@@ -4,7 +4,8 @@ import os
 import shutil
 import tempfile
 
-from modules.sherlock import _classify_site
+from core.errors import error_fields
+from modules.sherlock import _classify_site, SORT_ORDER
 from core.subprocess_guard import tool_slot, ToolBusy, busy_result, log_result, log_process
 
 MAIGRET_AVAILABLE = shutil.which("maigret") is not None
@@ -31,13 +32,45 @@ def _is_maigret_false_positive(site_name: str, url: str) -> bool:
     return False
 
 
-async def _run_maigret_impl(username: str, nsfw: bool = True, timeout: int = 180) -> dict:
+# Maigret's own site tags for adult content and dating.
+SENSITIVE_TAGS = ("porn", "erotic", "webcam", "dating")
+
+_ID_KEYS = {"uid", "username", "account_id", "gaia_id"}
+_NAME_KEYS = ("fullname", "name", "nickname")
+
+
+def profile_signal(ids: dict | None) -> dict | None:
+    """
+    Maigret returns `ids` when it parsed real profile data from the page or API (a user id,
+    display name, join date). That is the difference between "the URL answered" and "there is
+    an account here", so only hits with it are reported as verified. One stray field (some
+    sites echo their own title as a name) is not enough.
+    """
+    if not isinstance(ids, dict):
+        return None
+    fields = {k: str(v).strip() for k, v in ids.items() if not k.startswith("_") and str(v).strip()}
+    has_id = any(k in _ID_KEYS or k.endswith("_id") or k.endswith("_username") for k in fields)
+    if not has_id and len(fields) < 2:
+        return None
+    name = next((fields[k] for k in _NAME_KEYS if fields.get(k)), "")
+    out = {
+        "name": name[:120],
+        "location": fields.get("location", "")[:120],
+        "bio": (fields.get("bio") or fields.get("description") or "")[:300],
+        "created_at": fields.get("created_at", "")[:40],
+        "image": fields.get("image", "")[:500],
+        "extractor": str(ids.get("_extractor", ""))[:60],
+    }
+    return {k: v for k, v in out.items() if v}
+
+
+async def _run_maigret_impl(username: str, nsfw: bool = False, timeout: int = 180) -> dict:
     if not MAIGRET_AVAILABLE:
-        return {"username": username, "error": "maigret not installed", "results": [], "total": 0, "confirmed": 0}
+        return {"username": username, "results": [], "total": 0, "possible": 0, "verified": 0, **error_fields(code="not_installed")}
 
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
-            "maigret", username,
+            "maigret",
             "-J", "simple",
             "--timeout", "10",
             "--no-color",
@@ -46,8 +79,13 @@ async def _run_maigret_impl(username: str, nsfw: bool = True, timeout: int = 180
             "--top-sites", "500",
             "--folderoutput", tmpdir,
         ]
+        # Adult and dating sites are excluded unless the investigator explicitly opts in.
+        # (The old filter passed "--tags !nsfw", which is not a tag Maigret knows, so with the
+        # box unticked it matched no sites at all.)
         if not nsfw:
-            cmd.extend(["--tags", "!nsfw"])
+            cmd.extend(["--exclude-tags", ",".join(SENSITIVE_TAGS)])
+        # "--" ends option parsing, so the username can never be read as a flag.
+        cmd.extend(["--", username])
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -62,7 +100,7 @@ async def _run_maigret_impl(username: str, nsfw: bool = True, timeout: int = 180
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return {"username": username, "error": "timeout", "results": [], "total": 0, "confirmed": 0}
+            return {"username": username, "results": [], "total": 0, "possible": 0, "verified": 0, **error_fields(code="timeout", message="Maigret ran out of time. Partial results were discarded.")}
         log_process("maigret", proc.returncode, stderr)
 
         results = []
@@ -108,31 +146,36 @@ async def _run_maigret_impl(username: str, nsfw: bool = True, timeout: int = 180
                     category = str(tags) if tags else ""
 
                 confidence = _classify_site(site_name)
-                results.append({
+                profile = profile_signal(status_obj.get("ids"))
+                row = {
                     "site": site_name,
                     "url": url,
                     "confidence": confidence,
                     "category": category,
-                })
+                    "verified": profile is not None,
+                }
+                if profile:
+                    row["profile"] = profile
+                results.append(row)
 
         results = [r for r in results if not _is_maigret_false_positive(r["site"], r["url"])]
 
-        order = {"high_confidence": 0, "normal": 1, "false_positive": 2}
-        results.sort(key=lambda r: order.get(r["confidence"], 1))
-        confirmed = sum(1 for r in results if r["confidence"] != "false_positive")
+        results.sort(key=lambda r: (not r["verified"], SORT_ORDER.get(r["confidence"], 1)))
+        possible = sum(1 for r in results if r["confidence"] != "false_positive")
 
         return {
             "username": username,
             "total": len(results),
-            "confirmed": confirmed,
+            "possible": possible,
+            "verified": sum(1 for r in results if r["verified"]),
             "results": results,
         }
 
 
-async def run_maigret(username: str, nsfw: bool = True, timeout: int = 180) -> dict:
+async def run_maigret(username: str, nsfw: bool = False, timeout: int = 180) -> dict:
     """Guarded entry point: bounded by the global tool concurrency limit."""
     try:
         async with tool_slot("maigret"):
             return log_result("maigret", await _run_maigret_impl(username=username, nsfw=nsfw, timeout=timeout))
     except ToolBusy:
-        return busy_result(username=username, results=[], total=0, confirmed=0)
+        return busy_result(username=username, results=[], total=0, possible=0, verified=0)

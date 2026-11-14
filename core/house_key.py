@@ -115,27 +115,27 @@ class ResolvedKey:
     remaining: int | None  # None for user keys
 
 
-def resolve_ai_key(
-    x_api_key: str | None,
-    x_ai_provider: str | None,
-    client_ip: str,
-    bucket: str,
-) -> ResolvedKey:
-    """
-    Decide which key an AI endpoint should use. Consumes one unit of house
-    quota when the house key is chosen. Raises HTTPException(401) when
-    nothing is available and HTTPException(429) when quota is exhausted.
-    """
+def pick_key(x_api_key: str | None, x_ai_provider: str | None) -> ResolvedKey:
+    """Decide which key a request would use, without touching any quota.
+    Raises HTTPException(401) when neither a user key nor the house key is available."""
     if x_api_key:
         provider = x_ai_provider if x_ai_provider in ("anthropic", "gemini") else "anthropic"
         return ResolvedKey(api_key=x_api_key, provider=provider, model=None, source="user", remaining=None)
-
     if not house_enabled():
         raise HTTPException(
             status_code=401,
             detail="API key is required. Add your own key in Settings.",
         )
+    return ResolvedKey(api_key=house_key(), provider="gemini", model=house_model(), source="house", remaining=None)
 
+
+def remaining(client_ip: str, bucket: str) -> int:
+    limit = QUOTAS.get(bucket, QUOTAS["analysis"])()
+    return max(0, limit - _counters.used(client_ip, bucket))
+
+
+def check_quota(client_ip: str, bucket: str) -> None:
+    """Raise HTTPException(429) when the caller or the whole service is out of free calls."""
     limit = QUOTAS.get(bucket, QUOTAS["analysis"])()
     used = _counters.used(client_ip, bucket)
     if _counters.global_count >= global_quota():
@@ -152,10 +152,39 @@ def resolve_ai_key(
             headers={"Retry-After": str(_counters.seconds_until_reset())},
         )
 
+
+def consume(client_ip: str, bucket: str) -> int:
+    """Spend one free call and return how many are left for this caller."""
     _counters.consume(client_ip, bucket)
-    remaining = limit - used - 1
-    log.info("house key used", extra={"bucket": bucket, "ip": client_ip, "remaining": remaining, "global": _counters.global_count})
-    return ResolvedKey(api_key=house_key(), provider="gemini", model=house_model(), source="house", remaining=remaining)
+    left = remaining(client_ip, bucket)
+    log.info("house key used", extra={"bucket": bucket, "ip": client_ip, "remaining": left, "global": _counters.global_count})
+    return left
+
+
+def refund(client_ip: str, bucket: str) -> None:
+    """Give a free call back when the provider failed, so an outage does not eat the allowance."""
+    _counters.roll()
+    if _counters.per_ip[(client_ip, bucket)] > 0:
+        _counters.per_ip[(client_ip, bucket)] -= 1
+        _counters.global_count = max(0, _counters.global_count - 1)
+
+
+def resolve_ai_key(
+    x_api_key: str | None,
+    x_ai_provider: str | None,
+    client_ip: str,
+    bucket: str,
+) -> ResolvedKey:
+    """
+    Pick a key and, for the house key, spend one unit of quota in one step.
+    The AI endpoints use core.ai_call.run_ai instead, which checks the response
+    cache first so a cached answer never costs a free call.
+    """
+    key = pick_key(x_api_key, x_ai_provider)
+    if key.source == "house":
+        check_quota(client_ip, bucket)
+        key.remaining = consume(client_ip, bucket)
+    return key
 
 
 def quota_status(client_ip: str) -> dict:

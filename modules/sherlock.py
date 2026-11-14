@@ -1,8 +1,10 @@
 import asyncio
 import csv
 import io
+import glob
 import tempfile
 import os
+from core.errors import error_fields
 from core.subprocess_guard import tool_slot, ToolBusy, busy_result, log_result, log_process
 
 # Sites known to return 200 for any username (false positives)
@@ -13,7 +15,10 @@ FALSE_POSITIVE_SITES = {
     "disqus", "trakt", "vsco", "minds",
 }
 
-HIGH_CONFIDENCE_SITES = {
+# Well-known platforms. Being on this list says the SITE matters to an investigator, not that
+# the hit is verified: several of these (Facebook, PayPal, Instagram) answer 200 for any name.
+# The UI only calls an account "confirmed" when a profile signal backs it up.
+MAJOR_PLATFORMS = {
     "github", "reddit", "steam", "tiktok", "linkedin", "twitter",
     "x", "instagram", "facebook", "youtube", "twitch", "pinterest",
     "snapchat", "telegram", "discord", "spotify", "soundcloud",
@@ -60,28 +65,36 @@ URL_FALLBACKS = {
 }
 
 
+SORT_ORDER = {"major_platform": 0, "normal": 1, "false_positive": 2}
+
+
 def _classify_site(site_name: str) -> str:
-    """Return 'false_positive', 'high_confidence', or 'normal'."""
+    """Return 'false_positive', 'major_platform', or 'normal'."""
     name_lower = site_name.lower().strip()
     if any(fp in name_lower for fp in FALSE_POSITIVE_SITES):
         return "false_positive"
-    if any(hc in name_lower for hc in HIGH_CONFIDENCE_SITES):
-        return "high_confidence"
+    if name_lower in MAJOR_PLATFORMS or any(name_lower.startswith(hc + " ") or name_lower.startswith(hc + ".") for hc in MAJOR_PLATFORMS):
+        return "major_platform"
     return "normal"
 
 
 async def _run_sherlock_impl(username: str, timeout: int = 300) -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
-        proc = await asyncio.create_subprocess_exec(
-            "sherlock", username,
-            "--csv",
-            "--timeout", "15",
-            "--no-color",
-            "--print-found",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=tmpdir,
-        )
+        try:
+            # "--" ends option parsing, so a value like "--proxy" can never be read as a flag.
+            proc = await asyncio.create_subprocess_exec(
+                "sherlock",
+                "--csv",
+                "--timeout", "15",
+                "--no-color",
+                "--print-found",
+                "--", username,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=tmpdir,
+            )
+        except FileNotFoundError:
+            return {"username": username, "results": [], "total": 0, "possible": 0, **error_fields(code="not_installed")}
         try:
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout
@@ -89,12 +102,12 @@ async def _run_sherlock_impl(username: str, timeout: int = 300) -> dict:
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return {"username": username, "error": "timeout", "results": []}
+            return {"username": username, "results": [], "total": 0, "possible": 0, **error_fields(code="timeout", message="Sherlock ran out of time. Partial results were discarded.")}
         log_process("sherlock", proc.returncode, stderr)
 
         results = []
-        csv_path = os.path.join(tmpdir, f"{username}.csv")
-        if os.path.exists(csv_path):
+        # Read whatever CSV sherlock wrote rather than building a path from user input.
+        for csv_path in sorted(glob.glob(os.path.join(tmpdir, "*.csv")))[:1]:
             with open(csv_path, newline="") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
@@ -113,15 +126,14 @@ async def _run_sherlock_impl(username: str, timeout: int = 300) -> dict:
                             "confidence": confidence,
                         })
 
-        # Sort: high_confidence first, then normal, then false_positive
-        order = {"high_confidence": 0, "normal": 1, "false_positive": 2}
-        results.sort(key=lambda r: order.get(r["confidence"], 1))
-        confirmed = sum(1 for r in results if r["confidence"] != "false_positive")
+        # Sort: major platforms first, then the rest, then known false positives
+        results.sort(key=lambda r: SORT_ORDER.get(r["confidence"], 1))
+        possible = sum(1 for r in results if r["confidence"] != "false_positive")
 
         return {
             "username": username,
             "total": len(results),
-            "confirmed": confirmed,
+            "possible": possible,
             "results": results,
         }
 

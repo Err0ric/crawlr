@@ -1,5 +1,7 @@
 import httpx
 
+from core.errors import error_fields
+
 
 async def run_shodan(target: str, api_key: str, timeout: int = 15) -> dict:
     """Query Shodan for host information by IP or domain."""
@@ -42,4 +44,4 @@ async def run_shodan(target: str, api_key: str, timeout: int = 15) -> dict:
                 "services": services[:30],
             }
     except Exception as e:
-        return {"target": target, "found": False, "error": str(e)}
+        return {"target": target, "found": False, **error_fields(e)}

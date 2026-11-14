@@ -78,7 +78,7 @@ def test_tool_slot_returns_busy_when_saturated(monkeypatch):
                 return "busy"
 
     assert asyncio.run(main()) == "busy"
-    assert sg.busy_result(username="x")["error"] == "busy"
+    assert sg.busy_result(username="x")["error_code"] == "busy"
 
 
 def test_html_and_static_assets_revalidate_but_api_is_untouched():

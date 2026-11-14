@@ -1,3 +1,4 @@
+import asyncio
 import dns.resolver
 import httpx
 import re
@@ -31,14 +32,15 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             resp = await client.get(
-                f"https://crt.sh/?q=%.{domain}&output=json",
+                "https://crt.sh/", params={"q": f"%.{domain}", "output": "json"},
                 headers={"User-Agent": "Mozilla/5.0"},
             )
             if resp.status_code != 200:
                 return [], []
             entries = resp.json()
     except Exception as e:
-        log.warning("crt.sh query failed", extra={"domain": domain, "err": f"{type(e).__name__}: {e}"})
+        # The target is deliberately left out of the log line.
+        log.warning("crt.sh query failed", extra={"err": type(e).__name__})
         return [], []
 
     subs = set()
@@ -92,20 +94,34 @@ async def run_subdomains(domain: str) -> dict:
     resolver.timeout = 3
     resolver.lifetime = 3
 
+    sem = asyncio.Semaphore(20)
+
+    def _lookup(fqdn: str) -> list[str]:
+        try:
+            return [str(r) for r in resolver.resolve(fqdn, "A")]
+        except Exception:
+            return []
+
+    async def lookup(fqdn: str) -> list[str]:
+        # dnspython is blocking: threads keep the event loop free, the semaphore keeps it polite.
+        async with sem:
+            return await asyncio.to_thread(_lookup, fqdn)
+
     found = []
     seen_fqdns = set()
-    for sub in COMMON_SUBDOMAINS:
-        fqdn = f"{sub}.{domain}"
-        try:
-            answers = resolver.resolve(fqdn, "A")
-            ips = [str(r) for r in answers]
+    names = [f"{sub}.{domain}" for sub in COMMON_SUBDOMAINS]
+    # The wordlist and the CT query run at the same time.
+    wordlist_ips, (ct_subs, ct_entries) = await asyncio.gather(
+        asyncio.gather(*(lookup(n) for n in names)),
+        _query_crtsh(domain),
+    )
+    for fqdn, ips in zip(names, wordlist_ips):
+        if ips:
             found.append({"subdomain": fqdn, "ips": ips, "source": "DNS"})
             seen_fqdns.add(fqdn)
-        except Exception:
-            pass
 
-    # Certificate transparency
-    ct_subs, ct_entries = await _query_crtsh(domain)
+    new_ct = [f for f in ct_subs if f not in seen_fqdns][:300]
+    ct_ips = dict(zip(new_ct, await asyncio.gather(*(lookup(f) for f in new_ct))))
     ct_count = 0
     for fqdn in ct_subs:
         if fqdn in seen_fqdns:
@@ -114,13 +130,7 @@ async def run_subdomains(domain: str) -> dict:
                 if item["subdomain"] == fqdn and item["source"] == "DNS":
                     item["source"] = "DNS+CT"
             continue
-        ips = []
-        try:
-            answers = resolver.resolve(fqdn, "A")
-            ips = [str(r) for r in answers]
-        except Exception:
-            pass
-        found.append({"subdomain": fqdn, "ips": ips, "source": "CT"})
+        found.append({"subdomain": fqdn, "ips": ct_ips.get(fqdn, []), "source": "CT"})
         seen_fqdns.add(fqdn)
         ct_count += 1
 

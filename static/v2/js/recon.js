@@ -1,9 +1,9 @@
 // Recon mode: infrastructure for a domain, IP or ASN.
-import { $, $$, h, raw, esc, link, store, toast, post, postAi, getKey, aiAvailable, providerName, detect, TYPE_LABEL, RECON_TYPES, fmtNum, plural } from "./core.js";
+import { $, $$, h, raw, esc, link, store, toast, post, postAi, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, RECON_TYPES, fmtNum, plural, sourceOutcome, roving, download, slug } from "./core.js";
 import { normalizeAi, markdown, summaryBlock } from "./ai.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, factCollector, itemCollector } from "./workbench.js";
-import { harvestCard } from "./renderers.js";
+import { makeLog, renderTiers, bindLedger, renderFacts, factCollector, itemCollector, failedNotice, diffRuns, diffNotice, standaloneHtml } from "./workbench.js";
+import { harvestCard, errorCard } from "./renderers.js";
 
 // ---- sources -----------------------------------------------------------------
 export const SOURCES = [
@@ -15,12 +15,11 @@ export const SOURCES = [
   { id: "harvest",    name: "Passive discovery", desc: "hosts and addresses from 8 public sources (CT, passive DNS, URLScan, Wayback)", types: ["domain"], on: true },
   { id: "asn",        name: "Network owner",    desc: "ASN, organization, announced prefixes",          types: ["domain", "ip"],  on: true },
   { id: "exposure",   name: "Exposure",         desc: "open ports and CVEs (InternetDB, or Shodan with your key)", types: ["domain", "ip"], on: true },
-  { id: "portscan",   name: "Port scan",        desc: "connects to 20 common ports on the target",      types: ["domain", "ip"],  on: true, warn: "active" },
+  { id: "portscan",   name: "Port scan",        desc: "connects to 20 common ports on the target. Only scan hosts you own or are authorized to test.", types: ["domain", "ip"], on: false, warn: "active" },
   { id: "redirects",  name: "Redirect chain",   desc: "every hop to the final URL",                     types: ["domain", "ip"],  on: true },
   { id: "techfp",     name: "Tech fingerprint", desc: "CMS, server, frameworks, CDN",                   types: ["domain"],        on: true },
   { id: "wayback",    name: "Wayback Machine",  desc: "archived snapshots",                             types: ["domain"],        on: true },
   { id: "asndetail",  name: "ASN detail",       desc: "organization, prefixes, peers",                  types: ["asn"],           on: true },
-  { id: "ai",         name: "AI analysis",      desc: "attack surface summary and next steps",          types: ["domain", "ip", "asn"], on: true },
 ];
 const srcState = store.get("crawlr_v2_recon_sources", {});
 const srcOn = (id) => (id in srcState ? !!srcState[id] : SOURCES.find((s) => s.id === id)?.on ?? false);
@@ -30,11 +29,11 @@ export function renderSources(type) {
   $("#rSources").innerHTML = rows.length ? rows.map((s) => h`
     <div class="source ${srcOn(s.id) ? "" : "off"}">
       <div>
-        <div class="name">${s.name}${s.warn ? raw(h` <span class="tag warn">${s.warn}</span>`) : ""}${s.id === "exposure" && getKey("shodan") ? raw(' <span class="tag violet">Shodan</span>') : ""}</div>
-        <div class="desc">${s.desc}</div>
+        <div class="name" id="rsrc-${s.id}">${s.name}${s.warn ? raw(h` <span class="tag warn">${s.warn}</span>`) : ""}${s.id === "exposure" && getKey("shodan") ? raw(' <span class="tag violet">Shodan</span>') : ""}</div>
+        <div class="desc" id="rsrcd-${s.id}">${s.desc}</div>
       </div>
-      <label class="switch"><input type="checkbox" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-label="${s.name}"><span></span></label>
-    </div>`).join("") : `<p class="empty" style="padding:0">Enter a domain, IP or ASN.</p>`;
+      <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-labelledby="rsrc-${s.id}" aria-describedby="rsrcd-${s.id}"><span></span></label>
+    </div>`).join("") : `<p class="empty flat">Enter a domain, IP or ASN.</p>`;
 }
 $("#rSources").addEventListener("change", (e) => {
   const t = e.target.dataset.toggle; if (!t) return;
@@ -43,7 +42,11 @@ $("#rSources").addEventListener("change", (e) => {
 });
 
 // ---- state ---------------------------------------------------------------------
-export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, tab: "findings" };
+export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings" };
+const SRC_NAME = { dns: "DNS records", whois: "WHOIS", ssl: "TLS certificate", headers: "HTTP headers", subdomains: "Subdomains", harvest: "Passive discovery", asn: "Network owner", shodan: "Exposure", portscan: "Port scan", redirects: "Redirect chain", techfp: "Tech fingerprint", wayback: "Wayback Machine", asn_detail: "ASN detail" };
+// A source that failed is unknown. "No certificate" or "not indexed" are answers; a timeout is not.
+const isFailed = (d) => !!(d && typeof d === "object" && (d.error_code || d.error) && d.error_code !== "not_found");
+const failedSources = () => Object.entries(state.collected).filter(([k, v]) => SRC_NAME[k] && isFailed(v)).map(([k, v]) => ({ name: SRC_NAME[k], ...sourceOutcome(v) }));
 const checkKey = () => `crawlr_checked_${state.target}`;
 const log = makeLog($("#rRunlog"));
 bindLedger($("#rLedger"), checkKey);
@@ -52,6 +55,8 @@ bindLedger($("#rLedger"), checkKey);
 const RISKY = { 21: "FTP", 23: "Telnet", 135: "MS RPC", 139: "NetBIOS", 445: "SMB", 1433: "MSSQL", 1521: "Oracle", 2375: "Docker API", 3306: "MySQL", 3389: "RDP", 5432: "PostgreSQL", 5601: "Kibana", 5900: "VNC", 6379: "Redis", 9200: "Elasticsearch", 11211: "Memcached", 27017: "MongoDB" };
 const daysUntil = (d) => { const t = Date.parse(d); return Number.isFinite(t) ? Math.round((t - Date.now()) / 86400000) : null; };
 const flat = (v) => [].concat(v ?? []).flat().filter(Boolean);
+// Certificate dates arrive as "Sep 26 22:10:00 2026 GMT"; show them as 2026-09-26.
+const day = (d) => { const t = Date.parse(d); return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : String(d || "").slice(0, 10); };
 
 export const TIERS = [
   { id: "flag",      title: "Flags",            cls: "flag",    open: true, blurb: "Known CVEs, risky open services, weak headers, expiring certificates or domains." },
@@ -77,8 +82,9 @@ export function buildFindings(c, target) {
   const hd = c.headers;
   if (hd?.found && ["C", "D", "F"].includes(String(hd.grade).toUpperCase())) add({ tier: "flag", what: `Security headers grade ${hd.grade}`, url: "", meta: `${hd.present ?? 0} of ${hd.total ?? 0} present`, source: "HTTP headers", key: "hdr:grade" });
   const ssl = c.ssl;
-  if (ssl && (ssl.error || ssl.found === false) && state.type === "domain") add({ tier: "flag", what: "No valid TLS certificate", url: "", meta: ssl.error || "", source: "TLS", key: "tls:none" });
-  if (ssl?.found && ssl.days_left != null && ssl.days_left < 30) add({ tier: "flag", what: ssl.days_left < 0 ? "TLS certificate expired" : `TLS certificate expires in ${ssl.days_left} days`, url: "", meta: ssl.not_after || "", source: "TLS", key: "tls:expiry" });
+  // Only a TLS-level failure says something about the certificate. A timeout or DNS error does not.
+  if (ssl && ssl.error_code === "tls" && state.type === "domain") add({ tier: "flag", what: "No valid TLS certificate", url: "", meta: ssl.error || "", source: "TLS", key: "tls:none" });
+  if (ssl?.found && ssl.days_left != null && ssl.days_left < 30) add({ tier: "flag", what: ssl.days_left < 0 ? "TLS certificate expired" : `TLS certificate expires in ${ssl.days_left} days`, url: "", meta: day(ssl.not_after), source: "TLS", key: "tls:expiry" });
   const wh = c.whois;
   const whDays = daysUntil(wh?.expiration_date);
   if (whDays != null && whDays < 60) add({ tier: "flag", what: whDays < 0 ? "Domain registration expired" : `Domain expires in ${whDays} days`, url: "", meta: String(wh.expiration_date).slice(0, 10), source: "WHOIS", key: "whois:expiry" });
@@ -110,7 +116,7 @@ export function buildFindings(c, target) {
   if (c.asn?.found !== false && c.asn?.asn) fact("Network", `${c.asn.asn}${c.asn.org ? ` · ${c.asn.org}` : ""}`, "Network owner");
   if (c.dns?.cloudflare_proxied) fact("Hosting", "Behind Cloudflare proxy", "DNS");
   fact("Server", hd?.server, "HTTP headers");
-  if (ssl?.found) { fact("TLS issuer", ssl.issuer, "TLS"); fact("TLS valid until", String(ssl.not_after || "").slice(0, 10), "TLS"); }
+  if (ssl?.found) { fact("TLS issuer", ssl.issuer, "TLS"); fact("TLS valid until", day(ssl.not_after), "TLS"); }
   const tech = c.techfp?.detected_tech || {};
   fact("CMS", flat(tech.cms), "Tech fingerprint");
   fact("Frameworks", flat(tech.frameworks), "Tech fingerprint");
@@ -133,12 +139,12 @@ export function buildFindings(c, target) {
 }
 
 // ---- cards -------------------------------------------------------------------------
-const card = (title, badge, body) => `<article class="card"><div class="card-head"><h3>${esc(title)}</h3>${badge}</div><div class="card-body">${body}</div></article>`;
+const card = (title, badge, body) => `<article class="card"><div class="card-head"><h3 class="card-title">${esc(title)}</h3>${badge}</div><div class="card-body">${body}</div></article>`;
 const tag = (t, cls = "") => h`<span class="tag ${cls}">${t}</span>`;
 const kv = (pairs) => `<dl class="kv">${pairs.filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => h`<dt>${k}</dt><dd>${raw(v)}</dd>`).join("")}</dl>`;
 const mono = (s) => h`<span class="mono">${s}</span>`;
 const muted = (s) => h`<p style="color:var(--ink-3);font-size:var(--fs-1)">${s}</p>`;
-const errCard = (title, d) => card(title, tag("error", "warn"), muted(d.error));
+const errCard = (title, d) => errorCard(title, d);
 
 const CARDS = {
   harvest: (d) => harvestCard(d),
@@ -148,9 +154,9 @@ const CARDS = {
     return card("DNS records", tag(`${fmtNum(d.total ?? rows.length)} records`) + (d.cloudflare_proxied ? " " + tag("Cloudflare", "warn") : ""), rows.length ? kv(rows) : muted("No records returned."));
   },
   whois: (d) => d.error ? errCard("WHOIS", d) : card("WHOIS", d.privacy_protected ? tag("privacy") : "", kv([["Registrar", esc(d.registrar)], ["Created", esc(String(d.creation_date || "").slice(0, 10))], ["Updated", esc(String(d.updated_date || "").slice(0, 10))], ["Expires", esc(String(d.expiration_date || "").slice(0, 10))], ["Org", esc(d.org)], ["Country", esc(d.country)], ["Name servers", flat(d.name_servers).map((x) => mono(String(x).toLowerCase())).join("<br>")]])),
-  ssl: (d) => d.error || d.found === false ? card("TLS certificate", tag("none", "warn"), muted(d.error || "No certificate presented.")) : card("TLS certificate", tag(d.days_left < 30 ? `${d.days_left} days left` : "valid", d.days_left < 30 ? "warn" : "ok"), kv([["Common name", mono(d.common_name)], ["Issuer", esc(d.issuer)], ["Valid from", esc(String(d.not_before || "").slice(0, 10))], ["Valid until", esc(String(d.not_after || "").slice(0, 10))], ["Also covers", flat(d.sans).slice(0, 12).map(mono).join("<br>") + (flat(d.sans).length > 12 ? h`<br>+${flat(d.sans).length - 12} more` : "")]])),
+  ssl: (d) => d.error_code === "tls" || (d.found === false && !d.error) ? card("TLS certificate", tag("none", "warn"), muted(d.error || "No certificate presented.")) : d.error ? errCard("TLS certificate", d) : card("TLS certificate", tag(d.days_left < 30 ? `${d.days_left} days left` : "valid", d.days_left < 30 ? "warn" : "ok"), kv([["Common name", mono(d.common_name)], ["Issuer", esc(d.issuer)], ["Valid from", esc(day(d.not_before))], ["Valid until", esc(day(d.not_after))], ["Also covers", flat(d.sans).slice(0, 12).map(mono).join("<br>") + (flat(d.sans).length > 12 ? h`<br>+${flat(d.sans).length - 12} more` : "")]])),
   headers: (d) => {
-    if (d.error || d.found === false) return errCard("HTTP headers", { error: d.error || "No response" });
+    if (d.error || d.found === false) return errCard("HTTP headers", d.error ? d : { error: "No response" });
     const g = String(d.grade || "?").toUpperCase();
     const rows = Object.entries(d.security_headers || {}).map(([k, v]) => [k, v?.present ? h`<span style="color:var(--ok)">present</span>${v.value ? raw(h` <span class="mono" style="color:var(--ink-3)">${String(v.value).slice(0, 80)}</span>`) : ""}` : `<span style="color:var(--warn)">missing</span>`]);
     return card("HTTP headers", tag(`grade ${g}`, g === "A" ? "ok" : g === "B" ? "" : "warn"), kv([["Server", esc(d.server)], ...rows]));
@@ -162,7 +168,7 @@ const CARDS = {
       (subs.length ? `<div style="font-size:var(--fs-1)">${subs.slice(0, 25).map((s) => h`<div>${raw(link(`https://${s.subdomain}`, s.subdomain))} <span style="color:var(--ink-4)" class="mono">${flat(s.ips).join(", ")}</span></div>`).join("")}${subs.length > 25 ? h`<div style="color:var(--ink-4)">+${subs.length - 25} more in the ledger</div>` : ""}</div>` : muted("None found."))
       + (ct.length ? h`<details style="margin-top:10px;font-size:var(--fs-0)"><summary style="cursor:pointer;color:var(--ink-3)">Recent certificate log entries (${ct.length})</summary>${raw(ct.slice(0, 30).map((e) => h`<div class="mono" style="color:var(--ink-2)">${String(e.date || "").slice(0, 10)}  ${e.subdomain}  <span style="color:var(--ink-4)">${e.issuer}</span></div>`).join(""))}</details>` : ""));
   },
-  asn: (d) => d.error || d.found === false ? errCard("Network owner", { error: d.error || "Not found" }) : card("Network owner", tag(d.asn || ""), kv([["IP", mono(d.ip)], ["ASN", link(`https://bgp.he.net/${d.asn}`, d.asn)], ["Org", esc(d.org)], ["Prefixes", flat(d.prefixes).slice(0, 8).map(mono).join("<br>")]])),
+  asn: (d) => d.error ? errCard("Network owner", d) : d.found === false ? card("Network owner", tag("not found"), muted("No network owner on record for this address.")) : card("Network owner", tag(d.asn || ""), kv([["IP", mono(d.ip)], ["ASN", link(`https://bgp.he.net/${d.asn}`, d.asn)], ["Org", esc(d.org)], ["Prefixes", flat(d.prefixes).slice(0, 8).map(mono).join("<br>")]])),
   portscan: (d) => {
     if (d.error) return errCard("Port scan", d);
     const open = (d.results || []).filter((r) => r.open);
@@ -171,7 +177,8 @@ const CARDS = {
   shodan: (d) => {
     const isIdb = d.source === "internetdb";
     const title = isIdb ? "Exposure (InternetDB)" : "Exposure (Shodan)";
-    if (!d.found) return card(title, tag(d.error ? "error" : "not indexed", d.error ? "warn" : ""), muted(d.error || "This IP is not in the index."));
+    if (d.error) return errCard(title, d);
+    if (!d.found) return card(title, tag("not indexed"), muted("This IP is not in the index."));
     const vulns = d.vulns || [];
     const svc = (d.services || []).slice(0, 8).map((s) => h`<div><span class="mono">${s.port}/${s.transport}</span> ${[s.product, s.version].filter(Boolean).join(" ")}</div>`).join("");
     return card(title, tag(`${(d.ports || []).length} ports`) + (vulns.length ? " " + tag(`${d.vuln_count || vulns.length} CVEs`, "warn") : ""),
@@ -180,8 +187,9 @@ const CARDS = {
       + (isIdb ? muted("Free keyless source. Add a Shodan key in Settings for banners, org and location.").replace("<p ", '<p style="margin-top:8px" ') : ""));
   },
   wayback: (d) => !d.found ? card("Wayback Machine", tag("none"), muted("No snapshots archived.")) : card("Wayback Machine", tag(`${fmtNum(d.total_snapshots)} snapshots`), kv([["Latest", link(d.most_recent_snapshot?.url, String(d.most_recent_snapshot?.timestamp || "open"))], ["History", (d.snapshot_history || []).slice(0, 8).map((s) => link(s.url, s.date)).join("<br>")]])),
-  redirects: (d) => !d.found ? card("Redirect chain", tag("none"), muted("No response.")) : card("Redirect chain", tag(d.is_clean ? "clean" : "check", d.is_clean ? "ok" : "warn"), `<div style="font-size:var(--fs-1)">${(d.hops || []).map((x) => h`<div><span class="mono" style="color:var(--ink-3)">${x.status_code}</span> ${raw(link(x.url, x.url))}${x.server ? raw(h` <span style="color:var(--ink-4)">${x.server}</span>`) : ""}</div>`).join("")}</div>`),
+  redirects: (d) => d.error ? errCard("Redirect chain", d) : !d.found ? card("Redirect chain", tag("none"), muted("No response.")) : card("Redirect chain", tag(d.is_clean ? "clean" : "check", d.is_clean ? "ok" : "warn"), `<div style="font-size:var(--fs-1)">${(d.hops || []).map((x) => h`<div><span class="mono" style="color:var(--ink-3)">${x.status_code}</span> ${raw(link(x.url, x.url))}${x.server ? raw(h` <span style="color:var(--ink-4)">${x.server}</span>`) : ""}</div>`).join("")}</div>`),
   techfp: (d) => {
+    if (d.error) return errCard("Tech fingerprint", d);
     if (!d.found) return card("Tech fingerprint", tag("none"), muted("Nothing identified."));
     const t = d.detected_tech || {};
     return card("Tech fingerprint", "", kv([["CMS", esc(flat(t.cms).join(", "))], ["Server", esc(flat(t.server).join(", "))], ["Language", esc(flat(t.language).join(", "))], ["Frameworks", esc(flat(t.frameworks).join(", "))], ["CDN", esc(flat(t.cdn).join(", "))], ["Analytics", esc(flat(t.analytics).join(", "))], ["Missing headers", esc(flat(d.security_headers?.missing).join(", "))]]));
@@ -204,19 +212,29 @@ function renderCards() {
 
 function renderAll() {
   const { items, facts } = buildFindings(state.collected, state.target);
+  const diff = !state.running && state.prev ? diffRuns(state.prev.keys, items) : null;
+  if (diff) { const added = new Set(diff.added.map((i) => i.key)); for (const it of items) it.isNew = added.has(it.key); }
+  const failed = failedSources();
   $("#rEmpty").hidden = true;
-  renderTiers($("#rLedger"), items, TIERS, new Set(store.get(checkKey(), [])), `<div class="empty"><h3>No findings</h3><p>Nothing risky or exposed was found. Details from each source are below.</p></div>`);
-  renderFacts($("#rFacts"), facts);
+  $("#rNotices").innerHTML = failedNotice(failed) + (diff ? diffNotice(diff, state.prev.ts) : "");
+  const nothing = state.running ? `<div class="empty"><h3>Collecting</h3><p>Findings appear here as each source answers.</p></div>`
+    : failed.length ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean bill of health. See the notice above.</p></div>`
+    : `<div class="empty"><h3>No findings</h3><p>Nothing risky or exposed was found. Details from each source are below.</p></div>`;
+  renderTiers($("#rLedger"), items, TIERS, new Set(store.get(checkKey(), [])), nothing);
+  renderFacts($("#rFacts"), facts, state.running ? "Collecting…" : "No facts extracted yet.");
   renderCards();
   if (state.tab === "topology") drawGraph();
   return items;
 }
 
 // ---- tabs + topology --------------------------------------------------------------------
+// A real tablist: one tab stop, arrow keys move between tabs, each tab names its panel.
 $("#rTabs").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) setTab(b.dataset.tab); });
+const syncTabs = roving($("#rTabs"), "[role=tab]", (el) => setTab(el.dataset.tab));
 function setTab(tab) {
   state.tab = tab;
   $$("#rTabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === tab));
+  syncTabs?.();
   $("#rFindings").hidden = tab !== "findings";
   $("#rTopology").hidden = tab !== "topology";
   if (tab === "topology") drawGraph();
@@ -226,7 +244,8 @@ function loadD3() {
   if (window.d3) return Promise.resolve();
   d3Loading ??= new Promise((res, rej) => {
     const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js";
+    // Self-hosted (static/v2/vendor): no third-party script host, and the CSP stays script-src 'self'.
+    s.src = new URL("../vendor/d3.min.js", import.meta.url).href;
     s.onload = res; s.onerror = () => rej(new Error("Could not load the graph library."));
     document.head.appendChild(s);
   });
@@ -249,9 +268,21 @@ const aiBody = () => {
   const c = state.collected;
   return { target: state.target, dns: c.dns || null, whois: c.whois || null, ssl: c.ssl || null, headers: c.headers || null, subdomains: c.subdomains || null, asn: c.asn || null, portscan: c.portscan || null, asn_detail: c.asn_detail || null, shodan: c.shodan || null };
 };
+const hasData = () => Object.entries(state.collected).some(([k, v]) => SRC_NAME[k] && v && !isFailed(v));
 function renderAi() {
   const box = $("#rAiPanel");
-  if (!state.ai) { box.innerHTML = `<p class="empty" style="padding:0">${aiAvailable() ? "Runs automatically after the sources finish." : "Add a key in Settings to turn on AI analysis."}</p>`; return; }
+  const note = (t) => `<p class="empty flat">${esc(t)}</p>`;
+  if (!state.ai) {
+    if (state.aiBusy) { box.innerHTML = `<p class="empty flat" role="status">Asking ${esc(providerName())}…</p>`; return; }
+    if (state.running) { box.innerHTML = note("Available when the sources finish. AI never runs on its own."); return; }
+    if (!state.target || !hasData()) { box.innerHTML = note(state.target ? "Nothing to analyze yet." : "Run a target first. AI analysis is optional and only runs when you ask."); return; }
+    if (!aiAvailable()) { box.innerHTML = `${note("Add a Claude or Gemini key to turn on AI analysis.")}<button class="btn btn-sm" type="button" data-open-settings>Open settings</button>`; return; }
+    const out = !userAiKey() && freeLeft() <= 0;
+    box.innerHTML = h`<p class="ai-pitch">Get an attack surface summary: what is exposed, what looks misconfigured, and what to check next.</p>
+      <button class="btn btn-primary btn-block" type="button" id="rAiRunBtn" ${out ? "disabled" : ""}>Analyze with AI</button>
+      <p class="ai-cost">${aiCost()}</p>`;
+    return;
+  }
   const deep = state.deep ? `<button class="btn btn-sm" type="button" data-open-rreport="deep">Deep analysis</button>` : aiAvailable() ? `<button class="btn btn-sm" type="button" id="rDeepBtn">Deep analysis…</button>` : "";
   box.innerHTML = summaryBlock(state.ai, { reportId: "summary", attr: "data-open-rreport", deepDive: deep });
 }
@@ -259,6 +290,7 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-open-rreport]");
   if (b) openReport(b.dataset.openRreport);
   if (e.target.id === "rDeepBtn") confirmDeep();
+  if (e.target.id === "rAiRunBtn") runAi();
 });
 function openReport(which) {
   const ai = which === "deep" ? state.deep : state.ai;
@@ -266,25 +298,29 @@ function openReport(which) {
   openModal({ title: which === "deep" ? "Deep analysis" : "AI analysis", wide: true, body: `<div class="report">${markdown(ai.summary)}</div>`,
     actions: [{ label: "Copy markdown", onClick: () => navigator.clipboard?.writeText(ai.summary).then(() => toast("Copied")) }, { label: "Close", primary: true, onClick: closeModal }] });
 }
+// Runs only from the "Analyze with AI" button, after the cost has been shown.
 async function runAi() {
-  if (!srcOn("ai") || !aiAvailable()) return;
-  const row = log.add(`AI analysis (${providerName()})`);
+  if (state.aiBusy || state.running || !aiAvailable() || !hasData()) return;
+  state.aiBusy = true; renderAi();
+  const row = log.add(`AI analysis (${providerName()})`); log.open();
   try {
     state.ai = normalizeAi(await postAi("/api/infra/summarize", aiBody()));
-    log.set(row, `AI analysis · ${state.ai.model || providerName()}`, "done");
+    log.set(row, `AI analysis · ${state.ai.model || providerName()}${state.ai.cached ? " · cached, no credit used" : ""}`, "done");
+    saveHistory();
   } catch (err) {
-    log.set(row, `AI analysis: ${err.detail || err.message}`, err.status === 429 ? "wait" : "err");
-    if (err.status === 429) toast(err.detail, 5000);
+    log.set(row, `AI analysis: ${err.detail || err.message}`, "err", err.raw);
+    toast(err.detail || err.message, 5000);
   }
+  state.aiBusy = false;
   renderAi();
 }
 function confirmDeep() {
-  openModal({ title: "Run a deep analysis?", body: h`<p style="font-size:var(--fs-1);color:var(--ink-2)">${providerName()} gets everything collected for ${state.target} and writes a full attack surface assessment: exposure, likely entry points, misconfigurations and prioritized next steps. This counts as a Deep Dive on the free tier.</p>`,
+  openModal({ title: "Run a deep analysis?", body: h`<p class="modal-p">${providerName()} gets everything collected for ${state.target} and writes a full attack surface assessment: exposure, likely entry points, misconfigurations and prioritized next steps.</p><p class="modal-p muted">${aiCost("deepdive")}</p>`,
     actions: [{ label: "Cancel", onClick: closeModal }, { label: "Run deep analysis", primary: true, onClick: async () => {
       closeModal();
       const row = log.add("Deep analysis"); log.open();
       try { state.deep = normalizeAi(await postAi("/api/analyze/deep", aiBody())); log.set(row, "Deep analysis complete", "done"); saveHistory(); renderAi(); openReport("deep"); }
-      catch (err) { log.set(row, `Deep analysis: ${err.detail || err.message}`, "err"); toast(err.detail || err.message, 5000); }
+      catch (err) { log.set(row, `Deep analysis: ${err.detail || err.message}`, "err", err.raw); toast(err.detail || err.message, 5000); }
     } }] });
 }
 
@@ -292,16 +328,34 @@ function confirmDeep() {
 async function source(label, url, body, key, headers = {}) {
   const row = log.add(label);
   try {
-    const d = await post(url, body, headers);
+    const d = await post(url, body, headers, state.controller?.signal);
     state.collected[key] = d;
-    const note = d?.error ? d.error : d?.found === false ? "nothing found" : "done";
-    log.set(row, `${label} · ${note}`, d?.error ? "wait" : "done");
+    if (isFailed(d)) { const o = sourceOutcome(d); log.set(row, `${label}: ${o.text}`, "err", o.detail); }
+    else if (d?.skipped) log.set(row, `${label} · skipped`, "skip");
+    else if (d?.found === false || d?.error) log.set(row, `${label} · nothing found`, "none");
+    else log.set(row, `${label} · done`, "done");
     renderAll();
     return d;
   } catch (err) {
-    log.set(row, `${label}: ${err.detail || err.message}`, "err");
+    if (err.code === "cancelled") { log.set(row, `${label} · cancelled`, "skip"); return null; }
+    state.collected[key] = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
+    log.set(row, `${label}: ${err.detail || err.message}`, "err", err.raw);
+    renderAll();
     return null;
   }
+}
+
+function setRunning(on) {
+  state.running = on;
+  const b = $("#rRunBtn");
+  b.textContent = on ? "Cancel run" : "Run recon";
+  b.classList.toggle("btn-primary", !on); b.classList.toggle("btn-danger", on);
+  $("#rMain").setAttribute("aria-busy", on);
+}
+export function cancel() {
+  if (!state.running) return;
+  state.cancelled = true;
+  state.controller?.abort();
 }
 
 export async function run(raw0) {
@@ -309,13 +363,15 @@ export async function run(raw0) {
   if (!target || state.running) return;
   const type = detect(target);
   if (!RECON_TYPES.includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Investigate.`); return; }
-  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, running: true });
+  const last = store.get(HISTORY_KEY, []).find((e) => e.type === "RECON" && e.v2 && e.target.toLowerCase() === target.toLowerCase());
+  const prev = last ? { keys: buildFindings(last.results || {}, last.target).items.map((i) => i.key), ts: last.timestamp } : null;
+  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false });
   store.del(checkKey());
   $("#rTargetInput").value = target; renderSources(type);
-  $("#rRunBtn").disabled = true; $("#rRunBtn").textContent = "Running…";
-  $("#rLedger").innerHTML = ""; $("#rEmpty").hidden = true; $("#rBySource").hidden = true; $("#rFacts").innerHTML = `<p class="empty" style="padding:0">Collecting…</p>`;
+  setRunning(true);
+  $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rEmpty").hidden = true; $("#rBySource").hidden = true;
   $("#rNotes").value = ""; notesMeta();
-  head(); renderAi(); log.start();
+  head(); log.start(); renderAll(); renderAi();
 
   const on = srcOn;
   const T = { domain: target };
@@ -332,24 +388,23 @@ export async function run(raw0) {
     if (on("asn")) jobs.push(source("Network owner", "/api/infra/asn", T, "asn"));
     if (on("exposure")) jobs.push(getKey("shodan") ? source("Exposure (Shodan)", "/api/recon/shodan", { target }, "shodan", { "X-Shodan-Key": getKey("shodan") }) : source("Exposure (InternetDB)", "/api/recon/internetdb", { target }, "shodan"));
     if (on("redirects")) jobs.push(source("Redirect chain", "/api/infra/redirects", { target }, "redirects"));
-    if (type === "domain" && on("techfp")) jobs.push(source("Tech fingerprint", "/api/infra/techfingerprint", T, "techfp"));
+    if (on("techfp")) jobs.push(source("Tech fingerprint", "/api/infra/techfingerprint", T, "techfp"));
     if (type === "domain" && on("wayback")) jobs.push(source("Wayback Machine", "/api/infra/wayback", T, "wayback"));
     await Promise.all(jobs);
-    if (on("portscan")) await source("Port scan", "/api/infra/portscan", T, "portscan");
-    // IP → ASN map for the topology graph
+    if (on("portscan") && !state.cancelled) await source("Port scan", "/api/infra/portscan", T, "portscan");
+    // IP to ASN map for the topology graph
     const c = state.collected;
     const ips = [...new Set([...(c.subdomains?.subdomains || []).flatMap((s) => flat(s.ips)), ...flat(c.dns?.records?.A)].filter((x) => /^\d+\.\d+\.\d+\.\d+$/.test(String(x))))].slice(0, 100);
-    if (ips.length) { try { c.ipAsn = (await post("/api/infra/ip-asn", { ips })).results || {}; } catch { /* graph falls back to the main ASN */ } }
+    if (ips.length && !state.cancelled) { try { c.ipAsn = (await post("/api/infra/ip-asn", { ips }, {}, state.controller.signal)).results || {}; } catch { /* graph falls back to the main ASN */ } }
   }
 
-  await runAi();
+  setRunning(false);
   const items = renderAll();
+  renderAi();
   const flags = items.filter((i) => i.tier === "flag").length;
-  log.finish(`${plural(Object.keys(state.collected).filter((k) => k !== "ipAsn").length, "source")} · ${plural(flags, "flag")}`);
-  head(`${TYPE_LABEL[type]} · ${plural(flags, "flag")} · ${plural(items.length - flags, "other finding")}`);
-  state.running = false;
-  $("#rRunBtn").disabled = false; $("#rRunBtn").textContent = "Run recon";
-  saveHistory();
+  log.finish(`${state.cancelled ? "Cancelled · partial results · " : ""}${plural(Object.keys(state.collected).filter((k) => k !== "ipAsn").length, "source")} · ${plural(flags, "flag")}`);
+  head(`${TYPE_LABEL[type]} · ${plural(flags, "flag")} · ${plural(items.length - flags, "other finding")}${state.cancelled ? " · cancelled, partial" : ""}`);
+  if (Object.keys(state.collected).length) saveHistory();
 }
 
 function head(meta) {
@@ -365,21 +420,22 @@ function saveHistory() {
   const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "RECON", timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai, deep: state.deep, notes: $("#rNotes").value, v2: true };
   state.historyId = entry.id;
   const i = list.findIndex((e) => e.id === entry.id);
-  if (i >= 0) list[i] = entry; else list.unshift(entry);
+  if (i >= 0) { entry.timestamp = list[i].timestamp; list[i] = entry; } else list.unshift(entry);
   while (list.length > 50) list.pop();
   if (!store.set(HISTORY_KEY, list)) { list.splice(Math.floor(list.length / 2)); store.set(HISTORY_KEY, list); }
 }
 export function loadHistory(e) {
-  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false });
+  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false });
   $("#rTargetInput").value = e.target; renderSources(state.type); $("#rRunlog").hidden = true;
   head(`${TYPE_LABEL[state.type]} · from history · ${new Date(e.timestamp).toLocaleString()}`);
   renderAll(); renderAi();
   $("#rNotes").value = e.notes || ""; notesMeta();
 }
 export function clearCase() {
-  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false });
-  $("#rTargetInput").value = ""; $("#rMainHead").hidden = true; $("#rRunlog").hidden = true; $("#rLedger").innerHTML = ""; $("#rBySource").hidden = true;
-  $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty" style="padding:0">Nothing yet.</p>`; $("#rNotes").value = ""; notesMeta();
+  cancel();
+  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, prev: null, aiBusy: false });
+  $("#rTargetInput").value = ""; $("#rMainHead").hidden = true; $("#rRunlog").hidden = true; $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rBySource").hidden = true;
+  $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#rNotes").value = ""; notesMeta();
   renderSources(""); renderAi(); setTab("findings");
 }
 
@@ -394,22 +450,30 @@ $("#rNotes").addEventListener("input", () => {
 export function exportCase() {
   if (!state.target) return;
   const { items, facts } = buildFindings(state.collected, state.target);
+  const failed = failedSources();
   const md = [`# CrawlR recon: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}`, "",
+    ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a clean result)`), ""] : []),
     "## What we know", ...(facts.length ? facts.map((f) => `- **${f.k}:** ${f.v} _(${f.source})_`) : ["- Nothing extracted"]), "",
-    ...TIERS.flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${i.url ? `[${i.what}](${i.url})` : i.what}${i.meta ? ` — ${i.meta}` : ""} _(${i.source})_`), ""] : []; }),
+    ...TIERS.flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${i.url ? `[${i.what}](${i.url})` : i.what}${i.meta ? ` · ${i.meta}` : ""} _(${i.source})_`), ""] : []; }),
     ...(state.ai ? ["## AI analysis", state.ai.summary, ""] : []), ...(state.deep ? ["## Deep analysis", state.deep.summary, ""] : []),
     ...($("#rNotes").value.trim() ? ["## Notes", $("#rNotes").value.trim(), ""] : [])].join("\n");
-  const slug = state.target.replace(/[^a-z0-9]+/gi, "-").slice(0, 60);
-  const dl = (name, content, type) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); closeModal(); };
-  openModal({ title: "Export recon", body: `<p style="font-size:var(--fs-1);color:var(--ink-2)">Markdown includes findings, facts, AI reports and notes. JSON is the raw data from every source.</p>`,
-    actions: [{ label: "Download JSON", onClick: () => dl(`crawlr-recon-${slug}.json`, JSON.stringify({ target: state.target, type: state.type, collected: state.collected, ai: state.ai, deep: state.deep, notes: $("#rNotes").value }, null, 2), "application/json") },
-              { label: "Download Markdown", primary: true, onClick: () => dl(`crawlr-recon-${slug}.md`, md, "text/markdown") }] });
+  const name = `crawlr-recon-${slug(state.target)}`;
+  const done = (fn) => () => { fn(); closeModal(); };
+  openModal({ title: "Export recon",
+    body: `<p class="modal-p">Everything is built in your browser. Nothing is uploaded.</p>
+      <ul class="export-list"><li><b>Print or PDF</b> opens the print dialog with a clean, light layout. Choose "Save as PDF" there.</li><li><b>HTML</b> is one self-contained page you can send or archive.</li><li><b>Markdown</b> has findings, facts, AI reports and notes.</li><li><b>JSON</b> is the raw data from every source.</li></ul>`,
+    actions: [
+      { label: "JSON", onClick: done(() => download(`${name}.json`, JSON.stringify({ target: state.target, type: state.type, exported: new Date().toISOString(), collected: state.collected, ai: state.ai, deep: state.deep, notes: $("#rNotes").value }, null, 2), "application/json")) },
+      { label: "Markdown", onClick: done(() => download(`${name}.md`, md, "text/markdown")) },
+      { label: "HTML", onClick: async () => { setTab("findings"); const html = await standaloneHtml(`CrawlR recon: ${state.target}`, $("#rMain"), $("#rAside")); download(`${name}.html`, html, "text/html"); closeModal(); } },
+      { label: "Print or PDF", primary: true, onClick: () => { closeModal(); setTab("findings"); setTimeout(() => window.print(), 50); } },
+    ] });
 }
 
 // ---- rail wiring -----------------------------------------------------------------------------------------
 $("#rTargetInput").addEventListener("input", () => { const t = detect($("#rTargetInput").value); renderSources(RECON_TYPES.includes(t) ? t : ""); $("#rTargetDetected").innerHTML = $("#rTargetInput").value.trim() ? h`<span>Detected</span> <span class="pill ${RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t] || ""}</span>${RECON_TYPES.includes(t) ? "" : raw(' <span>runs in <a href="#investigate" data-goto="investigate">Investigate</a></span>')}` : ""; });
-$("#rTargetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#rRunBtn").click(); });
-$("#rRunBtn").addEventListener("click", () => { $("#rRail").classList.remove("open"); run($("#rTargetInput").value); });
+$("#rTargetInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !state.running) $("#rRunBtn").click(); });
+$("#rRunBtn").addEventListener("click", () => { if (state.running) { cancel(); return; } document.dispatchEvent(new CustomEvent("crawlr:close-rail")); run($("#rTargetInput").value); });
 $("#rClearBtn").addEventListener("click", clearCase);
 $("#rExportBtn").addEventListener("click", exportCase);
 renderSources("");

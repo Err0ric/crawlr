@@ -1,8 +1,15 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import httpx
 
+from core import validate
+
 router = APIRouter()
+
+# DECISION PENDING (see the PR checklist): this calls an undocumented kbb.com endpoint by
+# presenting kbb.com's own Origin and Referer. It can break without notice and may conflict
+# with that site's terms. Options: remove the plate lookup, or replace it with a licensed
+# plate-to-VIN provider.
 
 KBB_HEADERS = {
     "Origin": "https://www.kbb.com",
@@ -11,17 +18,14 @@ KBB_HEADERS = {
 
 
 class PlateRequest(BaseModel):
-    plate: str
-    state: str
+    plate: str = Field(max_length=16)
+    state: str = Field(max_length=4)
 
 
 @router.post("/plate")
 async def plate_lookup(req: PlateRequest):
-    plate = req.plate.strip().upper()
-    state = req.state.strip().upper()
-
-    if not plate or not state or len(state) != 2:
-        raise HTTPException(status_code=400, detail="Plate and 2-letter state code required")
+    plate = validate.plate(req.plate)
+    state = validate.us_state(req.state)
 
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:

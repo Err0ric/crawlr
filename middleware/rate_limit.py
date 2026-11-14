@@ -1,87 +1,119 @@
 """
-Soft rate limiter middleware for FastAPI.
+Per-IP rate limiting for the API.
 
-Instead of returning 429 errors, this adds progressive delays when
-an IP exceeds the configured request limit for a given endpoint group.
-Reads real client IP from X-Forwarded-For (Railway proxy).
+Every POST under /api is counted against a sliding window for the caller's IP and the
+most specific matching path group. Over the limit, the request is rejected with 429 and
+a Retry-After header.
+
+The client IP comes from middleware.observability.client_ip, which reads the hop that
+the platform proxy appended rather than a value the caller can set.
+
+Counters live in memory, which is right for a single instance. The table is swept and
+capped so a flood of distinct addresses cannot grow it without bound.
 """
 
-import asyncio
 import time
-from collections import defaultdict
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from core.logging import get_logger
+from middleware.observability import client_ip
 
-# Rate limit configs: path prefix -> (max_requests_per_window, window_seconds)
+log = get_logger(__name__)
+
+# path prefix -> (max requests per window, window seconds). The longest matching prefix wins.
 RATE_LIMITS = {
-    "/api/recon/sherlock": (10, 60),
-    "/api/recon/maigret": (10, 60),
-    "/api/recon/harvester": (10, 60),
-    "/api/analyze/summarize": (20, 60),
-    "/api/analyze/deep-dive": (20, 60),
-    "/api/analyze/deep": (20, 60),
-    "/api/analyze/correlate": (20, 60),
-    "/api/analyze/email-headers": (20, 60),
+    # subprocess tools: each run fans out hundreds of outbound requests
+    "/api/recon/sherlock": (6, 60),
+    "/api/recon/maigret": (6, 60),
+    "/api/recon/holehe": (6, 60),
+    "/api/recon/harvester": (6, 60),
+    # active techniques
+    "/api/recon/scrape-profiles": (4, 60),
+    "/api/infra/portscan": (6, 60),
+    # AI (the free tier has its own daily quota on top of this)
+    "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),
-    "/api/phone/lookup": (15, 60),
+    # everything else, by area. One recon run is about a dozen /api/infra calls.
+    "/api/recon": (60, 60),
+    "/api/infra": (90, 60),
+    "/api/email": (30, 60),
+    "/api/hash": (30, 60),
+    "/api/phone": (15, 60),
+    "/api/vehicles": (10, 60),
 }
+MAX_KEYS = 20_000
+SWEEP_EVERY = 500      # requests between sweeps
+LONGEST_WINDOW = max(w for _, w in RATE_LIMITS.values())
 
 
-def _get_client_ip(request: Request) -> str:
-    """Extract real client IP from X-Forwarded-For or fall back to client host."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+def match_limit(path: str):
+    """Return (group, limit, window) for the most specific matching prefix, or None."""
+    best = None
+    for prefix, (limit, window) in RATE_LIMITS.items():
+        if (path == prefix or path.startswith(prefix + "/")) and (best is None or len(prefix) > len(best[0])):
+            best = (prefix, limit, window)
+    return best
 
 
-class SoftRateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
-        # Track: {(ip, path_group): [timestamp, ...]}
-        self._requests: dict[tuple[str, str], list[float]] = defaultdict(list)
+        # {(ip, group): [timestamp, ...]}
+        self._requests: dict[tuple[str, str], list[float]] = {}
+        self._since_sweep = 0
 
+    # kept for callers and tests that used the old name
     def _match_limit(self, path: str):
-        """Return (limit, window) if path is rate-limited, else None."""
-        for prefix, config in RATE_LIMITS.items():
-            if path == prefix or path.startswith(prefix + "/"):
-                return config
+        m = match_limit(path)
+        return (m[1], m[2]) if m else None
+
+    def _sweep(self, now: float) -> None:
+        cutoff = now - LONGEST_WINDOW
+        for key in [k for k, stamps in self._requests.items() if not stamps or stamps[-1] <= cutoff]:
+            del self._requests[key]
+        if len(self._requests) > MAX_KEYS:
+            # Still too many live keys: drop the ones idle the longest.
+            oldest = sorted(self._requests, key=lambda k: self._requests[k][-1])
+            for key in oldest[: len(self._requests) - MAX_KEYS]:
+                del self._requests[key]
+
+    def check(self, ip: str, path: str, now: float | None = None) -> int | None:
+        """Record a request. Returns None when allowed, or seconds to wait when over the limit."""
+        m = match_limit(path)
+        if m is None:
+            return None
+        group, limit, window = m
+        now = time.monotonic() if now is None else now
+        self._since_sweep += 1
+        if self._since_sweep >= SWEEP_EVERY or len(self._requests) > MAX_KEYS:
+            self._since_sweep = 0
+            self._sweep(now)
+        key = (ip, group)
+        stamps = [t for t in self._requests.get(key, ()) if t > now - window]
+        if len(stamps) >= limit:
+            self._requests[key] = stamps
+            return max(1, int(stamps[0] + window - now) + 1)
+        stamps.append(now)
+        self._requests[key] = stamps
         return None
 
-    def _clean_window(self, key: tuple[str, str], window: float):
-        """Remove timestamps older than the window."""
-        cutoff = time.monotonic() - window
-        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
-
     async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        config = self._match_limit(path)
-
-        if config is None or request.method == "GET":
+        if request.method != "POST":
             return await call_next(request)
+        ip = client_ip(request)
+        wait = self.check(ip, request.url.path)
+        if wait is not None:
+            log.warning("rate limited", extra={"ip": ip, "path": request.url.path, "retry_after_s": wait})
+            return JSONResponse(
+                status_code=429,
+                content={"detail": f"Too many requests. Try again in {wait} seconds.", "code": "rate_limited"},
+                headers={"Retry-After": str(wait)},
+            )
+        return await call_next(request)
 
-        limit, window = config
-        ip = _get_client_ip(request)
-        key = (ip, path)
 
-        self._clean_window(key, window)
-        count = len(self._requests[key])
-
-        delay = 0.0
-        throttled = False
-        if count >= limit:
-            over = count - limit + 1
-            delay = min(over * 1.5, 10.0)  # 1.5s per request over, max 10s
-            throttled = True
-            await asyncio.sleep(delay)
-
-        self._requests[key].append(time.monotonic())
-
-        response = await call_next(request)
-
-        if throttled:
-            response.headers["X-RateLimit-Delayed"] = str(round(delay, 1))
-
-        return response
+# Old name, still imported in places.
+SoftRateLimitMiddleware = RateLimitMiddleware

@@ -1,7 +1,8 @@
 import socket
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from modules.resolver import resolve_domain
+from core.errors import error_fields
+from modules.resolver import resolve_public_ip
 
 TOP_PORTS = [
     (21, "FTP"), (22, "SSH"), (23, "Telnet"), (25, "SMTP"),
@@ -22,11 +23,12 @@ def _check_port(ip: str, port: int, timeout: float = 2.0) -> bool:
 
 async def run_portscan(domain: str, timeout: float = 2.0) -> dict:
     try:
-        ip = resolve_domain(domain)
+        # Never scan loopback, private or link-local space, whatever the name resolves to.
+        ip = await resolve_public_ip(domain)
     except Exception as e:
-        return {"domain": domain, "found": False, "error": f"Could not resolve: {e}"}
+        return {"domain": domain, "found": False, **error_fields(e)}
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     results = []
 
     with ThreadPoolExecutor(max_workers=10) as pool:

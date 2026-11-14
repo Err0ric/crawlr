@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import httpx
 import re
 
@@ -7,7 +7,7 @@ router = APIRouter()
 
 
 class HashRequest(BaseModel):
-    hash: str
+    hash: str = Field(max_length=128)
 
 
 def detect_hash_type(h: str) -> str | None:

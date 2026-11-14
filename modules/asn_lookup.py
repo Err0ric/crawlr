@@ -1,5 +1,6 @@
 import httpx
 import re
+from core.errors import error_fields
 from modules.resolver import resolve_domain
 
 HEADERS = {
@@ -11,9 +12,9 @@ TIMEOUT = 10
 
 async def run_asn(domain: str) -> dict:
     try:
-        ip = resolve_domain(domain)
+        ip = await resolve_domain(domain)
     except Exception as e:
-        return {"domain": domain, "found": False, "error": f"Could not resolve: {e}"}
+        return {"domain": domain, "found": False, **error_fields(e)}
 
     async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
         # Step 1: Get ASN for this IP via RIPE stat
