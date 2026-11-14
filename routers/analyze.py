@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from core.ai_call import run_ai
 from core.ai_text import parse_json_object, summary_and_report
+from routers.recon_infra import extra_recon_lines
 
 router = APIRouter()
 
@@ -696,6 +697,11 @@ class DeepAnalysisRequest(BaseModel):
     portscan: Optional[dict] = None
     asn_detail: Optional[dict] = None
     shodan: Optional[dict] = None
+    email_posture: Optional[dict] = None
+    dns_depth: Optional[dict] = None
+    takeover: Optional[dict] = None
+    lookalikes: Optional[dict] = None
+    wellknown: Optional[dict] = None
 
 
 @router.post("/deep")
@@ -784,6 +790,7 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
         if parts:
             prompt_parts.append(f"Shodan: {', '.join(parts)}")
 
+    prompt_parts.extend(extra_recon_lines(req))
     recon_data = "\n".join(prompt_parts)
 
     t0 = time.time()

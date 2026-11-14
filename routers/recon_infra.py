@@ -15,6 +15,11 @@ from modules.port_scan import run_portscan
 from modules.wayback import run_wayback
 from modules.redirect_chain import run_redirect_chain
 from modules.tech_fingerprint import run_tech_fingerprint
+from modules.email_posture import run_email_posture
+from modules.dns_depth import run_dns_depth
+from modules.takeover import run_takeover
+from modules.lookalikes import run_lookalikes
+from modules.wellknown import run_wellknown
 import asyncio
 import httpx
 import time
@@ -45,6 +50,11 @@ class ReconAnalyzeRequest(BaseModel):
     portscan: Optional[dict] = None
     asn_detail: Optional[dict] = None
     shodan: Optional[dict] = None
+    email_posture: Optional[dict] = None
+    dns_depth: Optional[dict] = None
+    takeover: Optional[dict] = None
+    lookalikes: Optional[dict] = None
+    wellknown: Optional[dict] = None
 
 
 @router.post("/dns")
@@ -150,6 +160,74 @@ async def redirect_scan(req: TargetRequest):
 async def tech_fingerprint_scan(req: DomainRequest):
     domain = validate.host(req.domain)
     return await run_tech_fingerprint(domain)
+
+
+def extra_recon_lines(req) -> list[str]:
+    """Prompt lines for the newer recon checks. Only sources that ran without failing are used."""
+    ok = lambda d: isinstance(d, dict) and not d.get("error")
+    lines: list[str] = []
+    ep = getattr(req, "email_posture", None)
+    if ok(ep):
+        issues = [f["title"] for f in ep.get("findings", []) if f.get("level") == "flag"]
+        lines.append(f"Email security: grade {ep.get('grade', '?')}, spoofable: {ep.get('spoofable', '?')}" + (f". Issues: {'; '.join(issues[:6])}" if issues else ""))
+    dd = getattr(req, "dns_depth", None)
+    if ok(dd):
+        lines.append(
+            f"DNS: DNSSEC {'enabled' if dd.get('dnssec', {}).get('signed') and dd.get('dnssec', {}).get('ds') else 'not enabled'}, "
+            f"CAA {'present' if dd.get('caa') else 'absent'}, wildcard DNS {'yes' if dd.get('wildcard', {}).get('present') else 'no'}"
+        )
+    tk = getattr(req, "takeover", None)
+    if ok(tk) and tk.get("candidates"):
+        rows = [f"{c['host']} -> {c['cname']} ({c['service']}, {c['status']})" for c in tk["candidates"][:10]]
+        lines.append(f"Subdomain takeover candidates (DNS only, unverified): {'; '.join(rows)}")
+    la = getattr(req, "lookalikes", None)
+    if ok(la) and la.get("results"):
+        rows = [f"{r['domain']}{' (receives mail)' if r.get('mail') else ''}" for r in la["results"][:15]]
+        lines.append(f"Registered lookalike domains ({la.get('registered', len(rows))}, not proof of abuse): {', '.join(rows)}")
+    wk = getattr(req, "wellknown", None)
+    if ok(wk):
+        if wk.get("security_txt"):
+            lines.append(f"security.txt present, contact: {', '.join(wk['security_txt'].get('contact', [])[:3])}")
+        elif wk.get("found"):
+            lines.append("No security.txt published")
+        if (wk.get("robots") or {}).get("interesting"):
+            lines.append(f"robots.txt disallows: {', '.join(wk['robots']['interesting'][:15])}")
+    return lines
+
+
+@router.post("/email-posture")
+async def email_posture_scan(req: DomainRequest):
+    """SPF, DMARC, DKIM, MTA-STS, TLS-RPT and BIMI from DNS. Does not contact mail servers."""
+    return await run_email_posture(validate.host(req.domain, allow_ip=False))
+
+
+@router.post("/dns-depth")
+async def dns_depth_scan(req: DomainRequest):
+    """CAA, DNSSEC, wildcard detection and reverse DNS."""
+    return await run_dns_depth(validate.host(req.domain, allow_ip=False))
+
+
+class TakeoverRequest(BaseModel):
+    domain: str = Field(max_length=320)
+    hosts: list[str] = Field(max_length=400)
+
+
+@router.post("/takeover")
+async def takeover_scan(req: TakeoverRequest):
+    """Subdomains whose CNAME points at a claimable cloud service. DNS only."""
+    return await run_takeover(validate.host(req.domain, allow_ip=False), [h[:260] for h in req.hosts])
+
+
+@router.post("/lookalikes")
+async def lookalikes_scan(req: DomainRequest):
+    """Registered typo and lookalike variants of the domain. DNS only."""
+    return await run_lookalikes(validate.host(req.domain, allow_ip=False))
+
+
+@router.post("/wellknown")
+async def wellknown_scan(req: DomainRequest):
+    """security.txt, robots.txt and the favicon hash. Three requests to the target's web server."""
+    return await run_wellknown(validate.host(req.domain))
 
 
 @router.post("/summarize")
@@ -295,6 +373,7 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
         if parts:
             prompt_parts.append(f"Shodan: {', '.join(parts)}")
 
+    prompt_parts.extend(extra_recon_lines(req))
     recon_data = "\n".join(prompt_parts)
 
     t0 = time.time()
