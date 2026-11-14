@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, Header, Request
-from core.house_key import resolve_ai_key
-from middleware.observability import client_ip
-from pydantic import BaseModel
-from typing import Optional
-from modules.ai_provider import call_ai
-import json
+import re
 import time
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Header, Request
+from pydantic import BaseModel, Field
+
+from core.ai_call import run_ai
+from core.ai_text import parse_json_object, summary_and_report
 
 router = APIRouter()
 
@@ -19,7 +20,9 @@ Write for an investigator who will act on this report. Be specific and evidence-
 - Use only the collected data below. Never invent accounts, names, locations or breaches.
 - Cite the source for each claim in parentheses, e.g. (Sherlock), (GitHub), (HIBP).
 - When evidence is thin or conflicting, say so and lower the confidence. A short honest report beats a padded one.
-- Treat sites flagged as false positives or unverified as weak signals, not confirmations.
+- Accounts are listed as CONFIRMED or POSSIBLE. Only call an account confirmed if the data lists it as confirmed. Possible accounts are leads to check, never facts.
+- A confirmed account proves the handle exists on that site, not that it is the same person. Say what links it to the target (same name, bio, avatar, links) or say that nothing does.
+- Some sources may be listed as FAILED. A failed source gave no data: never cite it, never describe its platform as confirmed, and never treat the failure as a negative result.
 
 Respond in exactly this format, with nothing before or after:
 
@@ -57,31 +60,20 @@ At most 6, ranked, most valuable first. Each lead is one line starting with → 
 Bullets: each unanswered question (including attributes left out of the identity table) and the source or technique that would answer it.
 </report>"""
 
-ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active techniques" (the investigator enabled them) listing account-recovery or password-reset enumeration checks worth running on the confirmed platforms, each marked with ⚠ and a one-line note on what it reveals and the risk of notifying the target."""
+ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active techniques" (the investigator enabled them) listing account-recovery or password-reset enumeration checks worth running on the confirmed accounts, each marked with ⚠ and a one-line note on what it reveals and the risk of notifying the target."""
 
 
 def parse_tagged_report(text: str) -> tuple[list[str], str]:
     """Extract (bullets, markdown report) from the tagged format, falling back to the
     legacy JSON shape and finally to raw text, so a model that ignores the format still renders."""
-    import re as _re
     t = (text or "").strip()
-    sm = _re.search(r"<summary>(.*?)</summary>", t, _re.S | _re.I)
-    rp = _re.search(r"<report>(.*?)(?:</report>|$)", t, _re.S | _re.I)
+    sm = re.search(r"<summary>(.*?)</summary>", t, re.S | re.I)
+    rp = re.search(r"<report>(.*?)(?:</report>|$)", t, re.S | re.I)
     if sm or rp:
         bullets = [b.strip().lstrip("-•*→ ").strip() for b in (sm.group(1) if sm else "").splitlines() if b.strip().lstrip("-•*→ ").strip()]
-        report = (rp.group(1) if rp else _re.sub(r"<(summary|profile)>.*?</\1>", "", t, flags=_re.S | _re.I)).strip()
+        report = (rp.group(1) if rp else re.sub(r"<(summary|profile)>.*?</\1>", "", t, flags=re.S | re.I)).strip()
         return bullets[:6], report
-    cleaned = t
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[-1]
-    if cleaned.endswith("```"):
-        cleaned = cleaned.rsplit("```", 1)[0]
-    try:
-        parsed = json.loads(cleaned.strip())
-        return list(parsed.get("short_summary", []))[:6], str(parsed.get("full_report", cleaned))
-    except (json.JSONDecodeError, AttributeError):
-        lines = [l.strip().lstrip("-•*→ ") for l in cleaned.splitlines() if l.strip() and not l.strip().startswith(("#", "|", "{", "}"))]
-        return [l for l in lines if len(l) > 3][:4], cleaned
+    return summary_and_report(t)
 
 
 PROFILE_KEYS = {"name", "location", "interests", "exposure", "exposure_reason"}
@@ -91,8 +83,7 @@ _BLANK = {"", "-", "n/a", "none", "unknown", "blank", "not found", "leave blank"
 def parse_profile(text: str) -> dict:
     """Read the <profile> block (simple key: value lines) used for the report's dossier card.
     Missing or malformed blocks return {} and the frontend falls back to collected facts."""
-    import re as _re
-    m = _re.search(r"<profile>(.*?)</profile>", text or "", _re.S | _re.I)
+    m = re.search(r"<profile>(.*?)</profile>", text or "", re.S | re.I)
     if not m:
         return {}
     out: dict = {}
@@ -115,9 +106,101 @@ def parse_profile(text: str) -> dict:
     return out
 
 
+SOURCE_FIELDS = {
+    "sherlock": "Sherlock", "maigret": "Maigret", "github": "GitHub", "holehe": "Holehe", "hibp": "Breach check",
+    "gravatar": "Gravatar", "harvester": "Domain harvest", "hunter": "Hunter.io", "enricher": "Profile enrichment",
+    "platform_check": "Platform check", "profile_scrape": "Profile scrape", "shodan": "Shodan",
+}
+
+
+def _ok(data: Optional[dict]) -> bool:
+    """A source only counts when it ran and did not fail. An errored lookup proves nothing."""
+    return bool(data) and not data.get("error") and not data.get("error_code")
+
+
+def _status_lines(req) -> list[str]:
+    """Tell the model which sources failed, so a failure is never read as 'not found'
+    and a source that returned nothing is never described as confirming anything."""
+    status: dict[str, str] = {}
+    for field, label in SOURCE_FIELDS.items():
+        data = getattr(req, field, None)
+        if isinstance(data, dict) and (data.get("error") or data.get("error_code")):
+            status[label] = f"failed: {str(data.get('error') or data.get('error_code'))[:120]}"
+    for name, value in (req.source_status or {}).items():
+        status[str(name)[:40]] = str(value)[:140]
+    failed = {k: v for k, v in status.items() if v.lower().startswith("failed")}
+    ok = [k for k, v in status.items() if not v.lower().startswith("failed")]
+    lines = []
+    if ok:
+        lines.append(f"Sources that ran successfully: {', '.join(sorted(ok))}")
+    if failed:
+        lines.append(
+            "Sources that FAILED and returned NO data: "
+            + "; ".join(f"{k} ({v[8:].strip() or 'error'})" for k, v in sorted(failed.items()))
+            + ". Treat these as unknown. Do not cite them, do not call anything from them confirmed, "
+            "and do not read a failure as evidence that an account does or does not exist. List each under Gaps."
+        )
+    return lines
+
+
+def _account_lines(req) -> list[str]:
+    """Account evidence, worded by how strong it is."""
+    lines: list[str] = []
+    if req.accounts:
+        confirmed = [a for a in req.accounts if a.status == "confirmed"]
+        possible = [a for a in req.accounts if a.status != "confirmed"]
+        fmt = lambda a: f"{a.site} ({a.url})" if a.url else a.site
+        if confirmed:
+            lines.append(
+                f"CONFIRMED accounts ({len(confirmed)}), existence verified by profile data or an API: "
+                + ", ".join(f"{fmt(a)}{' [' + a.note + ']' if a.note else ''}" for a in confirmed[:30])
+            )
+            lines.append(
+                "Confirmed means an account with this handle exists on that site. It does not prove the account "
+                "belongs to the same person; compare names, bios and links before attributing it."
+            )
+        if possible:
+            lines.append(
+                f"POSSIBLE accounts ({len(possible)}), a tool reported the handle exists but nothing verified it "
+                f"(many sites answer yes for any name): {', '.join(fmt(a) for a in possible[:40])}"
+                + (f" (and {len(possible) - 40} more)" if len(possible) > 40 else "")
+            )
+        return lines
+    # Older clients send raw tool output instead of the ledger.
+    rows = [r for src in (req.sherlock, getattr(req, "maigret", None)) if _ok(src) for r in (src.get("results") or [])]
+    verified = [r for r in rows if r.get("verified")]
+    possible = [r for r in rows if not r.get("verified") and r.get("confidence") != "false_positive"]
+    noisy = [r["site"] for r in rows if r.get("confidence") == "false_positive"]
+    fmt = lambda r: f'{r["site"]} ({r["url"]})' if r.get("url") else r["site"]
+    if verified:
+        lines.append(f"Accounts verified by profile data ({len(verified)}): {', '.join(fmt(r) for r in verified[:30])}")
+    if possible:
+        lines.append(
+            f"POSSIBLE accounts ({len(possible)}), existence check only, not verified "
+            f"(many sites answer yes for any name): {', '.join(fmt(r) for r in possible[:40])}"
+        )
+    if noisy:
+        lines.append(f"Known false-positive sites (ignore): {', '.join(noisy)}")
+    return lines
+
+
+class AccountEvidence(BaseModel):
+    site: str = Field(max_length=120)
+    url: str = Field(default="", max_length=600)
+    status: str = Field(default="possible", max_length=20)     # "confirmed" | "possible"
+    sources: list[str] = Field(default_factory=list, max_length=8)
+    note: str = Field(default="", max_length=200)
+
+
 class AnalyzeRequest(BaseModel):
-    target: str
+    target: str = Field(max_length=320)
+    # What the UI's evidence ledger concluded, so the report and the screen agree.
+    accounts: Optional[list[AccountEvidence]] = Field(default=None, max_length=400)
+    # Source name -> "ok", "not found" or "failed: <reason>". Lets the model tell
+    # "GitHub has no such user" apart from "GitHub could not be checked".
+    source_status: Optional[dict[str, str]] = None
     sherlock: Optional[dict] = None
+    maigret: Optional[dict] = None
     holehe: Optional[dict] = None
     harvester: Optional[dict] = None
     hibp: Optional[dict] = None
@@ -139,31 +222,12 @@ def ping():
 
 @router.post("/summarize")
 async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
-    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
+    bucket = "analysis"
 
     prompt_parts = [f"Target: {req.target}\n"]
 
-    if req.sherlock and req.sherlock.get("results"):
-        results = req.sherlock["results"]
-        confirmed = [f'{r["site"]} ({r["url"]})' if r.get("url") else r["site"] for r in results if r.get("confidence") != "false_positive"]
-        unverified = [r["site"] for r in results if r.get("confidence") == "false_positive"]
-        high_conf = [r["site"] for r in results if r.get("confidence") == "high_confidence"]
-        if confirmed:
-            prompt_parts.append(
-                f"Sherlock confirmed {len(confirmed)} profiles: {', '.join(confirmed[:30])}"
-            )
-        if high_conf:
-            prompt_parts.append(
-                f"HIGH-CONFIDENCE platforms (weight these heavily): {', '.join(high_conf)}"
-            )
-        if unverified:
-            prompt_parts.append(
-                f"Sherlock UNVERIFIED (known false positives, ignore or deprioritize): {', '.join(unverified)}"
-            )
-        prompt_parts.append(
-            "NOTE: Sherlock results may include false positives from sites that return 200 for any username. "
-            "Focus analysis on high-confidence platforms like GitHub, Reddit, Steam, TikTok, LinkedIn."
-        )
+    prompt_parts.extend(_account_lines(req))
+    prompt_parts.extend(_status_lines(req))
 
     if req.holehe and req.holehe.get("results"):
         accounts = [r["site"] for r in req.holehe["results"]]
@@ -176,12 +240,12 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
         emails = req.harvester.get("emails", [])
         if hosts:
             prompt_parts.append(
-                f"theHarvester found {len(hosts)} subdomains/hosts: {', '.join(hosts[:20])}"
+                f"Passive domain harvest found {len(hosts)} subdomains/hosts: {', '.join(hosts[:20])}"
                 + (f" (and {len(hosts)-20} more)" if len(hosts) > 20 else "")
             )
         if emails:
             prompt_parts.append(
-                f"theHarvester found {len(emails)} emails: {', '.join(emails[:10])}"
+                f"Passive domain harvest found {len(emails)} emails: {', '.join(emails[:10])}"
             )
 
     if req.hibp and req.hibp.get("breaches"):
@@ -202,9 +266,9 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
             parts.append(f"location: {g['location']}")
         if g.get("profile_url"):
             parts.append(f"profile: {g['profile_url']}")
-        prompt_parts.append(f"Gravatar profile found — {', '.join(parts)}")
+        prompt_parts.append(f"Gravatar profile found: {', '.join(parts)}")
 
-    if req.github and req.github.get("found"):
+    if _ok(req.github) and req.github.get("found"):
         gh = req.github
         parts = []
         if gh.get("name"):
@@ -220,7 +284,7 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
         if gh.get("blog"):
             parts.append(f"blog: {gh['blog']}")
         parts.append(f"{gh.get('public_repos', 0)} repos, {gh.get('followers', 0)} followers")
-        prompt_parts.append(f"GitHub profile found — {', '.join(parts)}")
+        prompt_parts.append(f"GitHub profile (read from the GitHub API): {', '.join(parts)}")
 
     if req.enricher and req.enricher.get("profiles"):
         for p in req.enricher["profiles"]:
@@ -230,7 +294,7 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
             if p.get("bio"):
                 parts.append(f"bio: {p['bio'][:200]}")
             if parts:
-                prompt_parts.append(f"{p.get('platform', 'Unknown')} profile — {', '.join(parts)}")
+                prompt_parts.append(f"{p.get('platform', 'Unknown')} profile: {', '.join(parts)}")
 
     if req.platform_check and req.platform_check.get("results"):
         found = [r for r in req.platform_check["results"] if r.get("found")]
@@ -238,7 +302,7 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
         if found:
             found_details = [f"{r['platform']} ({r.get('url', '')})" for r in found]
             prompt_parts.append(
-                f"Platform existence check confirmed {len(found)} profiles: {', '.join(found_details)}"
+                f"Platform URL probe got a 200 response for {len(found)} profile URLs (weak signal, these sites often answer 200 for any name): {', '.join(found_details)}"
             )
         if not_found:
             prompt_parts.append(
@@ -306,10 +370,8 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
 
     t0 = time.time()
 
-    ai_resp = await call_ai(
-        api_key=key.api_key,
-        provider=key.provider,
-        model=key.model,
+    ai = await run_ai(
+        request, x_api_key, x_ai_provider, bucket,
         max_tokens=4096,
         messages=[
             {
@@ -324,37 +386,33 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = ai_resp["text"]
-    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
+    text = ai.text
 
     short_summary, full_report = parse_tagged_report(text)
     return {
         "summary": full_report,
         "short_summary": short_summary,
         "profile": parse_profile(text),
-        "model": ai_resp["model"],
-        "tokens": tokens,
         "elapsed": elapsed,
-        "ai_source": key.source,
-        "free_remaining": key.remaining,
+        **ai.meta(),
     }
 
 
 @router.post("/deep-dive")
 async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
-    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "deepdive")
+    bucket = "deepdive"
 
     # Build recon context (same data assembly as summarize)
     prompt_parts = [f"Target: {req.target}\n"]
 
     if req.sherlock and req.sherlock.get("results"):
         results = req.sherlock["results"]
-        confirmed = [r["site"] for r in results if r.get("confidence") != "false_positive"]
-        high_conf = [r["site"] for r in results if r.get("confidence") == "high_confidence"]
-        if confirmed:
-            prompt_parts.append(f"Sherlock confirmed {len(confirmed)} profiles: {', '.join(confirmed[:30])}")
-        if high_conf:
-            prompt_parts.append(f"HIGH-CONFIDENCE platforms: {', '.join(high_conf)}")
+        verified = [r["site"] for r in results if r.get("verified")]
+        possible = [r["site"] for r in results if r.get("confidence") != "false_positive" and not r.get("verified")]
+        if verified:
+            prompt_parts.append(f"Accounts verified by profile data ({len(verified)}): {', '.join(verified[:30])}")
+        if possible:
+            prompt_parts.append(f"Possible accounts, existence check only ({len(possible)}): {', '.join(possible[:30])}")
 
     if req.holehe and req.holehe.get("results"):
         accounts = [r["site"] for r in req.holehe["results"]]
@@ -372,7 +430,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
         if parts:
             prompt_parts.append(f"Gravatar: {', '.join(parts)}")
 
-    if req.github and req.github.get("found"):
+    if _ok(req.github) and req.github.get("found"):
         gh = req.github
         parts = []
         for k in ("name", "bio", "location", "company", "email", "blog"):
@@ -394,7 +452,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
     if req.platform_check and req.platform_check.get("results"):
         found = [r for r in req.platform_check["results"] if r.get("found")]
         if found:
-            prompt_parts.append(f"Platform check confirmed: {', '.join(r['platform'] for r in found)}")
+            prompt_parts.append(f"Platform URL probe answered 200 (weak signal): {', '.join(r['platform'] for r in found)}")
 
     if req.hunter and req.hunter.get("emails"):
         emails = [e["email"] for e in req.hunter["emails"][:15]]
@@ -439,10 +497,8 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
 
     t0 = time.time()
 
-    ai_resp = await call_ai(
-        api_key=key.api_key,
-        provider=key.provider,
-        model=key.model,
+    ai = await run_ai(
+        request, x_api_key, x_ai_provider, bucket,
         max_tokens=2048,
         messages=[
             {
@@ -502,16 +558,12 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = ai_resp["text"]
-    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
+    text = ai.text
 
     return {
         "summary": text,
-        "model": ai_resp["model"],
-        "tokens": tokens,
         "elapsed": elapsed,
-        "ai_source": key.source,
-        "free_remaining": key.remaining,
+        **ai.meta(),
     }
 
 
@@ -521,7 +573,7 @@ class EmailHeaderAnalyzeRequest(BaseModel):
 
 @router.post("/email-headers")
 async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
-    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
+    bucket = "analysis"
 
     data = req.header_analysis
     prompt_parts = []
@@ -583,10 +635,8 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, request: Requ
 
     t0 = time.time()
 
-    ai_resp = await call_ai(
-        api_key=key.api_key,
-        provider=key.provider,
-        model=key.model,
+    ai = await run_ai(
+        request, x_api_key, x_ai_provider, bucket,
         max_tokens=1500,
         messages=[
             {
@@ -616,34 +666,27 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, request: Requ
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = ai_resp["text"]
-    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
+    text = ai.text
 
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        parsed = {
-            "summary": text,
-            "verdict": "UNKNOWN",
-            "reasons": [],
-            "next_steps": [],
-        }
+    parsed = parse_json_object(text) or {
+        "summary": text,
+        "verdict": "UNKNOWN",
+        "reasons": [],
+        "next_steps": [],
+    }
 
     return {
         "summary": parsed.get("summary", ""),
         "verdict": parsed.get("verdict", "UNKNOWN"),
         "reasons": parsed.get("reasons", []),
         "next_steps": parsed.get("next_steps", []),
-        "model": ai_resp["model"],
-        "tokens": tokens,
         "elapsed": elapsed,
-        "ai_source": key.source,
-        "free_remaining": key.remaining,
+        **ai.meta(),
     }
 
 
 class DeepAnalysisRequest(BaseModel):
-    target: str
+    target: str = Field(max_length=320)
     dns: Optional[dict] = None
     whois: Optional[dict] = None
     ssl: Optional[dict] = None
@@ -657,7 +700,7 @@ class DeepAnalysisRequest(BaseModel):
 
 @router.post("/deep")
 async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
-    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "deepdive")
+    bucket = "deepdive"
 
     prompt_parts = [f"Target: {req.target}\n"]
 
@@ -745,10 +788,8 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
 
     t0 = time.time()
 
-    ai_resp = await call_ai(
-        api_key=key.api_key,
-        provider=key.provider,
-        model=key.model,
+    ai = await run_ai(
+        request, x_api_key, x_ai_provider, bucket,
         max_tokens=3000,
         messages=[
             {
@@ -772,16 +813,12 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = ai_resp["text"]
-    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
+    text = ai.text
 
     return {
         "summary": text,
-        "model": ai_resp["model"],
-        "tokens": tokens,
         "elapsed": elapsed,
-        "ai_source": key.source,
-        "free_remaining": key.remaining,
+        **ai.meta(),
     }
 
 
@@ -795,9 +832,9 @@ def _summarize_target_data(target: str, data: dict) -> str:
 
     if data.get("sherlock") and data["sherlock"].get("results"):
         results = data["sherlock"]["results"]
-        confirmed = [r["site"] for r in results if r.get("confidence") != "false_positive"]
-        if confirmed:
-            parts.append(f"  Sherlock ({len(confirmed)} profiles): {', '.join(confirmed[:25])}")
+        hits = [r["site"] for r in results if r.get("confidence") != "false_positive"]
+        if hits:
+            parts.append(f"  Username enumeration, unverified ({len(hits)} sites): {', '.join(hits[:25])}")
 
     if data.get("holehe") and data["holehe"].get("results"):
         accounts = [r["site"] for r in data["holehe"]["results"]]
@@ -837,7 +874,7 @@ def _summarize_target_data(target: str, data: dict) -> str:
     if data.get("platformCheck") and data["platformCheck"].get("results"):
         found = [r["platform"] for r in data["platformCheck"]["results"] if r.get("found")]
         if found:
-            parts.append(f"  Platform check confirmed: {', '.join(found)}")
+            parts.append(f"  Platform URL probe answered 200 (weak signal): {', '.join(found)}")
 
     if data.get("hunter") and data["hunter"].get("emails"):
         emails = [e["email"] for e in data["hunter"]["emails"][:10]]
@@ -857,7 +894,7 @@ def _summarize_target_data(target: str, data: dict) -> str:
 
 @router.post("/correlate")
 async def correlate(req: CorrelateRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
-    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
+    bucket = "analysis"
 
     if len(req.targets) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 targets to correlate")
@@ -871,10 +908,8 @@ async def correlate(req: CorrelateRequest, request: Request, x_api_key: str | No
 
     t0 = time.time()
 
-    ai_resp = await call_ai(
-        api_key=key.api_key,
-        provider=key.provider,
-        model=key.model,
+    ai = await run_ai(
+        request, x_api_key, x_ai_provider, bucket,
         max_tokens=2048,
         messages=[
             {
@@ -924,14 +959,10 @@ async def correlate(req: CorrelateRequest, request: Request, x_api_key: str | No
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = ai_resp["text"]
-    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
+    text = ai.text
 
     return {
         "summary": text,
-        "model": ai_resp["model"],
-        "tokens": tokens,
         "elapsed": elapsed,
-        "ai_source": key.source,
-        "free_remaining": key.remaining,
+        **ai.meta(),
     }

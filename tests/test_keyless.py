@@ -91,14 +91,13 @@ def test_ai_endpoint_uses_house_key_and_counts(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "AIza-house")
     seen = {}
 
-    async def fake_call_ai(api_key, provider, messages, max_tokens=2048, model=None):
+    async def fake_call_ai(api_key, provider, messages, max_tokens=2048, model=None, scope=None):
         seen.update(api_key=api_key, provider=provider, model=model)
         return {"text": '{"short_summary": ["a"], "full_report": "r"}', "model": model, "input_tokens": 1, "output_tokens": 1}
 
-    import routers.analyze as ra
-    monkeypatch.setattr(ra, "call_ai", fake_call_ai)
+    monkeypatch.setattr(ai_provider, "call_ai", fake_call_ai)
     with TestClient(app) as c:
-        r = c.post("/api/analyze/summarize", json={"target": "x", "sherlock": {"results": [{"site": "GitHub", "confidence": "high_confidence"}]}},
+        r = c.post("/api/analyze/summarize", json={"target": "x", "sherlock": {"results": [{"site": "GitHub", "confidence": "major_platform"}]}},
                    headers={"x-forwarded-for": "7.7.7.7"})
         assert r.status_code == 200, r.text
         assert seen == {"api_key": "AIza-house", "provider": "gemini", "model": "gemini-2.5-flash"}
@@ -120,13 +119,14 @@ def test_call_ai_caches_identical_prompts(monkeypatch):
 
     async def main():
         a = await ai_provider.call_ai("k1", "gemini", msgs)
-        b = await ai_provider.call_ai("k2", "gemini", msgs)  # different key, same prompt -> cache hit
+        b = await ai_provider.call_ai("k1", "gemini", msgs)  # same key, same prompt -> cache hit
         c = await ai_provider.call_ai("k1", "gemini", [{"role": "user", "content": "other"}])
-        return a, b, c
+        d = await ai_provider.call_ai("k2", "gemini", msgs)  # another person's key never reads k1's answer
+        return a, b, c, d
 
-    a, b, c = asyncio.run(main())
-    assert a["cached"] is False and b["cached"] is True and c["cached"] is False
-    assert len(calls) == 2
+    a, b, c, d = asyncio.run(main())
+    assert a["cached"] is False and b["cached"] is True and c["cached"] is False and d["cached"] is False
+    assert len(calls) == 3
 
 
 # ---- InternetDB -----------------------------------------------------------

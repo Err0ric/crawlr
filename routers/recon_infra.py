@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Header, Request
-from core.house_key import resolve_ai_key
-from middleware.observability import client_ip
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
+from core import validate
+from core.ai_call import run_ai
+from core.ai_text import summary_and_report
 from modules.dns_lookup import run_dns
 from modules.whois_lookup import run_whois
 from modules.ssl_check import run_ssl
@@ -14,16 +15,15 @@ from modules.port_scan import run_portscan
 from modules.wayback import run_wayback
 from modules.redirect_chain import run_redirect_chain
 from modules.tech_fingerprint import run_tech_fingerprint
-from modules.ai_provider import call_ai
+import asyncio
 import httpx
-import json
 import time
 
 router = APIRouter()
 
 
 class DomainRequest(BaseModel):
-    domain: str
+    domain: str = Field(max_length=320)
 
 
 class AsnRequest(BaseModel):
@@ -31,11 +31,11 @@ class AsnRequest(BaseModel):
 
 
 class IpAsnRequest(BaseModel):
-    ips: list[str]
+    ips: list[str] = Field(max_length=200)
 
 
 class ReconAnalyzeRequest(BaseModel):
-    target: str
+    target: str = Field(max_length=320)
     dns: Optional[dict] = None
     whois: Optional[dict] = None
     ssl: Optional[dict] = None
@@ -49,57 +49,43 @@ class ReconAnalyzeRequest(BaseModel):
 
 @router.post("/dns")
 async def dns_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain, allow_ip=False)
     return await run_dns(domain)
 
 
 @router.post("/whois")
 async def whois_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain, allow_ip=False)
     return await run_whois(domain)
 
 
 @router.post("/ssl")
 async def ssl_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain)
     return await run_ssl(domain)
 
 
 @router.post("/headers")
 async def headers_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain)
     return await run_headers(domain)
 
 
 @router.post("/subdomains")
 async def subdomains_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain, allow_ip=False)
     return await run_subdomains(domain)
 
 
 @router.post("/asn")
 async def asn_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain)
     return await run_asn(domain)
 
 
 @router.post("/portscan")
 async def portscan_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain)
     return await run_portscan(domain)
 
 
@@ -113,70 +99,70 @@ async def asn_detail_scan(req: AsnRequest):
 @router.post("/ip-asn")
 async def batch_ip_asn(req: IpAsnRequest):
     """Batch resolve IPs to ASN/org via RIPE stat."""
-    ips = list(set(ip.strip() for ip in req.ips if ip.strip()))[:30]
-    results = {}
+    ips = sorted({ip.strip() for ip in req.ips if validate.is_ip(ip.strip())})[:30]
+    results: dict[str, dict] = {}
+    org_cache: dict[str, str] = {}
+
     async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-        for ip in ips:
+        async def one(ip: str):
+            results[ip] = {"asn": "", "org": ""}
             try:
-                resp = await client.get(
-                    f"https://stat.ripe.net/data/network-info/data.json?resource={ip}"
-                )
-                if resp.status_code == 200:
-                    data = resp.json().get("data", {})
-                    asns = data.get("asns", [])
-                    asn = f"AS{asns[0]}" if asns else ""
-                    results[ip] = {"asn": asn, "org": ""}
-                    if asn:
-                        try:
-                            asn_num = asn.replace("AS", "")
-                            rdap = await client.get(
-                                f"https://rdap.arin.net/registry/autnum/{asn_num}",
-                                headers={"Accept": "application/rdap+json"},
-                            )
-                            if rdap.status_code == 200:
-                                results[ip]["org"] = rdap.json().get("name", "")
-                        except Exception:
-                            pass
-                else:
-                    results[ip] = {"asn": "", "org": ""}
+                resp = await client.get("https://stat.ripe.net/data/network-info/data.json", params={"resource": ip})
+                if resp.status_code != 200:
+                    return
+                asns = resp.json().get("data", {}).get("asns", [])
+                if not asns:
+                    return
+                num = str(asns[0])
+                results[ip]["asn"] = f"AS{num}"
+                if num not in org_cache:
+                    org_cache[num] = ""
+                    rdap = await client.get(f"https://rdap.arin.net/registry/autnum/{int(num)}", headers={"Accept": "application/rdap+json"})
+                    if rdap.status_code == 200:
+                        org_cache[num] = rdap.json().get("name", "")
+                results[ip]["org"] = org_cache[num]
             except Exception:
-                results[ip] = {"asn": "", "org": ""}
+                pass
+
+        await asyncio.gather(*(one(ip) for ip in ips))
+        for ip, r in results.items():   # fill orgs resolved after a sibling task read the cache
+            if r["asn"] and not r["org"]:
+                r["org"] = org_cache.get(r["asn"][2:], "")
     return {"results": results}
 
 
 class TargetRequest(BaseModel):
-    target: str
+    target: str = Field(max_length=2000)
 
 
 @router.post("/wayback")
 async def wayback_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain, allow_ip=False)
     return await run_wayback(domain)
 
 
 @router.post("/redirects")
 async def redirect_scan(req: TargetRequest):
-    target = req.target.strip()
-    if not target:
-        raise HTTPException(status_code=400, detail="Target is required")
-    return await run_redirect_chain(target)
+    return await run_redirect_chain(validate.http_url(req.target))
 
 
 @router.post("/techfingerprint")
 async def tech_fingerprint_scan(req: DomainRequest):
-    domain = req.domain.strip()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
+    domain = validate.host(req.domain)
     return await run_tech_fingerprint(domain)
 
 
 @router.post("/summarize")
 async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
-    key = resolve_ai_key(x_api_key, x_ai_provider, client_ip(request), "analysis")
 
     prompt_parts = [f"Target domain/IP: {req.target}\n"]
+    failed = [name for name in ("dns", "whois", "ssl", "headers", "subdomains", "asn", "portscan", "asn_detail", "shodan")
+              if isinstance(getattr(req, name), dict) and getattr(req, name).get("error")]
+    if failed:
+        prompt_parts.append(
+            f"Checks that FAILED and returned no data: {', '.join(failed)}. Treat them as unknown: "
+            "a failed check is not evidence that something is absent, closed or safe."
+        )
 
     if req.dns and req.dns.get("records"):
         for rtype, records in req.dns["records"].items():
@@ -251,7 +237,7 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
             parts.append(f"prefixes: {', '.join(a['prefixes'][:5])}")
         prompt_parts.append(f"ASN/BGP: {', '.join(parts)}")
 
-    if req.portscan:
+    if req.portscan and not req.portscan.get("error"):
         open_ports = [f"{r['port']}/{r['service']}" for r in (req.portscan.get("results", [])) if r.get("open")]
         if open_ports:
             prompt_parts.append(f"Open ports: {', '.join(open_ports)}")
@@ -313,10 +299,8 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
 
     t0 = time.time()
 
-    ai_resp = await call_ai(
-        api_key=key.api_key,
-        provider=key.provider,
-        model=key.model,
+    ai = await run_ai(
+        request, x_api_key, x_ai_provider, "analysis",
         max_tokens=2048,
         messages=[
             {
@@ -353,41 +337,11 @@ async def recon_summarize(req: ReconAnalyzeRequest, request: Request, x_api_key:
     )
 
     elapsed = round(time.time() - t0, 1)
-    text = ai_resp["text"]
-    tokens = ai_resp["input_tokens"] + ai_resp["output_tokens"]
-
-    # Strip fences and try to extract JSON
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[-1]
-    if cleaned.endswith("```"):
-        cleaned = cleaned.rsplit("```", 1)[0]
-    cleaned = cleaned.strip()
-    try:
-        parsed = json.loads(cleaned)
-        short_summary = parsed.get("short_summary", [])
-        full_report = parsed.get("full_report", cleaned)
-    except (json.JSONDecodeError, KeyError):
-        full_report = cleaned
-        _json_noise = {"{", "}", "[", "]", '",', "```", "```json"}
-        lines = [
-            l.strip() for l in cleaned.split("\n")
-            if l.strip()
-            and l.strip() not in _json_noise
-            and not l.strip().startswith('"short_summary"')
-            and not l.strip().startswith('"full_report"')
-            and not l.strip().startswith("#")
-        ]
-        lines = [l.strip().strip('"').strip(",").strip('"') for l in lines]
-        lines = [l for l in lines if l and len(l) > 3]
-        short_summary = lines[:4]
+    short_summary, full_report = summary_and_report(ai.text)
 
     return {
         "summary": full_report,
         "short_summary": short_summary,
-        "model": ai_resp["model"],
-        "tokens": tokens,
         "elapsed": elapsed,
-        "ai_source": key.source,
-        "free_remaining": key.remaining,
+        **ai.meta(),
     }
