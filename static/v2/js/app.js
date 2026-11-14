@@ -17,6 +17,8 @@ applyTheme();
 
 // Password managers (Chrome, Safari/iCloud Keychain, 1Password, Bitwarden, LastPass) treat any
 // text box mentioning "username" or "email" as a login field and pop up saved logins.
+// iCloud Passwords ignores the opt-out attributes and reads the placeholder, label, id and name,
+// so none of those may contain "user", "email", "login" or "account" on a CrawlR input.
 // None of CrawlR's inputs are logins, so opt every one of them out, including ones added later.
 const QUIET = { autocomplete: "off", "data-1p-ignore": "", "data-lpignore": "true", "data-bwignore": "", "data-form-type": "other" };
 function quietAutofill(root) {

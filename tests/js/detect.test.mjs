@@ -12,3 +12,21 @@ let bad = 0;
 for (const [k, v] of Object.entries(cases)) { const got = detect(k); if (got !== v) { bad++; console.log("FAIL", k, "->", got, "expected", v); } }
 console.log(bad ? `${bad} failed` : `all ${Object.keys(cases).length} pass`);
 if (bad) process.exit(1);
+
+// Password managers read an input's placeholder, label, id and name. None may look like a login.
+{
+  const fs = await import("node:fs");
+  const html = fs.readFileSync(new URL("../../static/v2/index.html", import.meta.url), "utf8");
+  const bad = /user|e-?mail|login|account|passw/i;
+  const inputs = [...html.matchAll(/<(?:input|textarea)\b[^>]*>/g)].map((m) => m[0]).filter((t) => !/type="(checkbox|radio|file|hidden)"/.test(t));
+  const attr = (t, a) => (t.match(new RegExp(`\\b${a}="([^"]*)"`)) || [])[1] || "";
+  const hits = [];
+  for (const t of inputs) {
+    const id = attr(t, "id");
+    const label = (html.match(new RegExp(`<label[^>]*for="${id}"[^>]*>([^<]*)</label>`)) || [])[1] || "";
+    for (const [k, v] of [["id", id], ["name", attr(t, "name")], ["placeholder", attr(t, "placeholder").replace(/\S+@\S+/g, "")], ["aria-label", attr(t, "aria-label")], ["label", label]]) if (bad.test(v)) hits.push(`${id || t.slice(0, 40)} ${k}: ${v}`);
+    if (/type="(text|password)"/.test(t)) hits.push(`${id} is type text or password, not search`);
+  }
+  if (hits.length) { console.error("FAIL inputs that look like a login to a password manager:\n  " + hits.join("\n  ")); process.exit(1); }
+  console.log(`no input looks like a login (${inputs.length} checked)`);
+}
