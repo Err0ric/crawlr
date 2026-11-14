@@ -126,10 +126,10 @@ def test_person_name_rejects(raw):
 # ---- parsing and handle patterns ---------------------------------------------------
 
 def test_parse_name():
-    assert ns.parse_name("Linus Torvalds") == {"given": "Linus", "middle": "", "family": "Torvalds", "single_token": False}
+    assert ns.parse_name("Linus Torvalds") == {"given": "Linus", "middle": "", "family": "Torvalds", "suffix": "", "single_token": False}
     assert ns.parse_name("Linus Benedict Torvalds")["middle"] == "Benedict"
-    assert ns.parse_name("J. R. R. Tolkien") == {"given": "J.", "middle": "R. R.", "family": "Tolkien", "single_token": False}
-    assert ns.parse_name("Madonna") == {"given": "Madonna", "middle": "", "family": "", "single_token": True}
+    assert ns.parse_name("J. R. R. Tolkien") == {"given": "J.", "middle": "R. R.", "family": "Tolkien", "suffix": "", "single_token": False}
+    assert ns.parse_name("Madonna") == {"given": "Madonna", "middle": "", "family": "", "suffix": "", "single_token": True}
 
 
 def handles(name: str) -> dict:
@@ -194,8 +194,11 @@ def test_name_match_levels():
     assert q.match(["LINUS  TORVALDS"]) == "exact"
     assert q.match(["Linus Benedict Torvalds"]) == "tokens"
     assert q.match(["Torvalds, Linus"]) == "tokens"
-    assert q.match(["L. Torvalds"]) == "partial"
-    assert q.match(["Nils Torvalds"]) is None          # a relative is not a candidate
+    assert q.match(["L. Torvalds"]) == "partial" and q.match(["L Torvalds"]) == "partial"
+    assert q.match(["Torvalds, L."]) == "partial" and q.match(["L. B. Torvalds"]) == "partial"
+    # A relative or a namesake business is not a candidate, even when the first letter is the same.
+    for other in ("Nils Torvalds", "Leo Torvalds", "Lars Torvalds", "Torvalds Lumber", "Torvalds Ltd", "Li Torvalds"):
+        assert q.match([other]) is None, other
     assert q.match(["Linus Pauling"]) is None
     assert q.match(["Linus"]) is None
     assert q.match(["Linus"], handle="linustorvalds") == "tokens"
@@ -229,7 +232,7 @@ def test_full_result_for_linus_torvalds(monkeypatch):
     out = search("Linus Torvalds")
 
     assert out["name"] == "Linus Torvalds" and out["cached"] is False
-    assert out["parsed"] == {"given": "Linus", "middle": "", "family": "Torvalds", "single_token": False}
+    assert out["parsed"] == {"given": "Linus", "middle": "", "family": "Torvalds", "suffix": "", "single_token": False}
     assert set(out) == {"name", "parsed", "candidates", "sources", "handles", "notable", "cached"}
     assert all(set(c) == CANDIDATE_KEYS for c in out["candidates"])
 
@@ -238,13 +241,15 @@ def test_full_result_for_linus_torvalds(monkeypatch):
         "url": "https://www.wikidata.org/wiki/Q34253", "wikipedia": "https://en.wikipedia.org/wiki/Linus_Torvalds",
     }
     assert out["sources"] == {
-        "Wikidata": {"state": "ok", "count": 2, "total": 6},
-        "GitHub": {"state": "ok", "count": 8, "total": 13},
-        "ORCID": {"state": "none", "count": 0, "total": 0},
-        "OpenAlex": {"state": "ok", "count": 2, "total": 2},
-        "Bluesky": {"state": "ok", "count": 2, "total": None},
+        "Wikidata": {"state": "ok", "count": 1, "shown": 1, "total": 6},
+        "GitHub": {"state": "ok", "count": 8, "shown": 8, "total": 13},
+        "ORCID": {"state": "none", "count": 0, "shown": 0, "total": 0},
+        "OpenAlex": {"state": "ok", "count": 2, "shown": 2, "total": 2},
+        "Bluesky": {"state": "ok", "count": 2, "shown": 2, "total": None},
     }
 
+    # The fixture's "Lena Torvalds" shares the family name and the initial. She is someone else.
+    assert "Lena Torvalds" not in [c["name"] for c in out["candidates"]]
     first = out["candidates"][0]
     assert first == {
         "source": "Wikidata", "kind": "public_figure", "name": "Linus Torvalds", "handle": "Q34253",
@@ -261,7 +266,7 @@ def test_full_result_for_linus_torvalds(monkeypatch):
     assert oa["url"] == "https://openalex.org/A5083555959" and oa["description"].startswith("10 works indexed. Topics: Open Source")
 
     # Wikidata's full-text search also returns relatives; only names that fit are kept.
-    assert [c["name"] for c in by_source(out, "Wikidata")] == ["Linus Torvalds", "Lena Torvalds"]
+    assert [c["name"] for c in by_source(out, "Wikidata")] == ["Linus Torvalds"]
     # Bluesky: the profile named for the person and the one whose handle spells the name.
     # Profiles that only mention the name in a bio are dropped, and so is handle.invalid.
     bsky = by_source(out, "Bluesky")
@@ -272,8 +277,8 @@ def test_full_result_for_linus_torvalds(monkeypatch):
 
     # ranking: exact, then tokens, then partial
     ranks = [ns.RANK[c["name_match"]] for c in out["candidates"]]
-    assert ranks == sorted(ranks) and out["candidates"][-1]["name"] == "Lena Torvalds"
-    assert len(out["candidates"]) == 14
+    assert ranks == sorted(ranks)
+    assert len(out["candidates"]) == 13
 
     # six requests: two for Wikidata, one for each other source
     assert sorted(s for s, _ in calls) == ["Bluesky", "GitHub", "ORCID", "OpenAlex", "Wikidata", "Wikidata"]
@@ -341,7 +346,7 @@ def test_ranking_and_filtering_without_qualifiers(monkeypatch):
     assert not any("@" in s or "fixture.example/" in s for s in strings(out))
     # An organisation account is not a person.
     assert "lindqvist-labs" not in [c["handle"] for c in out["candidates"]]
-    assert out["sources"]["ORCID"] == {"state": "ok", "count": 3, "total": 5}
+    assert out["sources"]["ORCID"] == {"state": "ok", "count": 3, "shown": 3, "total": 5}
 
 
 def test_qualifiers_rank_within_a_match_level_and_annotate(monkeypatch):
@@ -378,10 +383,14 @@ def test_caps_per_source_and_in_total(monkeypatch):
     out = search("Mara Lindqvist")
     assert len(out["candidates"]) == 30 == ns.MAX_CANDIDATES
     per = {s: len(by_source(out, s)) for s in out["sources"]}
-    assert max(per.values()) == 8 and all(out["sources"][s]["count"] == n for s, n in per.items())
-    # Exact matches fill the list first; GitHub rows (tokens) get what is left.
-    assert per == {"Wikidata": 8, "GitHub": 0, "ORCID": 8, "OpenAlex": 8, "Bluesky": 6}
-    assert out["sources"]["GitHub"]["state"] == "none"
+    # Five directories with 8 rows each is 40, and the list holds 30. Each directory gives rows in
+    # turn, so none with matches is cut to zero, and every one still says how many it has.
+    assert per == {"Wikidata": 6, "GitHub": 6, "ORCID": 6, "OpenAlex": 6, "Bluesky": 6}
+    for s, n in per.items():
+        assert out["sources"][s]["state"] == "ok" and out["sources"][s]["count"] == 8 and out["sources"][s]["shown"] == n, s
+    # Ranked as one list afterwards: every exact row before the GitHub rows (tokens).
+    assert [c["name_match"] for c in out["candidates"]] == ["exact"] * 24 + ["tokens"] * 6
+    assert [c["source"] for c in out["candidates"][24:]] == ["GitHub"] * 6
     assert all(len(c["description"]) <= 240 for c in out["candidates"])
 
 
@@ -470,7 +479,7 @@ def test_rate_limit_on_one_source_leaves_the_others_intact(monkeypatch, status):
     assert by_source(out, "GitHub") == []
     rest = {k: v["state"] for k, v in out["sources"].items() if k != "GitHub"}
     assert rest == {"Wikidata": "ok", "ORCID": "none", "OpenAlex": "ok", "Bluesky": "ok"}
-    assert out["notable"]["name"] == "Linus Torvalds" and len(out["candidates"]) == 6
+    assert out["notable"]["name"] == "Linus Torvalds" and len(out["candidates"]) == 5
 
 
 @pytest.mark.parametrize("source", ["Wikidata", "GitHub", "ORCID", "OpenAlex", "Bluesky"])
@@ -572,7 +581,7 @@ def test_single_token_name_is_flagged_and_asks_fewer_sources(monkeypatch):
     calls = []
     replay(monkeypatch, SINGLE, calls)
     out = search("Madonna")
-    assert out["parsed"] == {"given": "Madonna", "middle": "", "family": "", "single_token": True}
+    assert out["parsed"] == {"given": "Madonna", "middle": "", "family": "", "suffix": "", "single_token": True}
     assert set(out["sources"]) == {"Wikidata", "GitHub", "Bluesky"}
     assert {s for s, _ in calls} == {"Wikidata", "GitHub", "Bluesky"} and len(calls) == 4
     assert out["handles"] == [{"value": "madonna", "pattern": "name"}]
@@ -593,7 +602,7 @@ def test_single_token_name_is_flagged_and_asks_fewer_sources(monkeypatch):
 def test_single_token_with_no_such_github_login_is_none_not_failed(monkeypatch):
     replay(monkeypatch, SINGLE, override=lambda s, r: httpx.Response(422, json={"message": "Validation Failed"}) if s == "GitHub" else None)
     out = search("Madonna")
-    assert out["sources"]["GitHub"] == {"state": "none", "count": 0, "total": 0}
+    assert out["sources"]["GitHub"] == {"state": "none", "count": 0, "shown": 0, "total": 0}
 
 
 def test_single_token_in_a_script_with_no_ascii_form_skips_the_github_request(monkeypatch):
@@ -601,8 +610,9 @@ def test_single_token_in_a_script_with_no_ascii_form_skips_the_github_request(mo
     replay(monkeypatch, {**SINGLE, "wikidata_search": EMPTY["wikidata_search"], "bluesky": EMPTY["bluesky"]}, calls)
     out = search("李小龙")
     assert out["parsed"]["single_token"] is True and out["handles"] == []
-    assert out["sources"]["GitHub"] == {"state": "none", "count": 0, "total": 0}
+    # GitHub was not asked, so it says nothing: no entry, and above all not "none".
     assert "GitHub" not in {s for s, _ in calls}
+    assert set(out["sources"]) == {"Wikidata", "Bluesky"}
 
 
 def test_a_422_for_a_full_name_is_a_failure(monkeypatch):
@@ -672,7 +682,7 @@ def test_endpoint_returns_the_search(monkeypatch, no_limit):
         resp = client.post("/api/recon/name-search", json={"name": "  Linus  Torvalds ", "location": "", "employer": "", "keyword": ""})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["name"] == "Linus Torvalds" and body["notable"]["url"].endswith("Q34253") and len(body["candidates"]) == 14
+    assert body["name"] == "Linus Torvalds" and body["notable"]["url"].endswith("Q34253") and len(body["candidates"]) == 13
 
 
 def test_endpoint_takes_qualifiers(monkeypatch, no_limit):
@@ -696,7 +706,8 @@ def test_endpoint_validation_errors_reach_no_source(monkeypatch, no_limit, body,
         resp = client.post("/api/recon/name-search", json=body)
     assert resp.status_code == status and calls == []
     if status == 400:
-        assert resp.json()["detail"].startswith("Enter a name")
+        assert resp.json()["detail"] == validate.PERSON_NAME_MSG
+        assert "letters from any script" in resp.json()["detail"] and "are not accepted" in resp.json()["detail"]
 
 
 def test_rate_limit_entry():
@@ -740,3 +751,171 @@ def test_nothing_is_logged_with_the_name(monkeypatch, no_limit, caplog):
     # Nor does a failed source hand the name back inside its error detail.
     for src in resp.json()["sources"].values():
         assert "mara" not in src.get("error_detail", "").lower()
+
+
+# ---- review round: one test per defect ---------------------------------------------
+
+TEXT = json.loads((Path(__file__).parent / "fixtures" / "name_text.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("raw,folded", TEXT["fold"])
+def test_fold_matches_the_shared_pairs(raw, folded):
+    # tests/js/names.test.mjs asserts the same pairs against names.js.
+    assert ns.fold(raw) == folded
+
+
+def test_fold_keeps_the_marks_that_spell_a_name_outside_latin_greek_and_cyrillic():
+    # Vowel signs, voicing marks and tone marks are letters there. Dropping them made these equal.
+    for a, b in (("राम कुमार", "रोम कमीर"), ("ながの がく", "なかの かく"), ("パク ジソン", "ハク シソン"), ("สมชาย ใจดี", "สมชย จด")):
+        assert ns.fold(a) != ns.fold(b), (a, b)
+        assert ns.Query(a).match([b]) is None and ns.Query(a).match([a]) == "exact"
+        assert len(ns.fold(a).split()) == 2          # a spacing mark no longer splits a word
+    assert ns.fold("राम कुमार").split() == ["राम", "कुमार"]
+    # Accents on Latin, Greek and Cyrillic letters are still ignored.
+    assert ns.fold("José García") == ns.fold("Jose Garcia") and ns.fold("Ελένη") == ns.fold("Ελενη") and ns.fold("Алёна") == ns.fold("Алена")
+    # The zero width non-joiner inside a Persian name is not a word break.
+    assert ns.Query("علی‌رضا کریمی").match(["علیرضا کریمی"]) == "exact"
+
+
+@pytest.mark.parametrize("raw,clean", TEXT["strip_images"])
+def test_strip_images_matches_the_shared_pairs(raw, clean):
+    assert ns.strip_images(raw) == clean
+
+
+def test_a_picture_link_in_a_bio_is_dropped_whatever_follows_it(monkeypatch):
+    data = json.loads(json.dumps(MARA))
+    data["bluesky"]["actors"] = [{"handle": "mara.fixture-social.example", "displayName": "Mara Lindqvist",
+                                  "description": "Me: ![me](https://img.fixture.example/me.png) and https://img.fixture.example/a.jpg, also https://img.fixture.example/b.webp."}]
+    replay(monkeypatch, data)
+    desc = by_source(search("Mara Lindqvist"), "Bluesky")[0]["description"]
+    assert "img.fixture.example" not in desc and "![" not in desc and desc.startswith("Me:")
+
+
+def test_a_directory_whose_rows_were_all_cut_by_the_cap_is_never_none(monkeypatch):
+    # Four directories with 8 exact rows fill 32 of 30 places. Under the old cap GitHub's 8 rows
+    # (tokens) were all cut and GitHub was reported as "none, count 0".
+    many = json.loads(json.dumps(MARA))
+    many["github"]["items"] = [{"login": f"mara-fx-{i}", "type": "User"} for i in range(8)]
+    many["github"]["total_count"] = 8
+    many["orcid"]["expanded-result"] = [{"orcid-id": f"0000-0000-0001-{i:04d}", "given-names": "Mara", "family-names": "Lindqvist"} for i in range(8)]
+    many["openalex"]["results"] = [{"id": f"https://openalex.org/A7{i:04d}", "display_name": "Mara Lindqvist", "works_count": 1} for i in range(8)]
+    many["bluesky"]["actors"] = [{"handle": f"mara{i}.fixture-social.example", "displayName": "Mara Lindqvist"} for i in range(8)]
+    ids = [f"Q9900002{i:02d}" for i in range(8)]
+    many["wikidata_search"]["query"]["search"] = [{"title": q} for q in ids]
+    many["wikidata_entities"]["entities"] = {q: {"labels": {"en": {"value": "Mara Lindqvist"}}} for q in ids}
+    replay(monkeypatch, many)
+    out = search("Mara Lindqvist")
+    gh = out["sources"]["GitHub"]
+    assert gh == {"state": "ok", "count": 8, "shown": 6, "total": 8}
+    assert len(by_source(out, "GitHub")) == 6 and len(out["candidates"]) == 30
+    for label, s in out["sources"].items():
+        assert s["state"] == "ok" and s["shown"] == len(by_source(out, label)) >= 1 and s["count"] == 8, label
+
+
+def test_fair_cap_takes_from_every_source_in_turn():
+    row = lambda s, i, m="exact": {"source": s, "handle": f"{s}{i}", "name_match": m, "qualifier_hits": []}
+    a, b, c = [row("A", i) for i in range(8)], [row("B", i) for i in range(8)], [row("C", i, "partial") for i in range(2)]
+    got = ns._fair_cap([a, b, c], 9)
+    assert [r["handle"] for r in got] == ["A0", "A1", "A2", "A3", "B0", "B1", "B2", "C0", "C1"]
+    assert [r["handle"] for r in ns._fair_cap([a, b, c], 3)] == ["A0", "B0", "C0"]
+    assert len(ns._fair_cap([a, b, c], 30)) == 18            # under the cap nothing is cut
+
+
+def test_a_one_word_name_with_no_ascii_form_does_not_report_github_at_all(monkeypatch):
+    calls = []
+    replay(monkeypatch, {**SINGLE, "wikidata_search": EMPTY["wikidata_search"], "bluesky": EMPTY["bluesky"]}, calls)
+    out = search("Мадонна")
+    assert "GitHub" not in out["sources"] and "GitHub" not in {s for s, _ in calls}
+    assert not any(s["state"] == "not_asked" for s in out["sources"].values())
+    # Every directory that was asked answered, so the result is complete and cached for a day.
+    (expires, _), = ns._cache.values()
+    assert expires - ns.time.time() > ns.CACHE_TTL_PARTIAL
+
+
+def test_the_cache_keeps_spellings_apart(monkeypatch):
+    calls = []
+    replay(monkeypatch, MARA, calls)
+    hyphen = search("Jean-Luc Picard")
+    spaced = search("Jean Luc Picard")
+    assert spaced["cached"] is False and len(calls) == 12
+    assert hyphen["name"] == "Jean-Luc Picard" and spaced["name"] == "Jean Luc Picard"
+    assert hyphen["parsed"]["given"] == "Jean-Luc" and spaced["parsed"] == {"given": "Jean", "middle": "Luc", "family": "Picard", "suffix": "", "single_token": False}
+    assert hyphen["handles"] != spaced["handles"]
+    accented, plain = search("José García"), search("Jose Garcia")
+    assert plain["cached"] is False and accented["name"] == "José García" and plain["name"] == "Jose Garcia"
+    # Case and spacing are still one entry, and the answer carries this request's spelling.
+    again = search("  jean-luc   PICARD ")
+    assert again["cached"] is True and again["name"] == "jean-luc PICARD" and again["parsed"]["family"] == "PICARD"
+
+
+@pytest.mark.parametrize("name,given,family,suffix,orcid_family,handle", [
+    ("John Smith Jr.", "John", "Smith", "Jr.", "Smith", "johnsmith"),
+    ("John Smith jr", "John", "Smith", "jr", "Smith", "johnsmith"),
+    ("John Smith III", "John", "Smith", "III", "Smith", "johnsmith"),
+    ("Jane Doe PhD", "Jane", "Doe", "PhD", "Doe", "janedoe"),
+    ("Jane Doe Ph.D.", "Jane", "Doe", "Ph.D.", "Doe", "janedoe"),
+    ("Jane Q. Doe M.D.", "Jane", "Doe", "M.D.", "Doe", "janedoe"),
+    ("Sam Lee Esq.", "Sam", "Lee", "Esq.", "Lee", "samlee"),
+    ("Martin Luther King Jr. PhD", "Martin", "King", "Jr. PhD", "King", "martinking"),
+])
+def test_a_suffix_is_not_the_family_name(monkeypatch, name, given, family, suffix, orcid_family, handle):
+    calls = []
+    replay(monkeypatch, MARA, calls)
+    out = search(name)
+    assert (out["parsed"]["given"], out["parsed"]["family"], out["parsed"]["suffix"]) == (given, family, suffix)
+    assert out["parsed"]["single_token"] is False and out["name"] == name
+    orcid = next(r for s, r in calls if s == "ORCID").url.params["q"]
+    assert orcid == f'given-names:"{given}" AND family-name:"{orcid_family}"'
+    assert out["handles"][0] == {"value": handle, "pattern": "givenfamily"}
+    assert not any(part in h["value"] for h in out["handles"] for part in ("jr", "iii", "phd", "esq"))
+    # The suffix stays out of the other queries too.
+    assert "Jr" not in next(r for s, r in calls if s == "GitHub").url.params["q"]
+
+
+def test_suffix_edges():
+    q = ns.Query("John Smith Jr.")
+    assert q.match(["John Smith"]) == "exact" and q.match(["John Smith Jr"]) == "exact" and q.match(["John A. Smith Jr."]) == "tokens"
+    # A suffix word in front, or a name that is only a suffix word, is a name.
+    assert ns.parse_name("Iv Petrov")["family"] == "Petrov" and ns.parse_name("Iv Petrov")["suffix"] == ""
+    assert ns.parse_name("Md") == {"given": "Md", "middle": "", "family": "", "suffix": "", "single_token": True}
+    assert ns.parse_name("Smith Jr") == {"given": "Smith", "middle": "", "family": "", "suffix": "Jr", "single_token": True}
+    # Digits are refused by the validator, so an ordinal like "3rd" never reaches the parser.
+    with pytest.raises(HTTPException):
+        validate.person_name("John Smith 3rd")
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("John Smith\t", "John Smith"), ("\n John Smith \r\n", "John Smith"),          # trimmed before the control check
+    ("Gil·les Martí", "Gil·les Martí"),                                            # middle dot
+    ("علی‌رضا کریمی", "علی‌رضا کریمی"),                                    # ZWNJ inside a Persian word stays
+    ("ශ්‍රී ලංකා", "ශ්‍රී ලංකා"),                                          # ZWJ inside a Sinhala word stays
+    ("John‍ Smith", "John Smith"), ("Jo‌hn Smith", "John Smith"),        # and is stripped anywhere else
+    ("Or Cohen", "Or Cohen"), ("Anna OR Maria", "Anna OR Maria"), ("Not Sure", "Not Sure"),
+])
+def test_person_name_round_two_accepts(raw, expected):
+    assert validate.person_name(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["John\tSmith", "John\nSmith", "Z" + "́" * 5 + "algo Text", "à́̂̃̄ b", "‌‍", "· ·", "John​Smith"])
+def test_person_name_round_two_rejects(raw):
+    with pytest.raises(HTTPException) as exc:
+        validate.person_name(raw)
+    assert exc.value.detail == validate.PERSON_NAME_MSG
+    for allowed in ("letters from any script", "hyphens", "apostrophes", "periods", "middle dot"):
+        assert allowed in exc.value.detail
+
+
+def test_four_marks_on_a_letter_are_still_a_name():
+    assert validate.person_name("Nguyễn Văn An") == "Nguyễn Văn An"
+    assert validate.person_name("à́̂̃ b")                     # exactly the cap
+
+
+def test_a_boolean_operator_in_a_name_is_searched_as_a_word(monkeypatch):
+    calls = []
+    replay(monkeypatch, MARA, calls)
+    out = search("Or Cohen AND")
+    assert out["name"] == "Or Cohen AND"
+    wikidata = next(r for s, r in calls if s == "Wikidata").url.params["srsearch"]
+    openalex = next(r for s, r in calls if s == "OpenAlex").url.params["search"]
+    assert wikidata == "Or Cohen and haswbstatement:P31=Q5" and openalex == "Or Cohen and"
+    assert ns.plain_query("Anna OR Maria NOT Sure") == "Anna or Maria not Sure" and ns.plain_query("Or Cohen") == "Or Cohen"

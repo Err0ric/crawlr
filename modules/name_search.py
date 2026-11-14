@@ -25,9 +25,11 @@ What comes back: text only. No avatar or image URL is passed on, every URL in th
 built here from an ID that was checked against a pattern, and public email addresses that a
 source includes (ORCID) are dropped.
 
-States per source: `ok` (rows kept), `none` (the source answered and nothing fit), `failed`
-and `rate_limited` (the source did not answer, so nothing is known). A 403 or 429 is always
-`rate_limited`, never `none`.
+States per source: `ok` (the source has rows that fit), `none` (the source answered and nothing
+fit), `failed` and `rate_limited` (the source did not answer, so nothing is known). A 403 or 429
+is always `rate_limited`, never `none`. A source that was not asked for this kind of name has no
+entry at all. `count` is how many rows fit and `shown` how many of them are in `candidates`: the
+list is capped, and the cap takes rows from every source in turn so none with a match shows zero.
 
 A one-word name matches thousands of people, so it only asks Wikidata, GitHub for the account
 with exactly that login, and Bluesky for profiles whose name or handle is exactly that word.
@@ -84,7 +86,16 @@ _ORCID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 _OPENALEX_RE = re.compile(r"^A\d{1,15}$")
 _BSKY_HANDLE_RE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$")
 
-_IMAGE_URL_RE = re.compile(r"https?://\S+?\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico)(?:\?\S*)?(?=\s|$)", re.I)
+# Picture links are not text. A Markdown image goes whole; a URL goes when it ends in an image
+# extension, whatever punctuation follows it. static/v2/js/names.js applies the same two rules,
+# and tests/fixtures/name_text.json holds the pairs both sides must agree on.
+_MD_IMAGE_RE = re.compile(r"!\[[^\]\n]*\]\([^)\n]*\)")
+_IMAGE_URL_RE = re.compile(r"https?://[^\s<>\"'()\[\]]*\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico)(?:[?#][^\s<>\"'()\[\]]*)?(?![A-Za-z0-9_-])", re.I)
+
+
+def strip_images(text: str) -> str:
+    return " ".join(_IMAGE_URL_RE.sub(" ", _MD_IMAGE_RE.sub(" ", str(text or ""))).split())
+
 
 # Letters that NFKD does not break into a base letter and an accent.
 _ASCII_MAP = str.maketrans({
@@ -94,6 +105,10 @@ _ASCII_MAP = str.maketrans({
 
 def clear_cache_for_tests() -> None:
     _cache.clear()
+
+
+class _NotAsked(Exception):
+    """This source has nothing to be asked for this kind of name."""
 
 
 class _SourceError(Exception):
@@ -107,20 +122,63 @@ class _SourceError(Exception):
 
 # ---- names --------------------------------------------------------------------------
 
+_ACCENT_SCRIPTS = ("LATIN ", "GREEK ", "CYRILLIC ")
+# Characters that sit inside a word without being part of its spelling: apostrophes, the middle
+# dot, and the zero width joiners. Removed, not turned into a space.
+_INSIDE_WORD = str.maketrans("", "", "'\u2019\u02bc\u00b7\u200c\u200d")
+
+
 def fold(text: str) -> str:
-    """Lowercase, accents removed, punctuation out: the form two spellings are compared in."""
-    s = unicodedata.normalize("NFKD", str(text or "")).casefold().translate(_ASCII_MAP)
-    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
-    s = s.replace("'", "").replace("’", "").replace("ʼ", "")
-    return " ".join("".join(ch if ch.isalnum() else " " for ch in s).split())
+    """Lowercase, punctuation out, and accents removed from Latin, Greek and Cyrillic letters:
+    the form two spellings are compared in. In every other script a combining mark is part of the
+    letter (a Devanagari vowel sign, a Japanese voicing mark, a Thai vowel), so it stays.
+    static/v2/js/names.js has the same function; tests/fixtures/name_text.json checks both."""
+    s = unicodedata.normalize("NFKD", str(text or "")).casefold().translate(_ASCII_MAP).translate(_INSIDE_WORD)
+    out, accents = [], False
+    for ch in s:
+        if unicodedata.category(ch) in ("Mn", "Mc"):
+            if not accents:
+                out.append(ch)
+        elif ch.isalnum():
+            out.append(ch)
+            accents = unicodedata.name(ch, "").startswith(_ACCENT_SCRIPTS)
+        else:
+            out.append(" ")
+            accents = False
+    return " ".join("".join(out).split())
+
+
+# Generational and professional suffixes, compared without periods and in lowercase. Ordinals
+# with a digit ("3rd") never get here: the validator refuses digits.
+SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "phd", "md", "esq"})
 
 
 def parse_name(name: str) -> dict:
-    """First word is the given name, last word the family name, anything between is middle."""
+    """First word is the given name, last word the family name, anything between is middle.
+    Trailing suffixes (Jr., Sr, II, III, IV, PhD, MD, Esq) are set aside in `suffix`: they are not
+    a family name, and they stay out of the queries and the handles."""
     parts = name.split()
+    suffix: list[str] = []
+    while len(parts) > 1 and parts[-1].replace(".", "").casefold() in SUFFIXES:
+        suffix.insert(0, parts.pop())
     if len(parts) < 2:
-        return {"given": parts[0] if parts else "", "middle": "", "family": "", "single_token": True}
-    return {"given": parts[0], "middle": " ".join(parts[1:-1]), "family": parts[-1], "single_token": False}
+        return {"given": parts[0] if parts else "", "middle": "", "family": "", "suffix": " ".join(suffix), "single_token": True}
+    return {"given": parts[0], "middle": " ".join(parts[1:-1]), "family": parts[-1], "suffix": " ".join(suffix), "single_token": False}
+
+
+def core_name(name: str, parsed: dict) -> str:
+    """The name without its suffix: what is searched for and matched against."""
+    return " ".join(p for p in (parsed["given"], parsed["middle"], parsed["family"]) if p) or name
+
+
+_OPERATORS = frozenset({"AND", "OR", "NOT"})
+
+
+def plain_query(text: str) -> str:
+    """A name for a full-text search box. A word that is a boolean operator in capitals is
+    lowercased, which makes it an ordinary word for Wikidata's and OpenAlex's search: "Or Cohen"
+    is a real name and must be searchable, not refused and not read as an operator."""
+    return " ".join(w.lower() if w in _OPERATORS else w for w in text.split())
 
 
 def _ascii(part: str) -> str:
@@ -171,7 +229,10 @@ class Query:
         self.name = name
         self.parsed = parse_name(name)
         self.single = self.parsed["single_token"]
-        self.folded = fold(name)
+        # Searched and matched without the suffix: "John Smith Jr." is looked for as John Smith.
+        self.core = core_name(name, self.parsed)
+        self.folded = fold(self.core)
+        self.full = fold(name)
         self.words = self.folded.split()
         self.given = fold(self.parsed["given"])
         self.family = fold(self.parsed["family"])
@@ -185,22 +246,25 @@ class Query:
                              if h["pattern"] not in ("gfamily", "givenf", "gmfamily")}
 
     def cache_key(self) -> tuple:
-        return (self.folded, *(fold(self.qualifiers[k]) for k in QUALIFIERS))
+        # The name as typed (after validation), not its folded form: the answer carries the
+        # spelling, its parts and its handles, so "José García" and "Jose Garcia" are two entries.
+        return (" ".join(self.name.casefold().split()), *(fold(self.qualifiers[k]) for k in QUALIFIERS))
 
     def match(self, names: list[str], handle: str = "") -> str | None:
         """How well the best of `names` fits: exact, tokens (every word present), partial
-        (family name plus the given initial), or None."""
+        (the family name plus the bare initial of the given name, "L. Torvalds"), or None.
+        Another given name that starts with the same letter is a different person."""
         best = None
         for raw in names:
             words = fold(raw).split()
             if not words:
                 continue
-            if " ".join(words) == self.folded:
+            if " ".join(words) in (self.folded, self.full):
                 return "exact"
             if set(self.words) <= set(words):
                 best = "tokens"
             elif (best is None and not self.single and self.family and self.family in words
-                  and any(w[:1] == self.given[:1] for w in words if w != self.family)):
+                  and self.given[:1] in words):
                 best = "partial"
         if best != "tokens" and handle and handle.casefold() in self.full_handles:
             best = "tokens"
@@ -217,14 +281,15 @@ def _text(value, cap: int) -> str:
     """Plain text from a source: one line, no control characters, capped."""
     if not isinstance(value, str):
         return ""
-    s = "".join(" " if unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") else ch for ch in value)
+    # Zero width joiners are part of the spelling in Arabic-script and Indic names, so they stay.
+    s = "".join(" " if unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") and ch not in "\u200c\u200d" else ch for ch in value)
     return " ".join(s.split())[:cap].strip()
 
 
 def _candidate(q: Query, *, source: str, kind: str, name: str, handle: str, url: str, match: str,
                description: str = "", location: str = "", affiliation: str = "") -> dict:
     # Text only: a picture link someone put in their bio is not passed on either.
-    description = _text(_IMAGE_URL_RE.sub("", description or ""), DESCRIPTION_MAX)
+    description = _text(strip_images(description or ""), DESCRIPTION_MAX)
     location, affiliation = _text(location, 120), _text(affiliation, 200)
     return {
         "source": source, "kind": kind, "name": _text(name, 120), "handle": handle, "url": url,
@@ -260,7 +325,7 @@ async def _get_json(client: httpx.AsyncClient, url: str, params: dict, headers: 
 async def _wikidata(client: httpx.AsyncClient, q: Query) -> tuple[list[dict], int | None]:
     host = "www.wikidata.org"
     _, found = await _get_json(client, WIKIDATA_URL, {
-        "action": "query", "list": "search", "srsearch": f"{q.name} haswbstatement:P31=Q5",
+        "action": "query", "list": "search", "srsearch": f"{plain_query(q.core)} haswbstatement:P31=Q5",
         "srlimit": str(PER_SOURCE), "srprop": "", "format": "json",
     }, host=host)
     query = found.get("query") if isinstance(found, dict) else None
@@ -323,10 +388,11 @@ async def _github(client: httpx.AsyncClient, q: Query) -> tuple[list[dict], int 
         # Only the account with exactly this login. GitHub answers 422 when there is none.
         login = q.handles[0]["value"] if q.handles else ""
         if not _GITHUB_LOGIN_RE.fullmatch(login):
-            return [], 0
+            # No login can be spelled from this name, so GitHub is not asked. That is not "none".
+            raise _NotAsked()
         search, match = f"user:{login}", "exact"
     else:
-        search, match = f'fullname:"{q.name}" type:user', "tokens"
+        search, match = f'fullname:"{q.core}" type:user', "tokens"
     status, data = await _get_json(client, GITHUB_URL, {"q": search, "per_page": str(PER_SOURCE)},
                                    headers=_github_headers(), host="api.github.com", ok_statuses=(200, 422))
     if status == 422:
@@ -375,7 +441,7 @@ async def _orcid(client: httpx.AsyncClient, q: Query) -> tuple[list[dict], int |
 async def _openalex(client: httpx.AsyncClient, q: Query) -> tuple[list[dict], int | None]:
     host = "api.openalex.org"
     _, data = await _get_json(client, OPENALEX_URL, {
-        "search": q.name, "per-page": str(PER_SOURCE),
+        "search": plain_query(q.core), "per-page": str(PER_SOURCE),
         "select": "id,display_name,display_name_alternatives,works_count,last_known_institutions,topics",
     }, host=host)
     if not isinstance(data, dict) or not isinstance(data.get("results"), list):
@@ -406,7 +472,7 @@ async def _openalex(client: httpx.AsyncClient, q: Query) -> tuple[list[dict], in
 
 async def _bluesky(client: httpx.AsyncClient, q: Query) -> tuple[list[dict], int | None]:
     host = "public.api.bsky.app"
-    _, data = await _get_json(client, BLUESKY_URL, {"q": q.name, "limit": str(BLUESKY_FETCH)}, host=host)
+    _, data = await _get_json(client, BLUESKY_URL, {"q": q.core, "limit": str(BLUESKY_FETCH)}, host=host)
     if not isinstance(data, dict) or not isinstance(data.get("actors"), list):
         raise _SourceError("bad_response", f"Unreadable response from {host}")
     out = []
@@ -437,6 +503,8 @@ async def _run_source(label: str, fn, client: httpx.AsyncClient, q: Query) -> di
     """One source, never raising: {state, rows, total} plus the error fields when it failed."""
     try:
         rows, total = await asyncio.wait_for(fn(client, q), SOURCE_TIMEOUT)
+    except _NotAsked:
+        return {"state": "not_asked", "rows": [], "total": None}
     except _SourceError as e:
         fields = error_fields(code=e.code, detail=e.detail)
     except Exception as e:
@@ -453,6 +521,23 @@ async def _run_source(label: str, fn, client: httpx.AsyncClient, q: Query) -> di
 
 def _sort_key(c: dict) -> tuple:
     return (RANK[c["name_match"]], -len(c["qualifier_hits"]))
+
+
+def _fair_cap(per_source: list[list[dict]], limit: int) -> list[dict]:
+    """At most `limit` rows, taken one from each source in turn (each source's best first), so a
+    source with matches is never cut to zero by the others. Then ranked as one list."""
+    if sum(len(rows) for rows in per_source) <= limit:
+        picked = [c for rows in per_source for c in rows]
+    else:
+        picked, depth = [], 0
+        while len(picked) < limit and any(depth < len(rows) for rows in per_source):
+            for rows in per_source:
+                if depth < len(rows) and len(picked) < limit:
+                    picked.append(rows[depth])
+            depth += 1
+        order = {id(c): i for i, c in enumerate(c for rows in per_source for c in rows)}
+        picked.sort(key=lambda c: order[id(c)])        # back to source order, so ties rank as before
+    return sorted(picked, key=_sort_key)
 
 
 def _cache_get(key: tuple) -> dict | None:
@@ -480,17 +565,16 @@ async def run_name_search(name: str, location: str = "", employer: str = "", key
     key = q.cache_key()
     cached = _cache_get(key)
     if cached is not None:
-        return {**cached, "cached": True}
+        # The key ignores case, so the spelling and its parts are this request's, not the stored one's.
+        return {**cached, "name": q.name, "parsed": q.parsed, "cached": True}
 
     active = [(label, fn) for label, fn in SOURCES if not q.single or label in SINGLE_TOKEN_SOURCES]
     async with httpx.AsyncClient(timeout=SOURCE_TIMEOUT) as client:
         results = await asyncio.gather(*(_run_source(label, fn, client, q) for label, fn in active))
 
     # Stable sorts: a source's own order breaks ties, then the order of SOURCES.
-    kept: list[dict] = []
-    for res in results:
-        kept += sorted(res["rows"], key=_sort_key)[:PER_SOURCE]
-    kept = sorted(kept, key=_sort_key)[:MAX_CANDIDATES]
+    best = [sorted(res["rows"], key=_sort_key)[:PER_SOURCE] for res in results]
+    kept = _fair_cap(best, MAX_CANDIDATES)
 
     notable = None
     wikidata = [c for c in kept if c["source"] == "Wikidata" and c["name_match"] == "exact"]
@@ -500,13 +584,16 @@ async def run_name_search(name: str, location: str = "", employer: str = "", key
                    "wikipedia": pick.get("_wikipedia", "")}
 
     sources = {}
-    for (label, _fn), res in zip(active, results):
+    for (label, _fn), res, rows in zip(active, results, best):
+        if res["state"] == "not_asked":
+            continue                # no entry: a source that was not asked did not say "none"
         if res["state"] != "ok":
-            sources[label] = {"state": res["state"], "count": 0, "total": None,
+            sources[label] = {"state": res["state"], "count": 0, "shown": 0, "total": None,
                               **{k: res[k] for k in ("error", "error_code", "error_detail")}}
             continue
-        count = sum(1 for c in kept if c["source"] == label)
-        sources[label] = {"state": "ok" if count else "none", "count": count, "total": res["total"]}
+        # State and count come from the source's own rows, before the cap on the whole list.
+        shown = sum(1 for c in kept if c["source"] == label)
+        sources[label] = {"state": "ok" if rows else "none", "count": len(rows), "shown": shown, "total": res["total"]}
 
     result = {
         "name": q.name,
