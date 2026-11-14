@@ -1,29 +1,30 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
-import { $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, download, slug } from "./core.js";
+import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, download, slug } from "./core.js";
 import { buildEvidence, TIERS, accountsFor } from "./evidence.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
 import { investigateBrief } from "./brief.js";
 import { reportHtml } from "./report.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief } from "./workbench.js";
+import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
+import { buildCaseFile } from "./casefile.js";
 
 // ---- sources ---------------------------------------------------------------
 // AI analysis is not in this list on purpose: it never runs on its own. The investigator
 // asks for it from the AI panel once the sources are in, and sees what it will cost first.
 export const SOURCES = [
-  { id: "sherlock",  name: "Sherlock",        desc: "username across 400+ sites",            types: ["username", "email"], on: true },
-  { id: "maigret",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username", "email"], on: true, extra: { id: "nsfw", label: "include adult and dating sites", on: false } },
-  { id: "github",    name: "GitHub",          desc: "profile, bio, linked email",            types: ["username"],          on: true },
-  { id: "platform",  name: "Platform check",  desc: "profile URL probes on major platforms", types: ["username", "email"], on: true },
-  { id: "holehe",    name: "Holehe",          desc: "accounts registered to this email",     types: ["email"],             on: true },
-  { id: "hibp",      name: "Breaches",        desc: "known credential exposures",            types: ["email"],             on: true },
-  { id: "gravatar",  name: "Gravatar",        desc: "avatar profile for this email",         types: ["email"],             on: true },
-  { id: "hunter",    name: "Hunter.io",       desc: "addresses on the email's domain",       types: ["email"],             on: false, pro: "hunter" },
-  { id: "harvester", name: "Domain harvest",  desc: "other addresses on this email's domain, from 8 public sources", types: ["email"], on: true },
-  { id: "hash",      name: "Hash lookup",     desc: "MalwareBazaar, CIRCL, OTX, ThreatFox",  types: ["hash"],              on: true },
-  { id: "phone",     name: "Phone lookup",    desc: "carrier and line type",                 types: ["phone"],             on: true, pro: "numlookup", proOptional: true },
-  { id: "active",    name: "Active techniques", desc: "profile scraping for Deep Dive. May notify the target.", types: ["username", "email"], on: false, warn: true },
+  { id: "sherlock", how: "guess",  name: "Sherlock",        desc: "username across 400+ sites",            types: ["username", "email"], on: true },
+  { id: "maigret", how: "guess",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username", "email"], on: true, extra: { id: "nsfw", label: "include adult and dating sites", on: false } },
+  { id: "github", how: "record",    name: "GitHub",          desc: "profile, bio, linked email",            types: ["username"],          on: true },
+  { id: "platform", how: "guess",  name: "Platform check",  desc: "profile URL probes on major platforms", types: ["username", "email"], on: true },
+  { id: "holehe", how: "guess",    name: "Holehe",          desc: "accounts registered to this email",     types: ["email"],             on: true },
+  { id: "hibp", how: "index",      name: "Breaches",        desc: "known credential exposures",            types: ["email"],             on: true },
+  { id: "gravatar", how: "record",  name: "Gravatar",        desc: "avatar profile for this email",         types: ["email"],             on: true },
+  { id: "hunter", how: "index",    name: "Hunter.io",       desc: "addresses on the email's domain",       types: ["email"],             on: false, pro: "hunter" },
+  { id: "harvester", how: "index", name: "Domain harvest",  desc: "other addresses on this email's domain, from 8 public sources", types: ["email"], on: true },
+  { id: "hash", how: "index",      name: "Hash lookup",     desc: "MalwareBazaar, CIRCL, OTX, ThreatFox",  types: ["hash"],              on: true },
+  { id: "phone", how: "index",     name: "Phone lookup",    desc: "carrier and line type",                 types: ["phone"],             on: true, pro: "numlookup", proOptional: true },
+  { id: "active", how: "record",    name: "Active techniques", desc: "profile scraping for Deep Dive. May notify the target.", types: ["username", "email"], on: false, warn: true },
 ];
 
 const srcState = store.get("crawlr_v2_sources", {});
@@ -39,10 +40,10 @@ export function renderSources(type) {
     <div class="source ${srcOn(s.id) ? "" : "off"}" data-src="${s.id}">
       <div>
         <div class="name" id="src-${s.id}">${s.name}${s.warn ? raw(' <span class="tag warn">caution</span>') : ""}${s.pro && !s.proOptional ? raw(' <span class="tag violet">your key</span>') : ""}</div>
-        <div class="desc" id="srcd-${s.id}">${s.desc}${s.pro && s.proOptional && !getKey(s.pro) ? raw(' <span class="tag">links only without a key</span>') : ""}</div>
+        <div class="desc" id="srcd-${s.id}">${raw(howTag(s.how))}${s.desc}${s.pro && s.proOptional && !getKey(s.pro) ? raw(' <span class="tag">links only without a key</span>') : ""}</div>
         ${s.extra ? raw(h`<label class="source-extra"><input type="checkbox" data-extra="${s.extra.id}" ${nsfwOn() ? "checked" : ""}>${s.extra.label}</label>`) : ""}
       </div>
-      <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-labelledby="src-${s.id}" aria-describedby="srcd-${s.id}"><span></span></label>
+      <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-label="${s.name}" aria-labelledby="src-${s.id}" aria-describedby="srcd-${s.id}"><span></span></label>
     </div>`).join("");
   if (!rows.length) box.innerHTML = h`<p class="empty flat">Type a target to see which sources apply.</p>`;
   paintCount();
@@ -74,7 +75,7 @@ const tabs = makeTabs($("#tabs"));
 
 // ---- state -------------------------------------------------------------------
 // prev: { keys, ts, ai, sig } from the last saved run of the same target, for the diff.
-export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false };
+export const state = { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0 };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
 
@@ -325,7 +326,7 @@ export async function run(targetRaw, typeOverride) {
   let prev = null;
   if (last) { const ev = buildEvidence(last.results || {}, last.target); prev = { keys: ev.items.map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: signature(ev.items, ev.facts) }; }
 
-  Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false });
+  Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now() });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -397,50 +398,57 @@ const HISTORY_KEY = "crawlr_history", HISTORY_MAX = 50;
 export const getHistory = () => store.get(HISTORY_KEY, []);
 function saveHistory() {
   const list = getHistory();
-  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "INVESTIGATE", kind: state.type, timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai || null, deepDive: state.deepDive || null, notes: $("#notes").value, v2: true };
+  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "INVESTIGATE", kind: state.type, timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai || null, deepDive: state.deepDive || null, notes: $("#notes").value, purpose: $("#purpose").value.trim(), v2: true };
   state.historyId = entry.id;
   const idx = list.findIndex((e) => e.id === entry.id);
-  if (idx >= 0) { entry.timestamp = list[idx].timestamp; list[idx] = entry; } else list.unshift(entry);
+  if (idx >= 0) { entry.timestamp = list[idx].timestamp; if (list[idx].imported) entry.imported = list[idx].imported; list[idx] = entry; } else list.unshift(entry);
   while (list.length > HISTORY_MAX) list.pop();
   if (!store.set(HISTORY_KEY, list)) { list.splice(Math.floor(list.length / 2)); store.set(HISTORY_KEY, list); }
 }
-export function loadHistory(id) {
-  const e = getHistory().find((x) => x.id === id);
+// Takes a saved case's id, or the entry itself (a case file that could not be stored).
+export function loadHistory(idOrEntry) {
+  const e = typeof idOrEntry === "string" ? getHistory().find((x) => x.id === idOrEntry) : idOrEntry;
   if (!e) return false;
-  Object.assign(state, { target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false });
+  Object.assign(state, { target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp });
   $("#targetInput").value = e.target;
   renderSources(state.type);
   $("#runlog").hidden = true; $("#tabs").hidden = false; tabs.set("findings");
-  renderHead(`${TYPE_LABEL[state.type]} · from history · ${new Date(e.timestamp).toLocaleString()}`);
+  renderHead(`${TYPE_LABEL[state.type]} · ${e.imported ? "opened from a case file · collected" : "from history ·"} ${new Date(e.timestamp).toLocaleString()}`);
+  $("#notes").value = e.notes || ""; $("#purpose").value = e.purpose || ""; updateNotesMeta();
   renderLedger(); renderSourceCards(); renderAiPanel();
-  $("#notes").value = e.notes || ""; updateNotesMeta();
   return true;
 }
 export function clearCase() {
   cancel();
   Object.assign(state, { target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
-  $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; updateNotesMeta();
+  $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
   $("#brief").hidden = true; $("#tabs").hidden = true; tabs.set("findings"); $("#bySourceEmpty").hidden = false;
 }
 
 // ---- notes --------------------------------------------------------------------------
 let notesTimer;
-function updateNotesMeta() { $("#notesCount").textContent = `${fmtNum($("#notes").value.length)} chars`; }
-function loadNotes() { $("#notes").value = ""; updateNotesMeta(); }
-$("#notes").addEventListener("input", () => {
+function updateNotesMeta() {
+  $("#notesCount").textContent = `${fmtNum($("#notes").value.length)} chars`;
+  casePrint($("#casePrint"), { purpose: $("#purpose").value, notes: $("#notes").value, ran: state.target ? state.ran : 0 });
+}
+function loadNotes() { $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta(); }
+const noteSave = () => {
   updateNotesMeta(); $("#notesStatus").textContent = "Saving…";
   clearTimeout(notesTimer);
   notesTimer = setTimeout(() => { if (state.target) saveHistory(); $("#notesStatus").textContent = "Saved"; }, 600);
-});
+};
+$("#notes").addEventListener("input", noteSave);
+$("#purpose").addEventListener("input", noteSave);
 
 // ---- export ------------------------------------------------------------------------------
 export function exportCase() {
   if (!state.target) return;
   const { items, facts } = buildEvidence(state.collected, state.target);
   const failed = failedSources();
-  const md = [`# CrawlR case: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}`, "",
+  const purpose = $("#purpose").value.trim();
+  const md = [`# CrawlR case: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}${state.ran ? ` · collected ${new Date(state.ran).toISOString()}` : ""}`, "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
     "> Findings come from third-party public sources and can be wrong. Possible items are leads, not facts.", "",
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a negative result)`), ""] : []),
     "## What we know", ...(facts.length ? facts.map((f) => `- **${f.k}:** ${f.v} _(${f.source})_`) : ["- Nothing extracted"]), "",
@@ -454,9 +462,9 @@ export function exportCase() {
   openModal({
     title: "Export case",
     body: `<p class="modal-p">Everything is built in your browser. Nothing is uploaded.</p>
-      <ul class="export-list"><li><b>Print or PDF</b> opens the print dialog with a clean, light layout. Choose "Save as PDF" there.</li><li><b>HTML</b> is one self-contained page you can send or archive.</li><li><b>Markdown</b> has the ledger, facts, AI reports and notes.</li><li><b>JSON</b> is the raw data from every source.</li></ul>`,
+      <ul class="export-list"><li><b>Print or PDF</b> opens the print dialog with a clean, light layout. Choose "Save as PDF" there.</li><li><b>HTML</b> is one self-contained page you can send or archive.</li><li><b>Markdown</b> has the ledger, facts, AI reports and notes.</li><li><b>Case file</b> is the raw data from every source as JSON, with your notes. Open it in CrawlR on another machine from History.</li></ul>`,
     actions: [
-      { label: "JSON", onClick: done(() => download(`${name}.json`, JSON.stringify({ target: state.target, type: state.type, exported: new Date().toISOString(), collected: state.collected, ai: state.ai, deepDive: state.deepDive, notes: $("#notes").value }, null, 2), "application/json")) },
+      { label: "Case file", onClick: done(() => download(`${name}.json`, JSON.stringify(buildCaseFile({ mode: "investigate", target: state.target, type: state.type, ran: state.ran, collected: state.collected, ai: state.ai, deep: state.deepDive, notes: $("#notes").value, purpose }), null, 2), "application/json")) },
       { label: "Markdown", onClick: done(() => download(`${name}.md`, md, "text/markdown")) },
       { label: "HTML", onClick: async () => { const html = await standaloneHtml(`CrawlR case: ${state.target}`, $("#main"), $("#aside")); download(`${name}.html`, html, "text/html"); closeModal(); } },
       { label: "Print or PDF", primary: true, onClick: () => { closeModal(); setTimeout(() => window.print(), 50); } },

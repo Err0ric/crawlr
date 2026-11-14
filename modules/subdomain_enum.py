@@ -157,6 +157,13 @@ def summarize_certificates(entries: list[dict], resolving: set[str], today: str 
             by_year[e["date"][:4]] = by_year.get(e["date"][:4], 0) + 1
     active = [e for e in entries if e.get("not_after") and e["not_after"] >= today]
     names = {e["subdomain"] for e in entries}
+    # The day each name was first certified: when a host appeared. Computed over every
+    # entry, because the list sent to the browser is capped to the most recent ones.
+    first_seen: dict[str, str] = {}
+    for e in entries:
+        d, n = e.get("date") or "", e.get("subdomain") or ""
+        if d and n and (n not in first_seen or d < first_seen[n]):
+            first_seen[n] = d
     return {
         "total": len(entries),
         "first_issued": dated[0] if dated else "",
@@ -167,4 +174,5 @@ def summarize_certificates(entries: list[dict], resolving: set[str], today: str 
         "issuers": sorted(({"name": k, "count": v} for k, v in issuers.items()), key=lambda x: -x["count"])[:8],
         "by_year": [{"year": y, "count": c} for y, c in sorted(by_year.items())],
         "not_resolving": sorted(n for n in names if n not in resolving)[:60],
+        "first_seen": [{"name": n, "date": d[:10]} for n, d in sorted(first_seen.items(), key=lambda x: (x[1], x[0]))][:250],
     }

@@ -197,6 +197,10 @@ def test_certificate_summary():
     assert s["issuers"][0] == {"name": "R3", "count": 2}
     assert s["by_year"] == [{"year": "2021", "count": 1}, {"year": "2022", "count": 1}, {"year": "2026", "count": 1}]
     assert s["not_resolving"] == ["old.example.com"]
+    assert s["first_seen"] == [{"name": "www.example.com", "date": "2021-03-01"}, {"name": "old.example.com", "date": "2022-06-01"}, {"name": "example.com", "date": "2026-10-01"}]
+    # the earliest certificate wins when a name was certified more than once
+    again = summarize_certificates(entries + [{"subdomain": "example.com", "issuer": "E5", "date": "2019-01-05", "not_after": "2019-04-05", "wildcard": False}], set(), today="2026-11-13")
+    assert again["first_seen"][0] == {"name": "example.com", "date": "2019-01-05"}
     assert summarize_certificates([], set()) is None
 
 

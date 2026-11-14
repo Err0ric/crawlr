@@ -1,9 +1,10 @@
 // Entry point: navigation, landing, settings, history drawer, AI pill, theme, terms.
-import { $, $$, h, raw, esc, store, toast, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
+import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
 import { openModal, closeModal, openDrawer, closeDrawer } from "./ui.js";
 import { run, cancel, renderSources, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
+import { parseCaseFile, MAX_CASE_BYTES } from "./casefile.js";
 
 // ---- theme ---------------------------------------------------------------------
 // The stylesheet follows the system setting on its own. This only applies an explicit choice.
@@ -96,6 +97,8 @@ document.addEventListener("click", (e) => {
 // preventDefault matters: the target field is type=search, and browsers clear a search field on Escape.
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $(".rail.open") && !$("#overlays").children.length) { e.preventDefault(); closeRail({ refocus: true }); } });
 document.addEventListener("crawlr:close-rail", () => closeRail());
+
+$$("[data-how-legend]").forEach((el) => { el.innerHTML = HOW_LEGEND; });
 
 // ---- landing -------------------------------------------------------------------
 const detectBox = $("#landingDetect");
@@ -252,17 +255,19 @@ function openHistory() {
   const list = getHistory();
   const el = openDrawer({
     title: "History",
-    body: list.length ? h`
+    body: IMPORT_HTML + (list.length ? h`
       <p class="set-p">Kept in this browser only, newest first. Up to 50 cases.</p>
       <ul class="hist">${raw(list.map((e) => h`
         <li class="hist-row">
-          <button type="button" class="hist-open" data-id="${e.id}"><span class="t">${e.target}</span><span class="m">${KIND[e.type] || String(e.type || "").toLowerCase()} · ${new Date(e.timestamp).toLocaleString()}${e.v2 ? "" : " · saved by the old interface"}</span></button>
+          <button type="button" class="hist-open" data-id="${e.id}"><span class="t">${e.target}</span><span class="m">${KIND[e.type] || String(e.type || "").toLowerCase()} · ${new Date(e.timestamp).toLocaleString()}${e.imported ? " · from a case file" : ""}${e.v2 ? "" : " · saved by the old interface"}</span></button>
           <button class="btn btn-ghost btn-icon" type="button" data-del="${e.id}" aria-label="Delete case ${e.target}">✕</button>
         </li>`).join(""))}</ul>
       <button class="btn btn-sm hist-clear" type="button" id="histClear">Clear all history</button>`
-      : `<p class="empty flat">No cases yet. History is kept in this browser only.</p>`,
+      : `<p class="empty flat">No cases yet. History is kept in this browser only.</p>`),
   });
+  el.querySelector("#histFile").addEventListener("change", (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importCase(f); });
   el.addEventListener("click", (e) => {
+    if (e.target.id === "histImport") { el.querySelector("#histFile").click(); return; }
     const d = e.target.closest("[data-del]");
     if (d) { store.set("crawlr_history", getHistory().filter((x) => x.id !== d.dataset.del)); closeDrawer({ restore: false }); openHistory(); return; }
     if (e.target.id === "histClear") { openModal({ title: "Clear all history?", body: `<p class="modal-p">Removes every saved case and its notes from this browser. This can't be undone.</p>`, actions: [{ label: "Keep", onClick: closeModal }, { label: "Clear all", primary: true, onClick: () => { store.del("crawlr_history"); closeModal({ restore: false }); toast("History cleared"); } }] }); return; }
@@ -272,12 +277,38 @@ function openHistory() {
       closeDrawer({ restore: false });
       const entry = getHistory().find((x) => x.id === r.dataset.id);
       if (!entry) return;
-      if (entry.type === "RECON") { recon.loadHistory(entry); syncIdle(); show("recon", { focus: false }); }
-      else if (entry.type === "INVESTIGATE") { loadHistory(entry.id); syncIdle(); show("investigate", { focus: false }); }
-      else if (entry.type === "email_headers") { show("headers", { focus: false }); tools.loadHeaderHistory(entry); }
-      $("#content").focus({ preventScroll: true });
+      openEntry(entry);
     }
   });
+}
+function openEntry(entry) {
+  if (entry.type === "RECON") { recon.loadHistory(entry); syncIdle(); show("recon", { focus: false }); }
+  else if (entry.type === "INVESTIGATE") { loadHistory(entry); syncIdle(); show("investigate", { focus: false }); }
+  else if (entry.type === "email_headers") { show("headers", { focus: false }); tools.loadHeaderHistory(entry); }
+  $("#content").focus({ preventScroll: true });
+}
+
+// ---- case files ---------------------------------------------------------------------------
+// A case exported on one machine opens on another. The file is read in the browser and is
+// never uploaded. It is checked like any other outside data before it is shown.
+const IMPORT_HTML = `<div class="hist-import">
+    <button class="btn btn-sm" type="button" id="histImport">Open a case file</button>
+    <input type="file" id="histFile" accept=".json,application/json" hidden aria-hidden="true" tabindex="-1">
+    <p class="set-p">To move a case to another machine, export it as a case file and open the file here. It is read in this browser and never uploaded.</p>
+  </div>`;
+const importError = (msg) => openModal({ title: "Could not open that file", body: h`<p class="modal-p">${msg}</p>`, actions: [{ label: "Close", primary: true, onClick: closeModal }] });
+async function importCase(file) {
+  if (state.running || recon.state.running) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
+  if (file.size > MAX_CASE_BYTES) { importError("That file is too large to be a CrawlR case (limit 3 MB)."); return; }
+  let text = "";
+  try { text = await file.text(); } catch { importError("The browser could not read that file."); return; }
+  const res = parseCaseFile(text);
+  if (!res.ok) { importError(res.error); return; }
+  // Add it without touching the other cases. If storage is full the case still opens, unsaved.
+  const saved = store.set("crawlr_history", [res.entry, ...getHistory()].slice(0, 50));
+  closeDrawer({ restore: false });
+  openEntry(res.entry);
+  toast(saved ? `Opened ${res.entry.target}. It is now in History.` : "Opened, but not saved: this browser's storage is full. Delete a few cases from History to keep it.", 5000);
 }
 
 // ---- acceptable use -----------------------------------------------------------------------

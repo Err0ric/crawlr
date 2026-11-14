@@ -28,3 +28,5 @@ jobs:
           node tests/js/detect.test.mjs
           node tests/js/contrast.test.mjs
           node tests/js/brief.test.mjs
+          node tests/js/timeline.test.mjs
+          node tests/js/casefile.test.mjs

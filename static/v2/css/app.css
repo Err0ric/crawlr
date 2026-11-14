@@ -791,7 +791,7 @@ input[type=search]::-webkit-search-cancel-button, input[type=search]::-webkit-se
     color-scheme: light;
   }
   body { padding: 0 !important; font-size: 11pt; }
-  .topbar, .tabbar, .casebar, .pivotbar, .toast, #overlays, .skip, .runlog, .tabs, .btn, .ev-check, .notes, .jump, .lg-detail, .ai-pitch, .ai-cost, #landing, .tool { display: none !important; }
+  .topbar, .tabbar, .casebar, .pivotbar, .toast, #overlays, .skip, .runlog, .tabs, .btn, .ev-check, .notes, .purpose, .jump, .lg-detail, .ai-pitch, .ai-cost, #landing, .tool { display: none !important; }
   .bench { display: block; min-height: 0; }
   .bench .main { display: flex !important; padding: 0; }
   .brief-actions { display: none; }
@@ -868,3 +868,43 @@ details.more[open] > summary { margin-bottom: 6px; }
   .brief-list li, .card-body ul.finds li { grid-template-columns: 48px 1fr; }
   .pivotbar .pv-acts { margin-left: 0; }
 }
+
+/* timeline: one row per dated fact. Year shows once per group; "Today" divides past from future. */
+.tl-note { color: var(--ink-3); font-size: var(--fs-1); margin: 0 0 var(--s-3); max-width: 70ch; }
+.tl { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); margin-left: 6px; }
+.tl-ev, .tl-now { display: grid; grid-template-columns: 44px 92px 1fr auto; gap: 4px 12px; align-items: baseline; padding: 7px 0 7px 14px; position: relative; font-size: var(--fs-2); }
+.tl-ev::before, .tl-now::before { content: ""; position: absolute; left: -6px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line-strong); }
+.tl-ev.future::before { border-style: dashed; }
+.tl-year { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tl time { font-family: var(--mono); font-size: var(--fs-1); color: var(--ink-3); }
+.tl-what { min-width: 0; overflow-wrap: anywhere; }
+.tl-what b { font-weight: 600; color: var(--ink); display: block; }
+.tl-what span { color: var(--ink-3); font-size: var(--fs-1); display: block; line-height: 1.45; }
+.tl-meta { text-align: right; font-size: var(--fs-0); color: var(--ink-3); display: grid; gap: 1px; white-space: nowrap; }
+.tl-when { color: var(--ink-2); }
+.tl-ev.future .tl-what b { color: var(--ink-2); }
+.tl-now { color: var(--violet); font-weight: 600; }
+.tl-now::before { background: var(--violet); border-color: var(--violet); }
+.tl-now time { color: var(--violet); }
+@media (max-width: 720px) {
+  .tl-ev, .tl-now { grid-template-columns: 92px 1fr; }
+  .tl-year { display: none; }
+  .tl-meta { grid-column: 2; text-align: left; display: flex; gap: 8px; }
+}
+@media print { #rTimeline::before { content: "Timeline"; display: block; font-weight: 600; font-size: 13pt; margin: 16px 0 8px; } }
+
+/* purpose field, case files, and the print-only copy of purpose and notes */
+.purpose .hint { color: var(--ink-3); font-size: var(--fs-0); margin: 6px 0 0; }
+.hist-import { display: grid; gap: 8px; justify-items: start; padding-bottom: var(--s-3); margin-bottom: var(--s-3); border-bottom: 1px solid var(--line-soft); }
+.hist-import .set-p { margin: 0; }
+.print-only { display: none; }
+.case-print p { margin: 0 0 6px; font-size: var(--fs-1); color: var(--ink-2); }
+.case-print b { color: var(--ink); margin-right: 6px; }
+.case-print .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media print { .print-only { display: block !important; } }
+
+/* how a source knows: direct, index or heuristic */
+.src-how { font-family: var(--mono); font-size: var(--fs-0); color: var(--ink-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-right: 6px; white-space: nowrap; }
+.src-how.guess { border-style: dashed; }
+.source.off .src-how { color: var(--ink-4); }
+.how-legend b { font-family: var(--mono); font-weight: 500; color: var(--ink-2); }

@@ -5,6 +5,8 @@
 //
 // A row: { level: "flag" | "ok" | "info", text }   An action: { label, pivot, value } | { label, tab }
 
+import { reconTimeline, domainAgeDays } from "./timeline.js";
+
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 const list = (arr, n = 4) => arr.slice(0, n).join(", ") + (arr.length > n ? ` and ${arr.length - n} more` : "");
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
@@ -61,7 +63,7 @@ export function investigateBrief({ collected: c, items, facts, failed, type, tar
   return { rows, actions };
 }
 
-export function reconBrief({ collected: c, items, failed, type, target }) {
+export function reconBrief({ collected: c, items, failed, type, target, today }) {
   const rows = [], actions = [];
   const add = (level, text) => rows.push({ level, text });
   const flags = items.filter((i) => i.tier === "flag");
@@ -76,7 +78,9 @@ export function reconBrief({ collected: c, items, failed, type, target }) {
 
     if (c.dns?.cloudflare_proxied) add("info", "Behind Cloudflare. Open ports, the TLS certificate and HTTP headers describe Cloudflare's edge, not the origin server.");
     const ep = c.email_posture;
-    if (ok(ep)) add(ep.spoofable === "yes" ? "flag" : "ok", ep.spoofable === "yes" ? "Mail from this domain can be spoofed: there is no enforced DMARC policy. Phishing that uses the real domain in the From line would be delivered." : `Email spoofing is ${ep.spoofable === "no" ? "rejected" : "mostly caught"} (grade ${ep.grade}).`);
+    if (ok(ep) && ep.grade) add(ep.spoofable === "yes" ? "flag" : "ok", ep.spoofable === "yes" ? "Mail from this domain can be spoofed: there is no enforced DMARC policy. Phishing that uses the real domain in the From line would be delivered." : `Email spoofing is ${ep.spoofable === "no" ? "rejected" : "mostly caught"} (grade ${ep.grade}).`);
+    const age = domainAgeDays(c, today);
+    if (age != null && age < 90) add("flag", `Registered ${age === 0 ? "today" : `${age} day${age === 1 ? "" : "s"} ago`}. A very new domain is common for phishing and throwaway infrastructure, and for any project that has just started. Weigh it with the other findings.`);
     const tk = c.takeover;
     if (ok(tk) && tk.dangling) add("flag", `${plural(tk.dangling, "subdomain")} point${tk.dangling === 1 ? "s" : ""} at a cloud resource that no longer exists (${list((tk.candidates || []).filter((x) => x.status === "dangling").map((x) => x.host), 3)}). Verify by hand before reporting a takeover.`);
 
@@ -103,6 +107,7 @@ export function reconBrief({ collected: c, items, failed, type, target }) {
     if (!c.portscan && c.shodan?.found && (c.shodan.ports || []).length) add("info", "Open ports come from a passive index, not a live scan. Turn on the port scan under Sources for a live check of hosts you are authorized to test.");
     if (wk?.favicon) actions.push({ label: "Find this favicon in Shodan", href: `https://www.shodan.io/search?query=${encodeURIComponent(wk.favicon.shodan_query)}` });
     if (subs.length) actions.push({ label: "Open the topology", tab: "topology" });
+    if (reconTimeline(c, target, today).events.length > 2) actions.push({ label: "Open the timeline", tab: "timeline" });
   }
   if (failed.length) add("flag", `${plural(failed.length, "check")} failed (${list(failed.map((f) => f.name))}), so this is not a complete picture. Re-run to fill the gaps.`);
   return { rows, actions };

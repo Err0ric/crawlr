@@ -1,31 +1,33 @@
 // Recon mode: infrastructure for a domain, IP or ASN.
-import { $, $$, h, raw, esc, link, store, toast, post, postAi, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, RECON_TYPES, fmtNum, plural, sourceOutcome, roving, download, slug } from "./core.js";
+import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, RECON_TYPES, fmtNum, plural, sourceOutcome, roving, download, slug } from "./core.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
 import { reconBrief } from "./brief.js";
+import { reconTimeline } from "./timeline.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, factCollector, itemCollector, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief } from "./workbench.js";
+import { makeLog, renderTiers, bindLedger, renderFacts, factCollector, itemCollector, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
+import { buildCaseFile } from "./casefile.js";
 import { harvestCard, errorCard } from "./renderers.js";
 
 // ---- sources -----------------------------------------------------------------
 export const SOURCES = [
-  { id: "dns",        name: "DNS records",      desc: "A, MX, NS, TXT, CNAME, SOA",                     types: ["domain"],        on: true },
-  { id: "whois",      name: "WHOIS",            desc: "registrar, dates, privacy",                      types: ["domain"],        on: true },
-  { id: "ssl",        name: "TLS certificate",  desc: "issuer, names covered, expiry",                  types: ["domain", "ip"],  on: true },
-  { id: "headers",    name: "HTTP headers",     desc: "server and security header grade",               types: ["domain", "ip"],  on: true },
-  { id: "subdomains", name: "Subdomains",       desc: "DNS checks and certificate transparency logs",   types: ["domain"],        on: true },
-  { id: "harvest",    name: "Passive discovery", desc: "hosts and addresses from 8 public sources (CT, passive DNS, URLScan, Wayback)", types: ["domain"], on: true },
-  { id: "emailsec",   name: "Email security",   desc: "SPF, DMARC, DKIM, MTA-STS: can this domain be spoofed?", types: ["domain"],     on: true },
-  { id: "dnsdepth",   name: "DNS hardening",    desc: "CAA, DNSSEC, wildcard DNS, reverse DNS",         types: ["domain"],        on: true },
-  { id: "takeover",   name: "Takeover candidates", desc: "subdomains pointing at claimable cloud services (DNS only)", types: ["domain"], on: true },
-  { id: "lookalikes", name: "Lookalike domains", desc: "registered typo and lookalike variants (DNS only)", types: ["domain"],     on: true },
-  { id: "wellknown",  name: "Published files",  desc: "security.txt, robots.txt, favicon hash",         types: ["domain"],        on: true },
-  { id: "asn",        name: "Network owner",    desc: "ASN, organization, announced prefixes",          types: ["domain", "ip"],  on: true },
-  { id: "exposure",   name: "Exposure",         desc: "open ports and CVEs (InternetDB, or Shodan with your key)", types: ["domain", "ip"], on: true },
-  { id: "portscan",   name: "Port scan",        desc: "connects to 20 common ports on the target. Only scan hosts you own or are authorized to test.", types: ["domain", "ip"], on: false, warn: "active" },
-  { id: "redirects",  name: "Redirect chain",   desc: "every hop to the final URL",                     types: ["domain", "ip"],  on: true },
-  { id: "techfp",     name: "Tech fingerprint", desc: "CMS, server, frameworks, CDN",                   types: ["domain"],        on: true },
-  { id: "wayback",    name: "Wayback Machine",  desc: "archived snapshots",                             types: ["domain"],        on: true },
-  { id: "asndetail",  name: "ASN detail",       desc: "organization, prefixes, peers",                  types: ["asn"],           on: true },
+  { id: "dns", how: "record",        name: "DNS records",      desc: "A, MX, NS, TXT, CNAME, SOA",                     types: ["domain"],        on: true },
+  { id: "whois", how: "record",      name: "WHOIS",            desc: "registrar, dates, privacy",                      types: ["domain"],        on: true },
+  { id: "ssl", how: "record",        name: "TLS certificate",  desc: "issuer, names covered, expiry",                  types: ["domain", "ip"],  on: true },
+  { id: "headers", how: "record",    name: "HTTP headers",     desc: "server and security header grade",               types: ["domain", "ip"],  on: true },
+  { id: "subdomains", how: "index", name: "Subdomains",       desc: "DNS checks and certificate transparency logs",   types: ["domain"],        on: true },
+  { id: "harvest", how: "index",    name: "Passive discovery", desc: "hosts and addresses from 8 public sources (CT, passive DNS, URLScan, Wayback)", types: ["domain"], on: true },
+  { id: "emailsec", how: "record",   name: "Email security",   desc: "SPF, DMARC, DKIM, MTA-STS: can this domain be spoofed?", types: ["domain"],     on: true },
+  { id: "dnsdepth", how: "record",   name: "DNS hardening",    desc: "CAA, DNSSEC, wildcard DNS, reverse DNS",         types: ["domain"],        on: true },
+  { id: "takeover", how: "guess",   name: "Takeover candidates", desc: "subdomains pointing at claimable cloud services (DNS only)", types: ["domain"], on: true },
+  { id: "lookalikes", how: "record", name: "Lookalike domains", desc: "registered typo and lookalike variants (DNS only)", types: ["domain"],     on: true },
+  { id: "wellknown", how: "record",  name: "Published files",  desc: "security.txt, robots.txt, favicon hash",         types: ["domain"],        on: true },
+  { id: "asn", how: "index",        name: "Network owner",    desc: "ASN, organization, announced prefixes",          types: ["domain", "ip"],  on: true },
+  { id: "exposure", how: "index",   name: "Exposure",         desc: "open ports and CVEs (InternetDB, or Shodan with your key)", types: ["domain", "ip"], on: true },
+  { id: "portscan", how: "record",   name: "Port scan",        desc: "connects to 20 common ports on the target. Only scan hosts you own or are authorized to test.", types: ["domain", "ip"], on: false, warn: "active" },
+  { id: "redirects", how: "record",  name: "Redirect chain",   desc: "every hop to the final URL",                     types: ["domain", "ip"],  on: true },
+  { id: "techfp", how: "guess",     name: "Tech fingerprint", desc: "CMS, server, frameworks, CDN",                   types: ["domain"],        on: true },
+  { id: "wayback", how: "index",    name: "Wayback Machine",  desc: "archived snapshots",                             types: ["domain"],        on: true },
+  { id: "asndetail", how: "index",  name: "ASN detail",       desc: "organization, prefixes, peers",                  types: ["asn"],           on: true },
 ];
 const srcState = store.get("crawlr_v2_recon_sources", {});
 const srcOn = (id) => (id in srcState ? !!srcState[id] : SOURCES.find((s) => s.id === id)?.on ?? false);
@@ -36,9 +38,9 @@ export function renderSources(type) {
     <div class="source ${srcOn(s.id) ? "" : "off"}">
       <div>
         <div class="name" id="rsrc-${s.id}">${s.name}${s.warn ? raw(h` <span class="tag warn">${s.warn}</span>`) : ""}${s.id === "exposure" && getKey("shodan") ? raw(' <span class="tag violet">Shodan</span>') : ""}</div>
-        <div class="desc" id="rsrcd-${s.id}">${s.desc}</div>
+        <div class="desc" id="rsrcd-${s.id}">${raw(howTag(s.how))}${s.desc}</div>
       </div>
-      <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-labelledby="rsrc-${s.id}" aria-describedby="rsrcd-${s.id}"><span></span></label>
+      <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-label="${s.name}" aria-labelledby="rsrc-${s.id}" aria-describedby="rsrcd-${s.id}"><span></span></label>
     </div>`).join("") : `<p class="empty flat">Type a domain, IP or ASN to see which sources apply.</p>`;
   paintCount();
 }
@@ -54,7 +56,7 @@ $("#rSources").addEventListener("change", (e) => {
 });
 
 // ---- state ---------------------------------------------------------------------
-export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings" };
+export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings", ran: 0 };
 const SRC_NAME = { email_posture: "Email security", dns_depth: "DNS hardening", takeover: "Takeover candidates", lookalikes: "Lookalike domains", wellknown: "Published files", dns: "DNS records", whois: "WHOIS", ssl: "TLS certificate", headers: "HTTP headers", subdomains: "Subdomains", harvest: "Passive discovery", asn: "Network owner", shodan: "Exposure", portscan: "Port scan", redirects: "Redirect chain", techfp: "Tech fingerprint", wayback: "Wayback Machine", asn_detail: "ASN detail" };
 // A source that failed is unknown. "No certificate" or "not indexed" are answers; a timeout is not.
 const isFailed = (d) => !!(d && typeof d === "object" && (d.error_code || d.error) && d.error_code !== "not_found");
@@ -304,6 +306,24 @@ function renderCards() {
   $("#rSourceCards").innerHTML = html;
 }
 
+// ---- timeline ------------------------------------------------------------------------
+// Dated facts the sources already returned, oldest first, with today marked.
+function renderTimeline() {
+  const { events, today } = reconTimeline(state.collected, state.target);
+  setTabCount($("#rTabTimeline"), "Timeline", events.length);
+  const box = $("#rTimelineBody");
+  if (!events.length) { box.innerHTML = `<p class="empty flat">${state.running ? "Collecting…" : "No dated facts yet. WHOIS, certificate logs, the TLS certificate and the Wayback Machine supply them."}</p>`; return; }
+  const row = (e, i, all) => h`<li class="tl-ev ${e.future ? "future" : ""}">
+      <span class="tl-year">${i === 0 || all[i - 1].date.slice(0, 4) !== e.date.slice(0, 4) ? e.date.slice(0, 4) : ""}</span>
+      <time datetime="${e.date}">${e.date}</time>
+      <div class="tl-what"><b>${e.url ? raw(link(e.url, e.title)) : e.title}</b>${e.detail ? raw(h`<span>${e.detail}</span>`) : ""}</div>
+      <span class="tl-meta"><span class="tl-when">${e.when}</span><span class="tl-src">${e.source}</span></span>
+    </li>`;
+  const past = events.filter((e) => !e.future), future = events.filter((e) => e.future);
+  box.innerHTML = `<p class="tl-note">Every date below was reported by a source in this run. Nothing is inferred, and a source that failed leaves a gap, not a clean record.</p>
+    <ol class="tl">${past.map(row).join("")}<li class="tl-now"><span class="tl-year"></span><time datetime="${esc(today)}">${esc(today)}</time><b>Today</b></li>${future.map((e, i, all) => row(e, i, all)).join("")}</ol>`;
+}
+
 function renderAll() {
   const { items, facts } = buildFindings(state.collected, state.target);
   const diff = !state.running && state.prev ? diffRuns(state.prev.keys, items) : null;
@@ -319,6 +339,7 @@ function renderAll() {
   setTabCount($("#rTabFindings"), "Findings", items.length);
   renderBrief($("#rBrief"), $("#rBriefBody"), state.running || !state.target ? { rows: [], actions: [] } : reconBrief({ collected: state.collected, items, failed, type: state.type, target: state.target }));
   renderCards();
+  renderTimeline();
   if (state.tab === "topology") drawGraph();
   return items;
 }
@@ -481,13 +502,13 @@ export async function run(raw0) {
   if (!RECON_TYPES.includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Investigate.`); return; }
   const last = store.get(HISTORY_KEY, []).find((e) => e.type === "RECON" && e.v2 && e.target.toLowerCase() === target.toLowerCase());
   const prev = last ? { keys: buildFindings(last.results || {}, last.target).items.map((i) => i.key), ts: last.timestamp } : null;
-  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false });
+  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now() });
   store.del(checkKey());
   $("#rTargetInput").value = target; renderSources(type);
   setRunning(true);
   $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rEmpty").hidden = true; $("#rBySource").hidden = true; $("#rBySourceEmpty").hidden = false;
   $("#rTabs").hidden = false; setTab("findings"); hidePivot();
-  $("#rNotes").value = ""; notesMeta();
+  $("#rNotes").value = ""; $("#rPurpose").value = ""; notesMeta();
   head(); log.start(); renderAll(); renderAi();
 
   const on = srcOn;
@@ -544,54 +565,61 @@ function head(meta) {
 const HISTORY_KEY = "crawlr_history";
 function saveHistory() {
   const list = store.get(HISTORY_KEY, []);
-  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "RECON", timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai, deep: state.deep, notes: $("#rNotes").value, v2: true };
+  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "RECON", timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai, deep: state.deep, notes: $("#rNotes").value, purpose: $("#rPurpose").value.trim(), v2: true };
   state.historyId = entry.id;
   const i = list.findIndex((e) => e.id === entry.id);
-  if (i >= 0) { entry.timestamp = list[i].timestamp; list[i] = entry; } else list.unshift(entry);
+  if (i >= 0) { entry.timestamp = list[i].timestamp; if (list[i].imported) entry.imported = list[i].imported; list[i] = entry; } else list.unshift(entry);
   while (list.length > 50) list.pop();
   if (!store.set(HISTORY_KEY, list)) { list.splice(Math.floor(list.length / 2)); store.set(HISTORY_KEY, list); }
 }
 export function loadHistory(e) {
-  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false });
+  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp });
   $("#rTargetInput").value = e.target; renderSources(state.type); $("#rRunlog").hidden = true; $("#rTabs").hidden = false; setTab("findings"); hidePivot();
-  head(`${TYPE_LABEL[state.type]} · from history · ${new Date(e.timestamp).toLocaleString()}`);
+  head(`${TYPE_LABEL[state.type]} · ${e.imported ? "opened from a case file · collected" : "from history ·"} ${new Date(e.timestamp).toLocaleString()}`);
+  $("#rNotes").value = e.notes || ""; $("#rPurpose").value = e.purpose || ""; notesMeta();
   renderAll(); renderAi();
-  $("#rNotes").value = e.notes || ""; notesMeta();
 }
 export function clearCase() {
   cancel();
   Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, prev: null, aiBusy: false });
   $("#rTargetInput").value = ""; $("#rMainHead").hidden = true; $("#rRunlog").hidden = true; $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rBySource").hidden = true;
-  $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#rNotes").value = ""; notesMeta();
+  $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#rNotes").value = ""; $("#rPurpose").value = ""; notesMeta();
   renderSources(""); renderAi(); setTab("findings"); hidePivot();
-  $("#rBrief").hidden = true; $("#rTabs").hidden = true; $("#rBySourceEmpty").hidden = false;
+  $("#rBrief").hidden = true; $("#rTabs").hidden = true; $("#rBySourceEmpty").hidden = false; $("#rTimelineBody").innerHTML = ""; setTabCount($("#rTabTimeline"), "Timeline", 0);
 }
 
 // ---- notes + export ----------------------------------------------------------------------------------
 let notesTimer;
-function notesMeta() { $("#rNotesCount").textContent = `${fmtNum($("#rNotes").value.length)} chars`; }
-$("#rNotes").addEventListener("input", () => {
+function notesMeta() {
+  $("#rNotesCount").textContent = `${fmtNum($("#rNotes").value.length)} chars`;
+  casePrint($("#rCasePrint"), { purpose: $("#rPurpose").value, notes: $("#rNotes").value, ran: state.target ? state.ran : 0 });
+}
+const noteSave = () => {
   notesMeta(); $("#rNotesStatus").textContent = "Saving…"; clearTimeout(notesTimer);
   notesTimer = setTimeout(() => { if (state.target) saveHistory(); $("#rNotesStatus").textContent = "Saved"; }, 600);
-});
+};
+$("#rNotes").addEventListener("input", noteSave);
+$("#rPurpose").addEventListener("input", noteSave);
 
 export function exportCase() {
   if (!state.target) return;
   const { items, facts } = buildFindings(state.collected, state.target);
   const failed = failedSources();
-  const md = [`# CrawlR recon: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}`, "",
+  const purpose = $("#rPurpose").value.trim();
+  const md = [`# CrawlR recon: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}${state.ran ? ` · collected ${new Date(state.ran).toISOString()}` : ""}`, "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a clean result)`), ""] : []),
     "## What we know", ...(facts.length ? facts.map((f) => `- **${f.k}:** ${f.v} _(${f.source})_`) : ["- Nothing extracted"]), "",
     ...TIERS.flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${i.url ? `[${i.what}](${i.url})` : i.what}${i.meta ? ` · ${i.meta}` : ""} _(${i.source})_`), ""] : []; }),
+    ...((tl) => (tl.length ? ["## Timeline", ...tl.map((e) => `- ${e.date} · ${e.title}${e.detail ? ` · ${e.detail}` : ""} _(${e.source})_`), ""] : []))(reconTimeline(state.collected, state.target).events),
     ...(state.ai ? ["## AI analysis", state.ai.summary, ""] : []), ...(state.deep ? ["## Deep analysis", state.deep.summary, ""] : []),
     ...($("#rNotes").value.trim() ? ["## Notes", $("#rNotes").value.trim(), ""] : [])].join("\n");
   const name = `crawlr-recon-${slug(state.target)}`;
   const done = (fn) => () => { fn(); closeModal(); };
   openModal({ title: "Export recon",
     body: `<p class="modal-p">Everything is built in your browser. Nothing is uploaded.</p>
-      <ul class="export-list"><li><b>Print or PDF</b> opens the print dialog with a clean, light layout. Choose "Save as PDF" there.</li><li><b>HTML</b> is one self-contained page you can send or archive.</li><li><b>Markdown</b> has findings, facts, AI reports and notes.</li><li><b>JSON</b> is the raw data from every source.</li></ul>`,
+      <ul class="export-list"><li><b>Print or PDF</b> opens the print dialog with a clean, light layout. Choose "Save as PDF" there.</li><li><b>HTML</b> is one self-contained page you can send or archive.</li><li><b>Markdown</b> has findings, facts, AI reports and notes.</li><li><b>Case file</b> is the raw data from every source as JSON, with your notes. Open it in CrawlR on another machine from History.</li></ul>`,
     actions: [
-      { label: "JSON", onClick: done(() => download(`${name}.json`, JSON.stringify({ target: state.target, type: state.type, exported: new Date().toISOString(), collected: state.collected, ai: state.ai, deep: state.deep, notes: $("#rNotes").value }, null, 2), "application/json")) },
+      { label: "Case file", onClick: done(() => download(`${name}.json`, JSON.stringify(buildCaseFile({ mode: "recon", target: state.target, type: state.type, ran: state.ran, collected: state.collected, ai: state.ai, deep: state.deep, notes: $("#rNotes").value, purpose }), null, 2), "application/json")) },
       { label: "Markdown", onClick: done(() => download(`${name}.md`, md, "text/markdown")) },
       { label: "HTML", onClick: async () => { setTab("findings"); const html = await standaloneHtml(`CrawlR recon: ${state.target}`, $("#rMain"), $("#rAside")); download(`${name}.html`, html, "text/html"); closeModal(); } },
       { label: "Print or PDF", primary: true, onClick: () => { closeModal(); setTab("findings"); setTimeout(() => window.print(), 50); } },

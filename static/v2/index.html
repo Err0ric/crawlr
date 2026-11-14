@@ -109,6 +109,7 @@
     <div class="rail" id="rail" hidden>
       <div class="rail-head"><h2 id="sourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
       <p class="rail-note">Sources that apply to this target type. Your choices are remembered.</p>
+      <p class="rail-note how-legend" data-how-legend></p>
       <div id="sources" role="group" aria-labelledby="sourcesH"></div>
     </div>
   </div>
@@ -122,6 +123,7 @@
       <button class="btn btn-sm" id="exportBtn" type="button">Export</button>
       <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">New case</button>
     </div>
+    <div class="print-only case-print" id="casePrint"></div>
     <div class="runlog collapsed" id="runlog" hidden></div>
     <section class="card brief" id="brief" hidden aria-labelledby="briefH">
       <div class="card-head"><h2 class="card-title" id="briefH">At a glance</h2><span class="tag">no AI</span></div>
@@ -165,6 +167,11 @@
       <h2 id="aiH">AI analysis</h2>
       <div id="aiPanel" aria-live="polite"><p class="empty flat">Run a target first. AI analysis is optional and only runs when you ask.</p></div>
     </section>
+    <section class="purpose">
+      <h2><label for="purpose">Purpose</label></h2>
+      <input class="input" id="purpose" maxlength="300" placeholder="Why you are looking this up" aria-describedby="purposeHint">
+      <p class="hint" id="purposeHint">Optional. Saved with the case and printed on exports.</p>
+    </section>
     <section class="notes">
       <h2><label for="notes">Notes</label></h2>
       <textarea class="textarea" id="notes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
@@ -187,6 +194,7 @@
     <div class="rail" id="rRail" hidden>
       <div class="rail-head"><h2 id="rSourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
       <p class="rail-note">Sources that apply to this target type. Your choices are remembered.</p>
+      <p class="rail-note how-legend" data-how-legend></p>
       <div id="rSources" role="group" aria-labelledby="rSourcesH"></div>
     </div>
   </div>
@@ -200,6 +208,7 @@
       <button class="btn btn-sm" id="rExportBtn" type="button">Export</button>
       <button class="btn btn-ghost btn-sm" id="rClearBtn" type="button">New case</button>
     </div>
+    <div class="print-only case-print" id="rCasePrint"></div>
     <div class="runlog collapsed" id="rRunlog" hidden></div>
     <section class="card brief" id="rBrief" hidden aria-labelledby="rBriefH">
       <div class="card-head"><h2 class="card-title" id="rBriefH">At a glance</h2><span class="tag">no AI</span></div>
@@ -208,6 +217,7 @@
     <div class="tabs" id="rTabs" role="tablist" aria-label="Result views" hidden>
       <button type="button" role="tab" id="rTabFindings" data-tab="findings" aria-selected="true" aria-controls="rFindings">Findings</button>
       <button type="button" role="tab" id="rTabSources" data-tab="sources" aria-selected="false" aria-controls="rSourcesPanel" tabindex="-1">By source</button>
+      <button type="button" role="tab" id="rTabTimeline" data-tab="timeline" aria-selected="false" aria-controls="rTimeline" tabindex="-1">Timeline</button>
       <button type="button" role="tab" id="rTabTopology" data-tab="topology" aria-selected="false" aria-controls="rTopology" tabindex="-1">Topology</button>
     </div>
     <div id="rFindings" role="tabpanel" aria-labelledby="rTabFindings" tabindex="-1" class="panel">
@@ -224,6 +234,9 @@
         <div class="sources-grid" id="rSourceCards"></div>
       </div>
     </div>
+    <div id="rTimeline" role="tabpanel" aria-labelledby="rTabTimeline" tabindex="-1" class="panel" hidden>
+      <div id="rTimelineBody"></div>
+    </div>
     <div id="rTopology" role="tabpanel" aria-labelledby="rTabTopology" tabindex="0" hidden>
       <div class="pivotbar" id="rPivot" hidden></div>
       <div class="graph" id="rGraph" role="group" aria-label="Topology graph of the domain, its subdomains, addresses and networks. Select a node for actions. The same data is listed under Findings."></div>
@@ -239,6 +252,11 @@
     <section aria-labelledby="rAiH">
       <h2 id="rAiH">AI analysis</h2>
       <div id="rAiPanel" aria-live="polite"><p class="empty flat">Run a target first. AI analysis is optional and only runs when you ask.</p></div>
+    </section>
+    <section class="purpose">
+      <h2><label for="rPurpose">Purpose</label></h2>
+      <input class="input" id="rPurpose" maxlength="300" placeholder="Why you are looking this up" aria-describedby="rPurposeHint">
+      <p class="hint" id="rPurposeHint">Optional. Saved with the case and printed on exports.</p>
     </section>
     <section class="notes">
       <h2><label for="rNotes">Notes</label></h2>

@@ -216,7 +216,7 @@ export async function standaloneHtml(title, mainEl, asideEl) {
   try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
   css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
   const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
-  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Possible" items are leads, not facts.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
+  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Possible" items are leads, not facts.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
 }
 
 // ---- tabs ---------------------------------------------------------------------------
@@ -246,4 +246,12 @@ export function renderBrief(section, body, { rows, actions }) {
   if (!rows.length) { body.innerHTML = ""; return; }
   body.innerHTML = `<ul class="brief-list">${rows.map((r) => h`<li class="${r.level}"><span class="tag ${r.level === "flag" ? "warn" : r.level === "ok" ? "ok" : ""}">${BRIEF_WORD[r.level] || "Note"}</span><span>${r.text}</span></li>`).join("")}</ul>`
     + (actions.length ? `<div class="brief-actions">${actions.map((a) => a.href ? h`<a class="btn btn-sm" href="${safeUrl(a.href)}" target="_blank" rel="noopener noreferrer">${a.label}</a>` : a.tab ? h`<button type="button" class="btn btn-sm" data-brief-tab="${a.tab}">${a.label}</button>` : h`<button type="button" class="btn btn-sm" data-pivot="${a.pivot}" data-value="${a.value}">${a.label}</button>`).join("")}</div>` : "");
+}
+
+// ---- purpose and notes on paper ---------------------------------------------------------
+// Inputs do not print well and are stripped from the HTML export, so the purpose and notes
+// are mirrored into a block that only shows in print and in exported pages.
+export function casePrint(el, { purpose, notes, ran }) {
+  const p = String(purpose || "").trim(), n = String(notes || "").trim();
+  el.innerHTML = (ran ? h`<p><b>Collected</b> ${new Date(ran).toLocaleString()}</p>` : "") + (p ? h`<p><b>Purpose</b> ${p}</p>` : "") + (n ? h`<p><b>Notes</b></p><p class="pre">${n}</p>` : "");
 }
