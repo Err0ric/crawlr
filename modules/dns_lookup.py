@@ -1,5 +1,7 @@
-import dns.resolver
+import asyncio
 import ipaddress
+
+import dns.resolver
 
 RECORD_TYPES = ["A", "AAAA", "MX", "NS", "TXT", "CNAME", "SOA"]
 
@@ -29,19 +31,17 @@ async def run_dns(domain: str) -> dict:
     resolver.timeout = 5
     resolver.lifetime = 5
 
-    for rtype in RECORD_TYPES:
+    def query(rtype: str) -> list[str]:
         try:
-            answers = resolver.resolve(domain, rtype)
-            records = []
-            for rdata in answers:
-                records.append(str(rdata))
-            if records:
-                results[rtype] = records
-        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN,
-                dns.resolver.NoNameservers, dns.exception.Timeout):
-            pass
+            return [str(rdata) for rdata in resolver.resolve(domain, rtype)]
         except Exception:
-            pass
+            return []
+
+    # dnspython is blocking: run the seven lookups side by side in threads.
+    answers = await asyncio.gather(*(asyncio.to_thread(query, t) for t in RECORD_TYPES))
+    for rtype, records in zip(RECORD_TYPES, answers):
+        if records:
+            results[rtype] = records
 
     # Cloudflare proxy detection
     a_records = results.get("A", [])

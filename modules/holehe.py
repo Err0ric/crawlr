@@ -3,21 +3,27 @@ import csv
 import glob
 import os
 import tempfile
+from core.errors import error_fields
 from core.subprocess_guard import tool_slot, ToolBusy, busy_result, log_result, log_process
 
 
 async def _run_holehe_impl(email: str, timeout: int = 300) -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
-        proc = await asyncio.create_subprocess_exec(
-            "holehe", email,
-            "--csv",
-            "--only-used",
-            "--no-color",
-            "--no-clear",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=tmpdir,
-        )
+        try:
+            # "--" ends option parsing, so the address can never be read as a flag.
+            proc = await asyncio.create_subprocess_exec(
+                "holehe",
+                "--csv",
+                "--only-used",
+                "--no-color",
+                "--no-clear",
+                "--", email,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=tmpdir,
+            )
+        except FileNotFoundError:
+            return {"email": email, "results": [], "total": 0, **error_fields(code="not_installed")}
         try:
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout
@@ -25,7 +31,7 @@ async def _run_holehe_impl(email: str, timeout: int = 300) -> dict:
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return {"email": email, "error": "timeout", "results": []}
+            return {"email": email, "results": [], "total": 0, **error_fields(code="timeout")}
         log_process("holehe", proc.returncode, stderr)
 
         results = []

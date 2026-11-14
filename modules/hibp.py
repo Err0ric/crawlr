@@ -1,8 +1,12 @@
+from urllib.parse import quote
+
 import httpx
+
+from core.errors import error_fields
 
 
 async def run_hibp(email: str, timeout: int = 15) -> dict:
-    url = f"https://api.xposedornot.com/v1/check-email/{email}"
+    url = f"https://api.xposedornot.com/v1/check-email/{quote(email, safe='@')}"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(url, headers={"User-Agent": "Crawlr/0.1"})
@@ -19,4 +23,4 @@ async def run_hibp(email: str, timeout: int = 15) -> dict:
                 "breaches": breaches,
             }
     except Exception as e:
-        return {"email": email, "total": 0, "breaches": [], "error": str(e)}
+        return {"email": email, "total": 0, "breaches": [], **error_fields(e)}

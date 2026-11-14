@@ -1,6 +1,8 @@
 import httpx
 import re
-from typing import Optional
+
+from core.errors import error_fields
+from core.netguard import safe_fetch
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -125,20 +127,19 @@ async def scrape_profiles(urls: list[dict], timeout: int = TIMEOUT) -> list[dict
     Returns list of: {"site": ..., "url": ..., "display_name": ..., "bio": ..., ...}
     """
     results = []
-    async with httpx.AsyncClient(
-        timeout=timeout, follow_redirects=True, headers=HEADERS
-    ) as client:
+    # Redirects are walked by safe_fetch so every hop is checked against the SSRF rules.
+    async with httpx.AsyncClient(timeout=timeout, headers=HEADERS) as client:
         for item in urls[:20]:  # Cap at 20 profiles
             site = item.get("site", "")
             url = item.get("url", "")
             if not url:
                 continue
             try:
-                resp = await client.get(url)
+                resp = (await safe_fetch(client, url, max_redirects=5)).response
                 if resp.status_code != 200:
                     results.append({
                         "site": site, "url": url,
-                        "error": f"HTTP {resp.status_code}",
+                        **error_fields(code="upstream", detail=f"HTTP {resp.status_code}"),
                     })
                     continue
                 data = _scrape_profile(resp.text, url)
@@ -148,6 +149,6 @@ async def scrape_profiles(urls: list[dict], timeout: int = TIMEOUT) -> list[dict
             except Exception as e:
                 results.append({
                     "site": site, "url": url,
-                    "error": str(e)[:100],
+                    **error_fields(e),
                 })
     return results

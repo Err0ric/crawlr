@@ -1,4 +1,8 @@
+import asyncio
+
 import whois
+
+from core.errors import error_fields
 
 PRIVACY_KEYWORDS = [
     "privacy", "redacted", "whoisguard", "withheld", "protected",
@@ -22,7 +26,8 @@ def _detect_privacy(w) -> bool:
 
 async def run_whois(domain: str) -> dict:
     try:
-        w = whois.whois(domain)
+        # python-whois opens a blocking socket; keep it off the event loop.
+        w = await asyncio.wait_for(asyncio.to_thread(whois.whois, domain), timeout=20)
         def first(val):
             if isinstance(val, list):
                 return str(val[0]) if val else ""
@@ -45,4 +50,4 @@ async def run_whois(domain: str) -> dict:
             "privacy_protected": privacy,
         }
     except Exception as e:
-        return {"domain": domain, "found": False, "error": str(e)}
+        return {"domain": domain, "found": False, **error_fields(e)}

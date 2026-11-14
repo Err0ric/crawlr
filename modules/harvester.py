@@ -23,7 +23,7 @@ import asyncio
 import json
 import re
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
@@ -150,14 +150,19 @@ async def _get(client: httpx.AsyncClient, url: str, as_json: bool = True):
         raise RuntimeError("non-JSON response")
 
 
-async def _src_crtsh(c, d):        return parse_crtsh(await _get(c, f"https://crt.sh/?q=%25.{d}&output=json"), d), set()
-async def _src_certspotter(c, d):  return parse_certspotter(await _get(c, f"https://api.certspotter.com/v1/issuances?domain={d}&include_subdomains=true&expand=dns_names"), d), set()
-async def _src_hackertarget(c, d): return parse_hackertarget(await _get(c, f"https://api.hackertarget.com/hostsearch/?q={d}", as_json=False), d), set()
-async def _src_rapiddns(c, d):     return parse_rapiddns(await _get(c, f"https://rapiddns.io/subdomain/{d}?full=1", as_json=False), d), set()
-async def _src_urlscan(c, d):      return parse_urlscan(await _get(c, f"https://urlscan.io/api/v1/search/?q=domain:{d}&size=500"), d), set()
-async def _src_otx(c, d):          return parse_otx(await _get(c, f"https://otx.alienvault.com/api/v1/indicators/domain/{d}/passive_dns"), d), set()
-async def _src_anubis(c, d):       return parse_anubis(await _get(c, f"https://jonlu.ca/anubis/subdomains/{d}"), d), set()
-async def _src_wayback(c, d):      return parse_wayback(await _get(c, f"https://web.archive.org/cdx/search/cdx?url=*.{d}/*&output=json&fl=original&collapse=urlkey&limit=5000"), d)
+def _q(d: str) -> str:
+    """The domain is validated upstream; encode it anyway so it can never alter a URL."""
+    return quote(d, safe="")
+
+
+async def _src_crtsh(c, d):        return parse_crtsh(await _get(c, f"https://crt.sh/?q=%25.{_q(d)}&output=json"), d), set()
+async def _src_certspotter(c, d):  return parse_certspotter(await _get(c, f"https://api.certspotter.com/v1/issuances?domain={_q(d)}&include_subdomains=true&expand=dns_names"), d), set()
+async def _src_hackertarget(c, d): return parse_hackertarget(await _get(c, f"https://api.hackertarget.com/hostsearch/?q={_q(d)}", as_json=False), d), set()
+async def _src_rapiddns(c, d):     return parse_rapiddns(await _get(c, f"https://rapiddns.io/subdomain/{_q(d)}?full=1", as_json=False), d), set()
+async def _src_urlscan(c, d):      return parse_urlscan(await _get(c, f"https://urlscan.io/api/v1/search/?q={_q('domain:' + d)}&size=500"), d), set()
+async def _src_otx(c, d):          return parse_otx(await _get(c, f"https://otx.alienvault.com/api/v1/indicators/domain/{_q(d)}/passive_dns"), d), set()
+async def _src_anubis(c, d):       return parse_anubis(await _get(c, f"https://jonlu.ca/anubis/subdomains/{_q(d)}"), d), set()
+async def _src_wayback(c, d):      return parse_wayback(await _get(c, f"https://web.archive.org/cdx/search/cdx?url={_q('*.' + d + '/*')}&output=json&fl=original&collapse=urlkey&limit=5000"), d)
 
 SOURCES = {
     "crt.sh": _src_crtsh,
@@ -178,7 +183,7 @@ async def _run_harvester_impl(domain: str, timeout: float = OVERALL_TIMEOUT) -> 
     if "@" in domain:
         domain = domain.split("@", 1)[1]
     if not domain or "." not in domain:
-        return {"domain": domain, "error": "invalid domain", "hosts": [], "emails": []}
+        return {"domain": domain, "error": "That is not a valid domain.", "error_code": "bad_input", "hosts": [], "emails": []}
     if domain in SHARED_DOMAINS:
         return {"domain": domain, "skipped": True, "message": f"{domain} is a shared mail provider, so there's nothing useful to harvest.", "hosts": [], "emails": [], "sources": {}}
 
@@ -196,7 +201,7 @@ async def _run_harvester_impl(domain: str, timeout: float = OVERALL_TIMEOUT) -> 
                 emails.update(mails)
                 report[name] = {"hosts": len(hosts), "emails": len(mails), "ms": int((time.monotonic() - t0) * 1000)}
             except Exception as e:  # each source is best-effort
-                report[name] = {"error": f"{type(e).__name__}: {e}"[:160], "ms": int((time.monotonic() - t0) * 1000)}
+                report[name] = {"error": error_fields(e)["error"], "error_detail": f"{type(e).__name__}: {e}"[:160], "ms": int((time.monotonic() - t0) * 1000)}
 
         tasks = [asyncio.create_task(one(n, f)) for n, f in SOURCES.items()]
         done, pending = await asyncio.wait(tasks, timeout=timeout)
@@ -207,7 +212,8 @@ async def _run_harvester_impl(domain: str, timeout: float = OVERALL_TIMEOUT) -> 
 
     hosts_sorted = sorted(host_srcs, key=lambda h: (-len(host_srcs[h]), h))[:MAX_HOSTS]
     ok = [n for n, r in report.items() if "error" not in r]
-    log.info("harvest sources", extra={"domain": domain, "ok": ok, "failed": [n for n in report if n not in ok]})
+    # Source health only. The target is deliberately left out of the log line.
+    log.info("harvest sources", extra={"ok": ok, "failed": [n for n in report if n not in ok]})
     return {
         "domain": domain,
         "hosts": hosts_sorted,

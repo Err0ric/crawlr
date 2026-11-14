@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import httpx
 import re
@@ -8,7 +8,7 @@ router = APIRouter()
 
 
 class PhoneRequest(BaseModel):
-    phone: str
+    phone: str = Field(max_length=40)
 
 
 def normalize_phone(raw: str) -> str:
@@ -28,7 +28,7 @@ def normalize_phone(raw: str) -> str:
 
 
 @router.post("/lookup")
-async def phone_lookup(req: PhoneRequest, x_numlookup_key: Optional[str] = Header(None)):
+async def phone_lookup(req: PhoneRequest, x_numlookup_key: Optional[str] = Header(None, max_length=200)):
     raw = req.phone.strip()
     if not raw:
         raise HTTPException(status_code=400, detail="Phone number required")
@@ -68,7 +68,7 @@ async def phone_lookup(req: PhoneRequest, x_numlookup_key: Optional[str] = Heade
         except HTTPException:
             raise
         except Exception as e:
-            result["api_error"] = str(e)
+            result["api_error"] = "Could not reach NumLookup. Try again in a moment."
 
     # Build lookup links
     digits_only = re.sub(r'[^\d]', '', normalized)
