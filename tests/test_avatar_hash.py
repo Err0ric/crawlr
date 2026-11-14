@@ -156,7 +156,7 @@ def test_results_keep_request_order_and_ids(monkeypatch):
     serve(monkeypatch, {"/a.png": ("image/png", encode(picture(1))), "/b.jpg": ("image/jpeg; charset=binary", encode(picture(2), "JPEG"))})
     out = run([{"id": "acct:github", "url": f"{HOST}/a.png"}, {"id": "acct:gitlab", "url": f"{HOST}/b.jpg"}, {"id": "acct:missing", "url": f"{HOST}/gone.png"}])
     assert [r["id"] for r in out] == ["acct:github", "acct:gitlab", "acct:missing"]
-    assert set(out[0]) == {"id", "hash", "default"} and out[0]["hash"] != out[1]["hash"]
+    assert set(out[0]) == {"id", "hash", "default", "thumb"} and out[0]["hash"] != out[1]["hash"]
     assert out[2]["error_code"] == "not_found" and "hash" not in out[2]
 
 
@@ -358,7 +358,7 @@ def test_each_url_is_fetched_once_and_then_served_from_cache(monkeypatch):
     first = run([{"id": "one", "url": f"{HOST}/a.png"}, {"id": "two", "url": f"{HOST}/a.png"}])
     assert len(calls) == 1 and first[0]["hash"] == first[1]["hash"] and [r["id"] for r in first] == ["one", "two"]
     again = run([{"id": "three", "url": f"{HOST}/a.png"}])
-    assert len(calls) == 1 and again[0] == {"id": "three", "hash": first[0]["hash"], "default": False}
+    assert len(calls) == 1 and again[0] == {"id": "three", "hash": first[0]["hash"], "default": False, "thumb": first[0]["thumb"]}
 
 
 def test_failures_are_not_cached(monkeypatch):
@@ -402,3 +402,60 @@ def test_pictures_on_adult_or_dating_hosts_are_never_fetched(monkeypatch):
     out = run([{"id": "a", "url": "https://cdn.fansly.com/someone/avatar.jpg"}, {"id": "b", "url": "https://www.pornhub.com/x.png"}])
     assert [r.get("error_code") for r in out] == ["adult_site", "adult_site"]
     assert calls == []
+
+
+# ---- thumbnails --------------------------------------------------------------------
+
+def _thumb_image(uri: str) -> Image.Image:
+    import base64
+    head, body = uri.split(",", 1)
+    assert head in ("data:image/webp;base64", "data:image/png;base64")
+    return Image.open(io.BytesIO(base64.b64decode(body)))
+
+
+def test_a_real_picture_gets_a_small_grayscale_thumbnail(monkeypatch):
+    serve(monkeypatch, {"/a.png": ("image/png", encode(picture(1), "PNG")), "/wide.jpg": ("image/jpeg", encode(picture(2).resize((400, 200)), "JPEG"))})
+    out = run([{"id": "a", "url": f"{HOST}/a.png"}, {"id": "b", "url": f"{HOST}/wide.jpg"}])
+    for r in out:
+        img = _thumb_image(r["thumb"])
+        assert img.size == (ah.THUMB_SIDE, ah.THUMB_SIDE) and img.mode in ("L", "P", "RGB")
+        assert len(r["thumb"]) * 3 // 4 <= ah.THUMB_MAX_BYTES + 40
+        # a data URI and nothing else: no address of the picture travels with it
+        assert "http" not in r["thumb"]
+
+
+def test_default_pictures_get_no_thumbnail(monkeypatch):
+    flat = Image.new("RGB", (200, 200), (120, 120, 120))
+    serve(monkeypatch, {"/flat.png": ("image/png", encode(flat)), "/ident.png": ("image/png", encode(identicon())),
+                        "/img/default_avatar.jpg": ("image/png", encode(picture(4)))})
+    out = run([{"id": "a", "url": f"{HOST}/flat.png"}, {"id": "b", "url": f"{HOST}/ident.png"}, {"id": "c", "url": f"{HOST}/img/default_avatar.jpg"}])
+    assert all(r["default"] is True and "thumb" not in r for r in out)
+    # the cached copy of a picture that is default by its URL has none either
+    again = run([{"id": "c", "url": f"{HOST}/img/default_avatar.jpg"}])
+    assert "thumb" not in again[0]
+
+
+def test_a_thumbnail_over_the_size_cap_is_dropped(monkeypatch):
+    monkeypatch.setattr(ah, "THUMB_MAX_BYTES", 10)
+    serve(monkeypatch, {"/a.png": ("image/png", encode(picture(1)))})
+    out = run([{"id": "a", "url": f"{HOST}/a.png"}])
+    assert out[0]["hash"] and out[0]["default"] is False and "thumb" not in out[0]
+
+
+def test_thumbnails_stop_at_the_total_cap_and_hashes_do_not(monkeypatch):
+    routes = {f"/{i}.png": ("image/png", encode(picture(i + 1))) for i in range(6)}
+    serve(monkeypatch, routes)
+    one = len(run([{"id": "x", "url": f"{HOST}/0.png"}])[0]["thumb"]) * 3 // 4
+    monkeypatch.setattr(ah, "THUMB_TOTAL_BYTES", one * 3)
+    out = run([{"id": str(i), "url": f"{HOST}/{i}.png"} for i in range(6)])
+    assert all(r.get("hash") for r in out)
+    with_thumb = [r for r in out if "thumb" in r]
+    assert 1 <= len(with_thumb) < 6
+    assert sum(len(r["thumb"]) * 3 // 4 for r in with_thumb) <= one * 3
+
+
+def test_adult_and_dating_hosts_get_no_thumbnail(monkeypatch):
+    calls = []
+    serve(monkeypatch, {}, calls)
+    out = run([{"id": "a", "url": "https://cdn.fansly.com/someone/avatar.jpg"}])
+    assert out[0].get("error_code") == "adult_site" and "thumb" not in out[0] and "hash" not in out[0] and calls == []
