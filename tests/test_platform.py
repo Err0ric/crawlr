@@ -1,5 +1,6 @@
 import gzip
 import re
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -141,3 +142,301 @@ def test_plate_lookup_is_gone(c):
     assert "vinIn" in html                                  # the VIN decoder (official NHTSA API) stays
     fp = asset_fingerprint()
     assert "kbb" not in c.get(f"/assets/{fp}/js/tools.js").text.lower()
+
+
+# --- platform check (modules/platform_check.py) ---------------------------------------------
+# Every body below is a trimmed recording of what the site sent to an anonymous server-side
+# GET on 2026-11-14 (tests/fixtures/platform). No network.
+
+import asyncio  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import httpx  # noqa: E402
+
+from modules import platform_check as pc  # noqa: E402
+
+FIX = Path(__file__).parent / "fixtures" / "platform"
+RULE = {r["name"]: r for r in pc.RULES}
+MISSING = "zq7xkv3mwp9tjh2rnb5ycd8fgl4sae"
+
+
+def fx(name: str) -> str:
+    return (FIX / name).read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _clean_platform_cache():
+    pc.clear_cache_for_tests()
+    yield
+    pc.clear_cache_for_tests()
+
+
+def verdict(platform, username, body, status=200, final_url=None):
+    rule = RULE[platform]
+    return pc.classify_page(rule, username, status, final_url or rule["url"].format(username=username), body)
+
+
+@pytest.mark.parametrize("platform,username,fixture,name", [
+    ("Instagram", "torvalds", "instagram_found.html", "Sam Example"),
+    ("Instagram", "Err0ric", "instagram_found_mixed_case.html", "Eric Henderson"),
+    ("Instagram", "err0ric", "instagram_found_mixed_case.html", "Eric Henderson"),
+    ("X", "torvalds", "x_found.html", "torvalds"),
+    ("X", "TORVALDS", "x_found.html", "torvalds"),
+    ("Threads", "torvalds", "threads_found.html", "Sam Example"),
+    ("Threads", "Err0ric", "threads_found_bio.html", "Eric Henderson"),
+    ("TikTok", "torvalds", "tiktok_found.html", "Torvalds"),
+    ("Facebook", "torvalds", "facebook_found.html", "Patrick Torvalds"),
+])
+def test_found_needs_a_marker_that_names_the_handle(platform, username, fixture, name):
+    v = verdict(platform, username, fx(fixture))
+    assert v["state"] == "found" and v["display_name"] == name
+    assert username in v["evidence"] or "links to itself" in v["evidence"]
+    # the same page fetched for a different handle proves nothing about that handle
+    other = verdict(platform, "someoneelse", fx(fixture))
+    assert other["state"] != "found"
+
+
+@pytest.mark.parametrize("platform,fixture,status", [
+    ("Instagram", "instagram_error_page.html", 200),
+    ("X", "x_not_found.html", 404),
+    ("TikTok", "tiktok_not_found.html", 200),
+])
+def test_not_found_pages_are_recognised(platform, fixture, status):
+    v = verdict(platform, MISSING[:15], fx(fixture), status=status)
+    assert v["state"] == "not_found" and v["evidence"]
+
+
+@pytest.mark.parametrize("platform,fixture,status,final_url,state,evidence", [
+    ("Threads", "threads_login_wall.html", 200, "https://www.threads.com/login/?next=https%3A%2F%2Fwww.threads.com%2F%40x%2F", "blocked", "login wall"),
+    ("Threads", "threads_login_wall.html", 200, None, "blocked", "login wall"),                  # by the page title alone
+    ("Instagram", "", 200, "https://www.instagram.com/accounts/login/?next=%2Fx%2F", "blocked", "login wall"),
+    ("Facebook", "facebook_refused.html", 400, None, "blocked", "refused"),
+    ("Facebook", "facebook_unavailable.html", 200, None, "unknown", "missing profile and a login-only one"),
+    ("LinkedIn", "linkedin_999.html", 999, None, "blocked", "HTTP 999"),
+    ("LinkedIn", "", 200, "https://www.linkedin.com/authwall?trk=x", "blocked", "login wall"),
+    ("X", "", 403, None, "blocked", "HTTP 403"),
+    ("TikTok", "", 429, None, "blocked", "HTTP 429"),
+    ("Instagram", "", 401, None, "blocked", "HTTP 401"),
+    ("TikTok", "", 503, None, "unknown", "HTTP 503"),
+])
+def test_walls_and_refusals_are_blocked_never_a_negative(platform, fixture, status, final_url, state, evidence):
+    v = verdict(platform, "torvalds", fx(fixture) if fixture else "", status=status, final_url=final_url)
+    assert v["state"] == state and evidence in v["evidence"]
+    assert v["state"] not in ("found", "not_found")
+
+
+@pytest.mark.parametrize("platform", sorted(RULE))
+def test_a_bare_200_is_unknown_on_every_platform(platform):
+    for body in ("", "   ", "<html><head><title>Loading</title></head><body><div id='app'></div></body></html>"):
+        v = verdict(platform, "torvalds", body)
+        assert v["state"] == "unknown", (platform, body)
+        row = pc._row(RULE[platform], "torvalds", v)
+        assert row["found"] is None
+
+
+def test_the_tiktok_not_found_phrase_is_not_a_marker():
+    # It sits in the translation table of every TikTok page, including a real profile's.
+    assert "find this account" in fx("tiktok_found.html")
+    assert verdict("TikTok", "torvalds", fx("tiktok_found.html"))["state"] == "found"
+    shell = '<script>{"Couldn\'t find this account":"Couldn\'t find this account"}</script>'
+    assert verdict("TikTok", "torvalds", shell)["state"] == "unknown"
+
+
+def test_a_found_marker_on_an_error_status_is_not_found_true():
+    v = verdict("X", "torvalds", fx("x_found.html"), status=403)
+    assert v["state"] == "blocked"
+
+
+def test_linkedin_has_no_found_or_not_found_rule():
+    assert not RULE["LinkedIn"].get("found") and not RULE["LinkedIn"].get("not_found")
+    page = '<html><head><title>Linus Torvalds | LinkedIn</title><link rel="canonical" href="https://www.linkedin.com/in/torvalds"></head></html>'
+    assert verdict("LinkedIn", "torvalds", page)["state"] == "unknown"
+
+
+# --- the whole run, with the HTTP layer faked ------------------------------------------------
+
+REAL_ASYNC_CLIENT = httpx.AsyncClient
+
+
+def fake_sites(monkeypatch, responder, calls=None):
+    def handler(request: httpx.Request):
+        if calls is not None:
+            calls.append(str(request.url))
+        return responder(request)
+
+    monkeypatch.setattr(pc.httpx, "AsyncClient", lambda *a, **k: REAL_ASYNC_CLIENT(transport=httpx.MockTransport(handler), follow_redirects=True))
+
+
+def site_responder(pages: dict, default=None):
+    """pages: {"host/path-fragment": (status, body) | httpx.Response | Exception}."""
+    def respond(request: httpx.Request):
+        url = str(request.url)
+        for needle, answer in pages.items():
+            if needle in url:
+                if isinstance(answer, Exception):
+                    raise answer
+                if isinstance(answer, httpx.Response):
+                    return answer
+                return httpx.Response(answer[0], text=answer[1])
+        return default or httpx.Response(200, text="")
+    return respond
+
+
+def by_platform(out):
+    return {r["platform"]: r for r in out["results"]}
+
+
+def test_run_reports_every_state_in_the_contract_shape(monkeypatch):
+    calls = []
+    fake_sites(monkeypatch, site_responder({
+        "instagram.com/torvalds": (200, fx("instagram_found.html")),
+        "x.com/torvalds": (200, fx("x_found.html")),
+        "threads.com/@torvalds": httpx.Response(302, headers={"location": "https://www.threads.com/login/?next=x"}),
+        "threads.com/login": (200, fx("threads_login_wall.html")),
+        "tiktok.com/@torvalds": (200, fx("tiktok_not_found.html")),
+        "tiktok.com/@tiktok": (200, fx("tiktok_found.html").replace("torvalds", "tiktok")),
+        "facebook.com/torvalds": (200, fx("facebook_unavailable.html")),
+        "linkedin.com": (999, fx("linkedin_999.html")),
+    }), calls)
+    out = asyncio.run(pc.run_platform_check("torvalds"))
+    rows = by_platform(out)
+    assert list(rows) == ["Facebook", "Instagram", "X", "Threads", "TikTok", "LinkedIn", "OnlyFans"]
+    assert {p: r["state"] for p, r in rows.items()} == {
+        "Facebook": "unknown", "Instagram": "found", "X": "found", "Threads": "blocked",
+        "TikTok": "not_found", "LinkedIn": "blocked", "OnlyFans": "manual"}
+    assert out["username"] == "torvalds" and out["total"] == 2 and out["checked"] == 6
+    for r in out["results"]:
+        assert {"platform", "url", "state", "found", "evidence", "display_name", "public_url"} <= set(r)
+        assert r["found"] is (True if r["state"] == "found" else False if r["state"] == "not_found" else None)
+        assert r["evidence"] and r["public_url"] is True
+    assert rows["Instagram"]["url"] == "https://www.instagram.com/torvalds/" and rows["Instagram"]["display_name"] == "Sam Example"
+    assert rows["Threads"]["evidence"] == "login wall"
+    assert rows["OnlyFans"]["manual"] is True and rows["OnlyFans"]["url"] == "https://onlyfans.com/torvalds"
+    assert not any("onlyfans" in c for c in calls)            # manual means never fetched
+
+
+def test_every_request_is_a_get_with_navigation_headers(monkeypatch):
+    seen = []
+
+    def respond(request):
+        seen.append((request.method, request.headers.get("sec-fetch-mode"), request.headers.get("user-agent", "")))
+        return httpx.Response(200, text="")
+
+    fake_sites(monkeypatch, respond)
+    asyncio.run(pc.run_platform_check("torvalds"))
+    assert len(seen) == 6 and all(m == "GET" and mode == "navigate" and "Mozilla" in ua for m, mode, ua in seen)
+
+
+def test_a_not_found_page_is_only_believed_when_the_canary_is_readable(monkeypatch):
+    # Instagram serves the same error page for a missing handle and for a real profile when
+    # it degrades the request. With the canary unreadable too, the answer is "blocked".
+    fake_sites(monkeypatch, site_responder({"instagram.com": (200, fx("instagram_error_page.html"))}))
+    row = by_platform(asyncio.run(pc.run_platform_check("torvalds")))["Instagram"]
+    assert row["state"] == "blocked" and row["found"] is None and "every profile" in row["evidence"]
+
+    pc.clear_cache_for_tests()
+    calls = []
+    fake_sites(monkeypatch, site_responder({
+        "instagram.com/instagram/": (200, fx("instagram_found.html").replace("torvalds", "instagram")),
+        "instagram.com": (200, fx("instagram_error_page.html")),
+    }), calls)
+    row = by_platform(asyncio.run(pc.run_platform_check(MISSING)))["Instagram"]
+    assert row["state"] == "not_found" and row["found"] is False
+    # the canary answer is reused for the next handle
+    asyncio.run(pc.run_platform_check("anotherhandle"))
+    assert sum("instagram.com/instagram/" in c for c in calls) == 1
+
+
+def test_the_canary_handle_itself_cannot_be_reported_missing(monkeypatch):
+    fake_sites(monkeypatch, site_responder({"instagram.com": (200, fx("instagram_error_page.html"))}))
+    row = by_platform(asyncio.run(pc.run_platform_check("instagram")))["Instagram"]
+    assert row["state"] == "blocked"
+
+
+def test_network_failures_are_unknown_with_a_code_never_false(monkeypatch):
+    fake_sites(monkeypatch, site_responder({
+        "instagram.com": httpx.ConnectTimeout("timed out"),
+        "x.com": httpx.ConnectError("connection refused"),
+        "tiktok.com": (500, "oops"),
+    }))
+    rows = by_platform(asyncio.run(pc.run_platform_check("torvalds")))
+    assert rows["Instagram"]["state"] == "unknown" and rows["Instagram"]["found"] is None and rows["Instagram"]["error_code"] == "timeout"
+    assert rows["X"]["state"] == "unknown" and rows["X"]["error_code"] == "unreachable"
+    assert rows["TikTok"]["state"] == "unknown" and rows["TikTok"]["error_code"] == "upstream"
+    for r in rows.values():
+        assert r["found"] is not False
+        assert "torvalds" not in r["evidence"] and "://" not in r["evidence"]
+
+
+def test_a_slow_site_times_out_without_holding_up_the_rest(monkeypatch):
+    async def slow_fetch(client, url):
+        if "instagram" in url:
+            await asyncio.sleep(5)
+        return 200, url, fx("x_found.html") if "x.com" in url else ""
+
+    monkeypatch.setattr(pc, "_fetch", slow_fetch)
+    started = time.monotonic()
+    rows = by_platform(asyncio.run(pc.run_platform_check("torvalds", timeout=0.2)))
+    assert time.monotonic() - started < 2
+    assert rows["Instagram"]["state"] == "unknown" and rows["Instagram"]["error_code"] == "timeout"
+    assert rows["X"]["state"] == "found"
+
+
+def test_sherlock_sites_are_skipped(monkeypatch):
+    calls = []
+    fake_sites(monkeypatch, site_responder({}), calls)
+    out = asyncio.run(pc.run_platform_check("torvalds", ["Facebook", "Twitter", "threads", "GitHub"]))
+    assert [r["platform"] for r in out["results"]] == ["Instagram", "TikTok", "LinkedIn", "OnlyFans"]
+    assert out["checked"] == 3
+    assert not any(h in c for c in calls for h in ("facebook.com", "x.com", "threads.com"))
+    # "X" covers the X row as well
+    out = asyncio.run(pc.run_platform_check("torvalds", ["X"]))
+    assert "X" not in [r["platform"] for r in out["results"]]
+
+
+def test_found_and_not_found_are_cached_for_a_day_and_nothing_else_is(monkeypatch):
+    calls = []
+    pages = {
+        "instagram.com/torvalds": (200, fx("instagram_found.html")),
+        "x.com/x": (200, fx("x_found.html").replace("torvalds", "x")),
+        "x.com/torvalds": (404, fx("x_not_found.html")),
+        "linkedin.com": (999, ""),
+    }
+    fake_sites(monkeypatch, site_responder(pages), calls)
+    first = by_platform(asyncio.run(pc.run_platform_check("torvalds")))
+    assert first["Instagram"]["state"] == "found" and first["X"]["state"] == "not_found" and first["LinkedIn"]["state"] == "blocked"
+    calls.clear()
+    second = by_platform(asyncio.run(pc.run_platform_check("Torvalds")))       # handles are not case sensitive
+    assert second["Instagram"]["state"] == "found" and second["X"]["state"] == "not_found"
+    assert second["Instagram"]["url"] == "https://www.instagram.com/Torvalds/"
+    assert not any("instagram.com" in c or "x.com" in c for c in calls)
+    assert any("linkedin.com" in c for c in calls) and any("tiktok.com" in c for c in calls)   # blocked and unknown are retried
+
+    # after the TTL the answer is fetched again
+    monkeypatch.setattr(pc, "CACHE_TTL", -1)
+    calls.clear()
+    asyncio.run(pc.run_platform_check("torvalds"))
+    assert any("instagram.com/torvalds" in c for c in calls)
+
+
+def test_the_cache_is_bounded(monkeypatch):
+    monkeypatch.setattr(pc, "CACHE_MAX", 3)
+    for i in range(6):
+        pc._cache_put(("Instagram", f"user{i}"), {"state": "found"})
+    assert len(pc._cache) == 3 and ("Instagram", "user5") in pc._cache and ("Instagram", "user0") not in pc._cache
+
+
+def test_platform_check_endpoint(c, monkeypatch):
+    fake_sites(monkeypatch, site_responder({"instagram.com/Err0ric": (200, fx("instagram_found_mixed_case.html"))}))
+    r = c.post("/api/recon/platform-check", json={"username": "Err0ric", "sherlock_sites": ["Facebook"]})
+    assert r.status_code == 200
+    body = r.json()
+    rows = by_platform(body)
+    assert rows["Instagram"]["state"] == "found" and rows["Instagram"]["found"] is True
+    assert rows["Instagram"]["display_name"] == "Eric Henderson" and body["total"] == 1
+    assert "Facebook" not in rows and rows["OnlyFans"]["state"] == "manual"
+
+
+def test_no_adult_platforms_were_added():
+    assert [p["name"] for p in pc.MANUAL_PLATFORMS] == ["OnlyFans"]
+    assert [r["name"] for r in pc.RULES] == ["Facebook", "Instagram", "X", "Threads", "TikTok", "LinkedIn"]

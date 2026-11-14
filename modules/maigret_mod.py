@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 
+from core.boilerplate import clean_bio
 from core.errors import error_fields
 from modules.sherlock import _classify_site, SORT_ORDER
 from core.subprocess_guard import tool_slot, ToolBusy, busy_result, log_result, log_process
@@ -39,7 +40,7 @@ _ID_KEYS = {"uid", "username", "account_id", "gaia_id"}
 _NAME_KEYS = ("fullname", "name", "nickname")
 
 
-def profile_signal(ids: dict | None) -> dict | None:
+def profile_signal(ids: dict | None, site: str = "", username: str = "") -> dict | None:
     """
     Maigret returns `ids` when it parsed real profile data from the page or API (a user id,
     display name, join date). That is the difference between "the URL answered" and "there is
@@ -53,10 +54,14 @@ def profile_signal(ids: dict | None) -> dict | None:
     if not has_id and len(fields) < 2:
         return None
     name = next((fields[k] for k in _NAME_KEYS if fields.get(k)), "")
+    # Sites with no bio hand back their own template ("x is on Snapchat!"). That is not a bio.
+    raw_bio = fields.get("bio") or fields.get("description") or ""
+    bio = clean_bio(raw_bio, site, username or fields.get("username", ""), name)
     out = {
         "name": name[:120],
         "location": fields.get("location", "")[:120],
-        "bio": (fields.get("bio") or fields.get("description") or "")[:300],
+        "bio": bio[:300],
+        "bio_boilerplate": bool(raw_bio) and not bio,
         "created_at": fields.get("created_at", "")[:40],
         "image": fields.get("image", "")[:500],
         "extractor": str(ids.get("_extractor", ""))[:60],
@@ -146,7 +151,7 @@ async def _run_maigret_impl(username: str, nsfw: bool = False, timeout: int = 18
                     category = str(tags) if tags else ""
 
                 confidence = _classify_site(site_name)
-                profile = profile_signal(status_obj.get("ids"))
+                profile = profile_signal(status_obj.get("ids"), site=site_name, username=username)
                 row = {
                     "site": site_name,
                     "url": url,
