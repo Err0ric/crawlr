@@ -1,0 +1,179 @@
+{
+ "_note": "Recorded 2026-11-14 from the public unauthenticated GitHub REST API, trimmed to the fields CrawlR reads.",
+ "social_accounts": [
+  {
+   "provider": "linkedin",
+   "url": "https://www.linkedin.com/in/eric-henderson-/"
+  },
+  {
+   "provider": "mastodon",
+   "url": "https://infosec.exchange/@Err0ric"
+  }
+ ],
+ "orgs": [],
+ "repos": [
+  {
+   "name": "crawlr",
+   "html_url": "https://github.com/Err0ric/crawlr",
+   "stargazers_count": 3,
+   "language": "HTML",
+   "description": null,
+   "fork": false
+  },
+  {
+   "name": "Err0ric",
+   "html_url": "https://github.com/Err0ric/Err0ric",
+   "stargazers_count": 0,
+   "language": "Python",
+   "description": "Open Source Github Profile README",
+   "fork": true
+  },
+  {
+   "name": "darkwire",
+   "html_url": "https://github.com/Err0ric/darkwire",
+   "stargazers_count": 1,
+   "language": "Python",
+   "description": "Security news and CVEs on one live board. No accounts. No ads. No tracking.",
+   "fork": false
+  },
+  {
+   "name": "lure",
+   "html_url": "https://github.com/Err0ric/lure",
+   "stargazers_count": 1,
+   "language": "Python",
+   "description": "Open-source test harness for AI agents: prompt injection, tool poisoning and MCP attacks in an isolated Docker sandbox, with approval reports mapped to MITRE ATLAS and OWASP LLM Top 10",
+   "fork": false
+  },
+  {
+   "name": "OSINT",
+   "html_url": "https://github.com/Err0ric/OSINT",
+   "stargazers_count": 1,
+   "language": null,
+   "description": ":scream: A curated list of amazingly awesome OSINT",
+   "fork": true
+  },
+  {
+   "name": "awesome-threat-intelligence",
+   "html_url": "https://github.com/Err0ric/awesome-threat-intelligence",
+   "stargazers_count": 1,
+   "language": null,
+   "description": "A curated list of Awesome Threat Intelligence resources",
+   "fork": true
+  },
+  {
+   "name": "skytrack",
+   "html_url": "https://github.com/Err0ric/skytrack",
+   "stargazers_count": 1,
+   "language": null,
+   "description": "skytrack is a planespotting and aircraft OSINT tool made using Python 🛩🔍",
+   "fork": true
+  }
+ ],
+ "keys": [],
+ "gpg_keys": [],
+ "events": [
+  {
+   "type": "PushEvent",
+   "actor": {
+    "login": "Err0ric"
+   },
+   "repo": {
+    "name": "Err0ric/crawlr"
+   },
+   "payload": {
+    "ref": "refs/heads/main",
+    "head": "0c1200b99d1fc61509af3a3406ff7e001e1c48fc",
+    "before": "19f916ab13474383b541b880d216dd2ba35cd486"
+   },
+   "created_at": "2026-11-14T17:41:11Z"
+  },
+  {
+   "type": "PullRequestEvent",
+   "actor": {
+    "login": "Err0ric"
+   },
+   "repo": {
+    "name": "Err0ric/crawlr"
+   },
+   "payload": {},
+   "created_at": "2026-11-14T17:46:32Z"
+  },
+  {
+   "type": "PullRequestEvent",
+   "actor": {
+    "login": "Err0ric"
+   },
+   "repo": {
+    "name": "Err0ric/crawlr"
+   },
+   "payload": {},
+   "created_at": "2026-11-14T17:41:10Z"
+  },
+  {
+   "type": "PushEvent",
+   "actor": {
+    "login": "Err0ric"
+   },
+   "repo": {
+    "name": "Err0ric/remnant"
+   },
+   "payload": {
+    "ref": "refs/heads/main",
+    "head": "e23a57c8e18c71af8107cb2c4d9be42647a05c45",
+    "before": "92b8ffcf03f7e9a9dc6ed4e1826e5ea9cedd8244"
+   },
+   "created_at": "2026-11-12T17:43:35Z"
+  }
+ ],
+ "commits": [
+  {
+   "sha": "47b492a33453ef288398912f4e2bb7c7fbf3c0b6",
+   "commit": {
+    "author": {
+     "name": "Err0ric",
+     "email": "143530211+Err0ric@users.noreply.github.com"
+    }
+   },
+   "author": {
+    "login": "Err0ric"
+   }
+  },
+  {
+   "sha": "0c1200b99d1fc61509af3a3406ff7e001e1c48fc",
+   "commit": {
+    "author": {
+     "name": "Err0ric",
+     "email": "143530211+Err0ric@users.noreply.github.com"
+    }
+   },
+   "author": {
+    "login": "Err0ric"
+   }
+  },
+  {
+   "sha": "19f916ab13474383b541b880d216dd2ba35cd486",
+   "commit": {
+    "author": {
+     "name": "Err0ric",
+     "email": "143530211+Err0ric@users.noreply.github.com"
+    }
+   },
+   "author": {
+    "login": "Err0ric"
+   }
+  },
+  {
+   "sha": "6618880dd81d0df2995e6ba19e6ea82485114ab5",
+   "commit": {
+    "author": {
+     "name": "Err0ric",
+     "email": "err0ric@example.org"
+    }
+   },
+   "author": {
+    "login": "Err0ric"
+   }
+  }
+ ],
+ "readme": "<img src=\"images/banner.svg\" width=\"100%\" alt=\"Err0ric\" />\n\n<img src=\"images/about.svg\" width=\"100%\" alt=\"About Me\"/>\n\n<p align=\"center\">\n  <a href=\"https://github.com/Err0ric/lure\"><img src=\"images/card_lure.svg\" width=\"97%\" alt=\"Lure: tests AI agents for prompt injection and tool abuse, with an isolated Docker sandbox and an approval report, mapped to MITRE ATLAS\" /></a>\n</p>\n\n<p align=\"center\">\n  <a href=\"https://darkwire.tech\"><img src=\"images/card_darkwire.svg\" width=\"32%\" alt=\"darkwire.tech\" /></a>\n  <a href=\"https://crawlr.lol\"><img src=\"images/card_crawlr.svg\" width=\"32%\" alt=\"crawlr.lol\" /></a>\n  <img src=\"images/card_remnant.svg\" width=\"32%\" alt=\"Remnant\" />\n</p>\n\n<img src=\"images/footer.svg\" width=\"100%\" alt=\"\" />\n\n<p align=\"center\">\n<picture>\n  <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://raw.githubusercontent.com/Err0ric/Err0ric/output/github-contribution-grid-snake-dark.svg\" />\n  <img src=\"https://raw.githubusercontent.com/Err0ric/Err0ric/output/github-contribution-grid-snake.svg\" width=\"80%\" alt=\"Contribution snake\" />\n</picture>\n</p>\n"
+}

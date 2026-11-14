@@ -10,6 +10,8 @@ beautifulsoup4==4.15.0
 sherlock-project==0.16.2
 holehe==1.61
 maigret==0.6.6
+# Already installed as a Maigret dependency; pinned because modules/avatar_hash.py imports it.
+pillow==13.0.0
 # theHarvester is intentionally NOT installed here. The PyPI package is a 2019 stub and the
 # upstream project hard-pins its own fastapi/uvicorn/dnspython versions and needs Python 3.12+,
 # so it cannot share this environment. It will be installed isolated (pipx) once the service
