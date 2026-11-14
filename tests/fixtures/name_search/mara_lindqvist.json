@@ -1,0 +1,351 @@
+{
+ "_note": "Invented person and records. Same response structure as the recorded set.",
+ "github": {
+  "total_count": 2,
+  "incomplete_results": false,
+  "items": [
+   {
+    "login": "mlindqvist-dev",
+    "id": 990000101,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000101?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/mlindqvist-dev",
+    "html_url": "https://github.com/mlindqvist-dev",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "maralindqvist",
+    "id": 990000102,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000102?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/maralindqvist",
+    "html_url": "https://github.com/maralindqvist",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "lindqvist-labs",
+    "id": 990000103,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000103?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/lindqvist-labs",
+    "html_url": "https://github.com/lindqvist-labs",
+    "type": "Organization",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   }
+  ]
+ },
+ "wikidata_search": {
+  "batchcomplete": "",
+  "query": {
+   "searchinfo": {
+    "totalhits": 3
+   },
+   "search": [
+    {
+     "ns": 0,
+     "title": "Q990000103",
+     "pageid": 37031
+    },
+    {
+     "ns": 0,
+     "title": "Q990000101",
+     "pageid": 37032
+    },
+    {
+     "ns": 0,
+     "title": "Q990000102",
+     "pageid": 37033
+    }
+   ]
+  }
+ },
+ "wikidata_entities": {
+  "entities": {
+   "Q990000103": {
+    "type": "item",
+    "id": "Q990000103",
+    "labels": {
+     "sv": {
+      "language": "sv",
+      "value": "Mara Lindqvist"
+     }
+    },
+    "descriptions": {
+     "sv": {
+      "language": "sv",
+      "value": "svensk orienterare"
+     }
+    },
+    "aliases": {},
+    "sitelinks": {}
+   },
+   "Q990000101": {
+    "type": "item",
+    "id": "Q990000101",
+    "labels": {
+     "en": {
+      "language": "en",
+      "value": "Mara Lindqvist"
+     },
+     "sv": {
+      "language": "sv",
+      "value": "Mara Lindqvist"
+     }
+    },
+    "descriptions": {
+     "en": {
+      "language": "en",
+      "value": "Swedish marine biologist"
+     }
+    },
+    "aliases": {},
+    "sitelinks": {
+     "enwiki": {
+      "site": "enwiki",
+      "title": "Mara Lindqvist (biologist)",
+      "badges": []
+     }
+    }
+   },
+   "Q990000102": {
+    "type": "item",
+    "id": "Q990000102",
+    "labels": {
+     "en": {
+      "language": "en",
+      "value": "Mara E. Lindqvist"
+     }
+    },
+    "descriptions": {
+     "en": {
+      "language": "en",
+      "value": "architect from Gothenburg"
+     }
+    },
+    "aliases": {
+     "en": [
+      {
+       "language": "en",
+       "value": "Mara Elin Lindqvist"
+      }
+     ]
+    },
+    "sitelinks": {}
+   }
+  },
+  "success": 1
+ },
+ "orcid": {
+  "expanded-result": [
+   {
+    "orcid-id": "0000-0000-0000-0019",
+    "given-names": "Tomas",
+    "family-names": "Lindqvist",
+    "credit-name": null,
+    "other-name": [],
+    "email": [],
+    "institution-name": [
+     "Lund University"
+    ]
+   },
+   {
+    "orcid-id": "0000-0000-0000-0027",
+    "given-names": "M.",
+    "family-names": "Lindqvist",
+    "credit-name": "M. Lindqvist",
+    "other-name": [],
+    "email": [],
+    "institution-name": []
+   },
+   {
+    "orcid-id": "0000-0000-0000-0035",
+    "given-names": "Mara",
+    "family-names": "Lindqvist",
+    "credit-name": null,
+    "other-name": [
+     "M. K. Lindqvist"
+    ],
+    "email": [
+     "mara@fixture.example"
+    ],
+    "institution-name": [
+     "Uppsala University",
+     "Nordic Institute of Oceanography",
+     "Example Polar Station",
+     "A Fourth Place"
+    ]
+   },
+   {
+    "orcid-id": "0000-0000-0000-004X",
+    "given-names": "Mara",
+    "family-names": "Lindqvist-Berg",
+    "credit-name": null,
+    "other-name": [],
+    "email": [],
+    "institution-name": [
+     "Chalmers University of Technology"
+    ]
+   },
+   {
+    "orcid-id": "not-an-orcid",
+    "given-names": "Mara",
+    "family-names": "Lindqvist",
+    "credit-name": null,
+    "other-name": [],
+    "email": [],
+    "institution-name": []
+   }
+  ],
+  "num-found": 5
+ },
+ "openalex": {
+  "meta": {
+   "notice": "No API key, so this request shares one free daily budget with everyone on your network's IP address.",
+   "count": 3,
+   "db_response_time_ms": 14,
+   "page": 1,
+   "per_page": 8,
+   "groups_count": null,
+   "cost_usd": 0.001
+  },
+  "results": [
+   {
+    "id": "https://openalex.org/A5990000002",
+    "display_name": "M. Lindqvist",
+    "display_name_alternatives": [
+     "M Lindqvist",
+     "Mara Lindqvist"
+    ],
+    "works_count": 1,
+    "last_known_institutions": [
+     {
+      "id": "https://openalex.org/I4403928327",
+      "ror": "https://ror.org/02krvw113",
+      "display_name": "Chalmers University of Technology",
+      "country_code": "SE",
+      "type": "education",
+      "lineage": [
+       "https://openalex.org/I4403928327"
+      ]
+     }
+    ],
+    "topics": []
+   },
+   {
+    "id": "https://openalex.org/A5990000001",
+    "display_name": "Mara Lindqvist",
+    "display_name_alternatives": [
+     "Mara Lindqvist"
+    ],
+    "works_count": 42,
+    "last_known_institutions": [
+     {
+      "id": "https://openalex.org/I4403928327",
+      "ror": "https://ror.org/02krvw113",
+      "display_name": "Uppsala University",
+      "country_code": "SE",
+      "type": "education",
+      "lineage": [
+       "https://openalex.org/I4403928327"
+      ]
+     }
+    ],
+    "topics": [
+     {
+      "id": "https://openalex.org/T11675",
+      "display_name": "Marine Biodiversity and Ecosystems",
+      "count": 8
+     },
+     {
+      "id": "https://openalex.org/T11676",
+      "display_name": "Coastal Sediment Dynamics",
+      "count": 7
+     },
+     {
+      "id": "https://openalex.org/T11677",
+      "display_name": "Arctic Climate Studies",
+      "count": 6
+     },
+     {
+      "id": "https://openalex.org/T11678",
+      "display_name": "A Fourth Topic",
+      "count": 5
+     }
+    ]
+   },
+   {
+    "id": "https://openalex.org/A5990000003",
+    "display_name": "Tomas Lindqvist",
+    "display_name_alternatives": [
+     "T. Lindqvist"
+    ],
+    "works_count": 9,
+    "last_known_institutions": null,
+    "topics": [
+     {
+      "id": "https://openalex.org/T11675",
+      "display_name": "Tribology",
+      "count": 8
+     }
+    ]
+   }
+  ],
+  "group_by": []
+ },
+ "bluesky": {
+  "actors": [
+   {
+    "did": "did:plc:fixture000000000000000011",
+    "handle": "tidepools.fixture-social.example",
+    "displayName": "Mara L.",
+    "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:fixture000000000000000011/bafkreifixture11",
+    "associated": {
+     "activitySubscription": {
+      "allowSubscriptions": "followers"
+     }
+    },
+    "labels": [],
+    "createdAt": "2024-10-20T21:03:11.112Z",
+    "indexedAt": "2024-10-23T13:04:20.309Z",
+    "description": "Photos of tide pools."
+   },
+   {
+    "did": "did:plc:fixture000000000000000012",
+    "handle": "mara-lindqvist.fixture-social.example",
+    "displayName": "Mara Lindqvist 🌊",
+    "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:fixture000000000000000012/bafkreifixture12",
+    "associated": {
+     "activitySubscription": {
+      "allowSubscriptions": "followers"
+     }
+    },
+    "labels": [],
+    "createdAt": "2024-10-20T21:03:11.112Z",
+    "indexedAt": "2024-10-23T13:04:20.309Z",
+    "description": "Marine biologist in Gothenburg.\nOpinions mine. https://cdn.fixture.example/me.png is not a bio"
+   },
+   {
+    "did": "did:plc:fixture000000000000000013",
+    "handle": "mlq.fixture-social.example",
+    "displayName": "Dr. Mara K. Lindqvist",
+    "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:fixture000000000000000013/bafkreifixture13",
+    "associated": {
+     "activitySubscription": {
+      "allowSubscriptions": "followers"
+     }
+    },
+    "labels": [],
+    "createdAt": "2024-10-20T21:03:11.112Z",
+    "indexedAt": "2024-10-23T13:04:20.309Z"
+   }
+  ]
+ }
+}
