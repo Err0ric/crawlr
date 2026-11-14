@@ -1,6 +1,6 @@
 # CrawlR
 
-![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.143-green) ![Live](https://img.shields.io/badge/live-crawlr.lol-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.143-green) ![License](https://img.shields.io/badge/license-MIT-purple) ![Live](https://img.shields.io/badge/live-crawlr.lol-brightgreen)
 
 > OSINT investigation in your browser. No install, no account, no API key. Bring your own key when you want more.
 
@@ -119,6 +119,6 @@ Found a vulnerability? See [SECURITY.md](SECURITY.md).
 - Shareable and exportable case reports
 - More sources, chosen through research into comparable tools
 
-## Author
+## License and author
 
-Built by Eric Henderson, [github.com/Err0ric](https://github.com/Err0ric).
+MIT, see [LICENSE](LICENSE). Built by Eric Henderson, [github.com/Err0ric](https://github.com/Err0ric).
