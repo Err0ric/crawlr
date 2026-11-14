@@ -1,0 +1,37 @@
+{
+ "domain": "darkwire.tech",
+ "found": true,
+ "grade": "F",
+ "spoofable": "yes",
+ "summary": "The domain can be spoofed in the From line: there is no enforced DMARC policy.",
+ "findings": [
+  {
+   "level": "flag",
+   "title": "No SPF record",
+   "detail": "Any server can claim to send mail for this domain, and receivers have no list to check against."
+  },
+  {
+   "level": "flag",
+   "title": "No DMARC record",
+   "detail": "Receivers are not told to reject mail that fails SPF and DKIM, and the owner gets no reports."
+  },
+  {
+   "level": "info",
+   "title": "No DKIM key at common selectors",
+   "detail": "Selectors cannot be listed from DNS, so this is not proof that DKIM is missing. Check a real message's DKIM-Signature header."
+  },
+  {
+   "level": "info",
+   "title": "No MX records",
+   "detail": "The domain does not receive mail. It can still be spoofed as a sender unless SPF and DMARC say otherwise."
+  }
+ ],
+ "spf": null,
+ "dmarc": null,
+ "mx": [],
+ "dkim": [],
+ "dkim_selectors_checked": 32,
+ "mta_sts": "",
+ "tls_rpt": "",
+ "bimi": ""
+}

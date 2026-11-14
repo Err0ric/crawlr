@@ -1,0 +1,20 @@
+{
+ "target": "darkwire.tech",
+ "ip": "216.198.79.1",
+ "found": true,
+ "source": "internetdb",
+ "ports": [
+  80,
+  443
+ ],
+ "vulns": [],
+ "vuln_count": 0,
+ "hostnames": [
+  "10c0b549a5d8fbfc.vercel-dns-017.com",
+  "nail-ao.com"
+ ],
+ "tags": [
+  "pqc"
+ ],
+ "cpes": []
+}
