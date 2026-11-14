@@ -186,11 +186,11 @@ const CARDS = {
     if (!r || r.error) return "";
     const asked = DIRECTORIES.filter((k) => r.sources[k]);
     const down = asked.filter((k) => r.sources[k].state === "failed" || r.sources[k].state === "rate_limited");
-    const word = (s) => (s.state === "ok" ? `${fmtNum(s.count)} kept${s.total != null && s.total > s.count ? ` of ${fmtNum(s.total)} the directory returned` : ""}`
+    const word = (s) => (s.state === "ok" ? `${fmtNum(s.count)} found${s.shown < s.count ? `, ${fmtNum(s.shown)} shown` : ""}${s.total != null && s.total > s.count ? ` (the directory returned ${fmtNum(s.total)})` : ""}`
       : s.state === "none" ? "answered, no one by this name" : s.state === "rate_limited" ? "unknown: rate limited" : `unknown: ${s.error || "failed"}`);
     return card(NAME_SOURCE, tag(plural(r.candidates.length, "candidate"), r.candidates.length ? "ok" : "") + (down.length ? " " + tag(`${fmtNum(down.length)} not asked`, "warn") : ""),
       h`<p class="muted">${NAME_NOTICE}</p>` + kv(asked.map((k) => [k, esc(word(r.sources[k]))]))
-      + h`<p class="muted small">Only rows whose name fits are kept. A directory that could not be asked is unknown, not "nobody by this name". The location, employer and keyword are compared here and never sent to a directory.</p>`);
+      + h`<p class="muted small">Only rows whose name fits are counted, and the list holds 30 in all, taken from every directory in turn. A directory that could not be asked is unknown, not "nobody by this name". The location, employer and keyword are compared here and never sent to a directory.</p>`);
   },
   reverseImage: (url) => {
     const q = encodeURIComponent(url);

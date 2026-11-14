@@ -1,6 +1,6 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
-import { buildEvidence, ledgerTiers, accountsFor, isFinding, factsFor, avatarImages, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
+import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
 import { makeAdultSwitch, adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultForAi, adultSummary, adultCheckText, guardText, ADULT_SWITCH, ADULT_SWITCH_DESC, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
@@ -9,7 +9,7 @@ import { reportHtml } from "./report.js";
 import { openModal, closeModal } from "./ui.js";
 import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText } from "./links.js";
 import { makeLinkChecker } from "./linkcheck.js";
-import { nameCase, nameNotices, nameKnown, nameTierView, nameForAi, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
+import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
 import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
 import { buildCaseFile } from "./casefile.js";
 
@@ -139,7 +139,6 @@ const tally = () => sourceTally({ ...tallyView(state.collected, state.target, st
 const failedSources = () => tally().rows.filter((r) => r.state === "failed");
 // Identical evidence means an identical AI answer, so a re-run can reuse the last one.
 const adultItems = (items) => items.filter((i) => i.tier === "adult");
-const signature = (items, facts) => JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]), adultForAi(adultItems(items)), state.type === "name" ? nameForAi(state.collected) : null]);
 const hasAdult = () => adultAllowed(state.collected, state.target, state.type);
 // Above the findings: what the adult and dating site rows are, or why they were not asked for.
 function adultNotice() {
@@ -165,8 +164,8 @@ function renderLedger() {
   // A name case opens with its caveat, always, then says how the search went.
   const isName = state.type === "name" && !state.nameInvalid;
   // When the search answered but its directories did not, the name notice already names each one.
-  const failedShown = failedSources().filter((f) => !(isName && f.key === "nameResult" && nameCase(state.collected).result));
-  $("#notices").innerHTML = (isName ? nameNoticesHtml(nameNotices(state.collected)) : "") + failedNotice(failedShown) + adultNotice() + (diff ? diffNotice(diff, state.prev.ts) : "");
+  const failedShown = failedSources().filter((f) => !(isName && f.key === "nameResult" && nameCase(state.collected, state.target).result));
+  $("#notices").innerHTML = (isName ? nameNoticesHtml(nameNotices(state.collected, state.target)) : "") + failedNotice(failedShown) + adultNotice() + (diff ? diffNotice(diff, state.prev.ts) : "");
   const nothing = state.running
     ? `<div class="empty"><h3>Collecting</h3><p>Findings appear here as each source answers.</p></div>`
     : state.nameInvalid ? h`<div class="empty"><h3>Not searched</h3><p>${state.nameInvalid} No directory was asked.</p></div>`
@@ -176,18 +175,25 @@ function renderLedger() {
   // The adult group says what its count is made of, under its heading.
   const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? { ...t, note: adultSummary(adultItems(items)) } : t)), items);
   renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier) });
+  paintSummary(ev);
+  checker.watch();
+}
+// What sits beside and above the rows: "What we know", the tab count and the brief. Drawn with the
+// ledger, and on its own when a single row changes.
+function paintSummary(ev) {
+  const { items, facts } = ev;
+  const isName = state.type === "name" && !state.nameInvalid;
   const emptyFacts = state.running ? "Collecting…" : "No facts extracted yet.";
   // A person case shows one identity at a time, so one person's name never sits beside another's.
   // state.view is only ever what the investigator picked; with no pick the primary cluster shows.
   // A name case selects nobody: no facts, no identity, only what is known about the search.
-  if (isName && !state.running) renderNameKnown($("#facts"), nameKnown(state.collected));
+  if (isName && !state.running) renderNameKnown($("#facts"), nameKnown(state.collected, state.target));
   else if (ev.identity.views.length) renderIdentityFacts($("#facts"), ev.identity, (id) => factsFor(ev, id), state.view, emptyFacts);
   else renderFacts($("#facts"), facts, emptyFacts);
   if (state.type === "name") setTabCount($("#tabFindings"), "Candidates", items.filter((i) => i.tier === "people").length);
   else setTabCount($("#tabFindings"), "Findings", items.filter(isFinding).length);
   // The written brief waits for the run to finish, so it never describes half a picture.
   renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), type: state.type, target: state.target }));
-  checker.watch();
 }
 bindLedger($("#ledger"), checkKey);
 
@@ -299,7 +305,7 @@ function renderAiPanel() {
     if (state.running) { box.innerHTML = note("Available when the sources finish. AI never runs on its own."); return; }
     if (!state.target || !hasData()) { box.innerHTML = note(state.target ? "Nothing to analyze yet." : "Run a target first. AI analysis is optional and only runs when you ask."); return; }
     // With candidates on screen the offer is a comparison of them; without, the older search plan.
-    box.innerHTML = aiStartHtml("inv", state.type === "name" && nameCase(state.collected).people.length ? AI_PITCH.nameFound : AI_PITCH[state.type] || AI_PITCH.username);
+    box.innerHTML = aiStartHtml("inv", state.type === "name" && nameCase(state.collected, state.target).people.length ? AI_PITCH.nameFound : AI_PITCH[state.type] || AI_PITCH.username);
     return;
   }
   const canDeep = srcOn("active") && profileUrls().length && aiAvailable();
@@ -506,7 +512,7 @@ export async function run(targetRaw, typeOverride) {
   // The last saved run of this target, for "what changed" and to reuse its AI report.
   const last = getHistory().find((e) => e.type === "INVESTIGATE" && e.v2 && e.target.toLowerCase() === target.toLowerCase());
   let prev = null;
-  if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: signature(ev.items, ev.facts) }; }
+  if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: aiSignature(scrubNames(last.results || {}, last.target), last.target, last.kind) }; }
 
   checker.reset(); linkRow = null; nameError(""); state.nameInvalid = "";
   // The switch as it stands for this handle, and only if the handle passes the minor guard.
@@ -603,7 +609,7 @@ export async function run(targetRaw, typeOverride) {
   log.finish(sum.log, sum.t.failed);
   renderHead(sum.head);
   // Same evidence as last time: show the report already paid for instead of asking again.
-  if (!state.cancelled && prev?.ai && prev.sig === signature(items, facts)) state.ai = { ...prev.ai, reused: true };
+  if (!state.cancelled && prev?.ai && prev.sig === aiSignature(state.collected, state.target, state.type)) state.ai = { ...prev.ai, reused: true };
   renderLedger(); renderSourceCards(); renderAiPanel();
   if (Object.keys(c).length) saveHistory();
 }
@@ -613,28 +619,40 @@ export async function run(targetRaw, typeOverride) {
 // one login, once, and keeps four text fields in the case (never the picture). The row then
 // shows the name and bio and is re-matched against the searched name. A failure or a rate limit
 // is kept as unknown, with "Try again" on the row. Nothing here runs without the click.
+// Loading and its outcome are said through a polite live region, the row is marked busy, and
+// only that row is redrawn: other rows that are loading keep their state, the groups stay as
+// they are, and focus stays where the investigator is.
 const profileBusy = new Set();
+const profileLive = document.createElement("div");
+profileLive.className = "sr-only"; profileLive.setAttribute("role", "status"); profileLive.setAttribute("aria-live", "polite");
+$("#ledger").after(profileLive);
 $("#ledger").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-name-profile]");
   if (!b) return;
   const login = b.dataset.nameProfile, target = state.target;
   if (state.type !== "name" || state.running || profileBusy.has(login)) return;
   // Only a login this case's GitHub rows carry, and only one that has not been read.
-  if (!nameCase(state.collected).people.some((r) => r.source === "GitHub" && r.handle === login && (r.profile === "none" || r.profile === "unknown"))) return;
-  profileBusy.add(login); b.disabled = true; b.textContent = "Loading…";
+  if (!nameCase(state.collected, state.target).people.some((r) => r.source === "GitHub" && r.handle === login && (r.profile === "none" || r.profile === "unknown"))) return;
+  profileBusy.add(login);
+  // aria-disabled, not disabled: the button keeps focus while it loads.
+  b.setAttribute("aria-disabled", "true"); b.innerHTML = h`Loading…<span class="sr-only">: ${login}</span>`;
+  b.closest(".ev")?.setAttribute("aria-busy", "true");
+  profileLive.textContent = profileStatus(login, "loading");
   let p;
   try { p = readProfile(await post("/api/recon/github", { username: login })); }
   catch (err) { p = { error: err.detail || err.message, error_code: err.status === 429 || err.code === "rate_limited" ? "rate_limited" : "request_failed" }; }
   profileBusy.delete(login);
   if (state.target !== target || state.type !== "name" || state.running) return;
-  state.collected.nameProfiles = { ...readProfiles(state.collected.nameProfiles), [login]: p || { error: "The answer could not be read.", error_code: "bad_response" } };
+  p ||= { error: "The answer could not be read.", error_code: "bad_response" };
+  state.collected.nameProfiles = { ...readProfiles(state.collected.nameProfiles), [login]: p };
   saveHistory();
-  // The groups stay as the investigator left them, and focus follows the row (it may move to the end).
-  const closed = new Set($$("#ledger .tier.collapsed").map((t) => t.dataset.tier)), was = new Set($$("#ledger .tier").map((t) => t.dataset.tier));
-  renderLedger();
-  for (const t of $$("#ledger .tier")) if (was.has(t.dataset.tier)) { const shut = closed.has(t.dataset.tier); t.classList.toggle("collapsed", shut); t.querySelector(".tier-head")?.setAttribute("aria-expanded", !shut); }
-  const row = $$("#ledger .ev[data-row]").find((r) => r.dataset.row === `cand:github:${login.toLowerCase()}`);
-  (row?.querySelector("[data-name-profile]") || row?.querySelector("a.lk") || row?.querySelector("[data-pivot]") || row?.querySelector("input[type=checkbox]"))?.focus({ preventScroll: true });
+  const ev = evidence(), key = `cand:github:${login.toLowerCase()}`;
+  const it = ev.items.find((x) => x.key === key);
+  const row = $$("#ledger .ev[data-row]").find((r) => r.dataset.row === key);
+  if (it && row && patchRow($("#ledger"), it, document, { actions: true })) row.setAttribute("aria-busy", "false");
+  else renderLedger();
+  paintSummary(ev);
+  profileLive.textContent = profileStatus(login, "done", p);
 });
 
 // ---- history ------------------------------------------------------------------------
@@ -658,7 +676,7 @@ export function loadHistory(idOrEntry) {
   // only if it recorded that the mode was on; otherwise any such row is dropped here.
   adultSwitch.reset();
   const kind = e.kind || detect(e.target);
-  Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", nameInvalid: "", collected: scrubNames(scrubCollected(e.results || {}, e.target, kind)), ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
+  Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", nameInvalid: "", collected: scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target), ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
   $("#targetInput").value = e.target;
   // Opening a saved name case puts its qualifiers back and fetches nothing.
   nameError(""); setQualifiers(state.collected.nameQualifiers);

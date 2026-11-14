@@ -341,8 +341,10 @@ document.addEventListener("click", (e) => { if (e.target.closest("[data-open-use
 // ---- terms ---------------------------------------------------------------------------------
 // The gate cannot be dismissed with Escape, the backdrop or a close button: the only way
 // through is to tick the box and continue.
+const TERMS_KEY = "crawlr_terms_v2";
 function termsIfNeeded() {
-  if (store.get("crawlr_terms_v1")) return false;
+  // v2: the gate gained the sentence about name searches, so everyone sees it once more.
+  if (store.get(TERMS_KEY)) return false;
   const el = openModal({
     title: "Before you start",
     required: true,
@@ -352,11 +354,12 @@ function termsIfNeeded() {
       <p>Results come from third parties and can be wrong. "Unverified" findings are leads to check, not facts, and a profile that exists shows that a handle is taken, not who owns it.</p>
       <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled and stay off until you turn them on. Only scan hosts you own or are authorized to test.</p>
       <p>Adult and dating sites are checked only when you switch that on for a case: existence checks only, never for a handle that suggests a minor, and only for lawful purposes.</p>
+      <p>A name search asks public directories (Wikidata, GitHub, ORCID, OpenAlex and Bluesky) who shares a name and lists them as candidates. It does not tell you which of them is the person you mean.</p>
       <p>Your cases and notes stay in this browser. Don't collect more about a person than your purpose needs.</p>
       <p>The full acceptable-use statement is always under Settings.</p>
       <label class="terms-ok"><input type="checkbox" id="termsOk"> I understand and will use CrawlR responsibly.</label>
     </div>`,
-    actions: [{ label: "Continue", primary: true, disabled: true, onClick: (m) => { if (!m.querySelector("#termsOk").checked) return; store.set("crawlr_terms_v1", Date.now()); closeModal({ restore: false }); show(current || "landing"); } }],
+    actions: [{ label: "Continue", primary: true, disabled: true, onClick: (m) => { if (!m.querySelector("#termsOk").checked) return; store.set(TERMS_KEY, Date.now()); closeModal({ restore: false }); show(current || "landing"); } }],
   });
   el.querySelector("#termsOk").addEventListener("change", (e) => { el.querySelector("[data-action]").disabled = !e.target.checked; });
   return true;

@@ -292,6 +292,16 @@ const TLDS = new Set(("com org net edu gov mil int io co dev app ai me us uk ca 
   "solutions agency media design studio email zone guru ninja rocks lol wtf gg tv cc ly fm to sh so gl ws la page blog news tools security link run host website tk ml ga cf gq su").split(" "));
 const isDomain = (t) => RE.domain.test(t) && TLDS.has(t.split(".").pop().toLowerCase());
 
+// A person's name of two or more words, as the server's person_name accepts it: letters from any
+// script with hyphens, apostrophes, periods or a middle dot. A word with a dot between two longer
+// parts ("john.smith", "example.com") is a handle or a host, never a name, and a single word stays
+// a username unless the investigator picks Name.
+const NAME_WORD = /^[\p{L}\p{M}'\u2019\u02bc.\u00b7-]+$/u, DOTTED_WORD = /[\p{L}\p{M}\p{N}_]{2,}\.[\p{L}\p{M}\p{N}_]{2,}/u;
+export function looksLikeName(t) {
+  const words = String(t ?? "").trim().split(/\s+/);
+  return words.length > 1 && String(t).trim().length <= 80 && words.every((w) => NAME_WORD.test(w) && /\p{L}/u.test(w) && !w.startsWith("-") && !DOTTED_WORD.test(w));
+}
+
 export function detect(input) {
   const t = String(input ?? "").trim();
   if (!t) return "";
@@ -303,7 +313,7 @@ export function detect(input) {
   if (RE.hash.test(t)) return "hash";
   if (RE.phone.test(t) && t.replace(/\D/g, "").length >= 7 && t.replace(/\D/g, "").length <= 15) return "phone";
   if (isDomain(t)) return "domain";
-  if (RE.name.test(t)) return "name";
+  if (RE.name.test(t) || looksLikeName(t)) return "name";
   return "username";
 }
 export const TYPE_LABEL = { email: "Email", username: "Username", domain: "Domain", ip: "IP address", asn: "ASN", hash: "Hash", phone: "Phone", name: "Name", headers: "Email headers", multi: "Multiple targets" };

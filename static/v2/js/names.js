@@ -19,7 +19,7 @@ import { classifyLink, parseUrl } from "./links.js";
 export const NAME_NOTICE = "A name is shared by many people. Everything below is a candidate to look at, not a finding about one person.";
 export const NAME_SOURCE = "Name search";
 export const NAME_SOURCE_DESC = "people with this name in Wikidata, GitHub, ORCID, OpenAlex and Bluesky";
-export const NAME_NOT_USABLE = "That is not a usable name. Use 2 to 80 letters; spaces, hyphens, apostrophes and periods are allowed.";
+export const NAME_NOT_USABLE = "That is not a usable name. Enter 2 to 80 characters: letters from any script, with spaces, hyphens, apostrophes, periods or a middle dot.";
 export const NO_ONE_SELECTED = "No single person is selected. Pick a candidate or a handle to investigate.";
 export const NEXT_STEP = "Pick the person you mean, then investigate their handle.";
 export const DIRECTORIES = ["Wikidata", "GitHub", "ORCID", "OpenAlex", "Bluesky"];
@@ -56,37 +56,65 @@ const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const list = (arr) => (arr.length < 2 ? arr.join("") : `${arr.slice(0, -1).join(", ")} and ${arr[arr.length - 1]}`);
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
-// Lowercase, accents removed, punctuation out: the form two spellings are compared in.
-// The same folding as modules/name_search.py, so a row re-matched here agrees with the server.
-const ASCII_MAP = { "ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "đ": "d", "ð": "d", "ł": "l", "þ": "th", "ı": "i", "ħ": "h" };
+// Lowercase, punctuation out, and accents removed from Latin, Greek and Cyrillic letters: the form
+// two spellings are compared in. In every other script a combining mark is part of the letter (a
+// Devanagari vowel sign, a Japanese voicing mark, a Thai vowel), so it stays.
+// The same function as fold() in modules/name_search.py. tests/fixtures/name_text.json holds the
+// pairs both must produce, so a row re-matched here agrees with the server.
+const ASCII_MAP = { "ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "đ": "d", "ð": "d", "ł": "l", "þ": "th", "ı": "i", "ħ": "h", "ς": "σ" };
+const MARK = /[\p{Mn}\p{Mc}]/u, WORD = /[\p{L}\p{N}]/u, ACCENTED = /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]/u;
 export function fold(text) {
-  return String(text ?? "").normalize("NFKD").toLowerCase()
-    .replace(/[ßæœøđðłþıħ]/g, (c) => ASCII_MAP[c]).replace(/\p{Mn}/gu, "").replace(/['’ʼ]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const s = String(text ?? "").normalize("NFKD").toLowerCase()
+    .replace(/[ßæœøđðłþıħς]/g, (c) => ASCII_MAP[c])
+    // Inside a word and not part of its spelling: apostrophes, the middle dot, zero width joiners.
+    .replace(/['\u2019\u02bc\u00b7\u200c\u200d]/g, "");
+  let out = "", accents = false;
+  for (const ch of s) {
+    if (MARK.test(ch)) { if (!accents) out += ch; }
+    else if (WORD.test(ch)) { out += ch; accents = ACCENTED.test(ch); }
+    else { out += " "; accents = false; }
+  }
+  return out.trim().replace(/\s+/g, " ");
 }
+// Picture links are not text. A Markdown image goes whole; a URL goes when it ends in an image
+// extension, whatever punctuation follows it. The same two rules as strip_images() on the server.
+const MD_IMAGE = /!\[[^\]\n]*\]\([^)\n]*\)/g;
+const IMAGE_URL = /https?:\/\/[^\s<>"'()[\]]*\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico)(?:[?#][^\s<>"'()[\]]*)?(?![A-Za-z0-9_-])/gi;
+export const stripImages = (text) => String(text ?? "").replace(MD_IMAGE, " ").replace(IMAGE_URL, " ").trim().split(/\s+/).filter(Boolean).join(" ");
+
+// Generational and professional suffixes are not a family name. Compared without periods.
+const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "phd", "md", "esq"]);
 export function parseName(name) {
-  const parts = String(name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return { given: parts[0] || "", middle: "", family: "", single_token: true };
-  return { given: parts[0], middle: parts.slice(1, -1).join(" "), family: parts[parts.length - 1], single_token: false };
+  const parts = String(name ?? "").trim().split(/\s+/).filter(Boolean), suffix = [];
+  while (parts.length > 1 && SUFFIXES.has(parts[parts.length - 1].replace(/\./g, "").toLowerCase())) suffix.unshift(parts.pop());
+  if (parts.length < 2) return { given: parts[0] || "", middle: "", family: "", suffix: suffix.join(" "), single_token: true };
+  return { given: parts[0], middle: parts.slice(1, -1).join(" "), family: parts[parts.length - 1], suffix: suffix.join(" "), single_token: false };
 }
 // How well the best of `names` fits the searched name: "exact", "tokens" (every word is there),
-// "partial" (the family name plus the given initial) or null. `fullHandles` are the suggested
-// handles that spell out both names.
+// "partial" (the family name plus the bare initial of the given name, "L. Torvalds") or null.
+// Another given name with the same first letter is a different person. The suffix is left out of
+// the comparison. `fullHandles` are the suggested handles that spell out both names.
 export function matchName(searched, names, { handle = "", fullHandles = [] } = {}) {
-  const folded = fold(searched), words = folded.split(" ").filter(Boolean);
+  const parsed = parseName(searched);
+  const folded = fold([parsed.given, parsed.middle, parsed.family].filter(Boolean).join(" ")), full = fold(searched);
+  const words = folded.split(" ").filter(Boolean);
   if (!words.length) return null;
-  const parsed = parseName(searched), given = fold(parsed.given), family = fold(parsed.family);
+  const given = fold(parsed.given), family = fold(parsed.family);
   let best = null;
   for (const raw of [].concat(names || [])) {
     const w = fold(raw).split(" ").filter(Boolean);
     if (!w.length) continue;
-    if (w.join(" ") === folded) return "exact";
+    if (w.join(" ") === folded || w.join(" ") === full) return "exact";
     if (words.every((x) => w.includes(x))) best = "tokens";
-    else if (best === null && !parsed.single_token && family && w.includes(family) && w.some((x) => x !== family && x[0] === given[0])) best = "partial";
+    else if (best === null && !parsed.single_token && family && w.includes(family) && !!given && w.includes([...given][0])) best = "partial";
   }
   if (best !== "tokens" && handle && fullHandles.includes(String(handle).toLowerCase())) best = "tokens";
   return best;
 }
+// A stored result belongs to a case only when its name is the case's target: the same text after
+// the server's own tidying (composed form, straight apostrophes, single spaces), whatever the case.
+const normName = (v) => String(v ?? "").normalize("NFC").replace(/[\u2019\u02bc]/g, "'").replace(/[\u200c\u200d]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+export const sameName = (a, b) => normName(a) !== "" && normName(a) === normName(b);
 // Which qualifiers appear as whole words in the given fields.
 export function qualifierHits(qualifiers, ...fields) {
   const text = ` ${fold(fields.filter(Boolean).join(" \n "))} `;
@@ -132,7 +160,7 @@ function readCandidate(c) {
   const built = URL_OF[c.source](handle);
   return {
     source: c.source, kind: KIND[c.source], name: line(c.name, 120), handle, url: sameUrl(c.url, built) ? built : "",
-    description: line(c.description, 240), location: line(c.location, 120), affiliation: line(c.affiliation, 200),
+    description: line(stripImages(line(c.description, 2000)), 240), location: line(c.location, 120), affiliation: line(c.affiliation, 200),
     name_match: c.name_match, qualifier_hits: QUALIFIERS.filter((k) => Array.isArray(c.qualifier_hits) && c.qualifier_hits.includes(k)),
   };
 }
@@ -154,10 +182,12 @@ export function readNameResult(raw) {
   for (const d of DIRECTORIES) {
     const s = raw.sources[d];
     if (!isObj(s) || !STATES.includes(s.state)) continue;
-    const count = candidates.filter((c) => c.source === d).length;
     const bad = s.state === "failed" || s.state === "rate_limited";
-    // A directory is "ok" only while it has rows here; rows that did not pass the checks are gone.
-    sources[d] = { state: bad ? s.state : count ? "ok" : "none", count, total: Number.isInteger(s.total) && s.total >= 0 ? s.total : null,
+    // shown: its rows in the list here. count: how many fit the name, which can be more, because
+    // the list is capped. A directory with matches is "ok" even when none of them is shown.
+    const shown = candidates.filter((c) => c.source === d).length;
+    const count = bad ? 0 : Math.max(shown, Number.isInteger(s.count) && s.count > 0 ? Math.min(s.count, 50) : 0);
+    sources[d] = { state: bad ? s.state : count ? "ok" : "none", count, shown, total: Number.isInteger(s.total) && s.total >= 0 ? s.total : null,
       ...(bad ? { error: line(s.error, 200), error_code: /^[a-z_]{1,40}$/.test(s.error_code) ? s.error_code : "unknown", error_detail: line(s.error_detail, 300) } : {}) };
   }
   const hs = new Set(), handles = [];
@@ -179,7 +209,7 @@ export function readProfile(v) {
   if (v.error || v.error_code) return { error: line(String(v.error || "Failed"), 200) || "Failed", error_code: /^[a-z_]{1,40}$/.test(v.error_code) ? v.error_code : "unknown" };
   if (v.found === false) return { found: false };
   if (v.found !== true) return null;
-  return { found: true, name: line(v.name, 120), bio: line(v.bio, 240), location: line(v.location, 120), company: line(v.company, 200) };
+  return { found: true, name: line(v.name, 120), bio: line(stripImages(line(v.bio, 2000)), 240), location: line(v.location, 120), company: line(v.company, 200) };
 }
 export function readProfiles(map) {
   const out = {};
@@ -191,10 +221,12 @@ export function readProfiles(map) {
   return out;
 }
 // The name-case values of a stored case, re-checked. Everything else in `collected` is left alone.
-export function scrubNames(collected) {
+// A result for another name than the case's target is dropped: a case file must not be able to
+// show, search or send one person's rows under another person's name.
+export function scrubNames(collected, target) {
   if (!isObj(collected)) return {};
   const out = { ...collected };
-  if ("nameResult" in out) { const r = readNameResult(out.nameResult); if (r) out.nameResult = r; else delete out.nameResult; }
+  if ("nameResult" in out) { const r = readNameResult(out.nameResult); if (r && (r.error || sameName(r.name, target))) out.nameResult = r; else delete out.nameResult; }
   if ("nameProfiles" in out) { const p = readProfiles(out.nameProfiles); if (Object.keys(p).length) out.nameProfiles = p; else delete out.nameProfiles; }
   if ("nameQualifiers" in out) { const q = readQualifiers(out.nameQualifiers); if (hasQualifiers(q)) out.nameQualifiers = q; else delete out.nameQualifiers; }
   if ("nameSearch" in out && typeof out.nameSearch !== "string") delete out.nameSearch;
@@ -207,13 +239,15 @@ export function scrubNames(collected) {
 //   account now) or "unknown" (the lookup failed or was rate limited)
 //   name_match: the server's, or re-evaluated against the name on the loaded profile ("none"
 //   when that name does not fit at all). Rows that do not fit go to the end of the group.
-export function nameCase(collected, target = "") {
+export function nameCase(collected, target) {
   const read = readNameResult(collected?.nameResult);
-  const result = read && !read.error ? read : null;
+  // Only a result for this case's own target is used. Anything else is treated as no result.
+  const result = read && !read.error && sameName(read.name, target) ? read : null;
   const qualifiers = readQualifiers(collected?.nameQualifiers);
   const profiles = readProfiles(collected?.nameProfiles);
-  // The name comes from the case, never from the target box: a string the server refused is not searched anywhere.
-  const name = (result && result.name) || line(collected?.nameSearch, 200);
+  // The name everything is built from is the case's target, the one in the header, and only for a
+  // case that was searched: a string the server refused has no saved name and gets no rows.
+  const name = result || typeof collected?.nameSearch === "string" || (read && read.error) ? line(String(target ?? ""), 200) : "";
   const fullHandles = (result?.handles || []).filter((x) => !SHORT_PATTERNS.has(x.pattern)).map((x) => x.value.toLowerCase());
   const people = (result?.candidates || []).map((c) => {
     if (c.source !== "GitHub") return { ...c, profile: "" };
@@ -242,7 +276,8 @@ const STATE_WORD = { none: "none", failed: "failed", rate_limited: "rate limited
 export function directoryText(raw) {
   const r = readNameResult(raw);
   if (!r || r.error) return "";
-  return DIRECTORIES.filter((d) => r.sources[d]).map((d) => `${d} ${r.sources[d].state === "ok" ? r.sources[d].count : STATE_WORD[r.sources[d].state]}`).join(" · ");
+  const n = (s) => `${s.count}${s.shown < s.count ? ` (${s.shown} shown)` : ""}`;
+  return DIRECTORIES.filter((d) => r.sources[d]).map((d) => `${d} ${r.sources[d].state === "ok" ? n(r.sources[d]) : STATE_WORD[r.sources[d].state]}`).join(" · ");
 }
 const whyDown = (s) => (s.state === "rate_limited" ? "rate limited" : s.error || "failed");
 
@@ -296,7 +331,7 @@ export function searchLinks(name, qualifiers = {}) {
 // Rows for the four name groups, in order. A row's link: the public figure links to Wikipedia
 // and Wikidata as evidence, a candidate links to the record its directory returned, a suggested
 // handle has no link, and a search row is an outbound search.
-export function nameItems(collected, target = "") {
+export function nameItems(collected, target) {
   const nc = nameCase(collected, target);
   const items = [];
   if (nc.notable) {
@@ -326,7 +361,7 @@ export function nameItems(collected, target = "") {
 // What stands above the rows: the caveat, always, then the state of the search in words. The
 // three states stay apart: every directory answered and none had the name, some could not be
 // asked, or none could.
-export function nameNotices(collected, target = "") {
+export function nameNotices(collected, target) {
   const nc = nameCase(collected, target);
   const out = [{ level: "note", text: NAME_NOTICE }];
   if (!nc.result) return out;
@@ -341,7 +376,7 @@ export function nameNotices(collected, target = "") {
 }
 const qualifierText = (nc) => list(nc.given.map((k) => `${QUALIFIER_LABEL[k].toLowerCase()} "${nc.qualifiers[k]}"`));
 // "What we know" for a name case. No identity is selected, so there are no facts.
-export function nameKnown(collected, target = "") {
+export function nameKnown(collected, target) {
   const nc = nameCase(collected, target);
   const lines = [];
   if (nc.notable) lines.push(`A public figure has this name: ${nc.notable.name}${nc.notable.description ? `, ${nc.notable.description}` : ""} (Wikidata). That does not make them the person you mean.`);
@@ -349,7 +384,7 @@ export function nameKnown(collected, target = "") {
   return { lead: NO_ONE_SELECTED, lines };
 }
 // "At a glance" rows for a name case: [{ level, text, ev? }].
-export function nameBrief(collected, target = "") {
+export function nameBrief(collected, target) {
   const nc = nameCase(collected, target);
   const rows = [];
   const add = (level, text, ev) => rows.push({ level, text, ...(ev ? { ev } : {}) });
@@ -357,8 +392,9 @@ export function nameBrief(collected, target = "") {
   if (!nc.result) { add("info", "No directory was searched for this case. The links under Search the web open searches for you to run by hand."); return rows; }
   const src = nc.result.sources;
   const withRows = nc.answered.filter((d) => src[d].count > 0);
-  if (nc.single) add("flag", "A one-word name matches too many people, so only exact matches on Wikidata, GitHub and Bluesky were looked for. Use a first and last name for a wider search.");
-  if (nc.people.length) add("info", `${plural(nc.people.length, "candidate")} in ${withRows.length} of ${plural(nc.asked.length, "directory", "directories")} (${withRows.map((d) => `${d} ${src[d].count}`).join(", ")}). They share the name; they are not one person, and one person can appear once per directory.`);
+  if (nc.single) add("flag", `A one-word name matches too many people, so only exact matches on ${list(nc.asked) || "a few directories"} were looked for. Use a first and last name for a wider search.`);
+  const hidden = withRows.reduce((sum, d) => sum + src[d].count - src[d].shown, 0);
+  if (nc.people.length) add("info", `${plural(nc.people.length, "candidate")} in ${withRows.length} of ${plural(nc.asked.length, "directory", "directories")} (${withRows.map((d) => `${d} ${src[d].shown}${src[d].shown < src[d].count ? ` of ${src[d].count}` : ""}`).join(", ")}). They share the name; they are not one person, and one person can appear once per directory.${hidden ? ` ${plural(hidden, "more row")} fit the name and ${hidden === 1 ? "is" : "are"} not shown: the list holds 30.` : ""}`);
   else if (nc.answered.length && !nc.down.length) add("info", `None of the ${plural(nc.answered.length, "directory", "directories")} asked lists a person with this name.`);
   else if (nc.answered.length) add("info", `No one by this name in the ${plural(nc.answered.length, "directory", "directories")} that answered.`);
   if (nc.notable) add("info", `A public figure has this name: ${nc.notable.name}${nc.notable.description ? `, ${nc.notable.description}` : ""}. Do not assume the person you mean is this one.`, nc.notable.wikipedia ? { url: nc.notable.wikipedia, label: "Wikipedia" } : nc.notable.url ? { url: nc.notable.url, label: "Wikidata" } : null);
@@ -374,20 +410,29 @@ export function nameBrief(collected, target = "") {
   return rows;
 }
 
+// What a screen reader hears while one GitHub profile loads, and when it has.
+export function profileStatus(login, phase, profile) {
+  if (phase === "loading") return `Loading the GitHub profile for ${login}`;
+  if (profile && profile.found === true) return `Profile loaded for ${login}`;
+  if (profile && profile.found === false) return `GitHub has no account named ${login} now`;
+  return `Could not load the profile for ${login}. It is unknown, not absent.`;
+}
+
 // ---- AI and exports --------------------------------------------------------------------
-// What the model is told about a name case: text only, the rows as the screen shows them. Null
-// when no directory answered, so the request is the same as before name search existed.
-export function nameForAi(collected, target = "") {
+// What the model is told about a name case: text only, the rows as the screen shows them, and
+// which directories answered and which could not be asked. Null when none answered.
+export function nameForAi(collected, target) {
   const nc = nameCase(collected, target);
-  if (!nc.result) return null;
+  // No directory answered: nothing is known, so nothing is said. "Nobody found" would be false.
+  if (!nc.result || !nc.answered.length) return null;
   return {
-    name: nc.name.slice(0, 200), qualifiers: nc.qualifiers,
+    name: nc.name.slice(0, 200), qualifiers: nc.qualifiers, answered: nc.answered, unanswered: nc.down,
     notable: nc.notable ? { name: nc.notable.name, description: nc.notable.description } : null,
     candidates: nc.people.map((r) => ({ source: r.source, name: r.name, handle: r.handle, description: r.description, location: r.location, affiliation: r.affiliation, name_match: r.name_match, qualifier_hits: r.qualifier_hits })),
   };
 }
 // The opening of a name case in the Markdown export: the caveat, the search state, what is known.
-export function nameMarkdownHead(collected, target = "") {
+export function nameMarkdownHead(collected, target) {
   const k = nameKnown(collected, target);
   return [`> ${NAME_NOTICE}`, "", ...nameNotices(collected, target).slice(1).flatMap((n) => [`**${n.title}** ${n.text}`, ""]), "## What we know", `- ${k.lead}`, ...k.lines.map((l) => `- ${l}`), ""];
 }

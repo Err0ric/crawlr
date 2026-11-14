@@ -566,6 +566,14 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
   };
 }
 
+// What an AI report was written from. Two runs with the same signature get the same report, so a
+// re-run can reuse the last one. Computed from the case it is given, never from the one on screen.
+export function aiSignature(collected, target, type) {
+  const { items, facts } = buildEvidence(collected, target, type);
+  return JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]),
+    adultForAi(items.filter((i) => i.tier === "adult")), type === "name" ? nameForAi(withoutAdult(collected), target) : null]);
+}
+
 // The profile pages a Deep Dive may read. Built from the adult-free view, and a URL whose host is
 // on the adult and dating list is left out whatever row it sits on: the scraper refuses those.
 export function deepDiveUrls(collected) {

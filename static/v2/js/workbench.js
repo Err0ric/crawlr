@@ -111,24 +111,37 @@ export function evWhat(it) {
     + (it.meta ? h`<span class="meta">${it.meta}</span>` : "")
     + (it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "");
 }
+// The right side of a row: its buttons, then its source. The profile button's name is its visible
+// text plus the login for screen readers, so the text can change to "Loading…" and be heard.
+export const evSrc = (it) => (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
+  + (it.action ? h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${it.action.type ? raw(h`data-pivot-type="${it.action.type}"`) : ""} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>` : "")
+  + esc(it.source);
 // Replaces one row's text in place after its link was checked, and moves a row whose page was
 // not found to the end of its group. Nothing else on the page moves.
 // Focus stays with the keyboard user: if it was on this row's link it goes to the new link, or to
 // the row's checkbox when the link became plain text; if it was on the checkbox it stays there
 // through the move. Focus that is anywhere else is left alone.
-export function patchRow(el, it, doc = globalThis.document) {
+// opts.actions: also redraw the row's buttons (a name case, after "Show profile"). Focus that was
+// on one of them goes to the row's first button, or its link, or its checkbox.
+export function patchRow(el, it, doc = globalThis.document, opts = {}) {
   const row = [...el.querySelectorAll(".ev[data-row]")].find((r) => r.dataset.row === it.key);
   if (!row) return false;
   const what = row.querySelector(".what"), box = row.querySelector("input[type=checkbox]");
+  const src = opts.actions ? row.querySelector(".src") : null;
   const active = doc?.activeElement;
-  const was = active && active === box ? "box" : active && what.contains(active) ? "link" : "";
+  const was = active && active === box ? "box" : active && what.contains(active) ? "link" : active && src && src.contains(active) ? "act" : "";
   what.innerHTML = evWhat(it);
+  if (src) {
+    src.innerHTML = evSrc(it);
+    const name = row.querySelector(".ev-check .sr-only");
+    if (name) name.textContent = `Mark ${it.what} reviewed`;
+  }
   if (it.gone && !row.classList.contains("gone")) {
     row.classList.add("gone");
     const rows = row.parentElement.querySelectorAll(":scope > .ev");
     if (rows[rows.length - 1] !== row) rows[rows.length - 1].after(row);
   }
-  if (was) ((was === "link" && what.querySelector("a.lk")) || box)?.focus({ preventScroll: true });
+  if (was) ((was === "act" && src.querySelector("button")) || (was !== "box" && what.querySelector("a.lk")) || box)?.focus({ preventScroll: true });
   return true;
 }
 // A row may carry two buttons: `action` (a pivot, with an optional target type so a handle such
@@ -157,7 +170,7 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
             <div class="ev ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}">
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
               <div class="what">${raw(evWhat(it))}</div>
-              <span class="src">${it.fetch ? raw(h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}" aria-label="${it.fetch.label}: ${it.fetch.login}">${it.fetch.label}</button>`) : ""}${it.action ? raw(h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${it.action.type ? raw(h`data-pivot-type="${it.action.type}"`) : ""} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>`) : ""}${it.source}</span>
+              <span class="src">${raw(evSrc(it))}</span>
             </div>`).join(""))}
           ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
           ${rows.length > limit ? raw(h`<div class="ev-more">${fmtNum(rows.length - limit)} more not shown. Export for the full list.</div>`) : ""}

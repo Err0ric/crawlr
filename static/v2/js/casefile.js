@@ -64,7 +64,8 @@ export function parseCaseFile(text) {
   // A name case's candidates, loaded profiles and qualifiers are re-checked like a fresh answer:
   // rows that do not fit a directory's shape are dropped, text is clipped and links are rebuilt.
   for (const k of ["nameResult", "nameProfiles", "nameQualifiers"]) delete results[k];
-  Object.assign(results, scrubNames(Object.fromEntries(["nameResult", "nameProfiles", "nameQualifiers"].filter((k) => Object.hasOwn(j.collected, k)).map((k) => [k, j.collected[k]]))));
+  // A result for another name than the file's target is dropped with them.
+  Object.assign(results, scrubNames(Object.fromEntries(["nameResult", "nameProfiles", "nameQualifiers"].filter((k) => Object.hasOwn(j.collected, k)).map((k) => [k, j.collected[k]])), target));
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
   if (!Object.keys(results).filter((k) => k !== "adultMode").length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();
