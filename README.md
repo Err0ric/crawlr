@@ -8,7 +8,9 @@
 
 Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects the target type, runs the right public sources in parallel, and ranks what comes back by how much it tells you. An optional AI report turns the evidence into an investigation summary with next steps.
 
-> Screenshots are being refreshed for the v2 interface.
+| Investigate | Recon |
+|---|---|
+| ![Investigate: ranked evidence for a username](docs/screenshots/after/investigate-1440.png) | ![Recon: findings for a domain](docs/screenshots/after/recon-1440.png) |
 
 ## Who it is for
 
@@ -21,8 +23,8 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 
 | Mode | Input | What you get |
 |---|---|---|
-| **Investigate** | Username, email, name, phone, hash | Accounts, breaches, profiles and facts ranked into confirmed, flagged, likely and unverified, plus an optional AI report |
-| **Recon** | Domain, IP or ASN | DNS, WHOIS, SSL, header grade, subdomains, ASN and prefixes, top-20 port check, exposure data, topology graph |
+| **Investigate** | Username, email, name, phone, hash | Accounts, breaches, profiles and facts ranked into flags, confirmed, possible and known noisy sites. A source that fails is shown as failed, never as "not found". AI report on request |
+| **Recon** | Domain, IP or ASN | DNS, WHOIS, TLS, header grade, subdomains, ASN and prefixes, exposure data, topology graph, optional top-20 port check |
 | **Headers** | Raw email headers | SPF, DKIM and DMARC results, hop-by-hop route with delays, sender origin, spoofing and phishing flags, verdict |
 | **Dorks** | Name, username, email, location, employer, keywords | A Google dork built live, with site filters; open it or copy it |
 | **Decoders** | Text | Base64, URL encoding, string hashing, VIN decode (NHTSA), US plate lookup |
@@ -32,18 +34,18 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Source | What it does | Key |
 |---|---|---|
 | Sherlock | Username across 400+ sites | None |
-| Maigret | Username across 3,000+ sites, with confidence | None |
+| Maigret | Username across the top 500 sites. Reads profile data where it can, which is what makes a hit "confirmed". Adult and dating sites are off unless you opt in | None |
 | Holehe | Which services an email is registered with | None |
 | Domain harvest | Hosts and addresses on an email's domain (crt.sh, CertSpotter, HackerTarget, RapidDNS, urlscan, OTX, Anubis, Wayback) | None |
-| Have I Been Pwned | Breaches | None |
-| GitHub | Profile, repos, linked email | None |
+| Breaches | Known breaches for an email (XposedOrNot) | None |
+| GitHub | Profile, repos, linked email. Rate limits are reported as rate limits | None (optional server `GITHUB_TOKEN`) |
 | Gravatar | Profile and avatar for an email | None |
-| Platform check | Registration probes on major platforms | None |
+| Platform check | Profile URL probes on major platforms (a weak signal, shown as possible) | None |
 | Profile scraper | Bios, display names and links from found profiles (active technique, off by default) | None |
 | Hash lookup | MalwareBazaar, CIRCL, AlienVault OTX, ThreatFox | None |
 | Phone lookup | Number normalization, carrier info, people-search links | Optional Numlookup key |
 | Hunter.io | Email addresses and patterns for a domain | Your key |
-| AI analysis and deep dive | Investigation report: identity, accounts, exposure, next moves | Free tier or your key |
+| AI analysis and deep dive | Investigation report: identity, accounts, exposure, next moves. Runs only when you ask, and shows what it costs first | Free tier or your key |
 
 ### Recon sources
 
@@ -51,11 +53,11 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 |---|---|---|
 | DNS | A, AAAA, MX, NS, TXT, CNAME, SOA, Cloudflare detection | None |
 | WHOIS | Registrar, dates, nameservers, privacy | None |
-| SSL | Issuer, SANs, expiry | None |
+| TLS | Issuer, SANs, expiry | None |
 | HTTP headers | Server info and a security-header grade | None |
 | Subdomains | DNS plus certificate transparency | None |
 | ASN / BGP | IP to ASN, org, prefixes (RIPE, ARIN RDAP) | None |
-| Port check | Top 20 TCP ports | None |
+| Port check | Top 20 TCP ports (active technique, off by default) | None |
 | InternetDB | Open ports, CVEs, hostnames (Shodan InternetDB) | None |
 | Shodan | Banners, org, geo | Your key |
 | Wayback, redirects, tech fingerprint | History, redirect chain, detected stack | None |
@@ -63,7 +65,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 
 ## Free tier and your own keys
 
-Every non-AI source runs with no key. AI runs on a shared Gemini key with a small daily allowance per visitor. Add your own key in Settings for unlimited AI (Claude or Gemini) and the Hunter and Shodan sources.
+Every non-AI source runs with no key. AI is opt-in per case: nothing is sent to a model until you press Analyze. Without your own key it runs on a shared Gemini key with a small daily allowance per visitor, and a cached answer or an identical re-run does not use a credit. Add your own key in Settings for unlimited AI (Claude or Gemini) and the Hunter and Shodan sources.
 
 | | Free | With your key |
 |---|---|---|
@@ -85,28 +87,31 @@ cp .env.example .env    # optional: GEMINI_API_KEY turns on the free AI tier
 uvicorn main:app --reload --port 8000 --env-file .env
 ```
 
-Open http://localhost:8000. Free-tier, quota, cache and tool-concurrency settings are documented in [`.env.example`](.env.example).
+Open http://localhost:8000. Free-tier, quota, cache, GitHub token, proxy and tool-concurrency settings are documented in [`.env.example`](.env.example).
 
 Run the tests:
 
 ```bash
 pip install pytest && pytest -q
+for f in static/v2/js/*.js; do node --check "$f"; done
 node tests/js/detect.test.mjs
+node tests/js/contrast.test.mjs
 ```
 
 ## How it is built
 
-FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and a JSON API. The browser runs sources in parallel and ranks the results. Hosted on Railway. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code map and [static/v2/DESIGN.md](static/v2/DESIGN.md) for the design system. The original v1 interface is still reachable at `/classic`.
+FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and a JSON API. The browser runs sources in parallel and ranks the results. Fonts and the graph library are self-hosted, so the page makes no third-party requests when it loads. Hosted on Railway. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code map, [static/v2/DESIGN.md](static/v2/DESIGN.md) for the design system and [docs/research.md](docs/research.md) for the comparison with other OSINT tools and the feature proposals.
 
 ## Privacy
 
 - No accounts, no analytics, no tracking.
-- Investigation history and notes stay in your browser.
-- Active techniques that may notify the target (profile scraping for deep dive) are off by default and labeled.
+- Investigation history and notes stay in your browser. Exports (Markdown, JSON, HTML, print to PDF) are built in the browser too.
+- The server keeps no record of what you look up: targets are not written to its logs. Short-lived in-memory caches (AI answers, GitHub profiles) are lost on restart.
+- Active techniques that connect to the target's own systems (the port scan, profile scraping for deep dive) are off by default and labeled.
 
 ## Responsible use
 
-For lawful purposes only: your own accounts, authorized assessments, research, journalism and missing-persons work. You accept these terms before first use. Results come from third parties and can be wrong; treat unverified findings as leads, not facts.
+For lawful purposes only: your own accounts, authorized assessments, research, journalism and missing-persons work. You accept these terms before first use. Results come from third parties and can be wrong. "Possible" findings are leads, not facts, and a confirmed account shows that a handle exists, not who owns it.
 
 ## Security
 
@@ -114,10 +119,13 @@ Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- Reverse image search on profile pictures
+Ranked proposals with sources are in [docs/research.md](docs/research.md). Next candidates:
+
+- Graph pivots: click a node to run it
+- Per-source reliability labels
+- Certificate detail, with one shared crt.sh query per run
+- Portable case files (export on one machine, open read-only on another)
 - Case mode for Trace Labs competitions
-- Shareable and exportable case reports
-- More sources, chosen through research into comparable tools
 
 ## License and author
 

@@ -2,31 +2,102 @@
 
 Concept: the case file. An investigation is a case; the UI is a workbench. The target is a dossier header, sources are things you choose to pull, results are evidence ranked by how much they tell you. One memorable element (the ranked ledger), everything else quiet.
 
+The goal of every change is a faster, clearer investigator workflow. Decoration is not a reason.
+
 ## Tokens (static/v2/css/app.css, section 1)
 
-| Token | Value | Use |
-|---|---|---|
-| `--bg` | #16151f | page |
-| `--bg-raised` | #201f2b | cards, rails on mobile |
-| `--bg-sunken` | #121119 | inputs, run log |
-| `--bg-hover` | #262535 | hover rows, tags |
-| `--line` | #2e2c3d | all borders |
-| `--ink` / `--ink-2` / `--ink-3` / `--ink-4` | #ece9f5 / #c7c3d6 / #9b97ae / #8b87a3 | text, secondary, muted, dimmest (AA on bg at 12px+) |
-| `--violet` / `--violet-2` | #a78bfa / #7c3aed | links, selected state / the one primary button |
-| `--ok` / `--warn` / `--bad` | #34d399 / #f59e0b / #f87171 | confirmed only / flags and caution / errors |
+Dark is the default. Light tokens apply when the system asks for light (`prefers-color-scheme`) or the user picks Light in Settings (`data-theme` on `<html>`). The two light blocks must stay identical; the contrast test checks that.
 
-Type: IBM Plex Sans for everything you read, IBM Plex Mono only for data (targets, hashes, emails, ports, run log). Scale 12/13/15/17/21/27/34, line-height 1.5. No all-caps labels, nothing under 12px.
+| Token | Dark | Light | Use |
+|---|---|---|---|
+| `--bg` | #16151f | #f7f6fb | page |
+| `--bg-raised` | #201f2b | #ffffff | cards, sheets, drawers |
+| `--bg-sunken` | #121119 | #efedf6 | inputs, run log |
+| `--bg-hover` | #262535 | #e8e5f2 | hover rows, tags |
+| `--line` | #2e2c3d | #d6d2e4 | decorative borders |
+| `--line-strong` | #7a7693 | #7d7896 | borders that must be seen: inputs, switches (3:1) |
+| `--ink` / `--ink-2` | #ece9f5 / #c7c3d6 | #1b1928 / #35324a | text, secondary text |
+| `--ink-3` / `--ink-4` | #a6a2ba / #9a96b0 | #555169 / #5f5b74 | muted text / placeholders and disabled |
+| `--violet` | #a78bfa | #6d28d9 | links, selected state, focus ring |
+| `--violet-2` / `--violet-3` | #7c3aed / #6d28d9 | same | the one primary button and its hover |
+| `--ok` / `--warn` / `--bad` | #34d399 / #f59e0b / #f87171 | #03603f / #8a3f03 / #b91c1c | confirmed / caution / failed |
+
+Every text token meets WCAG 2.2 AA (4.5:1) on every surface it sits on, in both themes, including the tinted chip backgrounds. `node tests/js/contrast.test.mjs` enforces this and runs in CI. Add a token there when you add one here.
+
+Why `--ink-3` and `--ink-4` changed: the old `--ink-4` (#8b87a3) was 4.36:1 on `--bg-hover`. Both were lightened, and `--ink-4` is now reserved for placeholders, disabled controls and struck-through rows. Muted body text uses `--ink-3`.
+
+## Type
+
+IBM Plex Sans for everything you read, IBM Plex Mono only for data (targets, hashes, emails, ports, run log). Both are self-hosted in `static/v2/fonts` (OFL 1.1) with `font-display: swap`; nothing loads from a font CDN.
+
+Scale, in rem so it follows the user's font size setting:
+
+| Token | Size | Role |
+|---|---|---|
+| `--fs-0` | 12px | captions, tags, source labels |
+| `--fs-1` | 13px | secondary text, ledger rows |
+| `--fs-2` | 15px | body, card titles |
+| `--fs-3` | 17px | lead text, dialog titles |
+| `--fs-4` | 21px | case title |
+| `--fs-5` | 27px | page title |
+| `--fs-6` | 34px | landing headline |
+
+Line-height 1.5. No all-caps labels. Nothing under 12px, with one exception: the five labels in the phone tab bar are 11px so they fit beside an icon.
+
+Headings follow document order: one `h1` per view (the case target, or the empty-state title), `h2` for sections and ledger tiers, `h3` for cards.
 
 Radius: 4 (tags) / 6 (buttons, inputs) / 10 (cards). Spacing on a 4px grid.
 
+## Information architecture
+
+One search box on the landing page takes any target and routes it by type. Two workbenches do the work:
+
+- **Investigate**: people and handles (username, email, phone, hash, name).
+- **Recon**: infrastructure (domain, IP, ASN).
+
+Three **tools** need no target and are visually separated in the header: Headers, Dorks, Decoders. The landing page says where each kind of target goes.
+
 ## Layout
 
-Desktop: rail (272) | main | aside (300). Rail and aside are sticky and scroll on their own. Under 1180px the aside drops beneath the main column; under 760px the rail becomes a bottom sheet behind a "Target & sources" button.
+Desktop: rail (272) | main | aside (300). Rail and aside are sticky and scroll on their own. Under 1180px the aside drops beneath the main column.
+
+Under 760px:
+
+- The mode links move to a fixed bottom tab bar with all five destinations. History and Settings become icon buttons. The AI pill stays on one line ("Free AI · 5").
+- With no case open, the target form sits in the page. With a case open it becomes a bottom sheet behind a "Target and sources" button, so it never covers results unless asked. The sheet has a Done button and closes on Escape; the floating button hides while it is open.
+
+Checked at 375, 768, 1024 and 1440.
+
+## Results
+
+- Findings first. The run log is a one-line strip above them once a run completes. It stays open if a source failed.
+- While running: "3 of 7 sources done", a bar, a clock, and a timer on each running source. Results appear as each source answers. The Run button becomes Cancel.
+- Four states that are never merged: **confirmed**, **possible**, **not found**, **failed**. A failed source gets a red row in the log, a notice above the findings, and its own card state. Raw upstream error text is only ever behind a "details" toggle.
+- Ledger tiers: Flags, Confirmed, Possible, Known noisy sites.
+- Re-running a target shows what is new and what is gone since the last local run. This is manual only; CrawlR does not watch targets.
+
+## AI
+
+AI never runs on its own. The AI panel shows a button and, under it, what pressing it costs ("Uses 1 of your 5 free analysis credits left today" or "Uses your Claude key"). An identical re-run reuses the last report and says so.
 
 ## Rules
 
-- Every remote value goes through `h`/`esc`/`link` in `core.js`. No raw `innerHTML` with source data.
-- Green means confirmed, amber means caution, nothing else gets a state color.
-- Motion only answers an action (toggle, collapse, toast). No entrance animations.
-- Copy is sentence case, active voice, names the action: "Run investigation", "New case", "Clear all history".
+- Every remote value goes through `h`/`esc`/`link` in `core.js`. No raw `innerHTML` with source data. No inline scripts or event handlers (the CSP is `script-src 'self'`).
+- Green means confirmed, amber means caution, red means failed. Nothing else gets a state color, and color is never the only signal: every state also has a word or an icon.
+- Motion only answers an action (toggle, collapse, toast, progress). No entrance animations. `prefers-reduced-motion` turns all of it off.
+- Copy is sentence case, active voice, names the action: "Run investigation", "New case", "Clear all history". No em dashes.
 - Empty states say what to do next, errors say what happened and how to fix it.
+
+## Accessibility (WCAG 2.2 AA)
+
+- Every flow works from the keyboard. Focus is always visible (2px violet ring) and never hidden under the sticky header or the tab bar (`scroll-padding`).
+- Dialogs (modal, drawer) move focus in, trap Tab, make the page behind inert, close on Escape and return focus to the opener. The consent gate is the one dialog that cannot be dismissed: it has no close button and ignores Escape and backdrop clicks.
+- Tabs (Recon views) are a real tablist with `aria-controls`, one tab stop and arrow keys. Single-choice groups (target type, AI provider, theme) are radiogroups with the same keyboard model. Use `roving()` from `core.js` for new ones.
+- Every input has a label. Switches are `role="switch"` named by their source.
+- Pointer targets are at least 24 by 24 CSS pixels.
+- Run progress is announced through a polite live region; `aria-busy` marks the results while a run is in flight.
+- Links inside text are underlined, so they are not identified by color alone.
+
+## Print and export
+
+"Print or PDF" uses a print stylesheet: light, no chrome, every tier expanded, link URLs printed after their text. The HTML export is the same markup in one self-contained file. Both carry a line saying findings can be wrong and possible items are leads.
