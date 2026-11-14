@@ -44,16 +44,16 @@ function show(view, { focus = true } = {}) {
   current = view;
   $("#landing").hidden = view !== "landing";
   VIEWS.forEach((b) => ($(`#${b}`).hidden = view !== b));
-  closeRail();
-  $("#railToggle").hidden = !BENCHES.includes(view);
+  closeRail(); measureCasebar();
   $$("[data-mode]").forEach((a) => a.removeAttribute("aria-current"));
   $$(`[data-mode="${view}"]`).forEach((a) => a.setAttribute("aria-current", "page"));
   document.title = TITLES[view] || TITLES.landing;
   if (VIEWS.includes(view) && location.hash !== `#${view}`) history.replaceState(null, "", `${location.pathname}#${view}`);
   if (!focus) return;
   // Move focus to the natural starting point of the view (wide screens: the first field).
-  const idleBench = BENCHES.includes(view) && $(`#${view}`).classList.contains("idle");
-  const sel = FOCUS[view] || (idleBench ? `#${view} .rail .target` : "");
+  // an empty workbench starts in its target field; one with a case open starts at the results
+  const idleBench = BENCHES.includes(view) && !(view === "recon" ? recon.state.target : state.target);
+  const sel = FOCUS[view] || (idleBench ? `#${view} .casebar .target` : "");
   setTimeout(() => { if ($("#overlays").children.length) return; (sel && $(sel)?.offsetParent ? $(sel) : $("#content")).focus({ preventScroll: true }); }, 50);
 }
 window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.includes(v)) show(v); });
@@ -62,27 +62,40 @@ $("#brand").addEventListener("click", (e) => { e.preventDefault(); clearCase(); 
 $$("[data-mode]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.mode); }));
 $(".skip").addEventListener("click", (e) => { e.preventDefault(); $("#content").focus(); });
 
-// A bench with no case shows its target form inline; once a case is open, small screens
-// tuck the form into a sheet behind the "Target and sources" button so results get the room.
-function syncIdle() {
-  $("#investigate").classList.toggle("idle", !state.target);
-  $("#recon").classList.toggle("idle", !recon.state.target);
-}
+// The Sources panel drops from the case bar (a sheet on phones). It is a plain disclosure:
+// the button says whether it is open, Escape and a click outside close it.
+const railBtn = () => $(".bench:not([hidden]) .sources-btn");
 function openRail() {
   const rail = $(".bench:not([hidden]) .rail"); if (!rail) return;
-  rail.classList.add("open"); document.body.classList.add("rail-open"); $("#railToggle").setAttribute("aria-expanded", "true");
-  rail.querySelector(".target")?.focus();
+  rail.hidden = false; rail.classList.add("open"); document.body.classList.add("rail-open");
+  railBtn()?.setAttribute("aria-expanded", "true");
+  (rail.querySelector("[data-toggle]") || rail.querySelector("button"))?.focus();
 }
-function closeRail() {
-  $$(".rail.open").forEach((r) => r.classList.remove("open"));
+function closeRail({ refocus = false } = {}) {
+  const open = $$(".rail.open");
+  open.forEach((r) => { r.classList.remove("open"); r.hidden = true; });
   document.body.classList.remove("rail-open");
-  $("#railToggle").setAttribute("aria-expanded", "false");
+  $$(".sources-btn").forEach((b) => b.setAttribute("aria-expanded", "false"));
+  if (refocus && open.length) railBtn()?.focus();
 }
-$("#railToggle").addEventListener("click", () => ($(".rail.open") ? closeRail() : openRail()));
-document.addEventListener("click", (e) => { if (e.target.closest("[data-close-rail]")) { closeRail(); $("#railToggle").focus(); } });
+// Sticky things below the case bar (result tabs, the summary column) need its height.
+function measureCasebar() {
+  const c = $(".bench:not([hidden]) .casebar");
+  const sticky = c && getComputedStyle(c).position === "sticky";
+  document.documentElement.style.setProperty("--casebar-h", `${sticky ? c.offsetHeight : 0}px`);
+}
+const casebarWatch = new ResizeObserver(measureCasebar);
+$$(".casebar").forEach((c) => casebarWatch.observe(c));
+window.addEventListener("resize", measureCasebar);
+const syncIdle = () => {};   // kept for callers; the layout no longer depends on whether a case is open
+$$(".sources-btn").forEach((b) => b.addEventListener("click", () => ($(".rail.open") ? closeRail({ refocus: true }) : openRail())));
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-close-rail]")) { closeRail({ refocus: true }); return; }
+  if ($(".rail.open") && !e.target.closest(".rail, .sources-btn")) closeRail();
+});
 // preventDefault matters: the target field is type=search, and browsers clear a search field on Escape.
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $(".rail.open") && !$("#overlays").children.length) { e.preventDefault(); closeRail(); $("#railToggle").focus(); } });
-document.addEventListener("crawlr:close-rail", closeRail);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $(".rail.open") && !$("#overlays").children.length) { e.preventDefault(); closeRail({ refocus: true }); } });
+document.addEventListener("crawlr:close-rail", () => closeRail());
 
 // ---- landing -------------------------------------------------------------------
 const detectBox = $("#landingDetect");
@@ -153,11 +166,20 @@ $("#targetDetected").addEventListener("click", (e) => { const b = e.target.close
 $("#runBtn").addEventListener("click", () => {
   if (state.running) { cancel(); return; }
   closeRail();
-  run($("#targetInput").value, typeOverride || undefined).then(syncIdle); syncIdle();
+  const v = $("#targetInput").value.trim();
+  // Any target can be typed in either workbench: a domain, IP or ASN typed here opens in Recon
+  // unless the investigator chose to search it as a handle.
+  if (v && !typeOverride && RECON_TYPES.includes(detect(v))) { toast(`${TYPE_LABEL[detect(v)]}: opened in Recon.`); startRecon(v); return; }
+  run(v, typeOverride || undefined);
 });
+// The same in the other direction: a username or email typed into Recon opens in Investigate.
+$("#rRunBtn").addEventListener("click", (e) => {
+  if (recon.state.running) return;
+  const v = $("#rTargetInput").value.trim(), t = detect(v);
+  if (v && INVESTIGATE_TYPES.includes(t)) { e.stopImmediatePropagation(); toast(`${TYPE_LABEL[t]}: opened in Investigate.`); startInvestigate(v); }
+}, true);
 $("#clearBtn").addEventListener("click", () => { clearCase(); typeOverride = ""; syncIdle(); $("#targetInput").focus(); });
 $("#rClearBtn").addEventListener("click", () => { syncIdle(); $("#rTargetInput").focus(); });
-$("#rRunBtn").addEventListener("click", () => setTimeout(syncIdle, 0));
 $("#exportBtn").addEventListener("click", exportCase);
 // carry a domain/IP typed into Investigate over to Recon
 document.addEventListener("click", (e) => { if (e.target.closest("[data-carry]")) { const v = $("#targetInput").value.trim(); $("#rTargetInput").value = v; $("#rTargetInput").dispatchEvent(new Event("input")); } });

@@ -97,24 +97,23 @@
 </main>
 
 <!-- ============ Investigate workbench ============ -->
-<div class="bench idle" id="investigate" hidden>
-  <aside class="rail" id="rail" aria-label="Target and sources">
-    <div class="rail-head"><h2>Target and sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
-    <section>
-      <h2 id="targetH">Target</h2>
+<div class="bench" id="investigate" hidden>
+  <div class="casebar" role="search" aria-label="Investigate a target">
+    <div class="casebar-row">
       <label class="sr-only" for="targetInput">Target: username, email, hash, phone or name</label>
-      <input class="input target" id="targetInput" placeholder="username, email, hash, phone" autocomplete="off" autocapitalize="none" spellcheck="false">
-      <div class="detected" id="targetDetected" aria-live="polite"></div>
-    </section>
-    <section aria-labelledby="sourcesH">
-      <h2 id="sourcesH">Sources</h2>
-      <div id="sources"></div>
-    </section>
-    <div class="run">
-      <button class="btn btn-primary btn-lg btn-block" id="runBtn" type="button">Run investigation</button>
+      <input class="input target" id="targetInput" placeholder="username, email, hash, phone, name" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <button class="btn btn-primary" id="runBtn" type="button">Run investigation</button>
+      <button class="btn sources-btn" id="sourcesBtn" type="button" aria-expanded="false" aria-controls="rail">Sources <span class="count" id="sourcesCount"></span></button>
     </div>
-  </aside>
+    <div class="detected" id="targetDetected" aria-live="polite"></div>
+    <div class="rail" id="rail" hidden>
+      <div class="rail-head"><h2 id="sourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
+      <p class="rail-note">Sources that apply to this target type. Your choices are remembered.</p>
+      <div id="sources" role="group" aria-labelledby="sourcesH"></div>
+    </div>
+  </div>
 
+  <div class="workspace">
   <main class="main" id="main" aria-busy="false">
     <div class="main-head" id="mainHead" hidden>
       <h1 id="caseTarget"></h1>
@@ -124,6 +123,10 @@
       <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">New case</button>
     </div>
     <div class="runlog collapsed" id="runlog" hidden></div>
+    <section class="card brief" id="brief" hidden aria-labelledby="briefH">
+      <div class="card-head"><h2 class="card-title" id="briefH">At a glance</h2><span class="tag">no AI</span></div>
+      <div class="card-body" id="briefBody"></div>
+    </section>
     <section class="card report-card" id="reportSection" hidden tabindex="-1" aria-labelledby="reportTitle">
       <div class="card-head">
         <h2 class="card-title" id="reportTitle">Investigation report</h2>
@@ -133,18 +136,24 @@
       </div>
       <div class="card-body report" id="reportBody"></div>
     </section>
-    
-    <div class="notices" id="notices"></div>
-    <div class="ledger" id="ledger"></div>
-    <div class="empty" id="emptyState">
-      <h1 class="empty-h">No case open</h1>
-      <p>Enter a target and run. Confirmed accounts, breaches and extracted facts appear here, ranked.</p>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Result views" hidden>
+      <button type="button" role="tab" id="tabFindings" data-tab="findings" aria-selected="true" aria-controls="panelFindings">Findings</button>
+      <button type="button" role="tab" id="tabSources" data-tab="sources" aria-selected="false" aria-controls="panelSources" tabindex="-1">By source</button>
     </div>
-    <section id="bySource" hidden class="by-source" aria-labelledby="bySourceH">
-      <h2 class="rail-h" id="bySourceH">By source</h2>
-      <div class="sources-grid" id="sourceCards"></div>
-    </section>
-    
+    <div id="panelFindings" role="tabpanel" aria-labelledby="tabFindings" tabindex="-1" class="panel">
+      <div class="notices" id="notices"></div>
+      <div class="ledger" id="ledger"></div>
+      <div class="empty hero" id="emptyState">
+        <h1 class="empty-h">No case open</h1>
+        <p>Type a username, email, phone number, file hash or name above and run. Confirmed accounts, breaches and extracted facts appear here, ranked.</p>
+      </div>
+    </div>
+    <div id="panelSources" role="tabpanel" aria-labelledby="tabSources" tabindex="-1" class="panel" hidden>
+      <p class="empty flat" id="bySourceEmpty">Nothing yet. Each source gets its own card here once it answers.</p>
+      <div id="bySource" hidden class="by-source">
+        <div class="sources-grid" id="sourceCards"></div>
+      </div>
+    </div>
   </main>
 
   <aside class="aside" id="aside" aria-label="Case summary">
@@ -162,27 +171,27 @@
       <div class="foot"><span id="notesStatus" aria-live="polite">Saved</span><span id="notesCount">0 chars</span></div>
     </section>
   </aside>
+  </div>
 </div>
 
 <!-- ============ Recon workbench ============ -->
-<div class="bench idle" id="recon" hidden>
-  <aside class="rail" id="rRail" aria-label="Target and sources">
-    <div class="rail-head"><h2>Target and sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
-    <section>
-      <h2 id="rTargetH">Target</h2>
+<div class="bench" id="recon" hidden>
+  <div class="casebar" role="search" aria-label="Recon a domain, IP or ASN">
+    <div class="casebar-row">
       <label class="sr-only" for="rTargetInput">Target: domain, IP address or ASN</label>
       <input class="input target" id="rTargetInput" placeholder="example.com, 8.8.8.8, AS15169" autocomplete="off" autocapitalize="none" spellcheck="false">
-      <div class="detected" id="rTargetDetected" aria-live="polite"></div>
-    </section>
-    <section aria-labelledby="rSourcesH">
-      <h2 id="rSourcesH">Sources</h2>
-      <div id="rSources"></div>
-    </section>
-    <div class="run">
-      <button class="btn btn-primary btn-lg btn-block" id="rRunBtn" type="button">Run recon</button>
+      <button class="btn btn-primary" id="rRunBtn" type="button">Run recon</button>
+      <button class="btn sources-btn" id="rSourcesBtn" type="button" aria-expanded="false" aria-controls="rRail">Sources <span class="count" id="rSourcesCount"></span></button>
     </div>
-  </aside>
+    <div class="detected" id="rTargetDetected" aria-live="polite"></div>
+    <div class="rail" id="rRail" hidden>
+      <div class="rail-head"><h2 id="rSourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
+      <p class="rail-note">Sources that apply to this target type. Your choices are remembered.</p>
+      <div id="rSources" role="group" aria-labelledby="rSourcesH"></div>
+    </div>
+  </div>
 
+  <div class="workspace">
   <main class="main" id="rMain" aria-busy="false">
     <div class="main-head" id="rMainHead" hidden>
       <h1 id="rCaseTarget"></h1>
@@ -192,25 +201,33 @@
       <button class="btn btn-ghost btn-sm" id="rClearBtn" type="button">New case</button>
     </div>
     <div class="runlog collapsed" id="rRunlog" hidden></div>
-    <div class="tabs" id="rTabs" role="tablist" aria-label="Recon views">
+    <section class="card brief" id="rBrief" hidden aria-labelledby="rBriefH">
+      <div class="card-head"><h2 class="card-title" id="rBriefH">At a glance</h2><span class="tag">no AI</span></div>
+      <div class="card-body" id="rBriefBody"></div>
+    </section>
+    <div class="tabs" id="rTabs" role="tablist" aria-label="Result views" hidden>
       <button type="button" role="tab" id="rTabFindings" data-tab="findings" aria-selected="true" aria-controls="rFindings">Findings</button>
+      <button type="button" role="tab" id="rTabSources" data-tab="sources" aria-selected="false" aria-controls="rSourcesPanel" tabindex="-1">By source</button>
       <button type="button" role="tab" id="rTabTopology" data-tab="topology" aria-selected="false" aria-controls="rTopology" tabindex="-1">Topology</button>
     </div>
-    <div id="rFindings" role="tabpanel" aria-labelledby="rTabFindings" tabindex="0">
-    <div class="notices" id="rNotices"></div>
-    <div class="ledger" id="rLedger"></div>
-    <div class="empty" id="rEmpty">
-      <h1 class="empty-h">No target yet</h1>
-      <p>Enter a domain, IP or ASN and run. Flags such as known CVEs, risky open services and expiring certificates come first.</p>
+    <div id="rFindings" role="tabpanel" aria-labelledby="rTabFindings" tabindex="-1" class="panel">
+      <div class="notices" id="rNotices"></div>
+      <div class="ledger" id="rLedger"></div>
+      <div class="empty hero" id="rEmpty">
+        <h1 class="empty-h">No target yet</h1>
+        <p>Type a domain, IP or ASN above and run. Flags such as known CVEs, risky open services, spoofable email and expiring certificates come first.</p>
+      </div>
     </div>
-    <section id="rBySource" hidden class="by-source" aria-labelledby="rBySourceH">
-      <h2 class="rail-h" id="rBySourceH">By source</h2>
-      <div class="sources-grid" id="rSourceCards"></div>
-    </section>
+    <div id="rSourcesPanel" role="tabpanel" aria-labelledby="rTabSources" tabindex="-1" class="panel" hidden>
+      <p class="empty flat" id="rBySourceEmpty">Nothing yet. Each source gets its own card here once it answers.</p>
+      <div id="rBySource" hidden class="by-source">
+        <div class="sources-grid" id="rSourceCards"></div>
+      </div>
     </div>
     <div id="rTopology" role="tabpanel" aria-labelledby="rTabTopology" tabindex="0" hidden>
-      <div class="graph" id="rGraph" role="img" aria-label="Topology graph of the domain, its subdomains, addresses and networks. The same data is listed under Findings."></div>
-      <p class="graph-note">Scroll to zoom, drag to pan. Hover a node for details. Orange marks Cloudflare. Everything shown here is also listed under Findings.</p>
+      <div class="pivotbar" id="rPivot" hidden></div>
+      <div class="graph" id="rGraph" role="group" aria-label="Topology graph of the domain, its subdomains, addresses and networks. Select a node for actions. The same data is listed under Findings."></div>
+      <p class="graph-note">Scroll to zoom, drag to pan. Select a node to run it. Orange marks Cloudflare. Everything shown here is also listed under Findings.</p>
     </div>
   </main>
 
@@ -229,6 +246,7 @@
       <div class="foot"><span id="rNotesStatus" aria-live="polite">Saved</span><span id="rNotesCount">0 chars</span></div>
     </section>
   </aside>
+  </div>
 </div>
 
 <!-- ============ Headers ============ -->
@@ -310,7 +328,6 @@
 </main>
 </div>
 
-<button class="btn btn-primary rail-toggle" id="railToggle" type="button" hidden aria-expanded="false">Target and sources</button>
 <nav class="tabbar" aria-label="Modes and tools">
   <a href="#investigate" data-mode="investigate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg><span>Investigate</span></a>
   <a href="#recon" data-mode="recon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span>Recon</span></a>

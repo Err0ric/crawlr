@@ -1,6 +1,7 @@
 // AI responses: normalization (the backend sometimes returns fenced JSON in
 // `summary`) and a single small markdown renderer used for every report.
-import { h, raw, esc, link } from "./core.js";
+import { h, raw, esc, link, post, toast, userAiKey, freeLeft, aiAvailable, aiCost } from "./core.js";
+import { openModal, closeModal } from "./ui.js";
 
 export function normalizeAi(data) {
   let summary = String(data?.summary ?? data?.full_report ?? "");
@@ -111,3 +112,50 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1500); });
 });
+
+// ---- the AI panel before a report exists ------------------------------------------------
+// Two ways to get a written report, neither automatic:
+//   1. "Analyze with AI": one click, uses a free credit or the user's key, cost stated first.
+//   2. "Copy prompt": no key at all. The prompt (instructions plus the collected findings) is
+//      copied for the user to paste into an assistant they already use, and the reply can be
+//      pasted back to get the same formatted report.
+// idp prefixes the element ids so Investigate and Recon can both have a panel.
+export function aiStartHtml(idp, pitch) {
+  const can = aiAvailable();
+  const out = can && !userAiKey() && freeLeft() <= 0;
+  return h`<p class="ai-pitch">${pitch}</p>
+    ${raw(can ? h`<button class="btn btn-primary btn-block" type="button" id="${idp}AiRun" ${out ? "disabled" : ""}>Analyze with AI</button><p class="ai-cost">${aiCost()}</p>` : "")}
+    <div class="keyless">
+      <p class="keyless-h">${can ? "Or use your own assistant" : "Use your own assistant, no key needed"}</p>
+      <button class="btn btn-block" type="button" id="${idp}AiCopy">Copy prompt</button>
+      <p class="ai-cost">Paste it into Claude, ChatGPT, Gemini or any assistant you already use. The prompt contains the findings on this page.</p>
+      <details class="more"><summary>Paste the reply back to format it</summary>
+        <label class="sr-only" for="${idp}AiPaste">Reply from your assistant</label>
+        <textarea class="textarea" id="${idp}AiPaste" rows="5" placeholder="Paste the assistant's reply here"></textarea>
+        <button class="btn btn-sm mt" type="button" id="${idp}AiPasteGo">Format reply</button>
+      </details>
+    </div>
+    ${raw(can ? "" : `<p class="ai-cost">For one-click analysis, <button class="linklike" type="button" data-open-settings>add a key in Settings</button>.</p>`)}`;
+}
+
+// Fetch the prompt and put it on the clipboard. If the browser refuses (some block clipboard
+// writes after a network round trip), show it in a dialog to copy by hand.
+export async function copyPrompt(url, payload) {
+  let prompt;
+  try { prompt = (await post(url, payload)).prompt; }
+  catch (err) { toast(err.detail || err.message, 5000); return false; }
+  try { await navigator.clipboard.writeText(prompt); toast("Prompt copied. Paste it into your assistant.", 4000); return true; }
+  catch {
+    openModal({ title: "Copy this prompt", wide: true,
+      body: h`<p class="modal-p">Your browser blocked automatic copying. Select all of this and copy it.</p><label class="sr-only" for="promptText">Prompt</label><textarea class="textarea mono" id="promptText" rows="14" readonly>${prompt}</textarea>`,
+      focus: "#promptText",
+      actions: [{ label: "Close", primary: true, onClick: closeModal }] });
+    document.getElementById("promptText")?.select();
+    return true;
+  }
+}
+export async function parseReply(text) {
+  if (!String(text || "").trim()) { toast("Paste the assistant's reply first."); return null; }
+  try { return normalizeAi(await post("/api/analyze/parse", { text })); }
+  catch (err) { toast(err.detail || err.message, 5000); return null; }
+}

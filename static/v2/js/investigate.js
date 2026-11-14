@@ -2,10 +2,11 @@
 import { $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, download, slug } from "./core.js";
 import { buildEvidence, TIERS, accountsFor } from "./evidence.js";
 import { sourceCards } from "./renderers.js";
-import { normalizeAi, markdown, summaryBlock } from "./ai.js";
+import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
+import { investigateBrief } from "./brief.js";
 import { reportHtml } from "./report.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml } from "./workbench.js";
+import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief } from "./workbench.js";
 
 // ---- sources ---------------------------------------------------------------
 // AI analysis is not in this list on purpose: it never runs on its own. The investigator
@@ -43,7 +44,13 @@ export function renderSources(type) {
       </div>
       <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-labelledby="src-${s.id}" aria-describedby="srcd-${s.id}"><span></span></label>
     </div>`).join("");
-  if (!rows.length) box.innerHTML = h`<p class="empty flat">Enter a target to see which sources apply.</p>`;
+  if (!rows.length) box.innerHTML = h`<p class="empty flat">Type a target to see which sources apply.</p>`;
+  paintCount();
+}
+// The Sources button shows how many are switched on for this target type.
+function paintCount() {
+  const on = $$("#sources [data-toggle]").filter((el) => el.checked).length, all = $$("#sources [data-toggle]").length;
+  $("#sourcesCount").textContent = all ? `${on} of ${all}` : "";
 }
 $("#sources").addEventListener("change", (e) => {
   const t = e.target.dataset.toggle, x = e.target.dataset.extra;
@@ -56,12 +63,14 @@ $("#sources").addEventListener("change", (e) => {
     }
     setSrc(t, e.target.checked);
     e.target.closest(".source").classList.toggle("off", !e.target.checked);
+    paintCount();
   }
   if (x) setSrc(`maigret.${x}`, e.target.checked);
 });
 
-// ---- run log -----------------------------------------------------------------
+// ---- run log + result tabs -----------------------------------------------------
 const log = makeLog($("#runlog"));
+const tabs = makeTabs($("#tabs"));
 
 // ---- state -------------------------------------------------------------------
 // prev: { keys, ts, ai, sig } from the last saved run of the same target, for the diff.
@@ -93,6 +102,9 @@ function renderLedger() {
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
   renderTiers($("#ledger"), items, TIERS, checked(), nothing);
   renderFacts($("#facts"), facts, state.running ? "Collecting…" : "No facts extracted yet.");
+  setTabCount($("#tabFindings"), "Findings", items.length);
+  // The written brief waits for the run to finish, so it never describes half a picture.
+  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, failed: failedSources(), type: state.type, target: state.target }));
 }
 bindLedger($("#ledger"), checkKey);
 
@@ -106,7 +118,8 @@ function renderSourceCards() {
   push("enricher", c.enricher); push("profileScrape", c.profileScrape); push("hunter", c.hunter); push("harvester", c.harvester);
   if (c.nameSearch) cards.push(sourceCards.nameSearch(c.nameSearch));
   if (c.reverseImage) cards.push(sourceCards.reverseImage(c.reverseImage));
-  $("#bySource").hidden = !cards.length;
+  $("#bySource").hidden = !cards.length; $("#bySourceEmpty").hidden = !!cards.length;
+  setTabCount($("#tabSources"), "By source", cards.length);
   $("#sourceCards").innerHTML = cards.join("");
 }
 
@@ -132,11 +145,7 @@ function renderAiPanel() {
     if (state.aiBusy) { box.innerHTML = `<p class="empty flat" role="status">Asking ${esc(providerName())}…</p>`; return; }
     if (state.running) { box.innerHTML = note("Available when the sources finish. AI never runs on its own."); return; }
     if (!state.target || !hasData()) { box.innerHTML = note(state.target ? "Nothing to analyze yet." : "Run a target first. AI analysis is optional and only runs when you ask."); return; }
-    if (!aiAvailable()) { box.innerHTML = `${note("Add a Claude or Gemini key to turn on AI analysis.")}<button class="btn btn-sm" type="button" data-open-settings>Open settings</button>`; return; }
-    const out = !userAiKey() && freeLeft() <= 0;
-    box.innerHTML = h`<p class="ai-pitch">Get a written report: who this most likely is, what links the accounts, and what to check next.</p>
-      <button class="btn btn-primary btn-block" type="button" id="aiRunBtn" ${out ? "disabled" : ""}>Analyze with AI</button>
-      <p class="ai-cost">${aiCost()}</p>`;
+    box.innerHTML = aiStartHtml("inv", "Get a written report: who this most likely is, what links the accounts, and what to check next.");
     return;
   }
   const canDeep = srcOn("active") && profileUrls().length && aiAvailable();
@@ -155,7 +164,7 @@ function renderReport() {
   sec.hidden = false;
   const { items, facts } = buildEvidence(state.collected, state.target);
   $("#reportBody").innerHTML = reportHtml({ ai: state.ai, target: state.target, items, facts, collected: state.collected });
-  $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : "", state.ai.reused ? "from your last run, no credit used" : state.ai.cached ? "cached, no credit used" : ""].filter(Boolean).join(" · ");
+  $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : state.ai.ai_source === "pasted" ? "from your own assistant" : "", state.ai.reused ? "from your last run, no credit used" : state.ai.cached ? "cached, no credit used" : ""].filter(Boolean).join(" · ");
 }
 $("#reportToggle").addEventListener("click", (e) => {
   const body = $("#reportBody"), open = body.hidden;
@@ -167,8 +176,17 @@ document.addEventListener("click", (e) => {
   if (b && b.dataset.openReport === "summary" && !$("#reportSection").hidden) { $("#reportBody").hidden = false; $("#reportSection").scrollIntoView({ behavior: "smooth", block: "start" }); $("#reportSection").focus({ preventScroll: true }); }
   else if (b) openReport(b.dataset.openReport);
   if (e.target.id === "deepDiveBtn") confirmDeepDive();
-  if (e.target.id === "aiRunBtn") runAi();
+  if (e.target.id === "invAiRun") runAi();
+  if (e.target.id === "invAiCopy") copyPrompt("/api/analyze/prompt", aiPayload());
+  if (e.target.id === "invAiPasteGo") usePastedReply();
 });
+// A reply from the investigator's own assistant, formatted like any other report.
+async function usePastedReply() {
+  const ai = await parseReply($("#invAiPaste")?.value);
+  if (!ai) return;
+  state.ai = ai; saveHistory(); renderAiPanel();
+  $("#reportSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 function openReport(which) {
   const ai = which === "deep" ? state.deepDive : state.ai;
@@ -310,7 +328,8 @@ export async function run(targetRaw, typeOverride) {
   Object.assign(state, { target, type, collected: {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false });
   store.del(checkKey());
   setRunning(true);
-  $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true;
+  $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
+  $("#tabs").hidden = false; tabs.set("findings"); setTabCount($("#tabSources"), "By source", 0);
   renderHead(); loadNotes(); $("#reportSection").hidden = true;
   log.start();
   renderLedger(); renderAiPanel();
@@ -391,7 +410,7 @@ export function loadHistory(id) {
   Object.assign(state, { target: e.target, type: e.kind || detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false });
   $("#targetInput").value = e.target;
   renderSources(state.type);
-  $("#runlog").hidden = true;
+  $("#runlog").hidden = true; $("#tabs").hidden = false; tabs.set("findings");
   renderHead(`${TYPE_LABEL[state.type]} · from history · ${new Date(e.timestamp).toLocaleString()}`);
   renderLedger(); renderSourceCards(); renderAiPanel();
   $("#notes").value = e.notes || ""; updateNotesMeta();
@@ -403,6 +422,7 @@ export function clearCase() {
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
+  $("#brief").hidden = true; $("#tabs").hidden = true; tabs.set("findings"); $("#bySourceEmpty").hidden = false;
 }
 
 // ---- notes --------------------------------------------------------------------------

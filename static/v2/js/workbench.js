@@ -1,5 +1,5 @@
 // Pieces shared by every workbench mode: run log, tiered ledger, facts panel, run diff.
-import { h, raw, esc, link, store, fmtNum, fmtAgo, plural } from "./core.js";
+import { $$, h, raw, esc, link, safeUrl, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
 
 // ---- run log ------------------------------------------------------------------
 // One row per source. While a run is in flight the strip shows "3 of 7 sources" with a
@@ -215,6 +215,35 @@ export async function standaloneHtml(title, mainEl, asideEl) {
   let css = "";
   try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
   css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
-  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
+  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
   return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Possible" items are leads, not facts.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
+}
+
+// ---- tabs ---------------------------------------------------------------------------
+// A tablist whose tabs name their panels with aria-controls. One tab stop, arrow keys,
+// Home and End. Returns { set(name), get() }.
+export function makeTabs(el, onChange) {
+  const tabs = () => $$("[role=tab]", el);
+  function set(name, { notify = true } = {}) {
+    for (const t of tabs()) {
+      const on = t.dataset.tab === name;
+      t.setAttribute("aria-selected", on); t.tabIndex = on ? 0 : -1;
+      const panel = document.getElementById(t.getAttribute("aria-controls"));
+      if (panel) panel.hidden = !on;
+    }
+    if (notify) onChange?.(name);
+  }
+  el.addEventListener("click", (e) => { const b = e.target.closest("[role=tab]"); if (b) set(b.dataset.tab); });
+  roving(el, "[role=tab]", (t) => set(t.dataset.tab));
+  return { set, get: () => tabs().find((t) => t.getAttribute("aria-selected") === "true")?.dataset.tab };
+}
+export const setTabCount = (tabEl, label, n) => { tabEl.textContent = n ? `${label} (${fmtNum(n)})` : label; };
+
+// ---- "At a glance" brief --------------------------------------------------------------
+const BRIEF_WORD = { flag: "Check", ok: "Good", info: "Note" };
+export function renderBrief(section, body, { rows, actions }) {
+  section.hidden = !rows.length;
+  if (!rows.length) { body.innerHTML = ""; return; }
+  body.innerHTML = `<ul class="brief-list">${rows.map((r) => h`<li class="${r.level}"><span class="tag ${r.level === "flag" ? "warn" : r.level === "ok" ? "ok" : ""}">${BRIEF_WORD[r.level] || "Note"}</span><span>${r.text}</span></li>`).join("")}</ul>`
+    + (actions.length ? `<div class="brief-actions">${actions.map((a) => a.href ? h`<a class="btn btn-sm" href="${safeUrl(a.href)}" target="_blank" rel="noopener noreferrer">${a.label}</a>` : a.tab ? h`<button type="button" class="btn btn-sm" data-brief-tab="${a.tab}">${a.label}</button>` : h`<button type="button" class="btn btn-sm" data-pivot="${a.pivot}" data-value="${a.value}">${a.label}</button>`).join("")}</div>` : "");
 }
