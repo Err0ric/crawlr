@@ -1,6 +1,10 @@
 import asyncio
 import base64
+import json
+from pathlib import Path
 
+import dns.exception
+import dns.resolver
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +14,9 @@ from modules import crtsh, email_posture as ep, lookalikes as la, takeover as tk
 from modules.dns_depth import parse_caa
 from modules.subdomain_enum import summarize_certificates
 from modules.wayback import interesting_paths
+
+FIX = Path(__file__).parent / "fixtures" / "recon"
+fixture = lambda name: json.loads((FIX / name).read_text())
 
 SPF_STRICT = "v=spf1 include:_spf.google.com -all"
 DMARC_REJECT = "v=DMARC1; p=reject; rua=mailto:d@example.com"
@@ -84,6 +91,105 @@ def test_run_email_posture_reads_dns(monkeypatch):
     assert out["dkim_selectors_checked"] == len(ep.DKIM_SELECTORS)
 
 
+# ---- email posture for a domain with no mail ------------------------------------
+
+def test_darkwire_recording_flagged_a_domain_with_no_mx():
+    before = fixture("darkwire.email_posture.json")        # what the endpoint said on 2026-11-14
+    assert before["mx"] == [] and before["grade"] == "F" and titles(before, "flag") == ["No SPF record", "No DMARC record"]
+
+
+def test_no_mx_turns_missing_spf_and_dmarc_into_notes():
+    r = ep.assess([], [], [], [], "", "", "")
+    assert titles(r, "flag") == [] and r["mail_enabled"] is False and r["grade"] != "F" and r["grade"] == "N/A"
+    assert "Note: no SPF record" in titles(r, "info") and "Note: no DMARC record" in titles(r, "info")
+    assert all(f["level"] in ("flag", "ok", "info") for f in r["findings"])
+    tip = next(f for f in r["findings"] if f["title"].startswith("Suggested records"))
+    assert tip["level"] == "info" and all(x in tip["detail"] for x in ("v=spf1 -all", "v=DMARC1; p=reject;", "0 ."))
+    assert r["suggested_records"] == [{"type": "TXT", "name": "@", "value": "v=spf1 -all"}, {"type": "TXT", "name": "_dmarc", "value": "v=DMARC1; p=reject;"},
+                                      {"type": "MX", "name": "@", "value": "0 ."}]
+    assert "no MX records" in r["summary"]
+
+
+def test_no_mx_domain_that_published_the_null_records_is_an_a():
+    r = ep.assess(["v=spf1 -all"], ["v=DMARC1; p=reject;"], [], [], "", "", "", null_mx=True)
+    assert (r["grade"], r["spoofable"], r["mail_enabled"]) == ("A", "no", False)
+    assert r["suggested_records"] == [] and "Null MX published" in titles(r, "info") and titles(r, "flag") == []
+
+
+def test_no_mx_still_flags_a_record_that_is_wrong():
+    r = ep.assess(["v=spf1 +all"], [], [], [], "", "", "")
+    assert titles(r, "flag") == ["SPF ends in +all"] and "Note: no DMARC record" in titles(r, "info")
+    assert [x["name"] for x in r["suggested_records"]] == ["_dmarc", "@"]
+
+
+def test_domain_with_mx_is_assessed_exactly_as_before():
+    r = ep.assess([], [], [], ["mx.example.com"], "", "", "")
+    assert (r["grade"], r["spoofable"], r["mail_enabled"]) == ("F", "yes", True)
+    assert titles(r) == ["No SPF record", "No DMARC record", "No DKIM key at common selectors", "No MTA-STS"]
+    assert r["suggested_records"] == [] and r["summary"].startswith("The domain can be spoofed")
+
+
+def test_failed_mx_lookup_is_not_treated_as_no_mail():
+    r = ep.assess([], [], [], [], "", "", "", mx_checked=False)
+    assert r["mail_enabled"] is None and r["grade"] == "F" and "No SPF record" in titles(r, "flag")
+    assert "Could not check MX records" in titles(r, "info") and "No MX records" not in titles(r)
+
+
+def run_posture(monkeypatch, txt, mx):
+    monkeypatch.setattr(ep, "_txt", txt)
+    monkeypatch.setattr(ep, "_mx", mx)
+    return asyncio.run(ep.run_email_posture("darkwire.tech"))
+
+
+def test_run_email_posture_for_darkwire(monkeypatch):
+    out = run_posture(monkeypatch, lambda name: [], lambda name: [])
+    before = fixture("darkwire.email_posture.json")
+    assert out["mail_enabled"] is False and out["grade"] == "N/A" and titles(out, "flag") == []
+    assert out["mx"] == before["mx"] == [] and out["spf"] is None and out["dmarc"] is None
+    assert set(before) <= set(out)                         # every field the old shape had is still there
+
+
+def test_run_email_posture_reads_a_null_mx(monkeypatch):
+    out = run_posture(monkeypatch, lambda name: [], lambda name: [""])
+    assert out["null_mx"] is True and out["mx"] == [] and out["mail_enabled"] is False
+    assert [x["type"] for x in out["suggested_records"]] == ["TXT", "TXT"]
+
+
+def test_run_email_posture_failed_lookups(monkeypatch):
+    # a failed MX lookup: assessed strictly, and said so
+    out = run_posture(monkeypatch, lambda name: [], lambda name: None)
+    assert out["mail_enabled"] is None and out["grade"] == "F" and out["mx"] == []
+    # a failed SPF or DMARC lookup: an error, never "No SPF record"
+    out = run_posture(monkeypatch, lambda name: None if name == "darkwire.tech" else [], lambda name: ["mx.example.com"])
+    assert out["error_code"] == "dns" and out["found"] is False and "grade" not in out and "findings" not in out
+
+
+class FakeDns:
+    """Stands in for dns.resolver.Resolver. `answers` maps (name, type) or name to a result:
+    a list of record strings, or an exception to raise."""
+    def __init__(self, answers):
+        self.answers = answers
+
+    def resolve(self, name, rtype):
+        got = self.answers.get((name, rtype), self.answers.get(name, dns.resolver.NoAnswer()))
+        if isinstance(got, Exception):
+            raise got
+
+        class Rdata:
+            def __init__(self, text): self.text, self.strings, self.exchange, self.target = text, [text.encode()], text, text
+            def __str__(self): return self.text
+        return [Rdata(x) for x in got]
+
+
+@pytest.mark.parametrize("error,expected", [
+    (dns.resolver.NXDOMAIN(), []), (dns.resolver.NoAnswer(), []),
+    (dns.exception.Timeout(), None), (dns.resolver.NoNameservers(), None),
+])
+def test_txt_and_mx_tell_absent_from_failed(monkeypatch, error, expected):
+    monkeypatch.setattr(ep, "_resolver", lambda: FakeDns({"example.com": error}))
+    assert ep._txt("example.com") == expected and ep._mx("example.com") == expected
+
+
 # ---- DNS depth -----------------------------------------------------------------
 
 def test_caa_parsing():
@@ -114,6 +220,120 @@ def test_takeover_only_checks_hosts_under_the_domain(monkeypatch):
     assert sorted(seen) == ["blog.example.com", "old.example.com"]
     assert out["checked"] == 2 and out["dangling"] == 1
     assert out["candidates"][0]["host"] == "old.example.com"      # dangling first
+
+
+SERVFAIL = dns.resolver.NoNameservers()       # what dnspython raises when every server answers SERVFAIL
+TIMEOUT = dns.exception.Timeout()
+NXDOMAIN = dns.resolver.NXDOMAIN()
+GOOGLE, CLOUDFLARE = tk.RESOLVER_SETS
+
+
+def use_resolvers(monkeypatch, first, second=None):
+    """Give each of the two resolver sets its own canned answers and record who was asked."""
+    asked = []
+
+    def make(nameservers):
+        asked.append(nameservers[0])
+        return FakeDns(first if nameservers == GOOGLE else (second if second is not None else first))
+
+    monkeypatch.setattr(tk, "_resolver", make)
+    return asked
+
+
+def test_resolution_state_resolving_name(monkeypatch):
+    asked = use_resolvers(monkeypatch, {("live.example.com", "A"): ["192.0.2.1"]})
+    assert tk.resolution_state("live.example.com") == "resolves" and asked == ["8.8.8.8"]
+    # no A record but an AAAA: still resolves
+    use_resolvers(monkeypatch, {("v6.example.com", "AAAA"): ["2001:db8::1"]})
+    assert tk.resolution_state("v6.example.com") == "resolves"
+
+
+def test_resolution_state_nxdomain_needs_both_resolvers(monkeypatch):
+    asked = use_resolvers(monkeypatch, {"gone.example.com": NXDOMAIN})
+    assert tk.resolution_state("gone.example.com") == "absent" and asked == ["8.8.8.8", "1.1.1.1"]
+    # the second resolver disagrees: the name is not gone
+    use_resolvers(monkeypatch, {"flaky.example.com": NXDOMAIN}, {("flaky.example.com", "A"): ["192.0.2.1"]})
+    assert tk.resolution_state("flaky.example.com") == "resolves"
+    # the second resolver fails: nothing definite
+    use_resolvers(monkeypatch, {"flaky.example.com": NXDOMAIN}, {"flaky.example.com": TIMEOUT})
+    assert tk.resolution_state("flaky.example.com") == "unknown"
+
+
+def test_resolution_state_empty_answer_for_every_type_is_absent(monkeypatch):
+    use_resolvers(monkeypatch, {})                         # NoAnswer for A, AAAA and CNAME
+    assert tk.resolution_state("empty.example.com") == "absent"
+
+
+@pytest.mark.parametrize("error", [TIMEOUT, SERVFAIL, dns.resolver.LifetimeTimeout(), OSError("network down")])
+def test_resolution_state_errors_are_unknown_not_absent(monkeypatch, error):
+    use_resolvers(monkeypatch, {"x.example.com": error})
+    assert tk.resolution_state("x.example.com") == "unknown"
+    # one failed type among empty answers is still not a definite "absent"
+    use_resolvers(monkeypatch, {("x.example.com", "AAAA"): error})
+    assert tk.resolution_state("x.example.com") == "unknown"
+
+
+@pytest.mark.parametrize("target_answer,status", [
+    ({"gone.herokuapp.com": NXDOMAIN}, "dangling"),
+    ({("gone.herokuapp.com", "A"): ["192.0.2.5"]}, "pointing"),
+    ({"gone.herokuapp.com": TIMEOUT}, "unknown"),
+    ({"gone.herokuapp.com": SERVFAIL}, "unknown"),
+])
+def test_takeover_check_with_a_mocked_resolver(monkeypatch, target_answer, status):
+    use_resolvers(monkeypatch, {("app.example.com", "CNAME"): ["gone.herokuapp.com."], **target_answer})
+    assert tk._check("app.example.com") == {"host": "app.example.com", "cname": "gone.herokuapp.com", "service": "Heroku", "status": status}
+
+
+def test_takeover_cname_lookup_failure_is_not_a_clean_host(monkeypatch):
+    use_resolvers(monkeypatch, {("a.example.com", "CNAME"): TIMEOUT, ("b.example.com", "CNAME"): NXDOMAIN, ("c.example.com", "CNAME"): ["cdn.example.net."],
+                                ("d.example.com", "CNAME"): ["old.github.io."], "old.github.io": SERVFAIL})
+    assert tk._check("a.example.com") == {"host": "a.example.com", "status": "unknown"}
+    assert tk._check("b.example.com") is None and tk._check("c.example.com") is None
+    out = asyncio.run(tk.run_takeover("example.com", ["a.example.com", "b.example.com", "c.example.com", "d.example.com"]))
+    assert out["checked"] == 3 and out["unchecked"] == ["a.example.com"] and out["dangling"] == 0 and out["unknown"] == 1
+    assert out["candidates"] == [{"host": "d.example.com", "cname": "old.github.io", "service": "GitHub Pages", "status": "unknown"}]
+
+
+def test_darkwire_takeover_recording_has_no_candidates(monkeypatch):
+    before = fixture("darkwire.takeover.json")
+    use_resolvers(monkeypatch, {})                          # none of the three hosts has a CNAME to a claimable service
+    out = asyncio.run(tk.run_takeover("darkwire.tech", ["www.darkwire.tech", "api.darkwire.tech", "darkwire.tech"]))
+    assert {k: out[k] for k in before} == before and out["unchecked"] == []
+
+
+# ---- certified names that "no longer resolve" ---------------------------------------------
+
+def test_darkwire_apex_was_reported_as_not_resolving():
+    before = fixture("darkwire.subdomains.json")
+    assert before["ct_summary"]["not_resolving"] == ["darkwire.tech"]       # the false claim from the audit
+    assert fixture("darkwire.dns.json")["records"]["A"] == ["216.198.79.1"]  # while DNS answered for it
+
+
+def test_not_resolving_is_rechecked_before_it_is_reported(monkeypatch):
+    from routers import recon_infra as ri
+    states = {"darkwire.tech": "resolves", "old.darkwire.tech": "absent", "vpn.darkwire.tech": "unknown"}
+    monkeypatch.setattr(ri, "resolution_state", lambda name: states[name])
+    result = fixture("darkwire.subdomains.json")
+    result["ct_summary"]["not_resolving"] = ["darkwire.tech", "old.darkwire.tech", "vpn.darkwire.tech"]
+    out = asyncio.run(ri.confirm_not_resolving(result))
+    assert out["ct_summary"]["not_resolving"] == ["old.darkwire.tech"]
+    assert out["ct_summary"]["resolution_unknown"] == ["vpn.darkwire.tech"]
+    # nothing to recheck: the result passes through untouched
+    assert asyncio.run(ri.confirm_not_resolving({"ct_summary": None})) == {"ct_summary": None}
+
+
+def test_subdomains_route_drops_the_false_apex_claim(monkeypatch):
+    from routers import recon_infra as ri
+
+    async def fake_run(domain):
+        return fixture("darkwire.subdomains.json")
+
+    monkeypatch.setattr(ri, "run_subdomains", fake_run)
+    monkeypatch.setattr(ri, "resolution_state", lambda name: "resolves")
+    with TestClient(app) as c:
+        body = c.post("/api/infra/subdomains", json={"domain": "darkwire.tech"}, headers={"x-forwarded-for": "198.51.100.65"}).json()
+    assert body["ct_summary"]["not_resolving"] == [] and body["ct_summary"]["resolution_unknown"] == []
+    assert body["total"] == 2 and body["ct_summary"]["total"] == 6
 
 
 # ---- lookalike domains -------------------------------------------------------------
@@ -305,3 +525,53 @@ def test_recon_ai_prompt_includes_new_checks_only_when_they_succeeded(monkeypatc
     assert "old.example.com -> gone.github.io (GitHub Pages, dangling)" in p
     assert "No security.txt published" in p and "robots.txt disallows: /admin/" in p
     assert "exampl.com" not in p            # the lookalike check failed, so its data is not used
+
+
+def test_recon_prompt_treats_no_mail_and_unknown_lookups_honestly():
+    from routers.recon_infra import ReconAnalyzeRequest, extra_recon_lines
+    req = ReconAnalyzeRequest(
+        target="darkwire.tech",
+        email_posture=ep.assess([], [], [], [], "", "", ""),
+        takeover={"candidates": [{"host": "a.example.com", "cname": "x.github.io", "service": "GitHub Pages", "status": "unknown"}]})
+    lines = "\n".join(extra_recon_lines(req))
+    assert "no MX records" in lines and "not a finding" in lines and "grade" not in lines
+    assert "takeover" not in lines            # a lookup that failed is not a candidate
+
+
+def test_recon_prompt_skips_a_dangling_candidate_that_resolves_elsewhere():
+    from routers.recon_infra import ReconAnalyzeRequest, extra_recon_lines, resolving_hosts
+    row = lambda host: {"host": host, "cname": "gone.herokuapp.com", "service": "Heroku", "status": "dangling"}
+    req = ReconAnalyzeRequest(
+        target="darkwire.tech",
+        dns=fixture("darkwire.dns.json"),
+        subdomains=fixture("darkwire.subdomains.json"),
+        takeover={"candidates": [row("darkwire.tech"), row("WWW.darkwire.tech."), row("old.darkwire.tech"),
+                                 {"host": "api.darkwire.tech", "cname": "x.github.io", "service": "GitHub Pages", "status": "pointing"}]})
+    assert resolving_hosts(req) == {"darkwire.tech", "www.darkwire.tech", "api.darkwire.tech"}
+    lines = "\n".join(extra_recon_lines(req))
+    assert "old.darkwire.tech -> gone.herokuapp.com (Heroku, dangling)" in lines        # nothing contradicts this one
+    assert "api.darkwire.tech -> x.github.io (GitHub Pages, pointing)" in lines         # pointing rows are not claims of absence
+    assert "darkwire.tech -> gone" not in lines.replace("old.darkwire.tech", "") and "www.darkwire.tech ->" not in lines.lower()
+    # a failed DNS or subdomain check is not evidence that a name resolves
+    failed = ReconAnalyzeRequest(target="darkwire.tech", dns={"error": "x", "records": {"A": ["1.2.3.4"]}}, takeover={"candidates": [row("darkwire.tech")]})
+    assert resolving_hosts(failed) == set() and "darkwire.tech -> gone.herokuapp.com" in "\n".join(extra_recon_lines(failed))
+    # every candidate withheld: no takeover line at all
+    only = ReconAnalyzeRequest(target="darkwire.tech", dns=fixture("darkwire.dns.json"), takeover={"candidates": [row("darkwire.tech")]})
+    assert "takeover" not in "\n".join(extra_recon_lines(only))
+
+
+def test_not_resolving_recheck_is_bounded_and_uses_the_dns_pool(monkeypatch):
+    from routers import recon_infra as ri
+    looked_up, pooled = [], []
+
+    async def fake_pool(fn, *args):
+        pooled.append(fn)
+        return fn(*args)
+
+    monkeypatch.setattr(ri, "dns_thread", fake_pool)
+    monkeypatch.setattr(ri, "resolution_state", lambda name: looked_up.append(name) or "absent")
+    names = [f"h{i}.example.com" for i in range(ri.MAX_RECHECK + 25)]
+    out = asyncio.run(ri.confirm_not_resolving({"ct_summary": {"not_resolving": list(names)}}))
+    assert len(looked_up) == ri.MAX_RECHECK == 60 and len(pooled) == 60 and all(fn is ri.resolution_state for fn in pooled)
+    assert out["ct_summary"]["not_resolving"] == names[:60]
+    assert out["ct_summary"]["resolution_unknown"] == names[60:]        # not looked up, so not called gone

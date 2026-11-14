@@ -1,5 +1,6 @@
 // The "At a glance" brief is built from rules, so its statements can be checked exactly.
 import { investigateBrief, reconBrief } from "../../static/v2/js/brief.js";
+import { buildEvidence } from "../../static/v2/js/evidence.js";
 
 let bad = 0, n = 0;
 const ok = (cond, name) => { n++; if (!cond) { bad++; console.log("FAIL", name); } };
@@ -7,27 +8,36 @@ const text = (b) => b.rows.map((r) => `${r.level}: ${r.text}`).join("\n");
 const acct = (site, tier, sources = ["Maigret"]) => ({ key: `acct:${site.toLowerCase()}`, what: site, tier, sources });
 
 // ---- investigate ------------------------------------------------------------
+// The brief reads the ledger and the identity clusters that buildEvidence produced.
+const run = (collected, target, type, failed = []) => { const ev = buildEvidence(collected, target, type); return investigateBrief({ collected, items: ev.items, facts: ev.facts, identity: ev.identity, failed, type, target }); };
 {
-  const b = investigateBrief({
-    type: "username", target: "jdoe", failed: [{ name: "GitHub" }], facts: [{ k: "Email", v: "j@example.org" }, { k: "Website", v: "https://jdoe.dev" }],
-    items: [acct("Bluesky", "confirmed"), acct("Medium", "confirmed"), acct("Facebook", "possible", ["Sherlock", "Maigret"]), acct("Paypal", "possible")],
-    collected: { sherlock: { results: [] }, maigret: { results: [{ site: "Bluesky", verified: true, profile: { name: "J Doe" } }, { site: "Medium", verified: true, profile: { name: "Someone Else" } }, { site: "Paypal", verified: false, profile: { name: "Ignored" } }] } },
-  });
+  const b = run({ sherlock: { results: [{ site: "Facebook", url: "https://facebook.com/jdoe" }, { site: "Paypal", url: "https://paypal.me/jdoe" }] }, github: { found: true, name: "J Doe", email: "j@example.org", blog: "https://jdoe.dev", profile_url: "https://github.com/jdoe" },
+    maigret: { results: [{ site: "Bluesky", url: "https://bsky.app/profile/jdoe", verified: true, profile: { name: "J Doe" } }, { site: "Medium", url: "https://medium.com/@jdoe", verified: true, profile: { name: "Someone Else" } }, { site: "Facebook", url: "https://facebook.com/jdoe", verified: false }, { site: "Paypal", url: "https://paypal.me/jdoe", verified: false, profile: { name: "Ignored" } }] } }, "jdoe", "username", [{ name: "Holehe" }]);
   const t = text(b);
-  ok(/2 confirmed accounts and 2 possible accounts/.test(t), "counts accounts");
-  ok(/flag: Profiles under this handle show 2 different names/.test(t) && /may belong to different people/.test(t), "warns when names differ");
+  ok(/1 linked account, 1 that exist and match, 1 that belong to a different person, and 2 unverified/.test(t), "counts accounts by tier");
+  ok(/flag: 2 different people use this handle: J Doe on GitHub, Bluesky, Someone Else on Medium/.test(t) && /Only the first is treated as the target/.test(t), "warns when different people share the handle");
   ok(!/Ignored/.test(t), "ignores names from unverified hits");
-  ok(/1 possible account was reported by two tools/.test(t), "notes two-tool agreement without calling it verified");
-  ok(/flag: 1 source failed \(GitHub\)/.test(t), "lists failed sources");
+  ok(/2 unverified accounts were reported by two tools/.test(t), "notes two-tool agreement without calling it verified");
+  ok(/flag: 1 source failed \(Holehe\)/.test(t), "lists failed sources");
   ok(b.actions.some((a) => a.pivot === "investigate" && a.value === "j@example.org") && b.actions.some((a) => a.pivot === "recon" && a.value === "jdoe.dev"), "offers pivots from extracted facts");
 }
 {
-  const b = investigateBrief({ type: "username", target: "jdoe", failed: [], facts: [], items: [acct("GitHub", "confirmed"), acct("Bluesky", "confirmed")],
-    collected: { github: { found: true, name: "J Doe" }, maigret: { results: [{ site: "Bluesky", verified: true, profile: { name: "j doe" } }] } } });
-  ok(/ok: The name "J Doe" appears on 2 profiles/.test(text(b)), "one name on several profiles is reported as support");
+  const b = run({ github: { found: true, name: "J Doe" }, maigret: { results: [{ site: "Bluesky", verified: true, profile: { name: "j doe" } }] } }, "jdoe", "username");
+  ok(/ok: 2 profiles carry the name "J Doe" or are tied to it \(GitHub, Bluesky\)/.test(text(b)), "one name on several profiles is reported as support");
 }
 {
-  const b = investigateBrief({ type: "username", target: "jdoe", failed: [], facts: [], items: [], collected: { github: { found: true, name: "J Doe", error: "rate limited" }, sherlock: { results: [] } } });
+  const c = { maigret: { results: [{ site: "YouTube", verified: true, profile: { name: "Eric" } }, { site: "Threads", verified: true, profile: { name: "Eric Henderson" } }] } };
+  const t = text(run({ ...c, github: { found: true, name: "err0ric", profile_url: "https://github.com/err0ric" } }, "err0ric", "username"));
+  ok(!/different (name|person|people)s? (appear|use)/.test(t) && /One name appears on other profiles \(Eric Henderson on Threads, YouTube\)/.test(t), "a first name and a full name are one person, not a conflict");
+  // no anchor record and no strong signal: nobody is picked
+  const none = text(run({ maigret: { results: [{ site: "Medium", verified: true, profile: { name: "Bob Arnold" } }, { site: "Steam", verified: true, profile: { name: "Carol Baker" } }, { site: "Paypal", verified: false }] } }, "jdoe", "username"));
+  ok(/flag: 2 different names appear under this handle \(Bob Arnold on Medium, Carol Baker on Steam\), and none is tied to the target/.test(none), "with no anchor the brief says nobody is tied to the target");
+  ok(/info: 2 profiles were read and 1 account is unverified. Each read profile exists, and nothing ties it to the target/.test(none) && !/belong to a different person|linked account|Only the first is treated/.test(none), "and it issues no linked or different-person counts");
+  const one = text(run(c, "err0ric", "username"));
+  ok(/info: One name appears under this handle \(Eric Henderson on Threads, YouTube\)\. Nothing ties it to the target/.test(one), "one unanchored name is reported without picking it");
+}
+{
+  const b = run({ github: { found: true, name: "J Doe", error: "rate limited" }, sherlock: { results: [] } }, "jdoe", "username");
   ok(!/J Doe/.test(text(b)), "a failed source contributes no name");
   ok(/No source found anything/.test(text(b)), "says so when nothing was found");
 }
@@ -42,8 +52,10 @@ const acct = (site, tier, sources = ["Maigret"]) => ({ key: `acct:${site.toLower
   ok(!/Not in any breach/.test(text(failed)), "a failed breach check is never reported as clean");
 }
 {
-  const mal = investigateBrief({ type: "hash", target: "x", failed: [], facts: [], items: [], collected: { hash: { verdict: "MALICIOUS", malware_families: ["Emotet"] } } });
-  ok(/flag: Known malware \(Emotet\)/.test(text(mal)), "malicious hash");
+  const mal = investigateBrief({ type: "hash", target: "x", failed: [], facts: [], items: [], collected: { hash: { verdict: "MALICIOUS", family: "Emotet", malware_families: ["Emotet"], community_tags: ["Some Pulse Name"] } } });
+  ok(/flag: Known malware \(Emotet\)/.test(text(mal)) && !/Some Pulse Name/.test(text(mal)), "malicious hash names the family only");
+  const old = investigateBrief({ type: "hash", target: "x", failed: [], facts: [], items: [], collected: { hash: { verdict: "MALICIOUS", malware_families: ["Free Text Pulse"] } } });
+  ok(/flag: Known malware\. Do not run/.test(text(old)) && !/Free Text Pulse/.test(text(old)), "an old response's free-text families stay out of the headline");
   const unk = investigateBrief({ type: "hash", target: "x", failed: [], facts: [], items: [], collected: { hash: { verdict: "UNKNOWN" } } });
   ok(/not a clean bill of health/.test(text(unk)), "unknown hash is not called clean");
 }

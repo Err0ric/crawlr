@@ -1,12 +1,35 @@
-import httpx
+import json
 import re
+
+import httpx
 from bs4 import BeautifulSoup
+
+from core.boilerplate import clean_bio
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 TIMEOUT = 10
+
+
+def _json_text(raw: str) -> str:
+    """Decode the inside of a JSON string literal (\\n, \\uXXXX); fall back to the raw text."""
+    try:
+        return str(json.loads(f'"{raw}"'))
+    except ValueError:
+        return raw
+
+
+def _filter_bio(profile: dict, username: str) -> dict:
+    """Blank a bio that is platform boilerplate and say so, so the UI can tell "no bio" from
+    "the platform's own text". The display name is left alone."""
+    raw = profile.get("bio") or ""
+    cleaned = clean_bio(raw, profile.get("platform", ""), username, profile.get("display_name", ""))
+    profile["bio"] = cleaned[:300]
+    if raw.strip() and not cleaned:
+        profile["bio_boilerplate"] = True
+    return profile
 
 
 async def _scrape_reddit(username: str, client: httpx.AsyncClient) -> dict | None:
@@ -44,9 +67,14 @@ async def _scrape_tiktok(username: str, client: httpx.AsyncClient) -> dict | Non
         if r.status_code != 200:
             return None
         nickname_m = re.search(r'"nickname":"([^"]+)"', r.text)
-        desc_m = re.search(r'"desc":"([^"]{1,300})"', r.text)
+        # "signature" is the bio the person wrote. "desc" is TikTok's share text (follower
+        # counts plus a slogan), kept only as a fallback; the boilerplate filter cleans it.
+        sig_m = re.search(r'"signature":"((?:[^"\\]|\\.){1,500})"', r.text)
+        desc_m = re.search(r'"desc":"((?:[^"\\]|\\.){1,300})"', r.text)
         nickname = nickname_m.group(1) if nickname_m else ""
-        desc = desc_m.group(1) if desc_m else ""
+        desc = _json_text(sig_m.group(1)) if sig_m else ""
+        if not desc.strip():
+            desc = _json_text(desc_m.group(1)) if desc_m else ""
         if not nickname and not desc:
             return None
         return {
@@ -236,7 +264,7 @@ async def run_enricher(username: str, sherlock_sites: list[str] | None = None) -
             if scraper:
                 result = await scraper(username, client)
                 if result:
-                    profiles.append(result)
+                    profiles.append(_filter_bio(result, username))
 
     return {
         "username": username,

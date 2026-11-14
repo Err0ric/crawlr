@@ -35,6 +35,11 @@ RATE_LIMITS = {
     "/api/infra/portscan": (6, 60),
     "/api/infra/lookalikes": (4, 60),     # a few hundred DNS queries per call
     "/api/infra/takeover": (6, 60),
+    "/api/infra/subdomains": (6, 60),     # wordlist and CT lookups, plus a recheck of up to 60 names
+    # fan-out lookups: up to 8 GitHub API calls, or up to 30 image downloads, per request
+    "/api/recon/github-deep": (10, 60),
+    "/api/recon/avatar-hash": (10, 60),
+    "/api/recon/platform-check": (10, 60),   # up to 6 page fetches plus canaries per call
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),

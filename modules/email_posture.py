@@ -4,6 +4,13 @@ Email security posture for a domain, from DNS alone.
 Answers the question "can someone send mail that looks like it comes from this domain,
 and would the domain owner find out?" by reading SPF, DMARC, DKIM selectors, MTA-STS,
 TLS-RPT and BIMI records. Nothing here contacts the target's mail servers.
+
+A domain with no MX records does not handle mail. For such a domain a missing SPF or DMARC
+record is a hardening note, not a finding: the result says so (`mail_enabled` is false),
+suggests the three "this domain sends no mail" records, and does not grade it F.
+
+A DNS lookup that fails is not the same as a record that is absent. `_txt` and `_mx` return
+None for a failure, and a run that could not read SPF or DMARC reports an error and no grade.
 """
 
 import asyncio
@@ -12,6 +19,7 @@ import re
 import dns.resolver
 
 from core.dnspool import dns_thread
+from core.errors import error_fields
 
 MAX_SPF_LOOKUPS = 10
 # Selectors used by the large mail providers and common defaults. DKIM selectors cannot be
@@ -31,18 +39,25 @@ def _resolver() -> dns.resolver.Resolver:
     return r
 
 
-def _txt(name: str) -> list[str]:
+def _txt(name: str) -> list[str] | None:
+    """TXT records at a name. [] when there are none, None when the lookup itself failed."""
     try:
         return ["".join(part.decode("utf-8", "replace") for part in rdata.strings) for rdata in _resolver().resolve(name, "TXT")]
-    except Exception:
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         return []
+    except Exception:
+        return None
 
 
-def _mx(name: str) -> list[str]:
+def _mx(name: str) -> list[str] | None:
+    """MX hosts for a name. [] when there are none, None when the lookup itself failed.
+    A null MX (RFC 7505, "0 .") comes back as [""]: the domain says it accepts no mail."""
     try:
         return sorted(str(r.exchange).rstrip(".").lower() for r in _resolver().resolve(name, "MX"))
-    except Exception:
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         return []
+    except Exception:
+        return None
 
 
 def parse_spf(record: str) -> dict:
@@ -77,13 +92,27 @@ def parse_dmarc(record: str) -> dict:
     }
 
 
-def assess(spf_records: list[str], dmarc_records: list[str], dkim: list[dict], mx: list[str], mta_sts: str, tls_rpt: str, bimi: str) -> dict:
-    """Pure function: turn the raw records into findings, a spoofability verdict and a grade."""
+NULL_SPF = "v=spf1 -all"
+NULL_DMARC = "v=DMARC1; p=reject;"
+NULL_MX = "0 ."
+
+
+def assess(spf_records: list[str], dmarc_records: list[str], dkim: list[dict], mx: list[str], mta_sts: str, tls_rpt: str, bimi: str,
+           *, mx_checked: bool = True, null_mx: bool = False) -> dict:
+    """Pure function: turn the raw records into findings, a spoofability verdict and a grade.
+
+    `mx` is the list of mail hosts. `mx_checked` is False when the MX lookup failed, in which
+    case the domain is treated as if it handles mail (the stricter reading). `null_mx` is True
+    when the domain publishes a null MX."""
     findings = []
     add = lambda level, title, detail: findings.append({"level": level, "title": title, "detail": detail})
+    mail_enabled = bool(mx) or not mx_checked
+    no_mail = "This domain has no MX records, so it does not appear to handle mail. "
 
     spf = parse_spf(spf_records[0]) if spf_records else None
-    if not spf_records:
+    if not spf_records and not mail_enabled:
+        add("info", "Note: no SPF record", no_mail + f"Its name can still be used in a forged From line. Publishing {NULL_SPF} tells receivers that no server sends for it.")
+    elif not spf_records:
         add("flag", "No SPF record", "Any server can claim to send mail for this domain, and receivers have no list to check against.")
     else:
         if len(spf_records) > 1:
@@ -100,7 +129,9 @@ def assess(spf_records: list[str], dmarc_records: list[str], dkim: list[dict], m
             add("flag", f"SPF needs {spf['lookups']} DNS lookups", "The limit is 10. Past it, receivers return a permanent error and SPF fails.")
 
     dmarc = parse_dmarc(dmarc_records[0]) if dmarc_records else None
-    if not dmarc:
+    if not dmarc and not mail_enabled:
+        add("info", "Note: no DMARC record", no_mail + f"Publishing {NULL_DMARC} tells receivers to refuse mail that claims to come from it.")
+    elif not dmarc:
         add("flag", "No DMARC record", "Receivers are not told to reject mail that fails SPF and DKIM, and the owner gets no reports.")
     else:
         if dmarc["policy"] == "none":
@@ -127,8 +158,22 @@ def assess(spf_records: list[str], dmarc_records: list[str], dkim: list[dict], m
     else:
         add("info", "No DKIM key at common selectors", "Selectors cannot be listed from DNS, so this is not proof that DKIM is missing. Check a real message's DKIM-Signature header.")
 
-    if not mx:
-        add("info", "No MX records", "The domain does not receive mail. It can still be spoofed as a sender unless SPF and DMARC say otherwise.")
+    suggested = []
+    if not mx_checked:
+        add("info", "Could not check MX records", "The MX lookup failed, so it is unknown whether this domain handles mail. It is assessed as if it does.")
+    elif not mx:
+        add("info", "Null MX published" if null_mx else "No MX records",
+            "The domain states that it accepts no mail." if null_mx else "The domain does not receive mail. It can still be spoofed as a sender unless SPF and DMARC say otherwise.")
+        if not spf_records:
+            suggested.append({"type": "TXT", "name": "@", "value": NULL_SPF})
+        if not dmarc:
+            suggested.append({"type": "TXT", "name": "_dmarc", "value": NULL_DMARC})
+        if not null_mx:
+            suggested.append({"type": "MX", "name": "@", "value": NULL_MX})
+        if suggested:
+            add("info", "Suggested records for a domain that sends no mail",
+                "Publish " + ", ".join(f"{r['type']} {r['name']} \"{r['value']}\"" for r in suggested)
+                + ". Together, v=spf1 -all, v=DMARC1; p=reject; and a null MX (0 .) tell every receiver that this domain sends and accepts no mail.")
     if mx and not mta_sts:
         add("info", "No MTA-STS", "Mail to this domain can be downgraded to unencrypted delivery by an attacker on the network path.")
     if mx and mta_sts:
@@ -155,11 +200,18 @@ def assess(spf_records: list[str], dmarc_records: list[str], dkim: list[dict], m
         "unlikely": "Spoofed mail should be caught, with some gaps listed below.",
         "yes": "The domain can be spoofed in the From line: there is no enforced DMARC policy.",
     }[spoofable]
-    return {"grade": grade, "spoofable": spoofable, "summary": summary, "findings": findings, "spf": spf, "dmarc": dmarc}
+    if not mail_enabled and spoofable == "yes":
+        # A domain that handles no mail is not graded on mail it does not send. The gap is real
+        # but small, and the fix is the null records, so it is a note and not a failing grade.
+        grade = "N/A"
+        summary = ("This domain has no MX records, so it does not appear to send or receive mail. "
+                   "Its name can still be used in a forged From line until the null records are published.")
+    return {"grade": grade, "spoofable": spoofable, "summary": summary, "findings": findings, "spf": spf, "dmarc": dmarc,
+            "mail_enabled": mail_enabled if mx_checked else None, "null_mx": null_mx, "suggested_records": suggested}
 
 
 def _dkim_lookup(domain: str, selector: str) -> dict:
-    records = [t for t in _txt(f"{selector}._domainkey.{domain}") if "p=" in t or "v=DKIM1" in t]
+    records = [t for t in _txt(f"{selector}._domainkey.{domain}") or [] if "p=" in t or "v=DKIM1" in t]
     if not records:
         return {"selector": selector, "found": False}
     m = re.search(r"p=([A-Za-z0-9+/=]*)", records[0].replace(" ", ""))
@@ -176,12 +228,18 @@ async def run_email_posture(domain: str) -> dict:
         th(_txt, f"_smtp._tls.{domain}"), th(_txt, f"default._bimi.{domain}"),
         *(th(_dkim_lookup, domain, s) for s in DKIM_SELECTORS),
     )
+    if spf_all is None or dmarc_all is None:
+        # Without these two answers there is nothing to grade. "No SPF record" would be a guess.
+        return {"domain": domain, "found": False, **error_fields(code="dns", detail="The SPF or DMARC lookup failed")}
     spf_records = [t for t in spf_all if t.lower().startswith("v=spf1")]
     dmarc_records = [t for t in dmarc_all if t.lower().startswith("v=dmarc1")]
-    mta_sts = next((t for t in sts if t.lower().startswith("v=stsv1")), "")
-    tls_rpt = next((t for t in rpt if t.lower().startswith("v=tlsrptv1")), "")
-    bimi_rec = next((t for t in bimi if t.lower().startswith("v=bimi1")), "")
-    result = assess(spf_records, dmarc_records, list(dkim), mx, mta_sts, tls_rpt, bimi_rec)
+    mta_sts = next((t for t in sts or [] if t.lower().startswith("v=stsv1")), "")
+    tls_rpt = next((t for t in rpt or [] if t.lower().startswith("v=tlsrptv1")), "")
+    bimi_rec = next((t for t in bimi or [] if t.lower().startswith("v=bimi1")), "")
+    mx_checked = mx is not None
+    null_mx = mx == [""]
+    mx = [m for m in mx or [] if m]
+    result = assess(spf_records, dmarc_records, list(dkim), mx, mta_sts, tls_rpt, bimi_rec, mx_checked=mx_checked, null_mx=null_mx)
     return {
         "domain": domain,
         "found": True,

@@ -1,0 +1,17 @@
+{
+ "_recorded": "2026-11-14, GET https://api.xposedornot.com/v1/check-email/torvalds@linux-foundation.org",
+ "breaches": [
+  [
+   "AntiPublicCombo",
+   "Evite",
+   "Verifications",
+   "Chess-2026",
+   "PeopleDataLabs",
+   "1.4BillionRecords",
+   "LinkedInScrape-2021",
+   "Adapt",
+   "ExploitIN",
+   "LinkedIn"
+  ]
+ ]
+}

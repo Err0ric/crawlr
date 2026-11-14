@@ -27,6 +27,8 @@ node tests/js/contrast.test.mjs
 node tests/js/brief.test.mjs
 node tests/js/timeline.test.mjs
 node tests/js/casefile.test.mjs
+node tests/js/identity.test.mjs
+node tests/js/evidence.test.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally to match `runtime.txt`.
@@ -53,7 +55,10 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - Backend: any module that connects to a user-supplied host or URL goes through `core/netguard.py` (`safe_fetch` or `resolve_public_ip`). Usernames, emails and hosts go through `core/validate.py` before they reach a command line or an upstream URL. Failures are returned with `core.errors.error_fields`, never `str(exception)`.
 - AI endpoints call `core.ai_call.run_ai`. AI never runs without an explicit click in the UI.
 - A case file is outside data. It goes through `parseCaseFile` in `static/v2/js/casefile.js` before anything is shown or stored.
-- A failed source is not a negative result. Keep "failed", "not found" and "found" as three separate states end to end.
+- A failed source is not a negative result. Keep "failed", "not found" and "found" as three separate states end to end. A site that blocks a check is "blocked", and a DNS lookup that errors is "unknown"; neither is "not found".
+- An account that exists is not an account that belongs to the target. Profiles are grouped by person in `static/v2/js/identity.js`; facts and AI input come from the primary identity only.
+- Leads are followed one hop at a time and only on a click.
+- Tests never use the network. Recorded responses live in `tests/fixtures/` and `tests/js/fixtures/`; use invented names for private people.
 - Do not log target values (usernames, emails, domains) on the server.
 - Bulk DNS work (more than a handful of queries) goes through `core.dnspool.dns_thread`, not `asyncio.to_thread`.
 - Recon checks return their own `findings` list (`level`: `flag`, `ok` or `info`). Only `flag` rows become ledger flags.

@@ -107,7 +107,7 @@ const WILL_RUN = {
   ip: "Runs in Recon: TLS, headers, network owner, exposure and a port scan.",
   asn: "Runs in Recon: registry, prefix and peering lookups.",
   username: "Runs in Investigate: Sherlock, Maigret, GitHub and platform checks.",
-  email: "Runs in Investigate: Holehe, breaches, Gravatar and a handle search.",
+  email: "Runs in Investigate: Holehe, breaches, Gravatar and the email's domain.",
   hash: "Runs in Investigate: MalwareBazaar, CIRCL, OTX and ThreatFox.",
   phone: "Runs in Investigate: carrier lookup and search links.",
   name: "Runs in Investigate: people-search links to open by hand.",
@@ -129,9 +129,19 @@ $("#landingForm").addEventListener("submit", (e) => {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-pivot]"); if (!b) return;
   const v = b.dataset.value; if (!v) return;
-  if (state.running || recon.state.running) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v);
+  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v); };
+  if (state.running || recon.state.running) {
+    // A lead button asks before it ends a run in flight; other pivots just say why they wait.
+    if (!b.dataset.confirmRun) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
+    openModal({ title: "A run is in progress", body: h`<p class="modal-p">Cancel it and start a new case for <span class="mono">${v}</span>? What has been collected so far is kept in History as a partial run.</p>`,
+      actions: [{ label: "Keep running", onClick: closeModal }, { label: "Cancel run and start", primary: true, onClick: async () => {
+        closeModal(); cancel(); recon.cancel();
+        for (let i = 0; i < 100 && (state.running || recon.state.running); i++) await new Promise((r) => setTimeout(r, 50));
+        if (!state.running && !recon.state.running) go();
+      } }] });
+    return;
+  }
+  go();
 });
 // Pasted email headers lose their newlines in a one-line input, so catch the paste itself.
 ["#landingInput", "#targetInput"].forEach((sel) => $(sel).addEventListener("paste", (e) => {
@@ -317,7 +327,7 @@ const USE_HTML = `<div class="terms">
   <p><b>CrawlR is for</b> security work on systems you own or are authorized to test, checking your own exposure, research, journalism, incident response and training exercises such as CTFs.</p>
   <p><b>Do not use it to</b> harass, stalk, dox or locate a private individual, to scan or probe systems without permission, or to try credentials found in breaches. CrawlR never logs in to anything, never triggers a password reset and never contacts a person.</p>
   <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and stay off until you turn them on.</p>
-  <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Confirmed" means an account exists, not who owns it. "Possible" means a tool reported it and nothing verified it. A source that failed says nothing either way.</p>
+  <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Linked" means a strong signal ties an account to the primary identity. "Exists" means a profile was read, which shows the handle is taken there, not who owns it. "Unverified" means a tool reported it and nothing was read. A source that failed says nothing either way.</p>
   <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
   <p><b>Collect only what your purpose needs.</b> Public does not mean harmless: separate public facts can identify someone once combined. You are responsible for how you use what you find, under the law where you are and where the target is.</p>
   <p>CrawlR is not a people-search service. Name and phone lookups only open links for you to search by hand.</p>
@@ -336,7 +346,7 @@ function termsIfNeeded() {
     focus: "#termsOk",
     body: `<div class="terms">
       <p>CrawlR queries public sources about the target you enter. Use it only for lawful purposes: your own accounts, authorized assessments, research, or investigations you're entitled to run.</p>
-      <p>Results come from third parties and can be wrong. "Possible" findings are leads to check, not facts, and a confirmed account shows that a handle exists, not who owns it.</p>
+      <p>Results come from third parties and can be wrong. "Unverified" findings are leads to check, not facts, and a profile that exists shows that a handle is taken, not who owns it.</p>
       <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled and stay off until you turn them on. Only scan hosts you own or are authorized to test.</p>
       <p>Your cases and notes stay in this browser. Don't collect more about a person than your purpose needs.</p>
       <p>The full acceptable-use statement is always under Settings.</p>

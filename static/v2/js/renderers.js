@@ -1,5 +1,6 @@
 // Per-source cards for the "By source" section. Every value goes through h`` / esc.
 import { h, raw, esc, link, fmtNum, plural, sourceOutcome } from "./core.js";
+import { breachList, hashView, detectionText, TEST_FILE_TEXT } from "./evidence.js";
 
 const card = (title, badge, body) => h`
   <article class="card">
@@ -23,9 +24,10 @@ function accountCard(title, data, limit = 8) {
   const all = data?.results || [];
   const ok = all.filter((r) => r.confidence !== "false_positive");
   const verified = ok.filter((r) => r.verified);
-  const rows = ok.slice(0, limit).map((r) => li(h`${raw(link(r.url, r.site || r.name))}${r.verified ? raw(' <span class="tag ok">profile read</span>') : ""}${r.profile?.name ? h` ${r.profile.name}` : ""}`));
-  const badge = (verified.length ? tag(`${fmtNum(verified.length)} confirmed`, "ok") + " " : "") + tag(`${fmtNum(ok.length - verified.length)} possible`) + (all.length - ok.length ? " " + tag(`${fmtNum(all.length - ok.length)} noisy`) : "");
-  return card(title, badge, (rows.length ? list(rows) : none("No accounts reported.")) + more(ok.length - limit));
+  const rows = ok.slice(0, limit).map((r) => li(h`${raw(link(r.url, r.site || r.name))}${r.verified ? raw(' <span class="tag">profile read</span>') : ""}${r.profile?.name ? h` ${r.profile.name}` : ""}`));
+  const badge = (verified.length ? tag(`${fmtNum(verified.length)} read`) + " " : "") + tag(`${fmtNum(ok.length - verified.length)} unverified`) + (all.length - ok.length ? " " + tag(`${fmtNum(all.length - ok.length)} noisy`) : "");
+  return card(title, badge, (rows.length ? list(rows) : none("Answered, nothing found: no accounts reported.")) + more(ok.length - limit)
+    + (verified.length ? h`<p class="muted small">A profile that was read exists. Whether it belongs to the same person is decided in the ledger, by name, avatar and links.</p>` : ""));
 }
 
 // Shared by Investigate (email domain) and Recon (target domain).
@@ -38,7 +40,7 @@ export function harvestCard(d) {
     (srcRows ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${srcRows}</div>` : "")
     + (em.length ? `<div class="mono" style="font-size:var(--fs-0);margin-bottom:8px">${em.map(esc).join("<br>")}</div>` : "")
     + (ho.length ? `<details style="font-size:var(--fs-0)"><summary style="cursor:pointer;color:var(--ink-3)">Hostnames (${fmtNum(ho.length)})</summary><div class="mono" style="margin-top:6px;max-height:260px;overflow:auto">${ho.slice(0, 300).map((x) => `${esc(x)} <span style="color:var(--ink-4)">${esc((hs[x] || []).join(", "))}</span>`).join("<br>")}</div></details>` : "")
-    + (!em.length && !ho.length ? h`<p class="muted">No public sources returned anything for this domain.</p>` : ""));
+    + (!em.length && !ho.length ? h`<p class="muted">Answered, nothing found: no public source returned anything for this domain.</p>` : ""));
 }
 
 const CARDS = {
@@ -46,35 +48,59 @@ const CARDS = {
   maigret: (d) => accountCard("Maigret", d),
   holehe: (d) => {
     const rows = (d?.results || []).map((r) => li(h`${r.site || r.domain}`));
-    return card("Holehe", tag(`${fmtNum(rows.length)} registered`, rows.length ? "ok" : ""), rows.length ? list(rows) : h`<p class="muted">No registrations detected.</p>`);
+    return card("Holehe", tag(`${fmtNum(rows.length)} registered`, rows.length ? "ok" : ""), rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: no registrations detected.</p>`);
   },
   platformCheck: (d) => {
-    const found = (d?.results || []).filter((r) => r.found);
-    const manual = (d?.results || []).filter((r) => r.manual);
+    const all = d?.results || [];
+    // New shape: each result carries a state and the reason for it.
+    if (all.some((r) => r.state)) {
+      const WORD = { found: ["profile read", "ok"], not_found: ["not found", ""], blocked: ["Blocked by site", "warn"], unknown: ["could not tell", ""], manual: ["check by hand", ""] };
+      const n = (st) => all.filter((r) => r.state === st).length;
+      const rows = all.map((r) => li(h`${raw(link(r.url, r.platform))} <span class="tag ${(WORD[r.state] || ["", ""])[1]}">${(WORD[r.state] || [r.state])[0]}</span>${r.display_name ? ` ${r.display_name}` : ""}${r.evidence ? raw(h`<div class="dim small">${r.evidence}</div>`) : ""}`));
+      return card("Platform check", tag(`${fmtNum(n("found"))} read`, n("found") ? "ok" : "") + (n("blocked") ? " " + tag(`${fmtNum(n("blocked"))} blocked`, "warn") : ""),
+        (rows.length ? list(rows) : none("No platforms were checked.")) + h`<p class="muted small">"Profile read" means a marker on the page matched, never a bare response. "Blocked by site" means the site refused or walled the check, so it is unknown, not absent.</p>`);
+    }
+    const found = all.filter((r) => r.found);
+    const manual = all.filter((r) => r.manual);
     const rows = [...found.map((r) => li(link(r.url, r.platform))), ...manual.map((r) => li(h`${raw(link(r.url, r.platform))} <span class="tag">check by hand</span>`))];
-    return card("Platform check", tag(`${fmtNum(found.length)} possible`), (rows.length ? list(rows) : none("No profile URLs answered.")) + h`<p class="muted small">A profile URL that answers is a weak signal. These sites often answer for any name.</p>`);
+    return card("Platform check", tag(`${fmtNum(found.length)} unverified`), (rows.length ? list(rows) : none("Answered, nothing found: no profile URLs answered.")) + h`<p class="muted small">A profile URL that answers is a weak signal. These sites often answer for any name.</p>`);
   },
   hibp: (d) => {
-    const b = d?.breaches || [];
-    const rows = b.map((x) => li(h`${raw(link(`https://haveibeenpwned.com/PwnedWebsites`, x))}`));
-    return card("Breaches", tag(plural(b.length, "breach", "breaches"), b.length ? "warn" : "ok"), rows.length ? list(rows) : h`<p class="muted">Not found in any known breach.</p>`);
+    const b = breachList(d);
+    const rows = b.map((x) => li(h`${raw(x.url ? link(x.url, x.name) : esc(x.name))}${x.date || x.year ? raw(h` <span class="dim">${x.date || x.year}</span>`) : ""}${x.verified === true ? raw(' <span class="tag">verified</span>') : x.verified === false ? raw(' <span class="tag warn">unverified</span>') : ""}${x.sensitive ? raw(' <span class="tag warn">sensitive</span>') : ""}${x.data_classes.length || x.records ? raw(h`<div class="dim small">${[x.data_classes.join(", "), x.records ? `${fmtNum(x.records)} records` : ""].filter(Boolean).join(" · ")}</div>`) : ""}`));
+    return card("Breaches", tag(plural(b.length, "breach", "breaches"), b.length ? "warn" : "ok"),
+      (rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: not in any breach known to this source.</p>`)
+      + (d?.details === "unavailable" ? h`<p class="muted small">Dates and data classes could not be loaded, so only the names are shown.</p>` : "")
+      + (b.length ? h`<p class="muted small">Newest first${d?.source ? `. Source: ${d.source}` : ""}.</p>` : ""));
   },
-  github: (d) => {
-    if (!d?.found) return card("GitHub", tag("not found"), none("GitHub has no account with this username."));
-    return card("GitHub", tag("found", "ok"), kv([
+  // deep: the follow-up "GitHub details" response, when it ran.
+  github: (d, deep) => {
+    if (!d?.found) return card("GitHub", tag("not found"), none("Answered, nothing found: GitHub has no account with this username."));
+    const base = kv([
       ["Profile", link(d.profile_url, d.profile_url)], ["Name", esc(d.name)], ["Bio", esc(d.bio)], ["Company", esc(d.company)],
-      ["Location", esc(d.location)], ["Email", esc(d.email)], ["Website", link(d.blog, d.blog)],
+      ["Location", esc(d.location)], ["Email", esc(d.email)], ["Website", link(d.blog, d.blog)], ["Twitter", esc(d.twitter_username)],
       ["Repos", esc(d.public_repos)], ["Followers", esc(d.followers)], ["Since", esc(String(d.created_at || "").slice(0, 10))],
-    ]));
+    ]);
+    return card("GitHub", tag("found", "ok") + (deep?.state === "partial" ? " " + tag("details partial", "warn") : ""), base + githubDeepBody(deep));
+  },
+  // Shown as its own card only when the follow-up failed or found nothing; otherwise it is part of the GitHub card.
+  githubDeep: (d, gh) => (gh?.found && d?.found !== false ? "" : card("GitHub details", tag("not found"), none("Answered, nothing found: GitHub returned no details for this username."))),
+  avatarHash: (d) => {
+    const r = d?.results || [], ok = r.filter((x) => x.hash && !x.error), dflt = ok.filter((x) => x.default), bad = r.filter((x) => x.error);
+    const name = (id) => String(id).replace(/^acct:/, "");
+    return card("Avatar comparison", tag(`${fmtNum(ok.length)} of ${fmtNum(r.length)} compared`, ok.length ? "ok" : ""),
+      h`<p class="muted">Profile pictures were fetched from public image hosts and reduced to a 64-bit fingerprint. Two profiles with nearly the same picture are tied together in the ledger.</p>`
+      + kv([["Compared", esc(ok.filter((x) => !x.default).map((x) => name(x.id)).join(", "))], ["Default or placeholder", esc(dflt.map((x) => name(x.id)).join(", "))], ["Could not be read", bad.map((x) => h`${name(x.id)} <span class="dim">${x.error}</span>`).join("<br>")]])
+      + h`<p class="muted small">A default or placeholder picture never ties two profiles together. A picture that could not be read is unknown, not different.</p>`);
   },
   gravatar: (d) => {
-    if (!d?.found) return card("Gravatar", tag("not found"), h`<p class="muted">No Gravatar for this address.</p>`);
+    if (!d?.found) return card("Gravatar", tag("not found"), h`<p class="muted">Answered, nothing found: no Gravatar for this address.</p>`);
     return card("Gravatar", tag("found", "ok"), kv([["Profile", link(d.profile_url, d.profile_url)], ["Name", esc(d.name)], ["Display name", esc(d.display_name)], ["Location", esc(d.location)]]));
   },
   enricher: (d) => {
     const p = d?.profiles || [];
-    const rows = p.slice(0, 10).map((x) => li(h`${raw(link(x.url, x.platform || x.url))}${x.display_name ? h` · ${x.display_name}` : ""}${x.bio ? raw(h`<div style="color:var(--ink-3);font-size:var(--fs-0)">${String(x.bio).slice(0, 150)}</div>`) : ""}`));
-    return card("Profile enrichment", tag(`${fmtNum(p.length)} profiles`), rows.length ? list(rows) : h`<p class="muted">Nothing to enrich.</p>`);
+    const rows = p.slice(0, 10).map((x) => li(h`${raw(link(x.url, x.platform || x.url))}${x.display_name ? h` · ${x.display_name}` : ""}${x.bio && !x.bio_boilerplate ? raw(h`<div style="color:var(--ink-3);font-size:var(--fs-0)">${String(x.bio).slice(0, 150)}</div>`) : ""}`));
+    return card("Profile enrichment", tag(`${fmtNum(p.length)} profiles`), rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: no profile page gave a name or a bio.</p>`);
   },
   profileScrape: (d) => {
     const p = (d?.results || []).filter((r) => !r.error);
@@ -86,17 +112,27 @@ const CARDS = {
     if (!d) return "";
     const em = d.emails || [];
     const rows = em.slice(0, 15).map((e) => li(h`<span class="mono">${e.email}</span>${e.confidence != null ? raw(h` <span class="tag ${Number(e.confidence) >= 80 ? "ok" : ""}">${e.confidence}%</span>`) : ""}${e.position ? h` · ${e.position}` : ""}`));
-    return card("Hunter.io", tag(`${fmtNum(em.length)} emails`, em.length ? "ok" : ""), (d.pattern ? h`<p style="font-size:var(--fs-1);margin-bottom:6px">Pattern <span class="mono">${d.pattern}</span></p>` : "") + (rows.length ? list(rows) : h`<p class="muted">No addresses found.</p>`));
+    return card("Hunter.io", tag(`${fmtNum(em.length)} emails`, em.length ? "ok" : ""), (d.pattern ? h`<p style="font-size:var(--fs-1);margin-bottom:6px">Pattern <span class="mono">${d.pattern}</span></p>` : "") + (rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: no addresses on this domain.</p>`));
   },
   hash: (d) => {
-    const v = String(d?.verdict || "UNKNOWN").toUpperCase();
-    const cls = v === "MALICIOUS" ? "warn" : v === "CLEAN" ? "ok" : "";
+    const v = hashView(d) || { verdict: "UNKNOWN", tags: [], families: [], familySources: [] };
+    const cls = v.verdict === "MALICIOUS" ? "warn" : v.verdict === "CLEAN" || v.verdict === "TEST_FILE" ? "ok" : "";
+    const word = { TEST_FILE: "test file", MALICIOUS: "malicious", CLEAN: "known clean", UNKNOWN: "unknown" }[v.verdict];
     const src = [];
     if (d?.malware_bazaar?.found) src.push(["MalwareBazaar", esc([d.malware_bazaar.file_name, d.malware_bazaar.file_type, d.malware_bazaar.signature, d.malware_bazaar.first_seen].filter(Boolean).join(" · "))]);
-    if (d?.circl?.found) src.push(["CIRCL", esc([d.circl.file_name, d.circl.known_malicious ? "known malicious" : "known file"].filter(Boolean).join(" · "))]);
-    if (d?.alienvault?.found) src.push(["AlienVault OTX", esc(`${d.alienvault.pulse_count ?? 0} pulses` + (d.alienvault.malware_families?.length ? ` · ${d.alienvault.malware_families.join(", ")}` : ""))]);
+    if (d?.circl?.found) src.push(["CIRCL", esc([d.circl.file_name, d.circl.known_malicious ? "listed as malicious" : "known file"].filter(Boolean).join(" · "))]);
+    if (d?.alienvault?.found) src.push(["AlienVault OTX", esc(`${d.alienvault.pulse_count ?? 0} pulses`)]);
     if (d?.threatfox?.found) src.push(["ThreatFox", esc(`${d.threatfox.count ?? 0} IOCs` + (d.threatfox.malware_names?.length ? ` · ${d.threatfox.malware_names.join(", ")}` : ""))]);
-    return card("Hash lookup", tag(v, cls), kv([["Type", esc(d?.hash_type)], ["Hash", h`<span class="mono">${d?.hash}</span>`], ["Families", esc((d?.malware_families || []).join(", "))], ...src, ["VirusTotal", link(d?.virustotal_url, "open")]]));
+    return card("Hash lookup", tag(word, cls),
+      (v.testFile ? h`<p class="card-lead">${v.testFile.name}: ${TEST_FILE_TEXT}.${v.testFile.note ? ` ${v.testFile.note}` : ""}</p>` : "")
+      + kv([["Type", esc(d?.hash_type)], ["Hash", h`<span class="mono">${d?.hash}</span>`],
+        ["Family", esc(v.family ? `${v.family}${v.familySources.length ? ` (${v.familySources.join(", ")})` : ""}` : "")], ["Other families", esc(v.families.filter((f) => f !== v.family).join(", "))],
+        ["Detection", esc(detectionText(v))], ["File type", esc(v.fileType)], ["File name", esc(v.fileName)], ["File size", esc(v.fileSize != null && v.fileSize !== "" ? `${fmtNum(v.fileSize)} bytes` : "")],
+        ["First seen", esc(v.firstSeen)], ["Last seen", esc(v.lastSeen)], ...src,
+        ["Verdict basis", esc(d?.verdict_basis)], ["Could not be asked", esc((d?.failed_sources || []).join(", "))],
+        ["Community tags (unverified)", esc(v.tags.join(", "))], ["VirusTotal", link(d?.virustotal_url, "open")]])
+      + ((d?.failed_sources || []).length ? h`<p class="muted small">A source that could not be asked is unknown. It did not say "not found".</p>` : "")
+      + (v.tags.length ? h`<p class="muted small">Community tags are free text written by whoever submitted a report. They are not a family name and are never used in a headline.</p>` : ""));
   },
   phone: (d) => {
     const links = Object.entries(d?.lookup_links || {}).map(([n, u]) => link(u, n)).join(" · ");
@@ -116,5 +152,28 @@ const CARDS = {
   },
 };
 
-const TITLES = { sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
-export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d))]));
+// The extra sections the GitHub details call adds to the GitHub card. A section GitHub
+// rate limited or failed is shown as unknown, never as an empty list.
+function githubDeepBody(dp) {
+  if (!dp) return "";
+  if (sourceOutcome(dp).state === "error") return "";   // its own failed card says so
+  if (dp.found === false) return "";
+  const st = (k) => dp.sections?.[k] || "ok";
+  const unknown = (k) => (st(k) === "rate_limited" ? '<span class="dim">unknown: GitHub rate limited this lookup</span>' : st(k) === "failed" ? '<span class="dim">unknown: this lookup failed</span>' : "");
+  const val = (k, html, empty = '<span class="dim">none</span>') => unknown(k) || html || empty;
+  const repos = (dp.top_repos || []).slice(0, 6).map((r) => h`${raw(link(r.url, r.name))} <span class="dim">${[r.language, `${fmtNum(r.stars)} stars`, r.fork ? "fork" : ""].filter(Boolean).join(" · ")}</span>`).join("<br>");
+  const keys = [...(dp.keys?.ssh || []).map((k) => h`<span class="mono">${k.type} ${k.fingerprint}</span>`), ...(dp.keys?.gpg || []).map((k) => h`<span class="mono">GPG ${k.key_id}</span>${k.emails?.length ? raw(h` <span class="dim">${k.emails.join(", ")}</span>`) : ""}`)].join("<br>");
+  const keyState = unknown("ssh_keys") && unknown("gpg_keys") ? unknown("ssh_keys") : keys + (keys && (unknown("ssh_keys") || unknown("gpg_keys")) ? "<br>" : "") + (keys || !(unknown("ssh_keys") || unknown("gpg_keys")) ? "" : "") + (unknown("ssh_keys") && !unknown("gpg_keys") ? '<span class="dim">SSH keys unknown</span>' : !unknown("ssh_keys") && unknown("gpg_keys") ? '<span class="dim">GPG keys unknown</span>' : "");
+  return h`<p class="muted small">From the GitHub details lookup${dp.cached ? " (cached)" : ""}:</p>` + kv([
+    ["Organisations", val("orgs", (dp.orgs || []).map((o) => link(o.url, o.login)).join(", "))],
+    ["Top repos", val("top_repos", repos)],
+    ["Languages", val("top_repos", esc((dp.languages || []).join(", ")))],
+    ["Key fingerprints", keyState || '<span class="dim">none</span>'],
+    ["Commit emails", val("commit_emails", (dp.commit_emails || []).map((e) => h`<span class="mono">${e.email}</span> <span class="dim">${[e.name, e.repo].filter(Boolean).join(" · ")}</span>`).join("<br>"))],
+    ["Social accounts", val("social_accounts", (dp.social_accounts || []).map((a) => h`${a.provider || ""} ${raw(link(a.url, a.url))}`).join("<br>"))],
+    ["README links", val("readme_links", (dp.readme_links || []).slice(0, 12).map((u) => link(u, u)).join("<br>"))],
+  ]);
+}
+
+const TITLES = { githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
+export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d, extra) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d, extra))]));

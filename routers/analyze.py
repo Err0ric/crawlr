@@ -21,9 +21,12 @@ Write for an investigator who will act on this report. Be specific and evidence-
 - Use only the collected data below. Never invent accounts, names, locations or breaches.
 - Cite the source for each claim in parentheses, e.g. (Sherlock), (GitHub), (HIBP).
 - When evidence is thin or conflicting, say so and lower the confidence. A short honest report beats a padded one.
-- Accounts are listed as CONFIRMED or POSSIBLE. Only call an account confirmed if the data lists it as confirmed. Possible accounts are leads to check, never facts.
-- A confirmed account proves the handle exists on that site, not that it is the same person. Say what links it to the target (same name, bio, avatar, links) or say that nothing does.
-- Some sources may be listed as FAILED. A failed source gave no data: never cite it, never describe its platform as confirmed, and never treat the failure as a negative result.
+- Accounts are listed in four groups: LINKED, EXISTS (MATCHES), EXISTS (DIFFERENT PERSON) and UNVERIFIED. Use each account only as its group allows, and never move an account to a stronger group.
+- LINKED accounts are tied to the primary identity by a strong signal, or are the authoritative record for the target itself. They are the only accounts you may attribute to the target.
+- EXISTS (MATCHES) accounts exist and nothing on them conflicts with the primary identity. That is consistent, not proven: say what would tie each one to the target or say that nothing does yet.
+- EXISTS (DIFFERENT PERSON) accounts are other people who share the handle. Never use their names, locations, bios or links to describe the target. Mention them only to say the handle is shared.
+- UNVERIFIED accounts are leads to check, never facts. A site that blocked the check is unknown, not absent.
+- Some sources may be listed as FAILED. A failed source gave no data: never cite it, never describe its platform as linked or existing, and never treat the failure as a negative result.
 
 Respond in exactly this format, with nothing before or after:
 
@@ -39,7 +42,7 @@ exposure_reason: one sentence, 15 words or fewer
 </profile>
 <report>
 ## Case summary
-2-4 sentences: who or what this target most likely is, how confident you are, and the single most useful thing found.
+2-4 sentences: what this target most likely is (for a username or email, who it most likely belongs to), how confident you are, and the single most useful thing found.
 
 ## Identity assessment
 | Attribute | Assessment | Confidence | Evidence |
@@ -61,7 +64,28 @@ At most 6, ranked, most valuable first. Each lead is one line starting with → 
 Bullets: each unanswered question (including attributes left out of the identity table) and the source or technique that would answer it.
 </report>"""
 
-ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active techniques" (the investigator enabled them) listing account-recovery or password-reset enumeration checks worth running on the confirmed accounts, each marked with ⚠ and a one-line note on what it reveals and the risk of notifying the target."""
+ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active techniques" (the investigator enabled them) listing account-recovery or password-reset enumeration checks worth running on the linked accounts, each marked with ⚠ and a one-line note on what it reveals and the risk of notifying the target."""
+
+
+# What the report is about depends on the kind of target. A hash or a phone number is not a person,
+# so the model is told not to write about identity for those.
+TARGET_FOCUS = {
+    "hash": (
+        "This target is a file hash, not a person. Leave name, location and interests blank in the profile block. "
+        "In the report write only Case summary, Exposure and risk, Investigative leads and Gaps and next pivots: "
+        "what this file is, how sure the sources are, and what to do with it. Skip the identity and platform sections. "
+        "Use a family name only if the data lists one; community tags are unverified free text."
+    ),
+    "phone": (
+        "This target is a phone number. Do not guess who owns it. Leave name blank in the profile block. "
+        "In the report write only Case summary, Exposure and risk, Investigative leads and Gaps and next pivots: "
+        "what the line type and carrier suggest and what to check next. Skip the identity and platform sections."
+    ),
+    "name": (
+        "This target is a person's name typed by the investigator. Nothing was collected about any one person. "
+        "Do not describe anyone. Write a search plan: how to narrow people-search results for this name and what to check first."
+    ),
+}
 
 
 def parse_tagged_report(text: str) -> tuple[list[str], str]:
@@ -129,42 +153,82 @@ def _status_lines(req) -> list[str]:
             status[label] = f"failed: {str(data.get('error') or data.get('error_code'))[:120]}"
     for name, value in (req.source_status or {}).items():
         status[str(name)[:40]] = str(value)[:140]
-    failed = {k: v for k, v in status.items() if v.lower().startswith("failed")}
-    ok = [k for k, v in status.items() if not v.lower().startswith("failed")]
+    bad = ("failed", "blocked")
+    failed = {k: v for k, v in status.items() if v.lower().startswith(bad)}
+    partial = {k: v for k, v in status.items() if v.lower().startswith("partial")}
+    ok = [k for k, v in status.items() if not v.lower().startswith(bad + ("partial",))]
     lines = []
     if ok:
         lines.append(f"Sources that ran successfully: {', '.join(sorted(ok))}")
+    if partial:
+        lines.append(
+            "Sources that answered only IN PART: "
+            + "; ".join(f"{k} ({v})" for k, v in sorted(partial.items()))
+            + ". What they returned can be used. What is missing is unknown, not a negative result."
+        )
     if failed:
         lines.append(
             "Sources that FAILED and returned NO data: "
-            + "; ".join(f"{k} ({v[8:].strip() or 'error'})" for k, v in sorted(failed.items()))
-            + ". Treat these as unknown. Do not cite them, do not call anything from them confirmed, "
+            + "; ".join(f"{k} ({v.split(':', 1)[1].strip() if ':' in v else 'error'})" for k, v in sorted(failed.items()))
+            + ". Treat these as unknown. Do not cite them, do not call anything from them linked or existing, "
             "and do not read a failure as evidence that an account does or does not exist. List each under Gaps."
         )
     return lines
 
 
+# Old clients and saved prompts used two statuses. They map onto the weakest group that fits.
+_STATUS_ALIAS = {"confirmed": "matches", "possible": "unverified"}
+
+
+def _breach_names(hibp: Optional[dict], limit: int = 20) -> list[str]:
+    """Breach names for a prompt. Rows are objects now (name, date, ...); old data is a list of strings."""
+    out = []
+    for b in ((hibp or {}).get("breaches") or [])[:limit]:
+        if isinstance(b, dict):
+            name = str(b.get("name") or "").strip()
+            year = b.get("year") or str(b.get("date") or "")[:4]
+            if name:
+                out.append(f"{name} ({year})" if year else name)
+        elif b:
+            out.append(str(b))
+    return out
+
+
 def _account_lines(req) -> list[str]:
-    """Account evidence, worded by how strong it is."""
+    """Account evidence, worded by how strong it is. The groups are the ledger's tiers."""
     lines: list[str] = []
     if req.accounts:
-        confirmed = [a for a in req.accounts if a.status == "confirmed"]
-        possible = [a for a in req.accounts if a.status != "confirmed"]
+        by: dict[str, list] = {"linked": [], "matches": [], "different": [], "unverified": []}
+        for a in req.accounts:
+            by[_STATUS_ALIAS.get(a.status, a.status) if _STATUS_ALIAS.get(a.status, a.status) in by else "unverified"].append(a)
         fmt = lambda a: f"{a.site} ({a.url})" if a.url else a.site
-        if confirmed:
+        noted = lambda a: f"{fmt(a)}{' [' + a.note + ']' if a.note else ''}"
+        if by["linked"]:
             lines.append(
-                f"CONFIRMED accounts ({len(confirmed)}), existence verified by profile data or an API: "
-                + ", ".join(f"{fmt(a)}{' [' + a.note + ']' if a.note else ''}" for a in confirmed[:30])
+                f"LINKED accounts ({len(by['linked'])}), tied to the primary identity by a strong signal "
+                "(a cross-link, the same avatar, a shared personal site) or the authoritative record for the target itself: "
+                + ", ".join(noted(a) for a in by["linked"][:30])
+            )
+        if by["matches"]:
+            lines.append(
+                f"EXISTS (MATCHES) accounts ({len(by['matches'])}), a profile was read and its name fits the primary identity "
+                "or it carries no conflicting name: " + ", ".join(noted(a) for a in by["matches"][:30])
             )
             lines.append(
-                "Confirmed means an account with this handle exists on that site. It does not prove the account "
-                "belongs to the same person; compare names, bios and links before attributing it."
+                "Exists means an account with this handle is there. It does not prove the account belongs to the same "
+                "person; compare names, bios, avatars and links before attributing it."
             )
-        if possible:
+        if by["different"]:
             lines.append(
-                f"POSSIBLE accounts ({len(possible)}), a tool reported the handle exists but nothing verified it "
-                f"(many sites answer yes for any name): {', '.join(fmt(a) for a in possible[:40])}"
-                + (f" (and {len(possible) - 40} more)" if len(possible) > 40 else "")
+                f"EXISTS (DIFFERENT PERSON) accounts ({len(by['different'])}), a profile was read and the name on it conflicts "
+                "with the primary identity. These are other people who share the handle, not the target: "
+                + ", ".join(noted(a) for a in by["different"][:30])
+            )
+        if by["unverified"]:
+            lines.append(
+                f"UNVERIFIED accounts ({len(by['unverified'])}), a tool reported the handle exists but nothing was read "
+                f"(many sites answer yes for any name, and some block the check): {', '.join(fmt(a) for a in by['unverified'][:40])}"
+                + (f" (and {len(by['unverified']) - 40} more)" if len(by["unverified"]) > 40 else "")
             )
         return lines
     # Older clients send raw tool output instead of the ledger.
@@ -174,10 +238,10 @@ def _account_lines(req) -> list[str]:
     noisy = [r["site"] for r in rows if r.get("confidence") == "false_positive"]
     fmt = lambda r: f'{r["site"]} ({r["url"]})' if r.get("url") else r["site"]
     if verified:
-        lines.append(f"Accounts verified by profile data ({len(verified)}): {', '.join(fmt(r) for r in verified[:30])}")
+        lines.append(f"Accounts where a profile was read ({len(verified)}): {', '.join(fmt(r) for r in verified[:30])}")
     if possible:
         lines.append(
-            f"POSSIBLE accounts ({len(possible)}), existence check only, not verified "
+            f"UNVERIFIED accounts ({len(possible)}), existence check only, nothing was read "
             f"(many sites answer yes for any name): {', '.join(fmt(r) for r in possible[:40])}"
         )
     if noisy:
@@ -188,13 +252,15 @@ def _account_lines(req) -> list[str]:
 class AccountEvidence(BaseModel):
     site: str = Field(max_length=120)
     url: str = Field(default="", max_length=600)
-    status: str = Field(default="possible", max_length=20)     # "confirmed" | "possible"
+    status: str = Field(default="unverified", max_length=20)   # "linked" | "matches" | "different" | "unverified"
     sources: list[str] = Field(default_factory=list, max_length=8)
     note: str = Field(default="", max_length=200)
 
 
 class AnalyzeRequest(BaseModel):
     target: str = Field(max_length=320)
+    # "username", "email", "hash", "phone" or "name". Only changes the wording of the question.
+    target_type: str = Field(default="", max_length=20)
     # What the UI's evidence ledger concluded, so the report and the screen agree.
     accounts: Optional[list[AccountEvidence]] = Field(default=None, max_length=400)
     # Source name -> "ok", "not found" or "failed: <reason>". Lets the model tell
@@ -207,12 +273,15 @@ class AnalyzeRequest(BaseModel):
     hibp: Optional[dict] = None
     gravatar: Optional[dict] = None
     github: Optional[dict] = None
+    github_deep: Optional[dict] = None
     enricher: Optional[dict] = None
     platform_check: Optional[dict] = None
     hunter: Optional[dict] = None
     shodan: Optional[dict] = None
     profile_scrape: Optional[dict] = None
     name_search: Optional[dict] = None
+    hash: Optional[dict] = None
+    phone: Optional[dict] = None
     active_techniques: bool = False
 
 
@@ -248,10 +317,10 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
                 f"Passive domain harvest found {len(emails)} emails: {', '.join(emails[:10])}"
             )
 
-    if req.hibp and req.hibp.get("breaches"):
+    if _ok(req.hibp) and req.hibp.get("breaches"):
         breaches = req.hibp["breaches"]
         prompt_parts.append(
-            f"Breach check found {len(breaches)} breaches: {', '.join(breaches[:20])}"
+            f"Breach check found {len(breaches)} breaches: {', '.join(_breach_names(req.hibp))}"
             + (f" (and {len(breaches)-20} more)" if len(breaches) > 20 else "")
         )
 
@@ -296,18 +365,86 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
             if parts:
                 prompt_parts.append(f"{p.get('platform', 'Unknown')} profile: {', '.join(parts)}")
 
-    if req.platform_check and req.platform_check.get("results"):
-        found = [r for r in req.platform_check["results"] if r.get("found")]
-        not_found = [r["platform"] for r in req.platform_check["results"] if not r.get("found")]
-        if found:
-            found_details = [f"{r['platform']} ({r.get('url', '')})" for r in found]
+    if _ok(req.platform_check) and req.platform_check.get("results"):
+        rows = req.platform_check["results"]
+        named = lambda r: f"{r.get('platform', '')} ({r.get('url', '')})"
+        if any(r.get("state") for r in rows):
+            read = [r for r in rows if r.get("state") == "found"]
+            blocked = [r for r in rows if r.get("state") in ("blocked", "unknown")]
+            absent = [r.get("platform", "") for r in rows if r.get("state") == "not_found"]
+            if read:
+                prompt_parts.append(
+                    "Platform check read a profile page (a marker on the page matched) on: "
+                    + ", ".join(named(r) + (f" [name on profile: {r['display_name']}]" if r.get("display_name") else "") for r in read)
+                )
+            if blocked:
+                prompt_parts.append(
+                    "Platform check was blocked or could not tell on (unknown, not absent): "
+                    + ", ".join(f"{r.get('platform', '')}" + (f" [{str(r['evidence'])[:80]}]" if r.get("evidence") else "") for r in blocked)
+                )
+            if absent:
+                prompt_parts.append(f"Platform check found no profile on: {', '.join(absent)}")
+        else:
+            found = [r for r in rows if r.get("found")]
+            not_found = [r["platform"] for r in rows if r.get("found") is False]
+            if found:
+                prompt_parts.append(
+                    f"Platform URL probe got a 200 response for {len(found)} profile URLs (weak signal, these sites often answer 200 for any name): {', '.join(named(r) for r in found)}"
+                )
+            if not_found:
+                prompt_parts.append(f"Platform existence check found no profile on: {', '.join(not_found)}")
+
+    if _ok(req.github_deep) and req.github_deep.get("found") is not False:
+        gd = req.github_deep
+        sections = gd.get("sections") or {}
+        parts = []
+        if gd.get("orgs"):
+            parts.append("organisations: " + ", ".join(str(o.get("login", "")) for o in gd["orgs"][:12]))
+        if gd.get("languages"):
+            parts.append("languages: " + ", ".join(str(x) for x in gd["languages"][:8]))
+        if gd.get("top_repos"):
+            parts.append("top repos: " + ", ".join(f"{r.get('name', '')} ({r.get('stars', 0)} stars)" for r in gd["top_repos"][:5]))
+        if gd.get("commit_emails"):
+            parts.append("commit emails: " + ", ".join(str(e.get("email", "")) for e in gd["commit_emails"][:5]))
+        if gd.get("social_accounts"):
+            parts.append("linked accounts: " + ", ".join(str(a.get("url", "")) for a in gd["social_accounts"][:8]))
+        if gd.get("readme_links"):
+            parts.append("README links: " + ", ".join(str(u) for u in gd["readme_links"][:8]))
+        if parts:
+            prompt_parts.append(f"GitHub details (public API, same account as the GitHub profile): {'; '.join(parts)}")
+        unknown = sorted(k for k, v in sections.items() if v in ("rate_limited", "failed"))
+        if unknown:
+            prompt_parts.append(f"GitHub details that could not be read (unknown, not empty): {', '.join(unknown)}")
+
+    if _ok(req.hash):
+        hs = req.hash
+        verdict = str(hs.get("verdict") or "UNKNOWN").upper()
+        parts = [f"type: {hs.get('hash_type', '')}", f"verdict: {verdict}"]
+        test = hs.get("known_test_file")
+        if verdict == "TEST_FILE" or test:
+            parts.append(f"this is the {(test or {}).get('name') or 'EICAR antivirus test file'}, harmless by design; every scanner flags it and it is not malware")
+        if hs.get("family"):
+            parts.append(f"family: {hs['family']} (named by {', '.join(hs.get('family_sources') or []) or 'a structured source'})")
+        det = hs.get("detection")
+        parts.append(f"detection: {det['positives']} of {det['total']}" if isinstance(det, dict) and det.get("total") else "detection ratio: none available from keyless sources")
+        for k, label in (("file_type", "file type"), ("file_name", "file name"), ("file_size", "size"), ("first_seen", "first seen"), ("last_seen", "last seen")):
+            if hs.get(k):
+                parts.append(f"{label}: {hs[k]}")
+        if hs.get("failed_sources"):
+            parts.append("sources that could not be asked (unknown, not a negative): " + ", ".join(str(x) for x in hs["failed_sources"][:8]))
+        prompt_parts.append(f"Hash lookup: {'; '.join(parts)}")
+        if hs.get("community_tags"):
             prompt_parts.append(
-                f"Platform URL probe got a 200 response for {len(found)} profile URLs (weak signal, these sites often answer 200 for any name): {', '.join(found_details)}"
+                "Community tags (free text from whoever submitted a report, unverified, never a family name): "
+                + ", ".join(str(t) for t in hs["community_tags"][:12])
             )
-        if not_found:
-            prompt_parts.append(
-                f"Platform existence check found no profile on: {', '.join(not_found)}"
-            )
+
+    if _ok(req.phone):
+        ph = req.phone
+        parts = [f"{label}: {ph[k]}" for k, label in (("carrier", "carrier"), ("line_type", "line type"), ("location", "location"), ("country", "country")) if ph.get(k)]
+        if ph.get("valid") is False:
+            parts.append("reported invalid")
+        prompt_parts.append(f"Phone lookup: {', '.join(parts)}" if parts else "Phone lookup returned no carrier or line type data.")
 
     if req.profile_scrape and req.profile_scrape.get("results"):
         prompt_parts.append(
@@ -369,6 +506,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
     recon_data = "\n".join(prompt_parts)
     return (
         INVESTIGATION_PROMPT
+        + ("\n" + TARGET_FOCUS[req.target_type] if req.target_type in TARGET_FOCUS else "")
         + ("\n" + ACTIVE_TECHNIQUES_SECTION if req.active_techniques else "")
         + f"\n\nTarget: {req.target}\n\nCollected data:\n{recon_data}"
     )
@@ -430,16 +568,16 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
         verified = [r["site"] for r in results if r.get("verified")]
         possible = [r["site"] for r in results if r.get("confidence") != "false_positive" and not r.get("verified")]
         if verified:
-            prompt_parts.append(f"Accounts verified by profile data ({len(verified)}): {', '.join(verified[:30])}")
+            prompt_parts.append(f"Accounts where a profile was read ({len(verified)}): {', '.join(verified[:30])}")
         if possible:
-            prompt_parts.append(f"Possible accounts, existence check only ({len(possible)}): {', '.join(possible[:30])}")
+            prompt_parts.append(f"Unverified accounts, existence check only ({len(possible)}): {', '.join(possible[:30])}")
 
     if req.holehe and req.holehe.get("results"):
         accounts = [r["site"] for r in req.holehe["results"]]
         prompt_parts.append(f"Holehe: email registered on {req.holehe['total']} services: {', '.join(accounts)}")
 
     if req.hibp and req.hibp.get("breaches"):
-        prompt_parts.append(f"Breaches ({len(req.hibp['breaches'])}): {', '.join(req.hibp['breaches'][:20])}")
+        prompt_parts.append(f"Breaches ({len(req.hibp['breaches'])}): {', '.join(_breach_names(req.hibp))}")
 
     if req.gravatar and req.gravatar.get("found"):
         g = req.gravatar
@@ -490,7 +628,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
             parts.append(f"ports: {', '.join(str(p) for p in s['ports'][:20])}")
         prompt_parts.append(f"Shodan: {', '.join(parts)}")
 
-    # Profile scrape data — the key differentiator for Deep Dive
+    # Profile scrape data: the key differentiator for Deep Dive
     scrape_section = ""
     if req.profile_scrape and req.profile_scrape.get("results"):
         scrape_parts = ["\n== SCRAPED PROFILE DATA (live page visits) =="]
@@ -526,7 +664,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
                 "content": (
                     "You are a senior OSINT intelligence analyst writing a classified-style dossier. "
                     "You have access to OSINT recon data AND live-scraped profile page content below. "
-                    "Write a deep analytical report — NOT bullet points, but a proper intelligence dossier.\n\n"
+                    "Write a deep analytical report, NOT bullet points, but a proper intelligence dossier.\n\n"
                     "Produce EXACTLY these five sections with these EXACT headers (use ** bold for headers):\n\n"
                     "**SUBJECT PROFILE**\n"
                     "Write 2-3 flowing paragraphs describing this person's digital identity. "
@@ -534,7 +672,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
                     "their technical sophistication, geographic indicators, professional profile, interests, "
                     "and behavioral patterns. Cross-reference display names, bios, and linked accounts "
                     "from the scraped profile data to build a coherent picture. "
-                    "Do NOT use bullet points — write in analytical prose.\n\n"
+                    "Do NOT use bullet points: write in analytical prose.\n\n"
                     "**CONFIDENCE MATRIX**\n"
                     "Present a table of identity inferences. Each row should be:\n"
                     "| Inference | Confidence | Evidence |\n"
@@ -558,7 +696,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
                     "- Google dorks: site:, inurl:, intitle:, \"exact match\" operators\n"
                     "- Platform-specific searches\n"
                     "- Reverse email/username lookups\n"
-                    "Make these SPECIFIC to the target — use their actual username, email, "
+                    "Make these SPECIFIC to the target: use their actual username, email, "
                     "inferred name, and discovered platforms. No generic templates.\n\n"
                     "IMPORTANT ANALYSIS RULES:\n"
                     "- Previous OSINT findings take priority over single-source web content. "
@@ -885,7 +1023,7 @@ def _summarize_target_data(target: str, data: dict) -> str:
             parts.append(f"  Gravatar: {', '.join(info)}")
 
     if data.get("hibp") and data["hibp"].get("breaches"):
-        parts.append(f"  Breaches: {', '.join(data['hibp']['breaches'][:15])}")
+        parts.append(f"  Breaches: {', '.join(_breach_names(data['hibp'], 15))}")
 
     if data.get("enricher") and data["enricher"].get("profiles"):
         for p in data["enricher"]["profiles"]:

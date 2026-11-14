@@ -1,0 +1,187 @@
+{
+ "_note": "Recorded 2026-11-14 from the public unauthenticated GitHub REST API, trimmed to the fields CrawlR reads.",
+ "social_accounts": [],
+ "orgs": [],
+ "repos": [
+  {
+   "name": "linux",
+   "html_url": "https://github.com/torvalds/linux",
+   "stargazers_count": 255661,
+   "language": "C",
+   "description": "Linux kernel source tree",
+   "fork": false
+  },
+  {
+   "name": "GuitarPedal",
+   "html_url": "https://github.com/torvalds/GuitarPedal",
+   "stargazers_count": 2499,
+   "language": "C",
+   "description": "Linus learns analog circuits",
+   "fork": false
+  },
+  {
+   "name": "subsurface-for-dirk",
+   "html_url": "https://github.com/torvalds/subsurface-for-dirk",
+   "stargazers_count": 482,
+   "language": "C++",
+   "description": "Do not use - the real upstream is  Subsurface-divelog/subsurface",
+   "fork": true
+  },
+  {
+   "name": "uemacs",
+   "html_url": "https://github.com/torvalds/uemacs",
+   "stargazers_count": 2200,
+   "language": "C",
+   "description": "Random version of microemacs with my private modificatons",
+   "fork": false
+  },
+  {
+   "name": "AudioNoise",
+   "html_url": "https://github.com/torvalds/AudioNoise",
+   "stargazers_count": 4533,
+   "language": "C",
+   "description": "Random digital audio effects",
+   "fork": false
+  },
+  {
+   "name": "1590A",
+   "html_url": "https://github.com/torvalds/1590A",
+   "stargazers_count": 583,
+   "language": "OpenSCAD",
+   "description": "Random odd guitar pedal design in kicad",
+   "fork": false
+  },
+  {
+   "name": "libdc-for-dirk",
+   "html_url": "https://github.com/torvalds/libdc-for-dirk",
+   "stargazers_count": 412,
+   "language": "C",
+   "description": "Only use for syncing with Dirk, don't use for anything else",
+   "fork": true
+  },
+  {
+   "name": "test-tlb",
+   "html_url": "https://github.com/torvalds/test-tlb",
+   "stargazers_count": 1085,
+   "language": "C",
+   "description": "Stupid memory latency and TLB tester",
+   "fork": false
+  },
+  {
+   "name": "pesconvert",
+   "html_url": "https://github.com/torvalds/pesconvert",
+   "stargazers_count": 593,
+   "language": "C",
+   "description": "Brother PES file converter",
+   "fork": false
+  }
+ ],
+ "keys": [
+  {
+   "id": 1306333,
+   "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCoQ9S7V+CufAgwoehnf2TqsJ9LTsu8pUA3FgpS2mdVwcMcTs++8P5sQcXHLtDmNLpWN4k7NQgxaY1oXy5e25x/4VhXaJXWEt3luSw+Phv/PB2+aGLvqCUirsLTAD2r7ieMhd/pcVf/HlhNUQgnO1mupdbDyqZoGD/uCcJiYav8i/V7nJWJouHA8yq31XS2yqXp9m3VC7UZZHzUsVJA9Us5YqF0hKYeaGruIHR2bwoDF9ZFMss5t6/pzxMljU/ccYwvvRDdI7WX4o4+zLuZ6RWvsU6LGbbb0pQdB72tlV41fSefwFsk4JRdKbyV3Xjf25pV4IXOTcqhy+4JTB/jXxrF"
+  }
+ ],
+ "gpg_keys": [],
+ "events": [
+  {
+   "type": "PushEvent",
+   "actor": {
+    "login": "torvalds"
+   },
+   "repo": {
+    "name": "torvalds/linux"
+   },
+   "payload": {
+    "ref": "refs/heads/master",
+    "head": "9d66f26fefacebfeed15de31c1123451a17ff119",
+    "before": "79eb6679ef6a0d5ea68da53a8321fb1dc72299b9"
+   },
+   "created_at": "2026-11-12T02:55:16Z"
+  },
+  {
+   "type": "PushEvent",
+   "actor": {
+    "login": "torvalds"
+   },
+   "repo": {
+    "name": "torvalds/linux"
+   },
+   "payload": {
+    "ref": "refs/heads/master",
+    "head": "79eb6679ef6a0d5ea68da53a8321fb1dc72299b9",
+    "before": "067c5c24cef23d913b67eaaf71ae67e7169a6620"
+   },
+   "created_at": "2026-11-11T22:00:02Z"
+  },
+  {
+   "type": "PushEvent",
+   "actor": {
+    "login": "torvalds"
+   },
+   "repo": {
+    "name": "torvalds/linux"
+   },
+   "payload": {
+    "ref": "refs/heads/master",
+    "head": "ee83899302a0457a3ba47464a13e8682bd7ba27d",
+    "before": "9d66f26fefacebfeed15de31c1123451a17ff119"
+   },
+   "created_at": "2026-11-12T18:30:44Z"
+  },
+  {
+   "type": "PushEvent",
+   "actor": {
+    "login": "torvalds"
+   },
+   "repo": {
+    "name": "torvalds/linux"
+   },
+   "payload": {
+    "ref": "refs/heads/master",
+    "head": "067c5c24cef23d913b67eaaf71ae67e7169a6620",
+    "before": "b3dfbde62cf1981c4638939c159dfd087b7a72e9"
+   },
+   "created_at": "2026-11-10T17:49:11Z"
+  }
+ ],
+ "commits": [
+  {
+   "sha": "aacb7797504183a90d66b19b1efb555cfe9b3eec",
+   "commit": {
+    "author": {
+     "name": "Linus Torvalds",
+     "email": "torvalds@linux-foundation.org"
+    }
+   },
+   "author": {
+    "login": "torvalds"
+   }
+  },
+  {
+   "sha": "68271fbe7d14b6397e90df730c3967d3a481902b",
+   "commit": {
+    "author": {
+     "name": "Linus Torvalds",
+     "email": "torvalds@linux-foundation.org"
+    }
+   },
+   "author": {
+    "login": "torvalds"
+   }
+  },
+  {
+   "sha": "cba88960471ac67635080708b67ed5c2a2e4e9fd",
+   "commit": {
+    "author": {
+     "name": "Linus Torvalds",
+     "email": "torvalds@linux-foundation.org"
+    }
+   },
+   "author": {
+    "login": "torvalds"
+   }
+  }
+ ],
+ "readme": null
+}

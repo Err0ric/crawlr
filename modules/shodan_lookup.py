@@ -1,5 +1,6 @@
 import httpx
 
+from core import shared_hosting
 from core.errors import error_fields
 
 
@@ -13,7 +14,7 @@ async def run_shodan(target: str, api_key: str, timeout: int = 15) -> dict:
                 params={"key": api_key},
             )
             if resp.status_code == 401:
-                return {"target": target, "found": False, "error": "Invalid API key"}
+                return {"target": target, "found": False, **error_fields(code="auth", detail="Shodan returned HTTP 401")}
             if resp.status_code == 404:
                 return {"target": target, "found": False, "ports": [], "vulns": [], "services": []}
             resp.raise_for_status()
@@ -29,7 +30,9 @@ async def run_shodan(target: str, api_key: str, timeout: int = 15) -> dict:
                     "banner": (item.get("data", "") or "")[:200],
                 })
 
-            return {
+            # Shodan describes the address. On a shared platform edge the hostnames are mostly
+            # other people's sites and the ports are the platform's (core/shared_hosting.py).
+            return shared_hosting.annotate({
                 "target": target,
                 "found": True,
                 "ip": data.get("ip_str", ""),
@@ -42,6 +45,7 @@ async def run_shodan(target: str, api_key: str, timeout: int = 15) -> dict:
                 "vulns": list(data.get("vulns", []))[:20] if data.get("vulns") else [],
                 "total_services": len(services),
                 "services": services[:30],
-            }
+                "hostnames": [h for h in data.get("hostnames") or [] if isinstance(h, str)][:50],
+            }, target, asn_org=data.get("org") or data.get("isp") or "")
     except Exception as e:
         return {"target": target, "found": False, **error_fields(e)}

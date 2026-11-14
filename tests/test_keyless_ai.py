@@ -21,14 +21,14 @@ def test_prompt_endpoint_needs_no_key_and_spends_nothing(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "AIza-house")
     hk.reset_counters_for_tests()
     _no_model_calls(monkeypatch)
-    body = {"target": "jdoe", "accounts": [{"site": "Bluesky", "url": "https://bsky.app/profile/jdoe", "status": "confirmed", "sources": ["Maigret"]}],
+    body = {"target": "jdoe", "accounts": [{"site": "Bluesky", "url": "https://bsky.app/profile/jdoe", "status": "linked", "sources": ["Maigret"]}],
             "github": {"found": None, "error": "GitHub is rate limiting CrawlR.", "error_code": "rate_limited"}}
     with TestClient(app) as c:
         r = c.post("/api/analyze/prompt", json=body, headers=IP)
         assert r.status_code == 200
         p = r.json()["prompt"]
         assert p.startswith("You are a senior OSINT investigator") and "<summary>" in p
-        assert "CONFIRMED accounts (1)" in p and "FAILED" in p and "Target: jdoe" in p
+        assert "LINKED accounts (1)" in p and "FAILED" in p and "Target: jdoe" in p
         assert c.get("/api/quota", headers=IP).json()["remaining"]["analysis"] == 5
     hk.reset_counters_for_tests()
 

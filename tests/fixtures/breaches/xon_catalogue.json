@@ -1,0 +1,264 @@
+{
+ "_recorded": "2026-11-14, GET https://api.xposedornot.com/v1/breaches, trimmed to 12 of 800 entries, descriptions cut",
+ "status": "success",
+ "exposedBreaches": [
+  {
+   "breachID": "CyrusOne",
+   "breachedDate": "2026-08-01T00:00:00+00:00",
+   "addedDate": "2026-11-14T00:22:04+00:00",
+   "domain": "cyrusone.com",
+   "industry": "Information Technology",
+   "passwordRisk": "unknown",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Names",
+    "Phone numbers",
+    "Physical addresses",
+    "Employers",
+    "Job titles"
+   ],
+   "exposedRecords": 357752,
+   "exposureDescription": "CyrusOne, a data centre operator, was allegedly breached by the ShinyHunters group in August 2026, with data later published online exposing 373k unique email a",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "Zoosk-2020",
+   "breachedDate": "2020-01-01T00:00:00+00:00",
+   "addedDate": "2026-10-14T10:52:13+00:00",
+   "domain": "zoosk.com",
+   "industry": "Entertainment",
+   "passwordRisk": "easytocrack",
+   "searchable": false,
+   "sensitive": true,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Names",
+    "Dates of birth",
+    "Ethnicities",
+    "Geographic locations",
+    "Political views",
+    "Relationship statuses",
+    "Religions",
+    "Sexual orientations"
+   ],
+   "exposedRecords": 37378434,
+   "exposureDescription": "Zoosk, an online dating platform, was breached in January 2020, exposing 37M unique email addresses along with genders, sexual orientations, dates of birth, phy",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "Chess-2026",
+   "breachedDate": "2026-08-01T00:00:00+00:00",
+   "addedDate": "2026-09-27T05:26:10+00:00",
+   "domain": "chess.com",
+   "industry": "Entertainment",
+   "passwordRisk": "unknown",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Names",
+    "Usernames",
+    "Geographic locations"
+   ],
+   "exposedRecords": 4656591,
+   "exposureDescription": "Chess.com, an online chess platform, had user data scraped and published online in August 2026, exposing 7.3M records including 4.6M unique email addresses alon",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "PeopleDataLabs",
+   "breachedDate": "2019-01-01T00:00:00+00:00",
+   "addedDate": "2026-05-31T06:27:12+00:00",
+   "domain": "peopledatalabs.com",
+   "industry": "Information Technology",
+   "passwordRisk": "unknown",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Names",
+    "Phone numbers",
+    "Geographic locations",
+    "Social media profiles"
+   ],
+   "exposedRecords": 179117119,
+   "exposureDescription": "People Data Labs, a data enrichment company, was impacted by a larger data exposure in 2019, with a partial dataset later circulating that contained records wit",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "LinkedInScrape-2021",
+   "breachedDate": "2021-04-01T00:00:00+00:00",
+   "addedDate": "2026-05-23T07:09:50+00:00",
+   "domain": "linkedin.com",
+   "industry": "Information Technology",
+   "passwordRisk": "unknown",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "Scrape",
+   "exposedData": [
+    "Email addresses",
+    "Names",
+    "Genders",
+    "Social media profiles",
+    "Job titles"
+   ],
+   "exposedRecords": 125724601,
+   "exposureDescription": "LinkedIn, a professional networking platform, had public profile data scraped and later sold online in 2021, exposing around 400M records including 125M unique ",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "Evite",
+   "breachedDate": "2019-04-01T00:00:00+00:00",
+   "addedDate": "2024-02-02T04:59:32+00:00",
+   "domain": "evite.com",
+   "industry": "Miscellaneous",
+   "passwordRisk": "plaintext",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Names",
+    "Passwords",
+    "Email addresses",
+    "Dates of birth",
+    "Phone numbers",
+    "Physical addresses"
+   ],
+   "exposedRecords": 58773935,
+   "exposureDescription": "Evite, a popular social planning and e-invitations service, confirmed a security breach that occurred in February 2019. The breach exposed user data, including ",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "Verifications",
+   "breachedDate": "2019-02-01T00:00:00+00:00",
+   "addedDate": "2023-11-08T06:30:24+00:00",
+   "domain": "verifications.io",
+   "industry": "Information Technology",
+   "passwordRisk": "unknown",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Names",
+    "Dates of birth",
+    "Genders",
+    "Geographic locations",
+    "Phone numbers",
+    "Physical addresses"
+   ],
+   "exposedRecords": 762579945,
+   "exposureDescription": "Verifications.io, a comprehensive email verification service, suffered a severe data breach in 2019 that compromised a vast array of personal user data. The exp",
+   "referenceURL": "https://www.bitdefender.com/blog/hotforsecurity/email-verifiers-and-data-breaches-what-you-need-to-know"
+  },
+  {
+   "breachID": "Adapt",
+   "breachedDate": "2018-11-01T00:00:00+00:00",
+   "addedDate": "2023-11-08T06:30:22+00:00",
+   "domain": "adapt.io",
+   "industry": "Information Technology",
+   "passwordRisk": "unknown",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Names",
+    "Phone numbers",
+    "Physical addresses"
+   ],
+   "exposedRecords": 9363751,
+   "exposureDescription": "Adapt, a data aggregator, experienced a significant data breach on November 5, 2018. Unfortunately, the breach led to the exposure of phone numbers, email addre",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "1.4BillionRecords",
+   "breachedDate": "2017-03-01T00:00:00+00:00",
+   "addedDate": "2023-11-08T06:30:18+00:00",
+   "domain": "",
+   "industry": "Entertainment",
+   "passwordRisk": "unknown",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "ComboList",
+   "exposedData": [
+    "Email addresses",
+    "Names"
+   ],
+   "exposedRecords": 1114303554,
+   "exposureDescription": "4iQ, a cybersecurity company, uncovered a massive credential collection in 2017 containing more than 1.4B unique username and password combinations along with e",
+   "referenceURL": "https://www.forbes.com/sites/leemathews/2017/12/11/billion-hacked-passwords-dark-web/?sh=632358521f2f"
+  },
+  {
+   "breachID": "AntiPublicCombo",
+   "breachedDate": "2016-12-01T00:00:00+00:00",
+   "addedDate": "2023-11-08T06:30:16+00:00",
+   "domain": "",
+   "industry": "Education",
+   "passwordRisk": "plaintext",
+   "searchable": true,
+   "sensitive": false,
+   "verified": false,
+   "breachType": "ComboList",
+   "exposedData": [
+    "Email addresses",
+    "Passwords"
+   ],
+   "exposedRecords": 457399902,
+   "exposureDescription": "The Anti Public Combo List, an aggregate collection consisting of data from various breaches, was made public on 2016.This compilation predominantly contained e",
+   "referenceURL": "https://www.hackread.com/anti-public-combo-list-with-billions-of-accounts-leaked/"
+  },
+  {
+   "breachID": "ExploitIN",
+   "breachedDate": "2016-10-01T00:00:00+00:00",
+   "addedDate": "2023-11-08T06:30:16+00:00",
+   "domain": "exploit.in",
+   "industry": "Information Technology",
+   "passwordRisk": "plaintext",
+   "searchable": true,
+   "sensitive": false,
+   "verified": false,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Passwords"
+   ],
+   "exposedRecords": 592919058,
+   "exposureDescription": "Exploit.IN was a hacking forum and marketplace that was hacked in 2016. The hacker gained access to the site's database, which contained over 590 million user a",
+   "referenceURL": ""
+  },
+  {
+   "breachID": "LinkedIn",
+   "breachedDate": "2012-05-01T00:00:00+00:00",
+   "addedDate": "2023-11-08T06:30:00+00:00",
+   "domain": "linkedin.com",
+   "industry": "Information Technology",
+   "passwordRisk": "easytocrack",
+   "searchable": true,
+   "sensitive": false,
+   "verified": true,
+   "breachType": "DataBreach",
+   "exposedData": [
+    "Email addresses",
+    "Passwords"
+   ],
+   "exposedRecords": 160042644,
+   "exposureDescription": "LinkedIn, the popular professional networking site, suffered a data breach in 2012,  in which hackers obtained user data including email addresses and hashed pa",
+   "referenceURL": "https://en.wikipedia.org/wiki/2012_LinkedIn_hack"
+  }
+ ]
+}

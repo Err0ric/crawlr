@@ -144,6 +144,85 @@ export function sourceOutcome(d) {
   return { state: "ok", text: "" };
 }
 
+// ---- one count of what ran ---------------------------------------------------------------
+// Did a source that answered actually return something? Used for the run log row and the tally,
+// so "nothing found" means the same thing everywhere.
+export function sourceHasResults(d) {
+  if (!d || typeof d !== "object" || d.error || d.error_code || d.skipped || d.found === false) return false;
+  if (d.found === true) return true;
+  if (typeof d.total === "number") return d.total > 0;
+  for (const k of ["results", "breaches", "emails", "hosts", "profiles", "subdomains", "candidates", "ports", "findings", "hops"]) {
+    if (Array.isArray(d[k]) && d[k].some((r) => !r || typeof r !== "object" || (r.found !== false && r.open !== false && r.found !== null && !r.error))) return true;
+  }
+  if (d.records && typeof d.records === "object" && Object.values(d.records).some((v) => [].concat(v ?? []).length)) return true;
+  if (d.verdict) return String(d.verdict).toUpperCase() !== "UNKNOWN";
+  return !!(d.carrier || d.line_type || d.lookup_links || d.asn || d.grade);
+}
+// Some sources are several lookups in one answer: platform check asks each site, the avatar
+// comparison fetches each image, the hash lookup asks four services, GitHub details has sections.
+// When none of them answered, the source failed even though the request succeeded. When only
+// some did, it is partial. Returns null for a source that has no parts.
+//   { answered, total, unit, failedText }
+export function sourceCoverage(d) {
+  if (!d || typeof d !== "object" || d.error || d.error_code || d.skipped) return null;
+  const rows = Array.isArray(d.results) ? d.results.filter((r) => r && typeof r === "object") : [];
+  if (rows.some((r) => typeof r.state === "string")) {
+    const asked = rows.filter((r) => r.state !== "manual");
+    return { answered: asked.filter((r) => r.state === "found" || r.state === "not_found").length, total: asked.length, unit: "sites", failedText: "blocked by every site checked" };
+  }
+  if (rows.length && rows.every((r) => typeof r.id === "string" && ("hash" in r || "error" in r || "error_code" in r))) {
+    return { answered: rows.filter((r) => r.hash && !r.error && !r.error_code).length, total: rows.length, unit: "images", failedText: "no image could be read" };
+  }
+  if (Array.isArray(d.failed_sources) && d.failed_sources.length) {
+    const answered = ["malware_bazaar", "circl", "alienvault", "threatfox"].filter((k) => d[k] && typeof d[k] === "object" && (d[k].found === true || d[k].found === false) && !d[k].error && !d[k].error_code).length;
+    return { answered, total: answered + d.failed_sources.length, unit: "sources", failedText: `no source could be asked (${d.failed_sources.join(", ")})` };
+  }
+  if (d.sections && typeof d.sections === "object" && Object.keys(d.sections).length) {
+    const v = Object.values(d.sections);
+    return { answered: v.filter((x) => x === "ok").length, total: v.length, unit: "sections", failedText: "no section could be read" };
+  }
+  return null;
+}
+export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv.unit} ${cv.unit === "images" || cv.unit === "sections" ? "read" : "answered"}`;
+
+// The one place that counts sources, for the case header, the run log summary and the
+// "By source" tab in both modes. `names` maps a key in `collected` to the source's name.
+//   ran          sources that were asked and came back, with an answer or a failure
+//   answered     ran and did not fail            withResults  answered and returned something
+//   partial      answered, but some of its parts did not (counted inside answered)
+//   failed       ran and failed, or none of its parts answered (unknown, never "not found")
+//   skipped      deliberately not run (not part of ran)
+// Row states: "results", "none" (answered in full, nothing found), "partial" (answered in part,
+// with or without results; never read as "nothing found"), "failed", "skipped".
+// Follow-up lookups (GitHub details, Avatar comparison, Profile enrichment) are sources like any
+// other: each is a request that can fail, has its own run log row and its own card. Values the
+// browser makes itself (search links, the IP to ASN map for the graph) are not sources.
+// A registry answering "no such record" (error_code not_found) is an answer, not a failure.
+export function sourceTally(collected, names) {
+  const rows = [];
+  for (const [key, name] of Object.entries(names || {})) {
+    const d = collected?.[key];
+    if (!d || typeof d !== "object") continue;
+    const o = sourceOutcome(d);
+    const cv = sourceCoverage(d);
+    const has = sourceHasResults(d);
+    let state = d.skipped ? "skipped" : o.state === "error" && d.error_code !== "not_found" ? "failed" : has ? "results" : "none";
+    let text = o.text;
+    if (cv && state !== "skipped" && state !== "failed") {
+      if (cv.total > 0 && cv.answered === 0) { state = "failed"; text = cv.failedText; }
+      else if (cv.answered < cv.total) { state = "partial"; text = coverageText(cv); }
+    }
+    rows.push({ key, name, state, hasResults: state !== "failed" && state !== "skipped" && has, text, detail: o.detail || "", code: o.code || "" });
+  }
+  const n = (s) => rows.filter((r) => r.state === s).length;
+  const failed = n("failed"), skipped = n("skipped"), partial = n("partial");
+  const ran = rows.length - skipped;
+  return { ran, answered: ran - failed, withResults: rows.filter((r) => r.hasResults).length, partial, failed, skipped, rows };
+}
+export const tallyText = (t) => [`${plural(t.ran, "source")} ran`, t.ran ? `${fmtNum(t.withResults)} with results` : "", t.partial ? `${fmtNum(t.partial)} partial` : "", t.failed ? `${fmtNum(t.failed)} failed` : "", t.skipped ? `${fmtNum(t.skipped)} skipped` : ""].filter(Boolean).join(" · ");
+// What the AI is told about one source: never "not found" for a source that did not answer.
+export const statusForAi = (r) => (r.state === "failed" ? (/^blocked/.test(r.text) ? `blocked: ${r.text}` : `failed: ${r.text}`) : r.state === "partial" ? r.text : r.state === "none" ? "not found" : "ok");
+
 export function aiHeaders() {
   const hdr = { "X-Ai-Provider": getProvider() };
   const k = userAiKey();

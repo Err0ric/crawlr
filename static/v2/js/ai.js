@@ -131,7 +131,7 @@ export function aiStartHtml(idp, pitch) {
       <p class="ai-cost">Paste it into Claude, ChatGPT, Gemini or any assistant you already use. The prompt contains the findings on this page.</p>
       <details class="more"><summary>Paste the reply back to format it</summary>
         <label class="sr-only" for="${idp}AiPaste">Reply from your assistant</label>
-        <textarea class="textarea" id="${idp}AiPaste" rows="5" placeholder="Paste the assistant's reply here"></textarea>
+        <textarea class="textarea" id="${idp}AiPaste" name="ai-reply" rows="5" placeholder="Paste the assistant's reply here" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
         <button class="btn btn-sm mt" type="button" id="${idp}AiPasteGo">Format reply</button>
       </details>
     </div>
@@ -147,7 +147,7 @@ export async function copyPrompt(url, payload) {
   try { await navigator.clipboard.writeText(prompt); toast("Prompt copied. Paste it into your assistant.", 4000); return true; }
   catch {
     openModal({ title: "Copy this prompt", wide: true,
-      body: h`<p class="modal-p">Your browser blocked automatic copying. Select all of this and copy it.</p><label class="sr-only" for="promptText">Prompt</label><textarea class="textarea mono" id="promptText" rows="14" readonly>${prompt}</textarea>`,
+      body: h`<p class="modal-p">Your browser blocked automatic copying. Select all of this and copy it.</p><label class="sr-only" for="promptText">Prompt</label><textarea class="textarea mono" id="promptText" name="ai-prompt" rows="14" readonly autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">${prompt}</textarea>`,
       focus: "#promptText",
       actions: [{ label: "Close", primary: true, onClick: closeModal }] });
     document.getElementById("promptText")?.select();

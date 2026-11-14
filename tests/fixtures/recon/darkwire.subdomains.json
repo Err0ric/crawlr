@@ -1,0 +1,132 @@
+{
+ "domain": "darkwire.tech",
+ "total": 2,
+ "checked": 76,
+ "ct_found": 0,
+ "ct_entries": [
+  {
+   "subdomain": "api.darkwire.tech",
+   "issuer": "YE1",
+   "date": "2026-09-27",
+   "not_after": "2026-12-26",
+   "wildcard": false,
+   "names": 1,
+   "id": 29706499644
+  },
+  {
+   "subdomain": "api.darkwire.tech",
+   "issuer": "YE1",
+   "date": "2026-09-27",
+   "not_after": "2026-12-26",
+   "wildcard": false,
+   "names": 1,
+   "id": 29706505038
+  },
+  {
+   "subdomain": "www.darkwire.tech",
+   "issuer": "YR2",
+   "date": "2026-09-27",
+   "not_after": "2026-12-26",
+   "wildcard": false,
+   "names": 1,
+   "id": 29703220842
+  },
+  {
+   "subdomain": "darkwire.tech",
+   "issuer": "R13",
+   "date": "2025-11-19",
+   "not_after": "2026-02-17",
+   "wildcard": false,
+   "names": 1,
+   "id": 22597609893
+  },
+  {
+   "subdomain": "darkwire.tech",
+   "issuer": "R13",
+   "date": "2025-11-14",
+   "not_after": "2026-02-12",
+   "wildcard": false,
+   "names": 1,
+   "id": 22471325955
+  },
+  {
+   "subdomain": "darkwire.tech",
+   "issuer": "R12",
+   "date": "2025-11-13",
+   "not_after": "2026-02-11",
+   "wildcard": true,
+   "names": 1,
+   "id": 22446356527
+  }
+ ],
+ "ct_summary": {
+  "total": 6,
+  "first_issued": "2025-11-13",
+  "last_issued": "2026-09-27",
+  "active": 3,
+  "expired": 3,
+  "wildcards": 1,
+  "issuers": [
+   {
+    "name": "YE1",
+    "count": 2
+   },
+   {
+    "name": "R13",
+    "count": 2
+   },
+   {
+    "name": "YR2",
+    "count": 1
+   },
+   {
+    "name": "R12",
+    "count": 1
+   }
+  ],
+  "by_year": [
+   {
+    "year": "2025",
+    "count": 3
+   },
+   {
+    "year": "2026",
+    "count": 3
+   }
+  ],
+  "not_resolving": [
+   "darkwire.tech"
+  ],
+  "first_seen": [
+   {
+    "name": "darkwire.tech",
+    "date": "2025-11-13"
+   },
+   {
+    "name": "api.darkwire.tech",
+    "date": "2026-09-27"
+   },
+   {
+    "name": "www.darkwire.tech",
+    "date": "2026-09-27"
+   }
+  ]
+ },
+ "subdomains": [
+  {
+   "subdomain": "www.darkwire.tech",
+   "ips": [
+    "64.29.17.1",
+    "216.198.79.1"
+   ],
+   "source": "DNS+CT"
+  },
+  {
+   "subdomain": "api.darkwire.tech",
+   "ips": [
+    "153.52.255.17"
+   ],
+   "source": "DNS+CT"
+  }
+ ]
+}

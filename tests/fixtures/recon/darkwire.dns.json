@@ -1,0 +1,19 @@
+{
+ "domain": "darkwire.tech",
+ "total": 6,
+ "records": {
+  "A": [
+   "216.198.79.1"
+  ],
+  "NS": [
+   "salvador.ns.porkbun.com.",
+   "fortaleza.ns.porkbun.com.",
+   "curitiba.ns.porkbun.com.",
+   "maceio.ns.porkbun.com."
+  ],
+  "SOA": [
+   "curitiba.ns.porkbun.com. dns.cloudflare.com. 2416014279 10000 2400 604800 1800"
+  ]
+ },
+ "cloudflare_proxied": false
+}

@@ -60,7 +60,7 @@
   <p class="sub">Type a username, email, domain, IP, phone number or hash. CrawlR picks the right public sources, runs them, and sorts what comes back by how much it tells you.</p>
   <form class="search" id="landingForm" role="search">
     <label class="sr-only" for="landingInput">Target to investigate</label>
-    <input class="input mono" id="landingInput" placeholder="username, email, domain, IP, ASN, phone, hash" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="landingDetect">
+    <input class="input mono" id="landingInput" placeholder="username, email, domain, IP, ASN, phone, hash" aria-describedby="landingDetect" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
     <button class="btn btn-primary" type="submit">Run</button>
   </form>
   <div class="detect" id="landingDetect" aria-live="polite"></div>
@@ -91,7 +91,7 @@
 
   <div class="how">
     <div><b>No account, no key</b>Every open source runs as-is. Your cases stay in this browser.</div>
-    <div><b>Evidence, ranked</b>Confirmed means verified. Possible means a lead to check. A failed source is shown as failed, never as "not found".</div>
+    <div><b>Evidence, ranked</b>Linked means tied to the person by a strong signal. Exists means a profile was read. Unverified means a lead to check. A failed source is shown as failed, never as "not found".</div>
     <div><b>AI only when you ask</b>A written report is one click away once the sources finish, and you see what it costs first.</div>
   </div>
 </main>
@@ -101,7 +101,7 @@
   <div class="casebar" role="search" aria-label="Investigate a target">
     <div class="casebar-row">
       <label class="sr-only" for="targetInput">Target: username, email, hash, phone or name</label>
-      <input class="input target" id="targetInput" placeholder="username, email, hash, phone, name" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <input class="input target" id="targetInput" placeholder="username, email, hash, phone, name" type="text" name="q" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
       <button class="btn btn-primary" id="runBtn" type="button">Run investigation</button>
       <button class="btn sources-btn" id="sourcesBtn" type="button" aria-expanded="false" aria-controls="rail">Sources <span class="count" id="sourcesCount"></span></button>
     </div>
@@ -147,7 +147,7 @@
       <div class="ledger" id="ledger"></div>
       <div class="empty hero" id="emptyState">
         <h1 class="empty-h">No case open</h1>
-        <p>Type a username, email, phone number, file hash or name above and run. Confirmed accounts, breaches and extracted facts appear here, ranked.</p>
+        <p>Type a username, email, phone number, file hash or name above and run. Linked accounts, breaches and extracted facts appear here, ranked.</p>
       </div>
     </div>
     <div id="panelSources" role="tabpanel" aria-labelledby="tabSources" tabindex="-1" class="panel" hidden>
@@ -169,12 +169,12 @@
     </section>
     <section class="purpose">
       <h2><label for="purpose">Purpose</label></h2>
-      <input class="input" id="purpose" maxlength="300" placeholder="Why you are looking this up" aria-describedby="purposeHint">
+      <input class="input" id="purpose" maxlength="300" placeholder="Why you are looking this up" aria-describedby="purposeHint" type="text" name="case-purpose" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
       <p class="hint" id="purposeHint">Optional. Saved with the case and printed on exports.</p>
     </section>
     <section class="notes">
       <h2><label for="notes">Notes</label></h2>
-      <textarea class="textarea" id="notes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
+      <textarea class="textarea" id="notes" placeholder="Case notes save automatically and travel with this target in History." name="case-notes" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
       <div class="foot"><span id="notesStatus" aria-live="polite">Saved</span><span id="notesCount">0 chars</span></div>
     </section>
   </aside>
@@ -186,7 +186,7 @@
   <div class="casebar" role="search" aria-label="Recon a domain, IP or ASN">
     <div class="casebar-row">
       <label class="sr-only" for="rTargetInput">Target: domain, IP address or ASN</label>
-      <input class="input target" id="rTargetInput" placeholder="example.com, 8.8.8.8, AS15169" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <input class="input target" id="rTargetInput" placeholder="example.com, 8.8.8.8, AS15169" type="text" name="q" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
       <button class="btn btn-primary" id="rRunBtn" type="button">Run recon</button>
       <button class="btn sources-btn" id="rSourcesBtn" type="button" aria-expanded="false" aria-controls="rRail">Sources <span class="count" id="rSourcesCount"></span></button>
     </div>
@@ -255,12 +255,12 @@
     </section>
     <section class="purpose">
       <h2><label for="rPurpose">Purpose</label></h2>
-      <input class="input" id="rPurpose" maxlength="300" placeholder="Why you are looking this up" aria-describedby="rPurposeHint">
+      <input class="input" id="rPurpose" maxlength="300" placeholder="Why you are looking this up" aria-describedby="rPurposeHint" type="text" name="case-purpose" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
       <p class="hint" id="rPurposeHint">Optional. Saved with the case and printed on exports.</p>
     </section>
     <section class="notes">
       <h2><label for="rNotes">Notes</label></h2>
-      <textarea class="textarea" id="rNotes" placeholder="Case notes save automatically and travel with this target in History."></textarea>
+      <textarea class="textarea" id="rNotes" placeholder="Case notes save automatically and travel with this target in History." name="case-notes" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
       <div class="foot"><span id="rNotesStatus" aria-live="polite">Saved</span><span id="rNotesCount">0 chars</span></div>
     </section>
   </aside>
@@ -273,7 +273,7 @@
     <h1>Email headers</h1>
     <p class="lede">Paste the raw headers of a message to check SPF, DKIM and DMARC, trace the route it took, and flag spoofing tells.</p>
     <label class="sr-only" for="hdrInput">Raw email headers</label>
-    <textarea class="textarea mono" id="hdrInput" rows="16" placeholder="Received: from mail.example.com …&#10;From: …&#10;Subject: …" spellcheck="false"></textarea>
+    <textarea class="textarea mono" id="hdrInput" rows="16" placeholder="Received: from mail.example.com …&#10;From: …&#10;Subject: …" name="raw-headers" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
     <div class="tool-actions">
       <button class="btn btn-primary" id="hdrRun" type="button">Analyze headers</button>
       <button class="btn btn-ghost" id="hdrClear" type="button">Clear</button>
@@ -295,12 +295,12 @@
     <h1>Search query builder</h1>
     <p class="lede">Fill in what you know. CrawlR writes the Google operators; every field is optional.</p>
     <div class="form-grid">
-      <div class="field"><label for="dkName">Full name</label><input class="input" id="dkName" placeholder="Jane Doe" autocomplete="off"></div>
-      <div class="field"><label for="dkUser">Username</label><input class="input mono" id="dkUser" placeholder="jdoe" autocomplete="off" spellcheck="false"></div>
-      <div class="field"><label for="dkEmail">Email</label><input class="input mono" id="dkEmail" placeholder="jane@example.com" autocomplete="off" spellcheck="false"></div>
-      <div class="field"><label for="dkLoc">Location</label><input class="input" id="dkLoc" placeholder="Portland, OR" autocomplete="off"></div>
-      <div class="field"><label for="dkEmp">Employer</label><input class="input" id="dkEmp" placeholder="Acme Corp" autocomplete="off"></div>
-      <div class="field"><label for="dkKw">Keywords</label><input class="input" id="dkKw" placeholder="resume, conference, podcast" autocomplete="off"><div class="help">Separate with commas. Matches any of them.</div></div>
+      <div class="field"><label for="dkName">Full name</label><input class="input" id="dkName" placeholder="Jane Doe" type="text" name="dork-name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <div class="field"><label for="dkUser">Username</label><input class="input mono" id="dkUser" placeholder="jdoe" type="text" name="dork-handle" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <div class="field"><label for="dkEmail">Email</label><input class="input mono" id="dkEmail" placeholder="jane@example.com" type="text" name="dork-address" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <div class="field"><label for="dkLoc">Location</label><input class="input" id="dkLoc" placeholder="Portland, OR" type="text" name="dork-place" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <div class="field"><label for="dkEmp">Employer</label><input class="input" id="dkEmp" placeholder="Acme Corp" type="text" name="dork-org" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <div class="field"><label for="dkKw">Keywords</label><input class="input" id="dkKw" placeholder="resume, conference, podcast" type="text" name="dork-keywords" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><div class="help">Separate with commas. Matches any of them.</div></div>
     </div>
     <h2 class="sub-h">Limit to sites</h2>
     <div id="dkPlatforms" class="plats"></div>
@@ -325,18 +325,18 @@
   <header class="tool-head"><h1>Decoders</h1><p class="lede">Small conversions that come up mid-investigation. Base64, URL and hashing run entirely in your browser. VIN decoding asks NHTSA's public database directly.</p></header>
   <div class="dec-grid">
     <article class="card"><div class="card-head"><h2 class="card-title"><label for="b64In">Base64</label></h2></div><div class="card-body">
-      <textarea class="textarea mono" id="b64In" rows="3" placeholder="Text or Base64" spellcheck="false"></textarea>
+      <textarea class="textarea mono" id="b64In" rows="3" placeholder="Text or Base64" name="b64-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
       <div class="tool-actions"><button class="btn btn-sm" id="b64Enc" type="button">Encode</button><button class="btn btn-sm" id="b64Dec" type="button">Decode</button></div>
       <div id="b64Out" aria-live="polite"></div></div></article>
     <article class="card"><div class="card-head"><h2 class="card-title"><label for="urlIn">URL encoding</label></h2></div><div class="card-body">
-      <textarea class="textarea mono" id="urlIn" rows="3" placeholder="Text or %-encoded string" spellcheck="false"></textarea>
+      <textarea class="textarea mono" id="urlIn" rows="3" placeholder="Text or %-encoded string" name="url-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
       <div class="tool-actions"><button class="btn btn-sm" id="urlEnc" type="button">Encode</button><button class="btn btn-sm" id="urlDec" type="button">Decode</button></div>
       <div id="urlOut" aria-live="polite"></div></div></article>
     <article class="card dec-span"><div class="card-head"><h2 class="card-title"><label for="hashIn">Hash a string</label></h2></div><div class="card-body">
-      <div class="inline-form"><input class="input mono" id="hashIn" placeholder="Text to hash" spellcheck="false"><button class="btn" id="hashGo" type="button">Hash</button></div>
+      <div class="inline-form"><input class="input mono" id="hashIn" placeholder="Text to hash" type="text" name="hash-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="hashGo" type="button">Hash</button></div>
       <div id="hashOut" aria-live="polite"></div></div></article>
     <article class="card"><div class="card-head"><h2 class="card-title"><label for="vinIn">VIN</label></h2><span class="tag">NHTSA</span></div><div class="card-body">
-      <div class="inline-form"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" spellcheck="false" autocomplete="off"><button class="btn" id="vinGo" type="button">Decode</button></div>
+      <div class="inline-form"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" type="text" name="vin" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="vinGo" type="button">Decode</button></div>
       <div id="vinOut" aria-live="polite"></div></div></article>
   </div>
 </main>

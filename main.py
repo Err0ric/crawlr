@@ -13,7 +13,7 @@ from core.logging import configure_logging, get_logger
 from middleware.observability import BodyLimitMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware, client_ip
 from middleware.rate_limit import RateLimitMiddleware
 from modules.ai_provider import AIError
-from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone
+from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, recon_identity
 
 configure_logging()
 log = get_logger("crawlr")
@@ -98,6 +98,7 @@ app.mount("/assets", FingerprintedStatic(directory=str(UI_DIR)), name="assets")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(recon.router, prefix="/api/recon", tags=["recon"])
+app.include_router(recon_identity.router, prefix="/api/recon", tags=["recon"])
 app.include_router(analyze.router, prefix="/api/analyze", tags=["analyze"])
 app.include_router(recon_infra.router, prefix="/api/infra", tags=["infra"])
 app.include_router(hash_lookup.router, prefix="/api/hash", tags=["hash"])

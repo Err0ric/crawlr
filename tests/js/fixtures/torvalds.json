@@ -1,0 +1,620 @@
+{
+ "_note": "Trimmed from a response recorded on 2026-11-14. Display names of unrelated people who share the handle are invented and their avatar URLs removed, except the names the audit cites.",
+ "target": "torvalds",
+ "type": "username",
+ "collected": {
+  "sherlock": {
+   "username": "torvalds",
+   "total": 24,
+   "results": [
+    {
+     "site": "Bluesky",
+     "url": "https://bsky.app/profile/torvalds.bsky.social",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Discord",
+     "url": "https://discord.com",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "GitHub",
+     "url": "https://www.github.com/torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Keybase",
+     "url": "https://keybase.io/torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Kick",
+     "url": "https://kick.com/torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Medium",
+     "url": "https://medium.com/@torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Patreon",
+     "url": "https://www.patreon.com/torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Snapchat",
+     "url": "https://www.snapchat.com/add/torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Steam Community (User)",
+     "url": "https://steamcommunity.com/id/torvalds/",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Substack",
+     "url": "https://torvalds.substack.com/",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "TikTok",
+     "url": "https://www.tiktok.com/@torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Telegram",
+     "url": "https://t.me/torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Twitch",
+     "url": "https://www.twitch.tv/torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Pinterest",
+     "url": "https://www.pinterest.com/torvalds/",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "threads",
+     "url": "https://www.threads.net/@torvalds",
+     "confidence": "major_platform"
+    },
+    {
+     "site": "Codecademy",
+     "url": "https://www.codecademy.com/profiles/torvalds",
+     "confidence": "normal"
+    },
+    {
+     "site": "Docker Hub",
+     "url": "https://hub.docker.com/u/torvalds/",
+     "confidence": "normal"
+    },
+    {
+     "site": "Trello",
+     "url": "https://trello.com/torvalds",
+     "confidence": "normal"
+    },
+    {
+     "site": "Chess",
+     "url": "https://www.chess.com/member/torvalds",
+     "confidence": "false_positive"
+    },
+    {
+     "site": "Disqus",
+     "url": "https://disqus.com/torvalds",
+     "confidence": "false_positive"
+    },
+    {
+     "site": "Freelancer",
+     "url": "https://www.freelancer.com/u/torvalds",
+     "confidence": "false_positive"
+    },
+    {
+     "site": "HudsonRock",
+     "url": "https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-username?username=torvalds",
+     "confidence": "false_positive"
+    },
+    {
+     "site": "LiveJournal",
+     "url": "https://torvalds.livejournal.com",
+     "confidence": "false_positive"
+    },
+    {
+     "site": "Scratch",
+     "url": "https://scratch.mit.edu/users/torvalds",
+     "confidence": "false_positive"
+    }
+   ]
+  },
+  "maigret": {
+   "username": "torvalds",
+   "total": 40,
+   "results": [
+    {
+     "site": "Bluesky",
+     "url": "https://bsky.app/profile/torvalds.bsky.social",
+     "confidence": "major_platform",
+     "category": "messaging, social",
+     "verified": true,
+     "profile": {
+      "bio": "https://deadspace.wtf",
+      "created_at": "2024-08-30T21:52:31.741Z",
+      "extractor": "Bluesky API"
+     }
+    },
+    {
+     "site": "Twitter",
+     "url": "https://twitter.com/torvalds",
+     "confidence": "major_platform",
+     "category": "messaging, social",
+     "verified": true,
+     "profile": {
+      "name": "torvalds",
+      "created_at": "2008-03-04 07:54:11+00:00",
+      "extractor": "Twitter GraphQL API"
+     }
+    },
+    {
+     "site": "Steam",
+     "url": "https://steamcommunity.com/id/torvalds",
+     "confidence": "major_platform",
+     "category": "gaming, social",
+     "verified": true,
+     "profile": {
+      "name": "GamerNine",
+      "extractor": "Steam"
+     }
+    },
+    {
+     "site": "SoundCloud",
+     "url": "https://soundcloud.com/torvalds",
+     "confidence": "major_platform",
+     "category": "music, social, streaming",
+     "verified": true,
+     "profile": {
+      "name": "Torvalds Torvalds",
+      "extractor": "SoundCloud"
+     }
+    },
+    {
+     "site": "GitHub",
+     "url": "https://github.com/torvalds",
+     "confidence": "major_platform",
+     "category": "business, coding, networking",
+     "verified": true,
+     "profile": {
+      "name": "Linus Torvalds",
+      "location": "Portland, OR",
+      "created_at": "2011-09-03T15:26:22Z",
+      "image": "https://avatars.githubusercontent.com/u/1024025?v=4",
+      "extractor": "GitHub API"
+     }
+    },
+    {
+     "site": "Substack",
+     "url": "https://substack.com/@torvalds",
+     "confidence": "major_platform",
+     "category": "blog, social, writing",
+     "verified": true,
+     "profile": {
+      "name": "Nikolai",
+      "extractor": "Substack public profile API"
+     }
+    },
+    {
+     "site": "Medium",
+     "url": "https://medium.com/@torvalds",
+     "confidence": "major_platform",
+     "category": "blog, discussion, writing",
+     "verified": true,
+     "profile": {
+      "name": "Patricia Torvalds",
+      "extractor": "Medium RSS"
+     }
+    },
+    {
+     "site": "Facebook",
+     "url": "https://www.facebook.com/torvalds",
+     "confidence": "major_platform",
+     "category": "social",
+     "verified": true,
+     "profile": {
+      "name": "Pavel Torvaldsen",
+      "bio": "Pavel Torvaldsen is on Facebook. Join Facebook to connect with Pavel Torvaldsen and others you may know. Facebook gives people the power to share and makes the world more open and connected.",
+      "extractor": "Facebook user profile"
+     }
+    },
+    {
+     "site": "Telegram",
+     "url": "https://t.me/torvalds",
+     "confidence": "major_platform",
+     "category": "messaging, social",
+     "verified": true,
+     "profile": {
+      "name": "ToRvaLDs",
+      "extractor": "Telegram"
+     }
+    },
+    {
+     "site": "Pinterest",
+     "url": "https://www.pinterest.com/torvalds/",
+     "confidence": "major_platform",
+     "category": "art, design, photo, sharing, social",
+     "verified": true,
+     "profile": {
+      "name": "Marco Migozzi",
+      "created_at": "Wed, 15 Aug 2012 09:21:06 +0000",
+      "extractor": "Pinterest profile/board page"
+     }
+    },
+    {
+     "site": "DeviantART",
+     "url": "https://torvalds.deviantart.com",
+     "confidence": "major_platform",
+     "category": "art, photo",
+     "verified": true,
+     "profile": {
+      "created_at": "2009-04-30 16:29:32 UTC",
+      "extractor": "DeviantArt"
+     }
+    },
+    {
+     "site": "TikTok",
+     "url": "https://www.tiktok.com/@torvalds",
+     "confidence": "major_platform",
+     "category": "social, video",
+     "verified": true,
+     "profile": {
+      "name": "Torvalds",
+      "extractor": "TikTok"
+     }
+    },
+    {
+     "site": "Threads",
+     "url": "https://www.threads.com/@torvalds",
+     "confidence": "major_platform",
+     "category": "social",
+     "verified": true,
+     "profile": {
+      "name": "Marco Migozzi",
+      "extractor": "Threads"
+     }
+    },
+    {
+     "site": "Snapchat",
+     "url": "https://www.snapchat.com/add/torvalds",
+     "confidence": "major_platform",
+     "category": "apps, messaging, social",
+     "verified": true,
+     "profile": {
+      "name": "Linus Torvalds",
+      "bio": "Linus Torvalds is on Snapchat! (@torvalds)",
+      "extractor": "Snapchat"
+     }
+    },
+    {
+     "site": "Keybase",
+     "url": "https://keybase.io/torvalds",
+     "confidence": "major_platform",
+     "category": "business, crypto, messaging",
+     "verified": true,
+     "profile": {
+      "extractor": "Keybase API"
+     }
+    },
+    {
+     "site": "StackOverflow",
+     "url": "https://stackoverflow.com/users/filter?search=torvalds",
+     "confidence": "normal",
+     "category": "coding, discussion, tech",
+     "verified": true,
+     "profile": {
+      "created_at": "1783019524",
+      "extractor": "Stack Exchange API"
+     }
+    },
+    {
+     "site": "Myspace",
+     "url": "https://myspace.com/torvalds",
+     "confidence": "normal",
+     "category": "music, social",
+     "verified": true,
+     "profile": {
+      "extractor": "MySpace"
+     }
+    },
+    {
+     "site": "Trello",
+     "url": "https://trello.com/torvalds",
+     "confidence": "normal",
+     "category": "apps, business, tasks",
+     "verified": true,
+     "profile": {
+      "name": "Sample User",
+      "extractor": "Trello API"
+     }
+    },
+    {
+     "site": "DailyMotion",
+     "url": "https://www.dailymotion.com/torvalds",
+     "confidence": "normal",
+     "category": "social, streaming, video",
+     "verified": true,
+     "profile": {
+      "name": "QRS",
+      "bio": "linux env",
+      "created_at": "2025-12-27 17:35:55 UTC",
+      "extractor": "DailyMotion API"
+     }
+    },
+    {
+     "site": "Imgur",
+     "url": "https://imgur.com/user/torvalds",
+     "confidence": "normal",
+     "category": "photo, sharing, social",
+     "verified": true,
+     "profile": {
+      "created_at": "2011-07-12T14:07:24Z",
+      "extractor": "Imgur API"
+     }
+    },
+    {
+     "site": "MixCloud",
+     "url": "https://www.mixcloud.com/torvalds/",
+     "confidence": "normal",
+     "category": "music, social, streaming",
+     "verified": true,
+     "profile": {
+      "created_at": "2011-01-10T09:42:52Z",
+      "extractor": "Mixcloud API"
+     }
+    },
+    {
+     "site": "Pastebin",
+     "url": "https://pastebin.com/u/torvalds",
+     "confidence": "normal",
+     "category": "apps, coding, sharing",
+     "verified": true,
+     "profile": {
+      "created_at": "Monday 5th of September 2011 05:11:58 AM",
+      "extractor": "Pastebin"
+     }
+    },
+    {
+     "site": "Duolingo",
+     "url": "https://www.duolingo.com/profile/torvalds",
+     "confidence": "normal",
+     "category": "apps, education",
+     "verified": true,
+     "profile": {
+      "created_at": "2013-10-30 19:05:41 UTC",
+      "extractor": "Duolingo API"
+     }
+    },
+    {
+     "site": "LeetCode",
+     "url": "https://leetcode.com/u/torvalds/",
+     "confidence": "normal",
+     "category": "coding, education, tech",
+     "verified": true,
+     "profile": {
+      "name": "sam",
+      "extractor": "LeetCode GraphQL"
+     }
+    },
+    {
+     "site": "Steemit",
+     "url": "https://steemit.com/@torvalds",
+     "confidence": "normal",
+     "category": "blog, crypto, news, social",
+     "verified": true,
+     "profile": {
+      "created_at": "2018-03-17T12:29:57",
+      "extractor": "Hive Blog"
+     }
+    },
+    {
+     "site": "Warpcast",
+     "url": "https://warpcast.com/torvalds",
+     "confidence": "normal",
+     "category": "crypto, networking, social",
+     "verified": true,
+     "profile": {
+      "name": "voltfan",
+      "bio": "posts frogs",
+      "extractor": "Warpcast API"
+     }
+    },
+    {
+     "site": "Wikipedia",
+     "url": "https://en.wikipedia.org/wiki/User:torvalds",
+     "confidence": "false_positive",
+     "category": "education, sharing, wiki",
+     "verified": true,
+     "profile": {
+      "extractor": "Fandom MediaWiki API"
+     }
+    },
+    {
+     "site": "Disqus",
+     "url": "https://disqus.com/torvalds",
+     "confidence": "false_positive",
+     "category": "discussion, networking, social",
+     "verified": true,
+     "profile": {
+      "name": "torvalds",
+      "created_at": "2010-03-17T16:22:13",
+      "extractor": "Disqus API"
+     }
+    },
+    {
+     "site": "Freelancer.com",
+     "url": "https://www.freelancer.com/api/users/0.1/users?usernames%5B%5D=torvalds&compact=true",
+     "confidence": "false_positive",
+     "category": "business, freelance",
+     "verified": true,
+     "profile": {
+      "created_at": "2010-11-22 10:25:28 UTC",
+      "extractor": "freelancer.com"
+     }
+    },
+    {
+     "site": "LiveJournal",
+     "url": "https://torvalds.livejournal.com",
+     "confidence": "false_positive",
+     "category": "blog, ru",
+     "verified": true,
+     "profile": {
+      "name": "torvalds",
+      "extractor": "LiveJournal"
+     }
+    },
+    {
+     "site": "Chess",
+     "url": "https://www.chess.com/member/torvalds",
+     "confidence": "false_positive",
+     "category": "forum, gaming, hobby, social",
+     "verified": true,
+     "profile": {
+      "created_at": "2018-02-10 20:09:02 UTC",
+      "extractor": "Chess.com API"
+     }
+    },
+    {
+     "site": "Tumblr",
+     "url": "https://www.tumblr.com/torvalds",
+     "confidence": "major_platform",
+     "category": "art, blog, social",
+     "verified": false
+    },
+    {
+     "site": "Discord",
+     "url": "https://discord.com",
+     "confidence": "major_platform",
+     "category": "gaming, messaging, social",
+     "verified": false
+    },
+    {
+     "site": "Paypal",
+     "url": "https://www.paypal.com/paypalme/torvalds",
+     "confidence": "major_platform",
+     "category": "apps, business, finance, fintech",
+     "verified": false
+    },
+    {
+     "site": "Kick",
+     "url": "https://kick.com/torvalds",
+     "confidence": "major_platform",
+     "category": "gaming, social, streaming",
+     "verified": false
+    },
+    {
+     "site": "Patreon",
+     "url": "https://www.patreon.com/torvalds",
+     "confidence": "major_platform",
+     "category": "business, finance, social",
+     "verified": false
+    },
+    {
+     "site": "NPM",
+     "url": "https://www.npmjs.com/~torvalds",
+     "confidence": "normal",
+     "category": "apps, coding, tech",
+     "verified": false
+    },
+    {
+     "site": "HuggingFace",
+     "url": "https://huggingface.co/torvalds",
+     "confidence": "normal",
+     "category": "coding, llm, tech",
+     "verified": false
+    },
+    {
+     "site": "GitHubGist [GitHub]",
+     "url": "https://gist.github.com/torvalds",
+     "confidence": "normal",
+     "category": "coding, sharing",
+     "verified": false
+    },
+    {
+     "site": "Geocaching",
+     "url": "https://www.geocaching.com/p/?u=torvalds",
+     "confidence": "false_positive",
+     "category": "hobby",
+     "verified": false
+    }
+   ]
+  },
+  "github": {
+   "username": "torvalds",
+   "found": true,
+   "name": "Linus Torvalds",
+   "bio": "",
+   "location": "Portland, OR",
+   "company": "Linux Foundation",
+   "email": "",
+   "blog": "",
+   "public_repos": 12,
+   "followers": 331999,
+   "profile_url": "https://github.com/torvalds",
+   "avatar_url": "https://avatars.githubusercontent.com/u/1024025?v=4",
+   "created_at": "2011-09-03T15:26:22Z",
+   "cached": true
+  },
+  "enricher": {
+   "username": "torvalds",
+   "total": 3,
+   "profiles": [
+    {
+     "platform": "Twitch",
+     "display_name": "torvalds",
+     "bio": "torvalds streams live on Twitch! Check out their videos, sign up to chat, and join their community.",
+     "url": "https://twitch.tv/torvalds"
+    },
+    {
+     "platform": "TikTok",
+     "display_name": "Torvalds",
+     "bio": "@torvalds 6 Followers, 80 Following, 0 Likes - Watch awesome short videos created by Torvalds",
+     "url": "https://tiktok.com/@torvalds"
+    },
+    {
+     "platform": "Patreon",
+     "display_name": "Torvalds",
+     "bio": "Join Torvalds on Patreon for exclusive content and member-only benefits from your favorite creators. Get access today!",
+     "url": "https://patreon.com/torvalds"
+    }
+   ]
+  },
+  "platformCheck": {
+   "username": "torvalds",
+   "total": 2,
+   "checked": 3,
+   "results": [
+    {
+     "platform": "Instagram",
+     "url": "https://www.instagram.com/torvalds/",
+     "found": true
+    },
+    {
+     "platform": "X",
+     "url": "https://x.com/torvalds",
+     "found": true
+    },
+    {
+     "platform": "LinkedIn",
+     "url": "https://www.linkedin.com/in/torvalds",
+     "found": false
+    },
+    {
+     "platform": "OnlyFans",
+     "url": "https://onlyfans.com/torvalds",
+     "found": null,
+     "manual": true
+    }
+   ]
+  }
+ }
+}

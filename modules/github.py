@@ -8,12 +8,23 @@ reported as an error with a retry hint and never as a negative result.
 GITHUB_TOKEN (optional, server-side) raises the limit to 5,000 an hour. A fine-grained token
 with no scopes is enough; it only reads public profiles. Results are cached in memory so a
 re-run does not spend another request.
+
+`run_github_deep` reads the rest of what a public profile exposes: linked social accounts,
+organizations, top repositories and languages, SSH and GPG key fingerprints, links in the
+profile README and the author emails on the user's own commits. It makes at most
+DEEP_MAX_REQUESTS calls per uncached user, and every section reports its own state so a rate
+limit on one of them is never shown as an empty list.
 """
 
+import asyncio
+import base64
+import binascii
+import hashlib
 import os
+import re
 import time
-from collections import OrderedDict
-from urllib.parse import quote
+from collections import Counter, OrderedDict
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -26,9 +37,18 @@ CACHE_TTL = int(os.getenv("GITHUB_CACHE_TTL", "3600"))
 CACHE_MAX = 1000
 _cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
 
+# Deep pull: a complete result is kept for a day, a partial one only long enough to stop a
+# retry loop from spending the hourly allowance.
+DEEP_TTL_OK = int(os.getenv("GITHUB_DEEP_CACHE_TTL", "86400"))
+DEEP_TTL_PARTIAL = 600
+DEEP_CACHE_MAX = 500
+DEEP_MAX_REQUESTS = 8
+_deep_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()   # key -> (expires_at, result)
+
 
 def clear_cache_for_tests() -> None:
     _cache.clear()
+    _deep_cache.clear()
 
 
 def _cache_get(key: str) -> dict | None:
@@ -130,5 +150,313 @@ async def run_github(username: str, timeout: int = 10) -> dict:
         "avatar_url": data.get("avatar_url", ""),
         "created_at": data.get("created_at", ""),
     }
+    if data.get("twitter_username"):
+        result["twitter_username"] = data["twitter_username"]
+    if data.get("hireable") is not None:
+        result["hireable"] = bool(data["hireable"])
     _cache_put(key, result)
+    return result
+
+
+# ---- deep pull ---------------------------------------------------------------------
+
+API = "https://api.github.com"
+RAW = "https://raw.githubusercontent.com"
+README_MAX_BYTES = 200_000
+MAX_README_LINKS = 20
+MAX_COMMIT_EMAILS = 10
+TOP_REPOS = 5
+MAX_LANGUAGES = 10
+DEEP_SECTIONS = ("social_accounts", "readme_links", "orgs", "top_repos", "ssh_keys", "gpg_keys", "commit_emails")
+
+_URL_RE = re.compile(r"https?://[^\s<>\"'()\[\]`]+", re.I)
+_IMAGE_EXT = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".avif")
+# Hosts that only serve badges, counters or images. They say nothing about the person.
+_BADGE_HOSTS = {
+    "img.shields.io", "shields.io", "badgen.net", "badge.fury.io", "forthebadge.com", "komarev.com",
+    "raw.githubusercontent.com", "user-images.githubusercontent.com", "camo.githubusercontent.com",
+    "avatars.githubusercontent.com", "private-user-images.githubusercontent.com", "github.githubassets.com",
+    "github-readme-stats.vercel.app", "github-readme-streak-stats.herokuapp.com", "github-profile-trophy.vercel.app",
+    "github-readme-activity-graph.vercel.app", "readme-typing-svg.herokuapp.com", "readme-typing-svg.demolab.com",
+    "skillicons.dev", "cdn.jsdelivr.net", "cdn.simpleicons.org", "simpleicons.org", "visitor-badge.laobi.icu",
+    "visitcount.itsvg.in", "profile-counter.glitch.me", "capsule-render.vercel.app", "i.imgur.com", "imgur.com",
+    "media.giphy.com", "giphy.com", "www.w3.org",
+}
+_BADGE_WORDS = ("badge", "shields", "visitor", "counter")
+
+
+def ssh_fingerprint(key: str) -> dict | None:
+    """`ssh-ed25519 AAAA...` -> {type, fingerprint}, the same SHA256 form `ssh-keygen -l` prints."""
+    parts = (key or "").split()
+    if len(parts) < 2:
+        return None
+    try:
+        blob = base64.b64decode(parts[1], validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if not blob:
+        return None
+    digest = base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+    return {"type": parts[0][:40], "fingerprint": f"SHA256:{digest}"}
+
+
+def is_noreply(email: str) -> bool:
+    e = (email or "").strip().lower()
+    return not e or e.endswith("noreply.github.com") or "noreply" in e or "no-reply" in e
+
+
+def readme_links(text: str) -> list[str]:
+    """http(s) links in a README, one per host and path, without badges and images."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in _URL_RE.findall(text or ""):
+        url = raw.rstrip(".,;:!?*_~")
+        try:
+            parts = urlsplit(url)
+            host = (parts.hostname or "").lower()
+        except ValueError:
+            continue
+        if not host or "." not in host:
+            continue
+        path = parts.path.rstrip("/")
+        if host in _BADGE_HOSTS or any(w in host for w in _BADGE_WORDS) or path.lower().endswith(_IMAGE_EXT):
+            continue
+        key = host.removeprefix("www.") + path.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(url[:300])
+        if len(out) >= MAX_README_LINKS:
+            break
+    return out
+
+
+def _deep_cache_get(key: str) -> dict | None:
+    hit = _deep_cache.get(key)
+    if not hit:
+        return None
+    expires, val = hit
+    if time.time() > expires:
+        _deep_cache.pop(key, None)
+        return None
+    _deep_cache.move_to_end(key)
+    return val
+
+
+def _deep_cache_put(key: str, val: dict, ttl: int) -> None:
+    _deep_cache[key] = (time.time() + ttl, val)
+    _deep_cache.move_to_end(key)
+    while len(_deep_cache) > DEEP_CACHE_MAX:
+        _deep_cache.popitem(last=False)
+
+
+async def _readme(client: httpx.AsyncClient, url: str) -> tuple[str, object]:
+    """The profile README is written by the target, so it is read as a stream and cut off at the cap."""
+    try:
+        # The token is for api.github.com only; the raw file host gets a plain request.
+        async with client.stream("GET", url, headers={"User-Agent": _headers()["User-Agent"], "Accept-Encoding": "identity"}) as resp:
+            if resp.status_code == 404:
+                return "not_found", None
+            if resp.status_code in (403, 429):
+                return "rate_limited", None
+            if resp.status_code != 200 or resp.headers.get("content-encoding", "identity").strip().lower() not in ("", "identity"):
+                return "failed", None
+            buf = bytearray()
+            async for chunk in resp.aiter_bytes():     # identity encoding only, checked above
+                buf += chunk
+                if len(buf) >= README_MAX_BYTES:
+                    break
+            return "ok", bytes(buf[:README_MAX_BYTES]).decode("utf-8", errors="replace")
+    except Exception:
+        return "failed", None
+
+
+async def _section(client: httpx.AsyncClient, url: str) -> tuple[str, object]:
+    """One API GET. Returns (state, payload) with state ok, not_found, rate_limited or failed."""
+    try:
+        resp = await client.get(url, headers=_headers())
+    except Exception:
+        return "failed", None
+    if resp.status_code == 404:
+        return "not_found", None
+    if resp.status_code in (403, 429):
+        return "rate_limited", None
+    if resp.status_code != 200:
+        return "failed", None
+    try:
+        return "ok", resp.json()
+    except ValueError:
+        return "failed", None
+
+
+def _rows(payload) -> list[dict]:
+    return [x for x in payload if isinstance(x, dict)] if isinstance(payload, list) else []
+
+
+def _is_own_commit(author: dict, login: str, profile_name: str) -> bool:
+    """A pushed commit counts as the account's own only when its author line names the account."""
+    name = str(author.get("name") or "").strip().casefold()
+    local = str(author.get("email") or "").split("@")[0].strip().casefold()
+    own_names = {n for n in (login.casefold(), profile_name.strip().casefold()) if n}
+    return name in own_names or local == login.casefold()
+
+
+def _event_commits(events: list[dict], login: str, profile_name: str = "") -> tuple[bool, list[dict]]:
+    """
+    (payload carried commits, rows). GitHub dropped commits from public push events in 2025.
+
+    A push carries everyone's commits (merges, rebases, cherry-picks), so an author is kept only
+    when the account made the push and the author line matches the account. Anything else is
+    dropped: another person's address must never be reported as the target's.
+    """
+    carried = False
+    rows: list[dict] = []
+    for ev in events:
+        payload = ev.get("payload")
+        if ev.get("type") != "PushEvent" or not isinstance(payload, dict) or not isinstance(payload.get("commits"), list):
+            continue
+        carried = True
+        if str((ev.get("actor") or {}).get("login") or "").casefold() != login.casefold():
+            continue
+        repo = (ev.get("repo") or {}).get("name") or ""
+        for c in _rows(payload["commits"]):
+            author = c.get("author") if isinstance(c.get("author"), dict) else {}
+            if _is_own_commit(author, login, profile_name):
+                rows.append({"email": author.get("email") or "", "name": author.get("name") or "", "repo": repo})
+    return carried, rows
+
+
+def _commit_emails(rows: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    seen: set[str] = set()
+    for r in rows:
+        email = str(r.get("email") or "").strip()
+        if is_noreply(email) or "@" not in email or email.lower() in seen:
+            continue
+        seen.add(email.lower())
+        out.append({"email": email[:254], "name": str(r.get("name") or "")[:120], "repo": str(r.get("repo") or "")[:200]})
+        if len(out) >= MAX_COMMIT_EMAILS:
+            break
+    return out
+
+
+async def run_github_deep(username: str, timeout: int = 10) -> dict:
+    key = username.lower()
+    cached = _deep_cache_get(key)
+    if cached is not None:
+        return {**cached, "cached": True}
+
+    u = quote(username, safe="")
+    base = f"{API}/users/{u}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            social, orgs, repos, ssh, gpg, readme, events = await asyncio.gather(
+                _section(client, f"{base}/social_accounts"),
+                _section(client, f"{base}/orgs"),
+                _section(client, f"{base}/repos?type=owner&per_page=100"),
+                _section(client, f"{base}/keys"),
+                _section(client, f"{base}/gpg_keys"),
+                _readme(client, f"{RAW}/{u}/{u}/HEAD/README.md"),
+                _section(client, f"{base}/events/public?per_page=100"),
+            )
+            api_calls = (social, orgs, repos, ssh, gpg, events)
+            # Every /users/{u}/... endpoint answers 404 for an account that does not exist.
+            if any(state == "not_found" for state, _ in api_calls):
+                result = {"username": username, "found": False}
+                _deep_cache_put(key, result, DEEP_TTL_OK)
+                return result
+
+            owned = sorted(_rows(repos[1]), key=lambda r: int(r.get("stargazers_count") or 0), reverse=True)
+            originals = [r for r in owned if not r.get("fork")]
+
+            # The profile name is used only when the profile lookup already cached it: no extra request.
+            profile_name = str((_cache_get(key) or {}).get("name") or "")
+            carried, commit_rows = _event_commits(_rows(events[1]), username, profile_name)
+            commit_state = events[0]
+            pick = (originals or owned)[:1]
+            if not carried and pick and pick[0].get("name"):
+                # Fallback: commits GitHub itself attributes to this account in their top repository.
+                repo_name = str(pick[0]["name"])
+                commit_state, payload = await _section(
+                    client, f"{API}/repos/{u}/{quote(repo_name, safe='')}/commits?author={u}&per_page=20")
+                if commit_state == "not_found":      # an empty repository
+                    commit_state, payload = "ok", []
+                commit_rows = [
+                    {"email": ((c.get("commit") or {}).get("author") or {}).get("email"),
+                     "name": ((c.get("commit") or {}).get("author") or {}).get("name"),
+                     "repo": f"{username}/{repo_name}"}
+                    for c in _rows(payload)
+                    # Only commits GitHub links to this account. The author filter also matches
+                    # by name and email, so the linked login is checked here as well.
+                    if str((c.get("author") or {}).get("login") or "").casefold() == username.casefold()
+                ]
+    except Exception as e:
+        return {"username": username, "found": None, **error_fields(e)}
+
+    sections = {
+        "social_accounts": social[0],
+        # No profile README is an answer, not a failure.
+        "readme_links": "ok" if readme[0] == "not_found" else readme[0],
+        "orgs": orgs[0],
+        "top_repos": repos[0],
+        "ssh_keys": ssh[0],
+        "gpg_keys": gpg[0],
+        "commit_emails": commit_state,
+    }
+
+    if all(state != "ok" for state, _ in api_calls):
+        # Nothing answered, so whether the account exists is unknown.
+        limited = any(state == "rate_limited" for state, _ in api_calls)
+        if limited:
+            log.warning("github deep rate limited", extra={"authenticated": bool(os.getenv("GITHUB_TOKEN"))})
+        return {
+            "username": username, "found": None, "sections": sections,
+            **(error_fields(code="rate_limited", message="GitHub is rate limiting CrawlR. Try again later.",
+                            detail="HTTP 403 or 429 from api.github.com")
+               if limited else error_fields(code="upstream", detail="No GitHub endpoint answered")),
+        }
+
+    languages = [lang for lang, _n in Counter(
+        str(r["language"]) for r in originals if r.get("language")).most_common(MAX_LANGUAGES)]
+
+    result = {
+        "username": username,
+        "found": True,
+        "state": "ok" if all(v == "ok" for v in sections.values()) else "partial",
+        "cached": False,
+        "social_accounts": [
+            {"provider": str(a.get("provider") or "")[:40], "url": str(a["url"])[:300]}
+            for a in _rows(social[1]) if str(a.get("url") or "").lower().startswith(("http://", "https://"))
+        ],
+        "readme_links": readme_links(readme[1]) if isinstance(readme[1], str) else [],
+        "orgs": [
+            {"login": str(o["login"])[:80], "url": f"https://github.com/{quote(str(o['login']), safe='')}"}
+            for o in _rows(orgs[1]) if o.get("login")
+        ],
+        "top_repos": [
+            {"name": str(r.get("name") or "")[:120],
+             "url": str(r.get("html_url") or f"https://github.com/{u}/{quote(str(r.get('name') or ''), safe='')}"),
+             "stars": int(r.get("stargazers_count") or 0),
+             "language": r.get("language") or "",
+             "description": str(r.get("description") or "")[:300],
+             "fork": False}
+            for r in originals[:TOP_REPOS]
+        ],
+        "languages": languages,
+        "keys": {
+            # Type and fingerprint only. The key body is never returned.
+            "ssh": [fp for fp in (ssh_fingerprint(str(k.get("key") or "")) for k in _rows(ssh[1])) if fp],
+            "gpg": [
+                {"key_id": str(k.get("key_id") or "")[:40],
+                 "emails": [str(e["email"])[:254] for e in _rows(k.get("emails"))
+                            if e.get("email") and not is_noreply(str(e["email"]))]}
+                for k in _rows(gpg[1]) if k.get("key_id")
+            ],
+        },
+        "commit_emails": _commit_emails(commit_rows),
+        "sections": sections,
+    }
+    if result["state"] != "ok" and "rate_limited" in sections.values():
+        log.warning("github deep partly rate limited", extra={"authenticated": bool(os.getenv("GITHUB_TOKEN"))})
+    _deep_cache_put(key, result, DEEP_TTL_OK if result["state"] == "ok" else DEEP_TTL_PARTIAL)
     return result

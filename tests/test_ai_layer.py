@@ -292,18 +292,22 @@ def test_failed_github_is_reported_as_failed_not_found_or_confirmed(monkeypatch)
     prompt = _prompt_for(monkeypatch, {
         "target": "torvalds",
         "github": {"username": "torvalds", "found": None, "error": "GitHub is rate limiting CrawlR. Try again in about 10 minutes.", "error_code": "rate_limited"},
-        "accounts": [{"site": "Bluesky", "url": "https://bsky.app/profile/torvalds", "status": "confirmed", "sources": ["Maigret"]},
-                     {"site": "PayPal", "url": "https://paypal.me/torvalds", "status": "possible", "sources": ["Maigret"]}],
+        "accounts": [{"site": "Bluesky", "url": "https://bsky.app/profile/torvalds", "status": "matches", "sources": ["Maigret"]},
+                     {"site": "Medium", "url": "https://medium.com/@torvalds", "status": "different", "sources": ["Maigret"], "note": "name on profile: Patricia Torvalds"},
+                     {"site": "PayPal", "url": "https://paypal.me/torvalds", "status": "unverified", "sources": ["Maigret"]}],
         "source_status": {"Sherlock": "ok", "Maigret": "ok"},
     })
     data = prompt.split("Collected data:")[1]
     assert "FAILED" in data and "GitHub (GitHub is rate limiting" in data
     assert "GitHub profile" not in data                      # no profile line for a failed lookup
     assert "Sources that ran successfully: Maigret, Sherlock" in data
-    assert "CONFIRMED accounts (1)" in data and "Bluesky" in data.split("POSSIBLE")[0]
-    assert "PayPal" in data.split("POSSIBLE accounts (1)")[1]
-    assert "PayPal" not in data.split("POSSIBLE")[0]
+    assert "LINKED accounts" not in data                     # nothing was linked, so nothing is called linked
+    assert "EXISTS (MATCHES) accounts (1)" in data and "Bluesky" in data.split("EXISTS (DIFFERENT PERSON)")[0]
+    assert "EXISTS (DIFFERENT PERSON) accounts (1)" in data and "Patricia Torvalds" in data.split("EXISTS (DIFFERENT PERSON) accounts (1)")[1]
+    assert "PayPal" in data.split("UNVERIFIED accounts (1)")[1]
+    assert "PayPal" not in data.split("UNVERIFIED")[0]
     assert "never treat the failure as a negative result" in prompt
+    assert "other people who share the handle" in prompt
 
 
 def test_legacy_payload_without_ledger_still_separates_verified_from_possible(monkeypatch):
@@ -312,6 +316,6 @@ def test_legacy_payload_without_ledger_still_separates_verified_from_possible(mo
         {"site": "Facebook", "url": "https://facebook.com/t", "confidence": "major_platform"},
         {"site": "Chess", "confidence": "false_positive"}]}})
     data = prompt.split("Collected data:")[1]
-    assert "Accounts verified by profile data (1): GitHub" in data
-    assert "POSSIBLE accounts (1)" in data and "Facebook" in data
-    assert "confirmed" not in data.lower().replace("not verified", "")
+    assert "Accounts where a profile was read (1): GitHub" in data
+    assert "UNVERIFIED accounts (1)" in data and "Facebook" in data
+    assert "confirmed" not in data.lower() and "linked" not in data.lower()

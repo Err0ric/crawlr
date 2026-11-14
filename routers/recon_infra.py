@@ -4,6 +4,7 @@ from typing import Optional
 from core import validate
 from core.ai_call import run_ai
 from core.ai_text import summary_and_report
+from core.dnspool import dns_thread
 from modules.dns_lookup import run_dns
 from modules.whois_lookup import run_whois
 from modules.ssl_check import run_ssl
@@ -17,7 +18,7 @@ from modules.redirect_chain import run_redirect_chain
 from modules.tech_fingerprint import run_tech_fingerprint
 from modules.email_posture import run_email_posture
 from modules.dns_depth import run_dns_depth
-from modules.takeover import run_takeover
+from modules.takeover import resolution_state, run_takeover
 from modules.lookalikes import run_lookalikes
 from modules.wellknown import run_wellknown
 import asyncio
@@ -81,10 +82,53 @@ async def headers_scan(req: DomainRequest):
     return await run_headers(domain)
 
 
+MAX_RECHECK = 60       # names rechecked per run: at most 6 queries each, on the shared DNS pool
+
+
+async def confirm_not_resolving(result: dict) -> dict:
+    """Recheck the certificate names the subdomain scan could not resolve.
+
+    The scan resolves names in bulk through the system resolver and treats every failure as
+    "no address", and it never looks up the apex domain at all. Neither is evidence that a
+    name is gone. Each name is asked again with the strict test from modules.takeover: only
+    a definite "does not exist" from two public resolvers keeps it in `not_resolving`.
+    Names whose lookup failed move to `resolution_unknown`; names that resolve are dropped."""
+    summary = result.get("ct_summary") if isinstance(result, dict) else None
+    names = (summary or {}).get("not_resolving") or []
+    if not names:
+        return result
+    # Bulk DNS goes through the shared pool (core.dnspool), never the default executor.
+    # Names past the cap are not looked up, so nothing is claimed about them.
+    names, skipped = names[:MAX_RECHECK], names[MAX_RECHECK:]
+    states = await asyncio.gather(*(dns_thread(resolution_state, n) for n in names))
+    summary["not_resolving"] = [n for n, s in zip(names, states) if s == "absent"]
+    summary["resolution_unknown"] = [n for n, s in zip(names, states) if s == "unknown"] + skipped
+    return result
+
+
+def resolving_hosts(req) -> set[str]:
+    """Hostnames that another check in the same request saw resolving: the target when DNS
+    returned address records for it, and every subdomain that came back with an address."""
+    clean = lambda v: str(v or "").strip().lower().rstrip(".")
+    out: set[str] = set()
+    dns_data = getattr(req, "dns", None)
+    if isinstance(dns_data, dict) and not dns_data.get("error"):
+        records = dns_data.get("records") or {}
+        if isinstance(records, dict) and any(records.get(t) for t in ("A", "AAAA")):
+            out.add(clean(dns_data.get("domain") or getattr(req, "target", "")))
+    subs = getattr(req, "subdomains", None)
+    if isinstance(subs, dict) and not subs.get("error"):
+        for row in subs.get("subdomains") or []:
+            if isinstance(row, dict) and row.get("ips"):
+                out.add(clean(row.get("subdomain")))
+    out.discard("")
+    return out
+
+
 @router.post("/subdomains")
 async def subdomains_scan(req: DomainRequest):
     domain = validate.host(req.domain, allow_ip=False)
-    return await run_subdomains(domain)
+    return await confirm_not_resolving(await run_subdomains(domain))
 
 
 @router.post("/asn")
@@ -169,7 +213,13 @@ def extra_recon_lines(req) -> list[str]:
     ep = getattr(req, "email_posture", None)
     if ok(ep):
         issues = [f["title"] for f in ep.get("findings", []) if f.get("level") == "flag"]
-        lines.append(f"Email security: grade {ep.get('grade', '?')}, spoofable: {ep.get('spoofable', '?')}" + (f". Issues: {'; '.join(issues[:6])}" if issues else ""))
+        if ep.get("mail_enabled") is False:
+            lines.append(
+                "Email: the domain has no MX records, so it does not appear to send or receive mail. Missing SPF or DMARC "
+                "here is a hardening note (publish the null records), not a finding." + (f" Issues: {'; '.join(issues[:6])}" if issues else "")
+            )
+        else:
+            lines.append(f"Email security: grade {ep.get('grade', '?')}, spoofable: {ep.get('spoofable', '?')}" + (f". Issues: {'; '.join(issues[:6])}" if issues else ""))
     dd = getattr(req, "dns_depth", None)
     if ok(dd):
         lines.append(
@@ -178,8 +228,15 @@ def extra_recon_lines(req) -> list[str]:
         )
     tk = getattr(req, "takeover", None)
     if ok(tk) and tk.get("candidates"):
-        rows = [f"{c['host']} -> {c['cname']} ({c['service']}, {c['status']})" for c in tk["candidates"][:10]]
-        lines.append(f"Subdomain takeover candidates (DNS only, unverified): {'; '.join(rows)}")
+        # A candidate whose lookup failed says nothing either way, so it is left out. So is a
+        # "dangling" one that another check in this same run saw resolving: the two answers
+        # contradict each other, and the prompt must not assert what the screen withholds.
+        live = resolving_hosts(req)
+        rows = [f"{c['host']} -> {c['cname']} ({c['service']}, {c['status']})" for c in tk["candidates"]
+                if isinstance(c, dict) and c.get("status") != "unknown"
+                and not (c.get("status") == "dangling" and str(c.get("host") or "").strip().lower().rstrip(".") in live)][:10]
+        if rows:
+            lines.append(f"Subdomain takeover candidates (DNS only, unverified): {'; '.join(rows)}")
     la = getattr(req, "lookalikes", None)
     if ok(la) and la.get("results"):
         rows = [f"{r['domain']}{' (receives mail)' if r.get('mail') else ''}" for r in la["results"][:15]]
@@ -376,6 +433,13 @@ def recon_prompt(req: ReconAnalyzeRequest) -> str:
             parts.append(f"CVEs: {', '.join(vulns[:10])}")
         if parts:
             prompt_parts.append(f"Shodan: {', '.join(parts)}")
+        shared = s.get("shared_host")
+        if isinstance(shared, dict) and shared.get("provider"):
+            prompt_parts.append(
+                f"SHARED HOSTING: this IP is a shared {shared['provider']} edge used by many unrelated sites. "
+                f"The ports, software and CVEs above belong to {shared['provider']}, not to the target's own servers, "
+                "and other hostnames seen on this IP are unrelated tenants. Do not report them as the target's exposure."
+            )
 
     prompt_parts.extend(extra_recon_lines(req))
     recon_data = "\n".join(prompt_parts)

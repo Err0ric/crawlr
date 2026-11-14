@@ -1,6 +1,7 @@
 import httpx
 import re
 
+from core.boilerplate import clean_bio
 from core.errors import error_fields
 from core.netguard import safe_fetch
 
@@ -50,7 +51,7 @@ def _extract_text_block(html: str, max_len: int = 500) -> str:
     return ""
 
 
-def _scrape_profile(html: str, url: str) -> dict:
+def _scrape_profile(html: str, url: str, site: str = "") -> dict:
     """Extract structured data from a profile page's HTML."""
     result = {
         "display_name": "",
@@ -76,7 +77,14 @@ def _scrape_profile(html: str, url: str) -> dict:
     # Bio from og:description or bio elements
     og_desc = _extract_meta(html, "og:description")
     bio_block = _extract_text_block(html)
-    result["bio"] = (bio_block or og_desc)[:500]
+    # Platform boilerplate ("x streams live on Twitch! ...") is not a bio. Take the first
+    # candidate that has something a person wrote; flag it when all there was is boilerplate.
+    name = result["display_name"]
+    candidates = [c for c in (bio_block, og_desc) if c and c.strip()]
+    bio = next((b for b in (clean_bio(c, site, "", name) for c in candidates) if b), "")
+    result["bio"] = bio[:500]
+    if candidates and not bio:
+        result["bio_boilerplate"] = True
 
     # Emails
     emails = set(EMAIL_RE.findall(html))
@@ -142,7 +150,7 @@ async def scrape_profiles(urls: list[dict], timeout: int = TIMEOUT) -> list[dict
                         **error_fields(code="upstream", detail=f"HTTP {resp.status_code}"),
                     })
                     continue
-                data = _scrape_profile(resp.text, url)
+                data = _scrape_profile(resp.text, url, site=site)
                 data["site"] = site
                 data["url"] = url
                 results.append(data)
