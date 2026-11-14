@@ -44,6 +44,7 @@ FastAPI (main.py)
 |---|---|---|---|
 | `/api/recon` | `routers/recon.py` | sherlock, maigret, holehe, harvester, hibp, gravatar, github, enrich, platform-check, hunter, shodan, internetdb, scrape-profiles | sherlock, maigret, holehe run as subprocesses under `core/subprocess_guard.py`. Hunter and Shodan need the user's key (`X-Hunter-Key`, `X-Shodan-Key`) |
 | `/api/recon` | `routers/recon_identity.py` | github-deep, avatar-hash, verify-links | Follow-up lookups: identity clustering inputs, and the check that a reported profile URL exists. All cached for 24 hours |
+| `/api/recon` | `routers/recon_people.py` | name-search | Candidates for a person's name from Wikidata, GitHub, ORCID, OpenAlex and Bluesky, run concurrently with 8 seconds each. Six outbound requests per uncached search. Cached for 24 hours, or 10 minutes when a source failed |
 | `/api/infra` | `routers/recon_infra.py` | dns, whois, ssl, headers, subdomains, email-posture, dns-depth, takeover, lookalikes, wellknown, asn, asn-detail, ip-asn, portscan, wayback, redirects, techfingerprint, summarize, prompt | Domain, IP and ASN recon. `summarize` is AI; `prompt` returns the same prompt without calling a model |
 | `/api/analyze` | `routers/analyze.py` | summarize, deep-dive, deep, correlate, email-headers, prompt, parse | All AI, through `core/ai_call.py`. Uses the user's key or the house key. Provider failures return `{detail, code}` with a matching status |
 | `/api/hash` | `routers/hash_lookup.py` | hash | MalwareBazaar, CIRCL, OTX, ThreatFox |
@@ -55,7 +56,7 @@ FastAPI (main.py)
 
 | Area | Files |
 |---|---|
-| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py`, `link_verify.py` |
+| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py`, `link_verify.py`, `name_search.py` |
 | Infrastructure | `email_posture.py`, `dns_depth.py`, `takeover.py`, `lookalikes.py`, `wellknown.py`, `crtsh.py`, `dns_lookup.py`, `resolver.py`, `whois_lookup.py`, `ssl_check.py`, `headers_check.py`, `subdomain_enum.py`, `harvester.py`, `asn_lookup.py`, `asn_detail.py`, `port_scan.py`, `internetdb.py`, `shodan_lookup.py`, `wayback.py`, `redirect_chain.py`, `tech_fingerprint.py` |
 | AI | `ai_provider.py`: async Anthropic and Gemini calls, typed `AIError`, response cache keyed per caller |
 
@@ -66,7 +67,7 @@ FastAPI (main.py)
 | File | Role |
 |---|---|
 | `core/netguard.py` | Outbound request guard. Resolves a host once, refuses anything that is not a public address, connects to the vetted address, and repeats the check on every redirect hop. Every module that fetches a user-supplied URL or opens a socket to a user-supplied host uses it |
-| `core/validate.py` | Username, email, host and URL validation and normalization; registrable-domain comparison |
+| `core/validate.py` | Username, email, person name, host and URL validation and normalization; registrable-domain comparison |
 | `core/errors.py` | Maps upstream exceptions to `{error, error_code, error_detail}`: a short human message, a stable code, and the raw text for a details toggle |
 | `core/ai_call.py` | The one path for AI endpoints: pick key, check cache, check and spend free quota, call, refund on failure |
 | `core/ai_text.py` | Fence stripping and JSON extraction for model output |
@@ -90,6 +91,8 @@ Every source ends in one of three states, and they are kept apart from the modul
 | Failed | `error`, `error_code`, `error_detail` (`found` is `null` where it applies) | red run-log row, a notice above the findings, a "failed" card | listed under "FAILED, treat as unknown" |
 
 Account evidence is ranked by how it ties to the person, not only by whether the account exists. `identity.js` groups every profile that was read into people: two profiles join on a cross-link, the same profile picture or a shared personal link, or on a name that fits with nothing conflicting. The group holding the authoritative record (GitHub's answer for the handle, Gravatar's for the email) is the primary identity. **Linked** is that record or a profile tied to it by a strong signal. **Exists (matches)** is a read profile whose name fits or that carries no name. **Exists (different person)** is a read profile whose name conflicts. **Unverified** means a tool reported the handle and nothing was read, or the site blocked the check.
+
+Name search keeps a state per source: `ok`, `none`, `failed` or `rate_limited`. Its rows are candidates, not findings: each carries `name_match` (`exact`, `tokens` or `partial`) and the qualifiers it matched, and the optional location, employer and keyword are compared locally and never sent to a source.
 
 Platform check rows carry one of five states: `found`, `not_found`, `blocked`, `unknown`, `manual`. Only a content marker makes a row `found`. Subdomain and takeover checks call a name absent only when two resolvers agree; a lookup that failed is `unknown`.
 
