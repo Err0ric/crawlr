@@ -8,6 +8,7 @@ import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, 
 import { buildCaseFile } from "./casefile.js";
 import { harvestCard, errorCard } from "./renderers.js";
 import { buildFindings, takeoverForAi, TIERS, RISKY, flat, day, lc } from "./reconfindings.js";
+import { findingsWithEvidence, evidenceUrl, exposureEvidence, isDomain, mdLink, mdNote } from "./links.js";
 
 // ---- sources -----------------------------------------------------------------
 export const SOURCES = [
@@ -79,7 +80,13 @@ const muted = (s) => h`<p style="color:var(--ink-3);font-size:var(--fs-1)">${s}<
 const errCard = (title, d) => errorCard(title, d);
 
 const LEVEL = { flag: "warn", ok: "ok", info: "" };
-const findingList = (rows) => `<ul class="finds">${rows.map((f) => h`<li class="find ${f.level}"><span class="tag ${LEVEL[f.level] || ""}">${f.level === "flag" ? "issue" : f.level === "ok" ? "good" : "note"}</span><div><b>${f.title}</b><span>${f.detail}</span></div></li>`).join("")}</ul>`;
+// Each finding carries the public lookup for the record it is about, when there is one.
+const ev = (url, text) => link(url, text, "", { kind: "evidence" });
+// A "Check" row is left out when there is no page to check on.
+const chk = (url, text) => (url ? ev(url, text) : "");
+const evLink = (e) => (e?.url ? link(e.url, e.label, "ev-link", { kind: "evidence" }) : "");
+const domainOf = () => (state.type === "domain" && isDomain(state.target) ? state.target.toLowerCase() : "");
+const findingList = (rows) => `<ul class="finds">${rows.map((f) => h`<li class="find ${f.level}"><span class="tag ${LEVEL[f.level] || ""}">${f.level === "flag" ? "issue" : f.level === "ok" ? "good" : "note"}</span><div><b>${f.title}</b><span>${f.detail}${f.url && f.link_kind === "evidence" ? raw(` ${link(f.url, f.link_label || "DNS lookup", "ev-link", { kind: "evidence" })}`) : ""}</span></div></li>`).join("")}</ul>`;
 // DNS records the owner could publish, shown as data: type, name, value in mono.
 const recordList = (recs) => `<div class="rows mono">${recs.map((r) => (typeof r === "string" ? h`<div>${r}</div>` : h`<div>${r.type || ""} ${r.name || ""} "${r.value || ""}"</div>`)).join("")}</div>`;
 const details = (summary, inner) => `<details class="more"><summary>${esc(summary)}</summary>${inner}</details>`;
@@ -97,7 +104,7 @@ const CARDS = {
     const badge = mail === "none" && !noMailOpen(d) ? tag("no mail") + " " + tag("spoofing rejected", "ok") : mail === "none" ? tag("no mail") + " " + tag("not graded")
       : tag(`grade ${g}`, g <= "B" ? "ok" : g === "C" ? "" : "warn") + " " + tag(d.spoofable === "yes" ? "can be spoofed" : d.spoofable === "no" ? "spoofing rejected" : "mostly protected", d.spoofable === "yes" ? "warn" : "ok") + (mail === "unknown" ? " " + tag("MX lookup failed") : "");
     // Old saved runs flagged missing SPF and DMARC on a no-mail domain; show them as notes.
-    const finds = (d.findings || []).map((f) => (mail === "none" && f.level === "flag" && /^No (SPF|DMARC) record/.test(f.title || "") ? { ...f, level: "info", title: `Note: ${f.title}` } : f));
+    const finds = findingsWithEvidence(d, domainOf()).map((f) => (mail === "none" && f.level === "flag" && /^No (SPF|DMARC) record/.test(f.title || "") ? { ...f, level: "info", title: `Note: ${f.title}` } : f));
     const open = noMailOpen(d);
     const lead = mail === "none" && !open ? "This domain has no MX records, so it does not receive mail, and its SPF and DMARC records tell receivers to reject mail that claims to come from it."
       : mail === "none" && g !== "N/A" ? "This domain has no MX records, so it does not receive mail and is not graded. Its name can still be used in a forged From line until null records are published." : d.summary;
@@ -109,7 +116,7 @@ const CARDS = {
   dns_depth: (d) => {
     if (d.error) return errCard("DNS hardening", d);
     return card("DNS hardening", tag(d.dnssec?.signed && d.dnssec?.ds ? "DNSSEC on" : "DNSSEC off", d.dnssec?.signed && d.dnssec?.ds ? "ok" : "") + (d.wildcard?.present ? " " + tag("wildcard DNS", "warn") : ""),
-      findingList(d.findings || []) + kv([["CAA issuers", esc(flat(d.caa?.issue).join(", "))], ["Name servers", flat(d.nameservers).map(mono).join("<br>")], ["Reverse DNS", (d.reverse_dns || []).map((r) => h`<span class="mono">${r.ip}</span> ${r.ptr || "no PTR"}`).join("<br>")]]));
+      findingList(findingsWithEvidence(d, domainOf())) + kv([["CAA issuers", esc(flat(d.caa?.issue).join(", "))], ["Name servers", flat(d.nameservers).map(mono).join("<br>")], ["Reverse DNS", (d.reverse_dns || []).map((r) => h`<span class="mono">${r.ip}</span> ${r.ptr || "no PTR"}`).join("<br>")]]));
   },
   takeover: (d) => {
     if (d.error) return errCard("Takeover candidates", d);
@@ -136,15 +143,15 @@ const CARDS = {
     if (!d.found) return card("Published files", tag("none"), muted("No security.txt, robots.txt or favicon was served."));
     const st = d.security_txt, rb = d.robots, fv = d.favicon;
     return card("Published files", tag(st ? "security.txt" : "no security.txt", st ? "ok" : ""),
-      kv([["Security contact", st ? flat(st.contact).map((x) => (/^https?:/.test(x) ? link(x, x) : esc(x))).join("<br>") : "Not published"], ["Expires", esc(flat(st?.expires)[0] || "")], ["Policy", st?.policy?.[0] ? link(st.policy[0], st.policy[0]) : ""],
-        ["robots.txt", rb ? esc(`${rb.disallow_count} disallowed paths`) : "Not served"], ["Sitemaps", flat(rb?.sitemaps).slice(0, 3).map((x) => link(x, x)).join("<br>")],
-        ["Favicon hash", fv ? h`<span class="mono">${fv.hash}</span> ${raw(link(`https://www.shodan.io/search?query=${encodeURIComponent(fv.shodan_query)}`, "find hosts with this icon in Shodan"))}` : ""]])
+      kv([["Security contact", st ? flat(st.contact).map((x) => (/^https?:/.test(x) ? ev(x, x) : esc(x))).join("<br>") : "Not published"], ["Expires", esc(flat(st?.expires)[0] || "")], ["Policy", st?.policy?.[0] ? ev(st.policy[0], st.policy[0]) : ""],
+        ["robots.txt", rb ? esc(`${rb.disallow_count} disallowed paths`) : "Not served"], ["Sitemaps", flat(rb?.sitemaps).slice(0, 3).map((x) => ev(x, x)).join("<br>")],
+        ["Favicon hash", fv ? h`<span class="mono">${fv.hash}</span> ${raw(ev(`https://www.shodan.io/search?query=${encodeURIComponent(fv.shodan_query)}`, "find hosts with this icon in Shodan"))}` : ""]])
       + (rb?.interesting?.length ? details(`Paths in robots.txt worth a look (${rb.interesting.length})`, `<div class="mono rows">${rb.interesting.map((x) => h`<div>${x}</div>`).join("")}</div>`) : ""));
   },
   certs: (d) => {
     const s = d.ct_summary; if (!s) return "";
     return card("Certificate history", tag(`${fmtNum(s.total)} logged`) + " " + tag(`${fmtNum(s.active)} valid`, "ok"),
-      kv([["First issued", esc(s.first_issued)], ["Latest", esc(s.last_issued)], ["Wildcards", esc(s.wildcards)], ["Issuers", (s.issuers || []).slice(0, 5).map((i) => h`${i.name} <span class="dim">${i.count}</span>`).join("<br>")]])
+      kv([["First issued", esc(s.first_issued)], ["Latest", esc(s.last_issued)], ["Wildcards", esc(s.wildcards)], ["Issuers", (s.issuers || []).slice(0, 5).map((i) => h`${i.name} <span class="dim">${i.count}</span>`).join("<br>")], ["Check", chk(evidenceUrl.crtsh(domainOf()), "Certificate logs at crt.sh")]])
       + (s.by_year?.length > 1 ? `<p class="muted small">Certificates issued per year</p>${bars(s.by_year.slice(-12))}` : "")
       + ((gone) => (gone.length ? details(`Certified names that no longer resolve (${gone.length})`, `<p class="muted small">Often retired, internal or renamed hosts. Worth a look in archives.</p><div class="mono rows">${gone.map((x) => h`<div>${x}</div>`).join("")}</div>`) : ""))(notLive(s.not_resolving))
       + ((unsure) => (unsure.length ? details(`Certified names that could not be checked (${unsure.length})`, `<p class="muted small">The DNS lookup failed, so whether these resolve is unknown.</p><div class="mono rows">${unsure.map((x) => h`<div>${x}</div>`).join("")}</div>`) : ""))(notLive(s.resolution_unknown)));
@@ -153,10 +160,10 @@ const CARDS = {
   dns: (d) => {
     const rec = d.records || {};
     const rows = Object.entries(rec).filter(([, v]) => flat(v).length).map(([t, v]) => [t, flat(v).map((x) => mono(typeof x === "object" ? JSON.stringify(x) : x)).join("<br>")]);
-    return card("DNS records", tag(`${fmtNum(d.total ?? rows.length)} records`) + (d.cloudflare_proxied ? " " + tag("Cloudflare", "warn") : ""), rows.length ? kv(rows) : muted("Answered, nothing found: no records returned."));
+    return card("DNS records", tag(`${fmtNum(d.total ?? rows.length)} records`) + (d.cloudflare_proxied ? " " + tag("Cloudflare", "warn") : ""), rows.length ? kv([...rows, ["Look up", Object.keys(rec).filter((t) => flat(rec[t]).length).map((t) => chk(evidenceUrl.dns(domainOf(), t), t)).filter(Boolean).join(" · ")]]) : muted("Answered, nothing found: no records returned."));
   },
-  whois: (d) => d.error ? errCard("WHOIS", d) : card("WHOIS", d.privacy_protected ? tag("privacy") : "", kv([["Registrar", esc(d.registrar)], ["Created", esc(String(d.creation_date || "").slice(0, 10))], ["Updated", esc(String(d.updated_date || "").slice(0, 10))], ["Expires", esc(String(d.expiration_date || "").slice(0, 10))], ["Org", esc(d.org)], ["Country", esc(d.country)], ["Name servers", flat(d.name_servers).map((x) => mono(String(x).toLowerCase())).join("<br>")]])),
-  ssl: (d) => d.error_code === "tls" || (d.found === false && !d.error) ? card("TLS certificate", tag("none", "warn"), muted(d.error || "No certificate presented.")) : d.error ? errCard("TLS certificate", d) : card("TLS certificate", tag(d.days_left < 30 ? `${d.days_left} days left` : "valid", d.days_left < 30 ? "warn" : "ok"), kv([["Common name", mono(d.common_name)], ["Issuer", esc(d.issuer)], ["Valid from", esc(day(d.not_before))], ["Valid until", esc(day(d.not_after))], ["Also covers", flat(d.sans).slice(0, 12).map(mono).join("<br>") + (flat(d.sans).length > 12 ? h`<br>+${flat(d.sans).length - 12} more` : "")]])),
+  whois: (d) => d.error ? errCard("WHOIS", d) : card("WHOIS", d.privacy_protected ? tag("privacy") : "", kv([["Registrar", esc(d.registrar)], ["Created", esc(String(d.creation_date || "").slice(0, 10))], ["Updated", esc(String(d.updated_date || "").slice(0, 10))], ["Expires", esc(String(d.expiration_date || "").slice(0, 10))], ["Org", esc(d.org)], ["Country", esc(d.country)], ["Name servers", flat(d.name_servers).map((x) => mono(String(x).toLowerCase())).join("<br>")], ["Check", chk(evidenceUrl.rdap(isDomain(d.domain) ? d.domain : domainOf()), "RDAP record")]])),
+  ssl: (d) => d.error_code === "tls" || (d.found === false && !d.error) ? card("TLS certificate", tag("none", "warn"), muted(d.error || "No certificate presented.")) : d.error ? errCard("TLS certificate", d) : card("TLS certificate", tag(d.days_left < 30 ? `${d.days_left} days left` : "valid", d.days_left < 30 ? "warn" : "ok"), kv([["Common name", mono(d.common_name)], ["Issuer", esc(d.issuer)], ["Valid from", esc(day(d.not_before))], ["Valid until", esc(day(d.not_after))], ["Also covers", flat(d.sans).slice(0, 12).map(mono).join("<br>") + (flat(d.sans).length > 12 ? h`<br>+${flat(d.sans).length - 12} more` : "")], ["Check", chk(evidenceUrl.crtsh(domainOf()), "Certificate logs at crt.sh")]])),
   headers: (d) => {
     if (d.error || d.found === false) return errCard("HTTP headers", d.error ? d : { error: "No response" });
     const g = String(d.grade || "?").toUpperCase();
@@ -167,10 +174,10 @@ const CARDS = {
     const subs = d.subdomains || [];
     const ct = d.ct_entries || [];
     return card("Subdomains", tag(`${fmtNum(subs.length)} found`) + (d.ct_found ? " " + tag(`${fmtNum(d.ct_found)} from CT`) : ""),
-      (subs.length ? `<div style="font-size:var(--fs-1)">${subs.slice(0, 25).map((s) => h`<div>${raw(link(`https://${s.subdomain}`, s.subdomain))} <span style="color:var(--ink-4)" class="mono">${flat(s.ips).join(", ")}</span></div>`).join("")}${subs.length > 25 ? h`<div style="color:var(--ink-4)">+${subs.length - 25} more in the ledger</div>` : ""}</div>` : muted("Answered, nothing found."))
+      (subs.length ? `<div style="font-size:var(--fs-1)">${subs.slice(0, 25).map((s) => h`<div>${raw(ev(`https://${s.subdomain}`, s.subdomain))} <span style="color:var(--ink-4)" class="mono">${flat(s.ips).join(", ")}</span></div>`).join("")}${subs.length > 25 ? h`<div style="color:var(--ink-4)">+${subs.length - 25} more in the ledger</div>` : ""}</div>` : muted("Answered, nothing found."))
       + (ct.length ? h`<details style="margin-top:10px;font-size:var(--fs-0)"><summary style="cursor:pointer;color:var(--ink-3)">Recent certificate log entries (${ct.length})</summary>${raw(ct.slice(0, 30).map((e) => h`<div class="mono" style="color:var(--ink-2)">${String(e.date || "").slice(0, 10)}  ${e.subdomain}  <span style="color:var(--ink-4)">${e.issuer}</span></div>`).join(""))}</details>` : ""));
   },
-  asn: (d) => d.error ? errCard("Network owner", d) : d.found === false ? card("Network owner", tag("not found"), muted("No network owner on record for this address.")) : card("Network owner", tag(d.asn || ""), kv([["IP", mono(d.ip)], ["ASN", link(`https://bgp.he.net/${d.asn}`, d.asn)], ["Org", esc(d.org)], ["Prefixes", flat(d.prefixes).slice(0, 8).map(mono).join("<br>")]])),
+  asn: (d) => d.error ? errCard("Network owner", d) : d.found === false ? card("Network owner", tag("not found"), muted("No network owner on record for this address.")) : card("Network owner", tag(d.asn || ""), kv([["IP", mono(d.ip)], ["ASN", ev(evidenceUrl.asn(d.asn), d.asn) || esc(d.asn)], ["Org", esc(d.org)], ["Prefixes", flat(d.prefixes).slice(0, 8).map(mono).join("<br>")]])),
   portscan: (d) => {
     if (d.error) return errCard("Port scan", d);
     const open = (d.results || []).filter((r) => r.open);
@@ -185,7 +192,7 @@ const CARDS = {
     const vulns = d.vulns || [];
     const svc = (d.services || []).slice(0, 8).map((s) => h`<div><span class="mono">${s.port}/${s.transport}</span> ${[s.product, s.version].filter(Boolean).join(" ")}</div>`).join("");
     return card(title, tag(`${(d.ports || []).length} ports`) + (vulns.length ? " " + tag(`${d.vuln_count || vulns.length} CVEs`, "warn") : "") + (sh ? " " + tag(`shared ${sh.provider || "hosting"}`) : ""),
-      (sh ? h`<p class="card-lead">${d.ports_note || `This address is shared ${sh.provider || "hosting"}. What is seen on it is not necessarily the target's own.`}</p>` : "") + kv([["IP", mono(d.ip)], ["Org", esc(d.org)], ["ISP", esc(d.isp)], ["OS", esc(d.os)], ["Location", esc([d.city, d.country].filter(Boolean).join(", "))], ["Ports", mono((d.ports || []).join(", "))], ["Hostnames", flat(d.hostnames).filter((x) => !nbSet.has(lc(x))).slice(0, 8).map(mono).join("<br>")], ["Tags", esc(flat(d.tags).join(", "))], ["Software", flat(d.cpes).slice(0, 6).map((x) => mono(String(x).replace(/^cpe:\/a:/, ""))).join("<br>")], ["CVEs", vulns.slice(0, 12).map((v) => link(`https://nvd.nist.gov/vuln/detail/${v}`, v)).join(", ") + (vulns.length > 12 ? h` +${vulns.length - 12}` : "")]])
+      (sh ? h`<p class="card-lead">${d.ports_note || `This address is shared ${sh.provider || "hosting"}. What is seen on it is not necessarily the target's own.`}</p>` : "") + kv([["IP", mono(d.ip)], ["Org", esc(d.org)], ["ISP", esc(d.isp)], ["OS", esc(d.os)], ["Location", esc([d.city, d.country].filter(Boolean).join(", "))], ["Ports", mono((d.ports || []).join(", "))], ["Hostnames", flat(d.hostnames).filter((x) => !nbSet.has(lc(x))).slice(0, 8).map(mono).join("<br>")], ["Tags", esc(flat(d.tags).join(", "))], ["Software", flat(d.cpes).slice(0, 6).map((x) => mono(String(x).replace(/^cpe:\/a:/, ""))).join("<br>")], ["CVEs", vulns.slice(0, 12).map((v) => ev(`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(v)}`, v)).join(", ") + (vulns.length > 12 ? h` +${vulns.length - 12}` : "")], ["Check", evLink(exposureEvidence(d))]])
       + (svc ? `<div style="margin-top:8px;font-size:var(--fs-1)">${svc}</div>` : "")
       + (nbs.length ? details(`Unrelated neighbours on this address (${nbs.length})`, `<p class="muted small">Other customers of ${esc(sh.provider || "the provider")}. They say nothing about this target.</p><div class="mono rows">${nbs.slice(0, 100).map((x) => h`<div>${x}</div>`).join("")}</div>`) : "")
       + (isIdb ? muted("Free keyless source. Add a Shodan key in Settings for banners, org and location.").replace("<p ", '<p style="margin-top:8px" ') : ""));
@@ -195,11 +202,11 @@ const CARDS = {
     const groups = Object.entries(d.interesting_paths || {});
     const n = groups.reduce((a, [, v]) => a + v.length, 0);
     return card("Wayback Machine", tag(`${fmtNum(d.total_snapshots)} snapshots`) + (n ? " " + tag(`${n} paths worth a look`, "warn") : ""),
-      kv([["Latest", link(d.most_recent_snapshot?.url, String(d.most_recent_snapshot?.timestamp || "open"))], ["History", (d.snapshot_history || []).slice(0, 8).map((s) => link(s.url, s.date)).join("<br>")]])
-      + groups.map(([g, paths]) => details(`${g} (${paths.length})`, `<div class="rows mono">${paths.map((u) => h`<div>${raw(link(`https://web.archive.org/web/*/${u}`, u))}</div>`).join("")}</div>`)).join("")
+      kv([["Latest", ev(d.most_recent_snapshot?.url, String(d.most_recent_snapshot?.timestamp || "open"))], ["History", (d.snapshot_history || []).slice(0, 8).map((s) => ev(s.url, s.date)).join("<br>")], ["All snapshots", chk(evidenceUrl.wayback(domainOf()), "web.archive.org")]])
+      + groups.map(([g, paths]) => details(`${g} (${paths.length})`, `<div class="rows mono">${paths.map((u) => h`<div>${raw(ev(`https://web.archive.org/web/*/${u}`, u))}</div>`).join("")}</div>`)).join("")
       + (n ? muted("These are archived URLs, not proof the paths still exist. Opening one loads the archive, not the target.").replace("<p ", '<p class="muted small" ') : ""));
   },
-  redirects: (d) => d.error ? errCard("Redirect chain", d) : !d.found ? card("Redirect chain", tag("none"), muted("No response.")) : card("Redirect chain", tag(d.is_clean ? "clean" : "check", d.is_clean ? "ok" : "warn"), `<div style="font-size:var(--fs-1)">${(d.hops || []).map((x) => h`<div><span class="mono" style="color:var(--ink-3)">${x.status_code}</span> ${raw(link(x.url, x.url))}${x.server ? raw(h` <span style="color:var(--ink-4)">${x.server}</span>`) : ""}</div>`).join("")}</div>`),
+  redirects: (d) => d.error ? errCard("Redirect chain", d) : !d.found ? card("Redirect chain", tag("none"), muted("No response.")) : card("Redirect chain", tag(d.is_clean ? "clean" : "check", d.is_clean ? "ok" : "warn"), `<div style="font-size:var(--fs-1)">${(d.hops || []).map((x) => h`<div><span class="mono" style="color:var(--ink-3)">${x.status_code}</span> ${raw(ev(x.url, x.url))}${x.server ? raw(h` <span style="color:var(--ink-4)">${x.server}</span>`) : ""}</div>`).join("")}</div>`),
   techfp: (d) => {
     if (d.error) return errCard("Tech fingerprint", d);
     if (!d.found) return card("Tech fingerprint", tag("none"), muted("Answered, nothing found: nothing identified."));
@@ -209,9 +216,9 @@ const CARDS = {
   asn_detail: (d) => {
     if (!d.found) return card("ASN detail", tag("not found", "warn"), muted("The registry has no record for this ASN."));
     const v4 = flat(d.prefixes_v4), v6 = flat(d.prefixes_v6), peers = d.peers || [];
-    return card("ASN detail", tag(d.asn), kv([["Name", esc(d.name)], ["Org", esc(d.org)], ["Handle", esc(d.handle)], ["Country", esc(d.country)], ["Registry", esc(d.rir)], ["Registered", esc(d.date_registered)], ["Lookup", link(`https://bgp.he.net/${d.asn}`, "bgp.he.net")]]))
+    return card("ASN detail", tag(d.asn), kv([["Name", esc(d.name)], ["Org", esc(d.org)], ["Handle", esc(d.handle)], ["Country", esc(d.country)], ["Registry", esc(d.rir)], ["Registered", esc(d.date_registered)], ["Lookup", chk(evidenceUrl.asn(d.asn), "bgp.he.net")]]))
       + card("Announced prefixes", tag(`${v4.length} v4 · ${v6.length} v6`), `<div class="mono" style="font-size:var(--fs-0);columns:2 160px">${[...v4.slice(0, 40), ...v6.slice(0, 20)].map(esc).join("<br>")}</div>`)
-      + (peers.length ? card("Peers", tag(`${fmtNum(d.total_peers ?? peers.length)}`), `<div style="font-size:var(--fs-1)">${peers.slice(0, 25).map((p) => h`<div>${raw(link(`https://bgp.he.net/AS${String(p.asn).replace(/^AS/i, "")}`, `AS${String(p.asn).replace(/^AS/i, "")}`))} ${p.name}</div>`).join("")}</div>`) : "");
+      + (peers.length ? card("Peers", tag(`${fmtNum(d.total_peers ?? peers.length)}`), `<div style="font-size:var(--fs-1)">${peers.slice(0, 25).map((p) => h`<div>${raw(ev(evidenceUrl.asn(p.asn), `AS${String(p.asn).replace(/^AS/i, "")}`))} ${p.name}</div>`).join("")}</div>`) : "");
   },
 };
 const CARD_ORDER = ["shodan", "portscan", "email_posture", "takeover", "headers", "ssl", "dns_depth", "dns", "whois", "subdomains", "certs", "harvest", "lookalikes", "wellknown", "asn", "asn_detail", "redirects", "techfp", "wayback"];
@@ -240,7 +247,7 @@ function renderTimeline() {
   const row = (e, i, all) => h`<li class="tl-ev ${e.future ? "future" : ""}">
       <span class="tl-year">${i === 0 || all[i - 1].date.slice(0, 4) !== e.date.slice(0, 4) ? e.date.slice(0, 4) : ""}</span>
       <time datetime="${e.date}">${e.date}</time>
-      <div class="tl-what"><b>${e.url ? raw(link(e.url, e.title)) : e.title}</b>${e.detail ? raw(h`<span>${e.detail}</span>`) : ""}</div>
+      <div class="tl-what"><b>${raw(link(e.url, e.title, "", { kind: e.link_kind || "" }))}</b>${e.detail ? raw(h`<span>${e.detail}</span>`) : ""}</div>
       <span class="tl-meta"><span class="tl-when">${e.when}</span><span class="tl-src">${e.source}</span></span>
     </li>`;
   const past = events.filter((e) => !e.future), future = events.filter((e) => e.future);
@@ -539,9 +546,9 @@ export function exportCase() {
   const purpose = $("#rPurpose").value.trim();
   const md = [`# CrawlR recon: ${state.target}`, `Generated ${new Date().toISOString()} · ${TYPE_LABEL[state.type]}${state.ran ? ` · collected ${new Date(state.ran).toISOString()}` : ""}`, "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a clean result)`), ""] : []),
-    "## What we know", ...(facts.length ? facts.map((f) => `- **${f.k}:** ${f.v} _(${f.source})_`) : ["- Nothing extracted"]), "",
-    ...TIERS.flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${i.url ? `[${i.what}](${i.url})` : i.what}${i.meta ? ` · ${i.meta}` : ""} _(${i.source})_`), ""] : []; }),
-    ...((tl) => (tl.length ? ["## Timeline", ...tl.map((e) => `- ${e.date} · ${e.title}${e.detail ? ` · ${e.detail}` : ""} _(${e.source})_`), ""] : []))(reconTimeline(state.collected, state.target).events),
+    "## What we know", ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), "",
+    ...TIERS.flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
+    ...((tl) => (tl.length ? ["## Timeline", ...tl.map((e) => `- ${e.date} · ${mdLink(e, e.title)}${e.detail ? ` · ${e.detail}` : ""} _(${e.source})_`), ""] : []))(reconTimeline(state.collected, state.target).events),
     ...(state.ai ? ["## AI analysis", state.ai.summary, ""] : []), ...(state.deep ? ["## Deep analysis", state.deep.summary, ""] : []),
     ...($("#rNotes").value.trim() ? ["## Notes", $("#rNotes").value.trim(), ""] : [])].join("\n");
   const name = `crawlr-recon-${slug(state.target)}`;

@@ -1,5 +1,6 @@
 // Pieces shared by every workbench mode: run log, tiered ledger, facts panel, run diff.
-import { $$, h, raw, esc, link, safeUrl, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
+import { $$, h, raw, esc, link, linkOf, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
+import { checkText } from "./links.js";
 
 // ---- run log ------------------------------------------------------------------
 // One row per source. While a run is in flight the strip shows "3 of 7 sources" with a
@@ -77,6 +78,14 @@ export function makeLog(el) {
       live.textContent = `Run finished. ${summary}.`;
     },
     open() { setOpen(true); },
+    // True once a run has drawn the strip. A case opened from History has no run log.
+    get live() { return !el.hidden && !!el.querySelector(".runlog-rows"); },
+    // A follow-up that settles after the run (the link check) updates the one-line summary.
+    resummarize(summary, failed = 0) {
+      const s = el.querySelector(".runlog-summary"); if (!s || this.running) return;
+      s.querySelector(".st").textContent = summary; s.classList.toggle("has-err", failed > 0);
+      if (failed > 0) setOpen(true);
+    },
     statusOf: (r) => Object.keys(LABEL).find((k) => r.classList.contains(k)),
   };
   el.addEventListener("click", (e) => { if (e.target.closest(".runlog-summary")) setOpen(el.classList.contains("collapsed")); });
@@ -86,7 +95,43 @@ export function makeLog(el) {
 // ---- tiered ledger ---------------------------------------------------------------
 // tiers: [{ id, title, cls, open, blurb, limit?, collapseOver? }]
 const PREVIEW = 15;
-export function renderTiers(el, items, tiers, done, emptyHtml) {
+// The text side of one ledger row, as a string, so the link rules can be tested without a DOM.
+// The name is the link when the row has a URL of its own. An evidence link is a labelled anchor
+// after the text. A row with link_kind "none" is plain text, with a hint on how to check by hand.
+const CHECK_CLS = { verified: "ok", not_found: "", blocked: "warn", unknown: "", no_public_url: "" };
+export function evWhat(it) {
+  const name = it.link_label ? esc(it.what) : linkOf(it);
+  const labelled = it.link_label ? ` ${link(it.url, it.link_label, "ev-link", { kind: it.link_kind })}` : "";
+  const more = it.more?.url ? ` ${link(it.more.url, it.more.label, "ev-link", { kind: "evidence" })}` : "";
+  const state = checkText(it);
+  return name + (it.isNew ? '<span class="tag violet">new</span>' : "") + labelled + more
+    + (state ? h`<span class="lk-state ${CHECK_CLS[it.check] || ""}">${state}</span>` : "")
+    + (it.meta ? h`<span class="meta">${it.meta}</span>` : "")
+    + (it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "");
+}
+// Replaces one row's text in place after its link was checked, and moves a row whose page was
+// not found to the end of its group. Nothing else on the page moves.
+// Focus stays with the keyboard user: if it was on this row's link it goes to the new link, or to
+// the row's checkbox when the link became plain text; if it was on the checkbox it stays there
+// through the move. Focus that is anywhere else is left alone.
+export function patchRow(el, it, doc = globalThis.document) {
+  const row = [...el.querySelectorAll(".ev[data-row]")].find((r) => r.dataset.row === it.key);
+  if (!row) return false;
+  const what = row.querySelector(".what"), box = row.querySelector("input[type=checkbox]");
+  const active = doc?.activeElement;
+  const was = active && active === box ? "box" : active && what.contains(active) ? "link" : "";
+  what.innerHTML = evWhat(it);
+  if (it.gone && !row.classList.contains("gone")) {
+    row.classList.add("gone");
+    const rows = row.parentElement.querySelectorAll(":scope > .ev");
+    if (rows[rows.length - 1] !== row) rows[rows.length - 1].after(row);
+  }
+  if (was) ((was === "link" && what.querySelector("a.lk")) || box)?.focus({ preventScroll: true });
+  return true;
+}
+// opts.check(tierId): how many of the group's links the link check could look at now. When it is
+// more than none the group header carries a "Check these links" button (see linkcheck.js).
+export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
   const byTier = Object.fromEntries(tiers.map((t) => [t.id, items.filter((i) => i.tier === t.id)]));
   const shown = tiers.filter((t) => byTier[t.id].length);
   el.innerHTML = shown.length ? shown.map((t) => {
@@ -100,14 +145,14 @@ export function renderTiers(el, items, tiers, done, emptyHtml) {
       <section class="tier ${t.cls} ${open ? "" : "collapsed"} ${clip ? "clipped" : ""}" data-tier="${t.id}">
         <h2 class="tier-h"><button type="button" class="tier-head" aria-expanded="${open}" aria-controls="${bodyId}">
           <span class="tier-rail" aria-hidden="true"></span><span class="tier-title">${t.title}</span><span class="count">${fmtNum(rows.length)}</span><span class="chev" aria-hidden="true">▾</span>
-        </button></h2>
+        </button>${((nCheck) => (nCheck > 0 ? raw(h`<button type="button" class="btn btn-sm tier-check" data-check-tier="${t.id}" data-count="${nCheck}">Check these links (${fmtNum(nCheck)})</button>`) : ""))(opts.check ? Number(opts.check(t.id)) || 0 : 0)}</h2>
         <div class="tier-body" id="${bodyId}">
           <div class="tier-blurb">${t.blurb}</div>
           ${t.note ? raw(h`<div class="tier-blurb">${t.note}</div>`) : ""}
           ${raw(rows.slice(0, limit).map((it, i) => h`
-            <div class="ev ${done.has(it.key) ? "done" : ""} ${i >= PREVIEW ? "ev-extra" : ""}">
+            <div class="ev ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}">
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
-              <div class="what">${raw(it.url ? link(it.url, it.what) : esc(it.what))}${it.isNew ? raw('<span class="tag violet">new</span>') : ""}${it.meta ? raw(h`<span class="meta">${it.meta}</span>`) : ""}</div>
+              <div class="what">${raw(evWhat(it))}</div>
               <span class="src">${it.action ? raw(h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>`) : ""}${it.source}</span>
             </div>`).join(""))}
           ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
@@ -132,6 +177,8 @@ export function bindLedger(el, storageKey) {
     const sec = head.closest(".tier");
     sec.classList.toggle("collapsed");
     head.setAttribute("aria-expanded", !sec.classList.contains("collapsed"));
+    // The link check starts when a group is opened and stops when it is closed.
+    el.dispatchEvent(new CustomEvent("crawlr:tier", { detail: { tier: sec.dataset.tier, open: !sec.classList.contains("collapsed") } }));
   });
   el.addEventListener("change", (e) => {
     const k = e.target.dataset.key;
@@ -180,7 +227,7 @@ export function diffNotice(diff, prevTs) {
 // ---- facts panel -------------------------------------------------------------------
 export function renderFacts(el, facts, emptyText = "No facts extracted yet.") {
   el.innerHTML = facts.length
-    ? `<dl class="facts-list">${facts.map((f) => h`<div class="fact"><dt class="k">${f.k}</dt><dd class="v">${raw(f.url ? link(f.url, f.v) : esc(f.v))}<span class="src">${f.source}</span></dd></div>`).join("")}</dl>`
+    ? `<dl class="facts-list">${facts.map((f) => h`<div class="fact"><dt class="k">${f.k}</dt><dd class="v">${raw(linkOf(f, f.v))}<span class="src">${f.source}</span></dd></div>`).join("")}</dl>`
     : h`<p class="empty flat">${emptyText}</p>`;
 }
 
@@ -240,7 +287,7 @@ export async function standaloneHtml(title, mainEl, asideEl) {
   let css = "";
   try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
   css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
-  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
+  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
   return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Unverified" items are leads, not facts, and a profile that exists is not proof of who owns it.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
 }
 
@@ -269,8 +316,8 @@ const BRIEF_WORD = { flag: "Check", ok: "Good", info: "Note" };
 export function renderBrief(section, body, { rows, actions }) {
   section.hidden = !rows.length;
   if (!rows.length) { body.innerHTML = ""; return; }
-  body.innerHTML = `<ul class="brief-list">${rows.map((r) => h`<li class="${r.level}"><span class="tag ${r.level === "flag" ? "warn" : r.level === "ok" ? "ok" : ""}">${BRIEF_WORD[r.level] || "Note"}</span><span>${r.text}</span></li>`).join("")}</ul>`
-    + (actions.length ? `<div class="brief-actions">${actions.map((a) => a.href ? h`<a class="btn btn-sm" href="${safeUrl(a.href)}" target="_blank" rel="noopener noreferrer">${a.label}</a>` : a.tab ? h`<button type="button" class="btn btn-sm" data-brief-tab="${a.tab}">${a.label}</button>` : h`<button type="button" class="btn btn-sm" data-pivot="${a.pivot}" data-value="${a.value}">${a.label}</button>`).join("")}</div>` : "");
+  body.innerHTML = `<ul class="brief-list">${rows.map((r) => h`<li class="${r.level}"><span class="tag ${r.level === "flag" ? "warn" : r.level === "ok" ? "ok" : ""}">${BRIEF_WORD[r.level] || "Note"}</span><span>${r.text}${r.url && r.link_kind !== "none" ? raw(` ${link(r.url, r.link_label || "Source record", "ev-link", { kind: r.link_kind || "evidence" })}`) : ""}</span></li>`).join("")}</ul>`
+    + (actions.length ? `<div class="brief-actions">${actions.map((a) => a.href ? link(a.href, a.label, "btn btn-sm") : a.tab ? h`<button type="button" class="btn btn-sm" data-brief-tab="${a.tab}">${a.label}</button>` : h`<button type="button" class="btn btn-sm" data-pivot="${a.pivot}" data-value="${a.value}">${a.label}</button>`).join("")}</div>` : "");
 }
 
 // ---- purpose and notes on paper ---------------------------------------------------------

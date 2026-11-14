@@ -3,6 +3,8 @@
 // history of a person's accounts would be a profile, and is deliberately not built.
 // Kept free of DOM code so the rules can be tested with plain node.
 
+import { sealLink, evidenceUrl, isDomain } from "./links.js";
+
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const pad = (n) => String(n).padStart(2, "0");
 const valid = (y, m, d) => y >= 1970 && y <= 2200 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
@@ -36,19 +38,22 @@ export function span(days) {
   return days < 0 ? `${text} ago` : `in ${text}`;
 }
 
-// Returns { events, today }. Each event: { date, title, detail, source, url, future }.
+// Returns { events, today }. Each event: { date, title, detail, source, url, link_kind, future }.
+// url is where the date can be checked: the RDAP record, the certificate logs, the snapshot.
 export function reconTimeline(c, target, today = new Date().toISOString().slice(0, 10)) {
   const events = [];
   const add = (raw, title, source, detail = "", url = "") => {
     const date = toDay(raw);
     if (date) events.push({ date, title, detail, source, url, future: date > today });
   };
+  const domain = isDomain(target) ? String(target).trim().toLowerCase() : "";
+  const rdap = evidenceUrl.rdap(domain), crt = evidenceUrl.crtsh(domain);
 
   const wh = c.whois;
   if (usable(wh) && wh.found !== false) {
-    add(wh.creation_date, "Domain registered", "WHOIS", wh.registrar ? `Current registrar: ${wh.registrar}` : "");
-    add(wh.updated_date, "Registration record last changed", "WHOIS", "A renewal, a transfer or a change of name servers. WHOIS does not say which.");
-    add(wh.expiration_date, toDay(wh.expiration_date) > today ? "Domain registration expires" : "Domain registration expired", "WHOIS");
+    add(wh.creation_date, "Domain registered", "WHOIS", wh.registrar ? `Current registrar: ${wh.registrar}` : "", rdap);
+    add(wh.updated_date, "Registration record last changed", "WHOIS", "A renewal, a transfer or a change of name servers. WHOIS does not say which.", rdap);
+    add(wh.expiration_date, toDay(wh.expiration_date) > today ? "Domain registration expires" : "Domain registration expired", "WHOIS", "", rdap);
   }
 
   // Certificate transparency: the first time each name was certified says when it appeared.
@@ -66,38 +71,38 @@ export function reconTimeline(c, target, today = new Date().toISOString().slice(
     const byDay = new Map();
     for (const [name, d] of first) { if (!byDay.has(d)) byDay.set(d, []); byDay.get(d).push(name); }
     const firstLogged = toDay(sub.ct_summary?.first_issued);
-    if (firstLogged) add(firstLogged, "First certificate in public logs", "Certificate logs", "The earliest certificate logged for this domain or a subdomain. Logging only became universal around 2018, so older sites can predate it.");
+    if (firstLogged) add(firstLogged, "First certificate in public logs", "Certificate logs", "The earliest certificate logged for this domain or a subdomain. Logging only became universal around 2018, so older sites can predate it.", crt);
     for (const [d, names] of byDay) {
       names.sort();
       const shown = names.slice(0, 4).join(", ") + (names.length > 4 ? ` and ${names.length - 4} more` : "");
-      add(d, names.length === 1 ? `First certificate for ${names[0]}` : `First certificates for ${names.length} names`, "Certificate logs", names.length === 1 ? "" : shown);
+      add(d, names.length === 1 ? `First certificate for ${names[0]}` : `First certificates for ${names.length} names`, "Certificate logs", names.length === 1 ? "" : shown, names.length === 1 ? evidenceUrl.crtsh(names[0]) || crt : crt);
     }
   }
 
   const ssl = c.ssl;
   if (usable(ssl) && ssl.found) {
-    add(ssl.not_before, "Current TLS certificate issued", "TLS certificate", ssl.issuer ? `Issued by ${ssl.issuer}` : "");
-    add(ssl.not_after, toDay(ssl.not_after) > today ? "Current TLS certificate expires" : "Current TLS certificate expired", "TLS certificate");
+    add(ssl.not_before, "Current TLS certificate issued", "TLS certificate", ssl.issuer ? `Issued by ${ssl.issuer}` : "", crt);
+    add(ssl.not_after, toDay(ssl.not_after) > today ? "Current TLS certificate expires" : "Current TLS certificate expired", "TLS certificate", "", crt);
   }
 
   const wb = c.wayback;
   if (usable(wb) && wb.found) {
     const hist = (wb.snapshot_history || []).filter((s) => toDay(s?.date)).sort((a, b) => toDay(a.date).localeCompare(toDay(b.date)));
-    if (hist.length) add(hist[0].date, "Earliest archived copy found", "Wayback Machine", "The oldest snapshot in the sample CrawlR fetched. The archive may hold older ones.", hist[0].url);
-    add(wb.most_recent_snapshot?.timestamp, "Latest archived copy", "Wayback Machine", "", wb.most_recent_snapshot?.url);
+    if (hist.length) add(hist[0].date, "Earliest archived copy found", "Wayback Machine", "The oldest snapshot in the sample CrawlR fetched. The archive may hold older ones.", hist[0].url || evidenceUrl.wayback(domain));
+    add(wb.most_recent_snapshot?.timestamp, "Latest archived copy", "Wayback Machine", "", wb.most_recent_snapshot?.url || evidenceUrl.wayback(domain));
   }
 
   const st = c.wellknown?.security_txt;
   if (usable(c.wellknown) && st) add([].concat(st.expires || [])[0], toDay([].concat(st.expires || [])[0]) > today ? "security.txt expires" : "security.txt expired", "Published files", "After this date the published security contact should be treated as stale.");
 
   const ad = c.asn_detail;
-  if (usable(ad) && ad.found) add(ad.date_registered, "Network number registered", "ASN detail", ad.rir ? `Registry: ${ad.rir}` : "");
+  if (usable(ad) && ad.found) add(ad.date_registered, "Network number registered", "ASN detail", ad.rir ? `Registry: ${ad.rir}` : "", evidenceUrl.asn(ad.asn || target));
 
   // Oldest first. On the same day, keep the order the facts were added in.
   const seen = new Set();
   const out = events.map((e, i) => ({ ...e, i })).sort((a, b) => a.date.localeCompare(b.date) || a.i - b.i)
     .filter((e) => { const k = `${e.date}|${e.title}`; if (seen.has(k)) return false; seen.add(k); return true; })
-    .map(({ i, ...e }) => ({ ...e, when: span(daysBetween(today, e.date)) }));
+    .map(({ i, ...e }) => sealLink({ ...e, when: span(daysBetween(today, e.date)) }, { subjects: [target] }));
   return { events: out, today };
 }
 

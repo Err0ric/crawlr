@@ -32,3 +32,4 @@ jobs:
           node tests/js/casefile.test.mjs
           node tests/js/identity.test.mjs
           node tests/js/evidence.test.mjs
+          node tests/js/links.test.mjs

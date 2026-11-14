@@ -201,7 +201,15 @@ def _account_lines(req) -> list[str]:
         by: dict[str, list] = {"linked": [], "matches": [], "different": [], "unverified": []}
         for a in req.accounts:
             by[_STATUS_ALIAS.get(a.status, a.status) if _STATUS_ALIAS.get(a.status, a.status) in by else "unverified"].append(a)
-        fmt = lambda a: f"{a.site} ({a.url})" if a.url else a.site
+        def fmt(a) -> str:
+            # The model is told which URLs were checked, the same way the screen marks them.
+            if a.link_check == "not_found":
+                return f"{a.site} (page not found when checked)"
+            if not a.url or a.link_kind == "none":
+                return a.site
+            if a.link_kind == "templated_unverified" and a.link_check != "verified":
+                return f"{a.site} ({a.url}, unverified URL)"
+            return f"{a.site} ({a.url})"
         noted = lambda a: f"{fmt(a)}{' [' + a.note + ']' if a.note else ''}"
         if by["linked"]:
             lines.append(
@@ -230,6 +238,12 @@ def _account_lines(req) -> list[str]:
                 f"(many sites answer yes for any name, and some block the check): {', '.join(fmt(a) for a in by['unverified'][:40])}"
                 + (f" (and {len(by['unverified']) - 40} more)" if len(by["unverified"]) > 40 else "")
             )
+        if any(x.link_kind == "templated_unverified" or x.link_check for x in req.accounts):
+            lines.append(
+                "A URL marked \"unverified URL\" was built from a site template plus the handle and nothing has "
+                "checked it, so do not present it as an existing profile. \"Page not found when checked\" means the "
+                "page did not exist when CrawlR opened it."
+            )
         return lines
     # Older clients send raw tool output instead of the ledger.
     rows = [r for src in (req.sherlock, getattr(req, "maigret", None)) if _ok(src) for r in (src.get("results") or [])]
@@ -255,6 +269,8 @@ class AccountEvidence(BaseModel):
     status: str = Field(default="unverified", max_length=20)   # "linked" | "matches" | "different" | "unverified"
     sources: list[str] = Field(default_factory=list, max_length=8)
     note: str = Field(default="", max_length=200)
+    link_kind: str = Field(default="", max_length=24)    # "verified_profile" | "templated_unverified" | "none"
+    link_check: str = Field(default="", max_length=16)   # "verified" | "not_found" | "blocked" | "unknown" | "no_public_url"
 
 
 class AnalyzeRequest(BaseModel):

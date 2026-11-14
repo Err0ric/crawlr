@@ -41,6 +41,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | GitHub | Profile, repos, linked email. A details lookup adds organisations, top repositories and languages, linked social accounts, README links, key fingerprints and public commit emails. Rate limits are reported as rate limits | None (optional server `GITHUB_TOKEN`) |
 | Gravatar | Profile and avatar for an email | None |
 | Platform check | Instagram, X, Threads, TikTok, Facebook and LinkedIn, decided from what the page says, not from the status code. A site that walls the request is shown as "Blocked by site" | None |
+| Link check | Opens each reported profile URL once to see whether the page really exists, when you open a group. Marks links as checked, not found, blocked by the site or unclear. Can be switched off under Sources | None |
 | Avatar comparison | Fingerprints public profile pictures so two accounts with the same picture can be linked. Placeholder pictures are ignored | None |
 | Profile scraper | Bios, display names and links from found profiles (active technique, off by default) | None |
 | Hash lookup | CIRCL, AlienVault OTX, and MalwareBazaar and ThreatFox when the server has an abuse.ch key. Recognises the EICAR test file. Community tags are kept apart from malware families | None (optional server `ABUSECH_AUTH_KEY`) |
@@ -113,6 +114,7 @@ node tests/js/timeline.test.mjs
 node tests/js/casefile.test.mjs
 node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
+node tests/js/links.test.mjs
 ```
 
 ## How it is built

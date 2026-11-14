@@ -1,6 +1,18 @@
 // Per-source cards for the "By source" section. Every value goes through h`` / esc.
 import { h, raw, esc, link, fmtNum, plural, sourceOutcome } from "./core.js";
-import { breachList, hashView, detectionText, TEST_FILE_TEXT } from "./evidence.js";
+import { breachList, hashView, detectionText, TEST_FILE_TEXT, canonSite } from "./evidence.js";
+import { classifyLink, applyCheck, evidenceUrl, CHECK_TEXT } from "./links.js";
+
+// A profile link in a card carries the same link kind as its ledger row: a URL the source read
+// is solid, a templated one is marked unverified, a homepage is plain text. `checks` is the
+// link check's stored answers, so a card and the ledger never disagree about a URL.
+export function profileLink(site, url, want, handle, checks) {
+  const row = { key: `acct:${canonSite(site)}`, what: site, ...classifyLink({ url, want, site, subjects: [handle] }) };
+  applyCheck(row, checks?.[row.key]);
+  return link(row.url, site || url, "", { kind: row.link_kind }) + (row.check && row.check !== "verified" ? h` <span class="dim small">${CHECK_TEXT[row.check]}</span>` : "");
+}
+const ev = (url, text) => link(url, text, "", { kind: "evidence" });
+const read = (url, text) => link(url, text, "", { kind: classifyLink({ url, want: "verified_profile" }).link_kind });
 
 const card = (title, badge, body) => h`
   <article class="card">
@@ -20,11 +32,11 @@ export function errorCard(title, d) {
 }
 const none = (text) => h`<p class="muted">${text}</p>`;
 
-function accountCard(title, data, limit = 8) {
+function accountCard(title, data, checks, limit = 8) {
   const all = data?.results || [];
   const ok = all.filter((r) => r.confidence !== "false_positive");
   const verified = ok.filter((r) => r.verified);
-  const rows = ok.slice(0, limit).map((r) => li(h`${raw(link(r.url, r.site || r.name))}${r.verified ? raw(' <span class="tag">profile read</span>') : ""}${r.profile?.name ? h` ${r.profile.name}` : ""}`));
+  const rows = ok.slice(0, limit).map((r) => li(h`${raw(profileLink(r.site || r.name, r.url, r.verified ? "verified_profile" : "templated_unverified", data?.username, checks))}${r.verified ? raw(' <span class="tag">profile read</span>') : ""}${r.profile?.name ? h` ${r.profile.name}` : ""}`));
   const badge = (verified.length ? tag(`${fmtNum(verified.length)} read`) + " " : "") + tag(`${fmtNum(ok.length - verified.length)} unverified`) + (all.length - ok.length ? " " + tag(`${fmtNum(all.length - ok.length)} noisy`) : "");
   return card(title, badge, (rows.length ? list(rows) : none("Answered, nothing found: no accounts reported.")) + more(ok.length - limit)
     + (verified.length ? h`<p class="muted small">A profile that was read exists. Whether it belongs to the same person is decided in the ledger, by name, avatar and links.</p>` : ""));
@@ -44,30 +56,34 @@ export function harvestCard(d) {
 }
 
 const CARDS = {
-  sherlock: (d) => accountCard("Sherlock", d),
-  maigret: (d) => accountCard("Maigret", d),
+  sherlock: (d, checks) => accountCard("Sherlock", d, checks),
+  maigret: (d, checks) => accountCard("Maigret", d, checks),
   holehe: (d) => {
     const rows = (d?.results || []).map((r) => li(h`${r.site || r.domain}`));
     return card("Holehe", tag(`${fmtNum(rows.length)} registered`, rows.length ? "ok" : ""), rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: no registrations detected.</p>`);
   },
-  platformCheck: (d) => {
+  platformCheck: (d, checks) => {
     const all = d?.results || [];
+    // Only "found" read the page. A blocked or unclear check leaves a templated URL; a page the
+    // site says does not exist is not linked at all.
+    const WANT = { found: "verified_profile", not_found: "", blocked: "templated_unverified", unknown: "templated_unverified", manual: "templated_unverified" };
+    const pl = (r, want) => (want ? profileLink(r.platform, r.url, want, d?.username, checks) : esc(r.platform));
     // New shape: each result carries a state and the reason for it.
     if (all.some((r) => r.state)) {
       const WORD = { found: ["profile read", "ok"], not_found: ["not found", ""], blocked: ["Blocked by site", "warn"], unknown: ["could not tell", ""], manual: ["check by hand", ""] };
       const n = (st) => all.filter((r) => r.state === st).length;
-      const rows = all.map((r) => li(h`${raw(link(r.url, r.platform))} <span class="tag ${(WORD[r.state] || ["", ""])[1]}">${(WORD[r.state] || [r.state])[0]}</span>${r.display_name ? ` ${r.display_name}` : ""}${r.evidence ? raw(h`<div class="dim small">${r.evidence}</div>`) : ""}`));
+      const rows = all.map((r) => li(h`${raw(pl(r, WANT[r.state] ?? "templated_unverified"))} <span class="tag ${(WORD[r.state] || ["", ""])[1]}">${(WORD[r.state] || [r.state])[0]}</span>${r.display_name ? ` ${r.display_name}` : ""}${r.evidence ? raw(h`<div class="dim small">${r.evidence}</div>`) : ""}`));
       return card("Platform check", tag(`${fmtNum(n("found"))} read`, n("found") ? "ok" : "") + (n("blocked") ? " " + tag(`${fmtNum(n("blocked"))} blocked`, "warn") : ""),
         (rows.length ? list(rows) : none("No platforms were checked.")) + h`<p class="muted small">"Profile read" means a marker on the page matched, never a bare response. "Blocked by site" means the site refused or walled the check, so it is unknown, not absent.</p>`);
     }
     const found = all.filter((r) => r.found);
     const manual = all.filter((r) => r.manual);
-    const rows = [...found.map((r) => li(link(r.url, r.platform))), ...manual.map((r) => li(h`${raw(link(r.url, r.platform))} <span class="tag">check by hand</span>`))];
+    const rows = [...found.map((r) => li(pl(r, "templated_unverified"))), ...manual.map((r) => li(h`${raw(pl(r, "templated_unverified"))} <span class="tag">check by hand</span>`))];
     return card("Platform check", tag(`${fmtNum(found.length)} unverified`), (rows.length ? list(rows) : none("Answered, nothing found: no profile URLs answered.")) + h`<p class="muted small">A profile URL that answers is a weak signal. These sites often answer for any name.</p>`);
   },
   hibp: (d) => {
     const b = breachList(d);
-    const rows = b.map((x) => li(h`${raw(x.url ? link(x.url, x.name) : esc(x.name))}${x.date || x.year ? raw(h` <span class="dim">${x.date || x.year}</span>`) : ""}${x.verified === true ? raw(' <span class="tag">verified</span>') : x.verified === false ? raw(' <span class="tag warn">unverified</span>') : ""}${x.sensitive ? raw(' <span class="tag warn">sensitive</span>') : ""}${x.data_classes.length || x.records ? raw(h`<div class="dim small">${[x.data_classes.join(", "), x.records ? `${fmtNum(x.records)} records` : ""].filter(Boolean).join(" · ")}</div>`) : ""}`));
+    const rows = b.map((x) => li(h`${raw(ev(x.url, x.name))}${x.date || x.year ? raw(h` <span class="dim">${x.date || x.year}</span>`) : ""}${x.verified === true ? raw(' <span class="tag">verified</span>') : x.verified === false ? raw(' <span class="tag warn">unverified</span>') : ""}${x.sensitive ? raw(' <span class="tag warn">sensitive</span>') : ""}${x.data_classes.length || x.records ? raw(h`<div class="dim small">${[x.data_classes.join(", "), x.records ? `${fmtNum(x.records)} records` : ""].filter(Boolean).join(" · ")}</div>`) : ""}`));
     return card("Breaches", tag(plural(b.length, "breach", "breaches"), b.length ? "warn" : "ok"),
       (rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: not in any breach known to this source.</p>`)
       + (d?.details === "unavailable" ? h`<p class="muted small">Dates and data classes could not be loaded, so only the names are shown.</p>` : "")
@@ -77,8 +93,8 @@ const CARDS = {
   github: (d, deep) => {
     if (!d?.found) return card("GitHub", tag("not found"), none("Answered, nothing found: GitHub has no account with this username."));
     const base = kv([
-      ["Profile", link(d.profile_url, d.profile_url)], ["Name", esc(d.name)], ["Bio", esc(d.bio)], ["Company", esc(d.company)],
-      ["Location", esc(d.location)], ["Email", esc(d.email)], ["Website", link(d.blog, d.blog)], ["Twitter", esc(d.twitter_username)],
+      ["Profile", read(d.profile_url, d.profile_url)], ["Name", esc(d.name)], ["Bio", esc(d.bio)], ["Company", esc(d.company)],
+      ["Location", esc(d.location)], ["Email", esc(d.email)], ["Website", ev(/^https?:\/\//i.test(String(d.blog || "")) || !d.blog ? d.blog : `https://${d.blog}`, d.blog)], ["Twitter", esc(d.twitter_username)],
       ["Repos", esc(d.public_repos)], ["Followers", esc(d.followers)], ["Since", esc(String(d.created_at || "").slice(0, 10))],
     ]);
     return card("GitHub", tag("found", "ok") + (deep?.state === "partial" ? " " + tag("details partial", "warn") : ""), base + githubDeepBody(deep));
@@ -95,19 +111,29 @@ const CARDS = {
   },
   gravatar: (d) => {
     if (!d?.found) return card("Gravatar", tag("not found"), h`<p class="muted">Answered, nothing found: no Gravatar for this address.</p>`);
-    return card("Gravatar", tag("found", "ok"), kv([["Profile", link(d.profile_url, d.profile_url)], ["Name", esc(d.name)], ["Display name", esc(d.display_name)], ["Location", esc(d.location)]]));
+    return card("Gravatar", tag("found", "ok"), kv([["Profile", read(d.profile_url, d.profile_url)], ["Name", esc(d.name)], ["Display name", esc(d.display_name)], ["Location", esc(d.location)]]));
   },
   enricher: (d) => {
     const p = d?.profiles || [];
-    const rows = p.slice(0, 10).map((x) => li(h`${raw(link(x.url, x.platform || x.url))}${x.display_name ? h` · ${x.display_name}` : ""}${x.bio && !x.bio_boilerplate ? raw(h`<div style="color:var(--ink-3);font-size:var(--fs-0)">${String(x.bio).slice(0, 150)}</div>`) : ""}`));
+    const rows = p.slice(0, 10).map((x) => li(h`${raw(read(x.url, x.platform || x.url))}${x.display_name ? h` · ${x.display_name}` : ""}${x.bio && !x.bio_boilerplate ? raw(h`<div style="color:var(--ink-3);font-size:var(--fs-0)">${String(x.bio).slice(0, 150)}</div>`) : ""}`));
     return card("Profile enrichment", tag(`${fmtNum(p.length)} profiles`), rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: no profile page gave a name or a bio.</p>`);
   },
   profileScrape: (d) => {
     const p = (d?.results || []).filter((r) => !r.error);
-    const rows = p.map((x) => li(h`${raw(link(x.url, x.site || x.url))}${x.display_name ? h` · ${x.display_name}` : ""}${x.location ? h` · ${x.location}` : ""}${x.emails?.length ? raw(h`<div class="mono" style="font-size:var(--fs-0)">${x.emails.join(", ")}</div>`) : ""}${x.bio ? raw(h`<div style="color:var(--ink-3);font-size:var(--fs-0)">${String(x.bio).slice(0, 200)}</div>`) : ""}`));
+    const rows = p.map((x) => li(h`${raw(read(x.url, x.site || x.url))}${x.display_name ? h` · ${x.display_name}` : ""}${x.location ? h` · ${x.location}` : ""}${x.emails?.length ? raw(h`<div class="mono" style="font-size:var(--fs-0)">${x.emails.join(", ")}</div>`) : ""}${x.bio ? raw(h`<div style="color:var(--ink-3);font-size:var(--fs-0)">${String(x.bio).slice(0, 200)}</div>`) : ""}`));
     return card("Scraped profiles", tag(`${fmtNum(p.length)} scraped`), rows.length ? list(rows) : h`<p class="muted">No profile pages could be read.</p>`);
   },
   harvester: (d) => harvestCard(d),
+  // d is linkCheckSource(collected): one row per link the check looked at.
+  linkCheck: (d) => {
+    const r = d?.results || [], n = (st) => r.filter((x) => x.state === st).length;
+    const name = (id) => String(id).replace(/^acct:/, "");
+    const names = (st) => esc(r.filter((x) => x.state === st).map((x) => name(x.id)).join(", "));
+    return card("Link check", tag(`${fmtNum(n("verified"))} of ${fmtNum(r.length)} pages exist`, n("verified") ? "ok" : "") + (n("blocked") ? " " + tag(`${fmtNum(n("blocked"))} blocked`, "warn") : ""),
+      h`<p class="muted">Each reported profile URL was requested once to see whether the page exists. It is the same passive check the username tools make.</p>`
+      + kv([["Page exists", names("verified")], ["Page not found", names("not_found")], ["Blocked by site", names("blocked")], ["Could not be checked", names("unknown")], ["No public page", names("no_public_url")]])
+      + h`<p class="muted small">A page that exists shows the handle is taken there. It does not show who owns it. Blocked and unchecked links are unknown, not absent.</p>`);
+  },
   hunter: (d) => {
     if (!d) return "";
     const em = d.emails || [];
@@ -130,7 +156,7 @@ const CARDS = {
         ["Detection", esc(detectionText(v))], ["File type", esc(v.fileType)], ["File name", esc(v.fileName)], ["File size", esc(v.fileSize != null && v.fileSize !== "" ? `${fmtNum(v.fileSize)} bytes` : "")],
         ["First seen", esc(v.firstSeen)], ["Last seen", esc(v.lastSeen)], ...src,
         ["Verdict basis", esc(d?.verdict_basis)], ["Could not be asked", esc((d?.failed_sources || []).join(", "))],
-        ["Community tags (unverified)", esc(v.tags.join(", "))], ["VirusTotal", link(d?.virustotal_url, "open")]])
+        ["Community tags (unverified)", esc(v.tags.join(", "))], ["Check", [(evidenceUrl.virustotal(d?.hash) || d?.virustotal_url) && ev(evidenceUrl.virustotal(d?.hash) || d?.virustotal_url, "VirusTotal"), d?.alienvault && !d.alienvault.error && !d.alienvault.error_code && evidenceUrl.otx(d?.hash) ? ev(evidenceUrl.otx(d?.hash), "OTX") : ""].filter(Boolean).join(" · ")]])
       + ((d?.failed_sources || []).length ? h`<p class="muted small">A source that could not be asked is unknown. It did not say "not found".</p>` : "")
       + (v.tags.length ? h`<p class="muted small">Community tags are free text written by whoever submitted a report. They are not a family name and are never used in a headline.</p>` : ""));
   },
@@ -161,19 +187,19 @@ function githubDeepBody(dp) {
   const st = (k) => dp.sections?.[k] || "ok";
   const unknown = (k) => (st(k) === "rate_limited" ? '<span class="dim">unknown: GitHub rate limited this lookup</span>' : st(k) === "failed" ? '<span class="dim">unknown: this lookup failed</span>' : "");
   const val = (k, html, empty = '<span class="dim">none</span>') => unknown(k) || html || empty;
-  const repos = (dp.top_repos || []).slice(0, 6).map((r) => h`${raw(link(r.url, r.name))} <span class="dim">${[r.language, `${fmtNum(r.stars)} stars`, r.fork ? "fork" : ""].filter(Boolean).join(" · ")}</span>`).join("<br>");
+  const repos = (dp.top_repos || []).slice(0, 6).map((r) => h`${raw(ev(r.url, r.name))} <span class="dim">${[r.language, `${fmtNum(r.stars)} stars`, r.fork ? "fork" : ""].filter(Boolean).join(" · ")}</span>`).join("<br>");
   const keys = [...(dp.keys?.ssh || []).map((k) => h`<span class="mono">${k.type} ${k.fingerprint}</span>`), ...(dp.keys?.gpg || []).map((k) => h`<span class="mono">GPG ${k.key_id}</span>${k.emails?.length ? raw(h` <span class="dim">${k.emails.join(", ")}</span>`) : ""}`)].join("<br>");
   const keyState = unknown("ssh_keys") && unknown("gpg_keys") ? unknown("ssh_keys") : keys + (keys && (unknown("ssh_keys") || unknown("gpg_keys")) ? "<br>" : "") + (keys || !(unknown("ssh_keys") || unknown("gpg_keys")) ? "" : "") + (unknown("ssh_keys") && !unknown("gpg_keys") ? '<span class="dim">SSH keys unknown</span>' : !unknown("ssh_keys") && unknown("gpg_keys") ? '<span class="dim">GPG keys unknown</span>' : "");
   return h`<p class="muted small">From the GitHub details lookup${dp.cached ? " (cached)" : ""}:</p>` + kv([
-    ["Organisations", val("orgs", (dp.orgs || []).map((o) => link(o.url, o.login)).join(", "))],
+    ["Organisations", val("orgs", (dp.orgs || []).map((o) => ev(o.url, o.login)).join(", "))],
     ["Top repos", val("top_repos", repos)],
     ["Languages", val("top_repos", esc((dp.languages || []).join(", ")))],
     ["Key fingerprints", keyState || '<span class="dim">none</span>'],
     ["Commit emails", val("commit_emails", (dp.commit_emails || []).map((e) => h`<span class="mono">${e.email}</span> <span class="dim">${[e.name, e.repo].filter(Boolean).join(" · ")}</span>`).join("<br>"))],
-    ["Social accounts", val("social_accounts", (dp.social_accounts || []).map((a) => h`${a.provider || ""} ${raw(link(a.url, a.url))}`).join("<br>"))],
-    ["README links", val("readme_links", (dp.readme_links || []).slice(0, 12).map((u) => link(u, u)).join("<br>"))],
+    ["Social accounts", val("social_accounts", (dp.social_accounts || []).map((a) => h`${a.provider || ""} ${raw(ev(a.url, a.url))}`).join("<br>"))],
+    ["README links", val("readme_links", (dp.readme_links || []).slice(0, 12).map((u) => ev(u, u)).join("<br>"))],
   ]);
 }
 
-const TITLES = { githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
+const TITLES = { linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
 export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d, extra) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d, extra))]));
