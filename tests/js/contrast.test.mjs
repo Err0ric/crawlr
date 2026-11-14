@@ -23,7 +23,7 @@ for (const [theme, t] of [["dark", dark], ["light", light], ["light(auto)", ligh
   const surfaces = ["bg", "bg-raised", "bg-sunken", "bg-hover"];
   const solid = (k) => rgb(t[k]).slice(0, 3);
   for (const s of surfaces) {
-    for (const ink of ["ink", "ink-2", "ink-3", "ink-4", "violet", "ok", "warn", "bad"]) check(theme, `--${ink} on --${s}`, solid(ink), solid(s), 4.5);
+    for (const ink of ["ink", "ink-2", "ink-3", "ink-4", "violet", "ok", "warn", "bad", "flag", "linked", "match", "different", "unverified"]) check(theme, `--${ink} on --${s}`, solid(ink), solid(s), 4.5);
     check(theme, `--line-strong on --${s} (UI border)`, solid("line-strong"), solid(s), 3);
   }
   // tinted chips: the state color on its own translucent background, over raised and hover surfaces
@@ -31,7 +31,17 @@ for (const [theme, t] of [["dark", dark], ["light", light], ["light(auto)", ligh
     for (const s of ["bg-raised", "bg-hover", "bg"]) check(theme, `--${fg} on --${tint} over --${s}`, solid(fg), over(t[tint], t[s]), 4.5);
   check(theme, "--on-violet on --violet-2 (primary button)", solid("on-violet"), solid("violet-2"), 4.5);
   check(theme, "--on-violet on --violet-3 (primary hover)", solid("on-violet"), solid("violet-3"), 4.5);
-  check(theme, "white on --danger (cancel button)", [255, 255, 255], solid("danger"), 4.5);
+  // certainty pills: the tier color on its own tint, over every surface a card or tile sits on
+  for (const [fg, tint] of [["flag", "flag-bg"], ["linked", "linked-bg"], ["match", "match-bg"]])
+    for (const s of ["bg-raised", "bg-hover", "bg-sunken", "bg"]) check(theme, `--${fg} on --${tint} over --${s}`, solid(fg), over(t[tint], t[s]), 4.5);
+  // the edge of a card or tile is a UI mark: 3:1 against the surface beside it
+  for (const edge of ["flag", "linked", "match", "different", "unverified"]) for (const s of ["bg", "bg-raised", "bg-sunken", "bg-hover"]) check(theme, `--${edge} edge on --${s}`, solid(edge), solid(s), 3);
+  // selected segments, pressed chips and the shown identity: page color on ink
+  check(theme, "--bg on --ink (selected segment)", solid("bg"), solid("ink"), 4.5);
+  // the ghost Cancel button: ink text and a visible line on the page
+  check(theme, "--ink on --bg (cancel button)", solid("ink"), solid("bg"), 4.5);
+  check(theme, "--line-strong on --bg (cancel button border)", solid("line-strong"), solid("bg"), 3);
+  check(theme, "--bg-raised knob on --switch-on", solid("bg-raised"), solid("switch-on"), 3);
   check(theme, "--violet focus ring on --bg", solid("violet"), solid("bg"), 3);
   check(theme, "--switch-on on --bg-raised", solid("switch-on"), solid("bg-raised"), 3);
   check(theme, "--switch-on on --bg", solid("switch-on"), solid("bg"), 3);

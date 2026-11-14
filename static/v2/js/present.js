@@ -101,7 +101,7 @@ function tile(id, label, n, { tone = "", line = "solid", feeds = [], collected =
     id, label, jump, state,
     value: state === "unknown" ? "unknown" : state === "off" ? "not checked" : n,
     tone: state === "count" ? tone : "",
-    line: state === "unknown" || state === "off" ? "dashed" : line,
+    line: state === "unknown" || state === "off" ? "dashed" : state === "zero" ? "solid" : line,
     sub: state === "unknown" ? `${failedText}, so this is not zero` : state === "count" && down.length ? `at least: ${failedText}` : sub,
   };
 }
