@@ -22,7 +22,7 @@ def test_root_serves_index(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
-    assert "/static/v2/js/app.js" in resp.text  # / now serves the v2 interface
+    assert "/js/app.js" in resp.text and "/assets/" in resp.text  # fingerprinted v2 assets
 
 
 def test_invalid_hash_rejected(client):
@@ -30,18 +30,15 @@ def test_invalid_hash_rejected(client):
     assert resp.status_code == 400
 
 
-def test_v2_route_serves_new_ui():
-    from fastapi.testclient import TestClient
-    from main import app
-    with TestClient(app) as c:
-        r = c.get("/v2")
-        assert r.status_code == 200 and "/static/v2/js/app.js" in r.text
-        assert c.get("/static/v2/js/app.js").status_code == 200
+def test_v2_alias_redirects_to_root(client):
+    r = client.get("/v2", follow_redirects=False)
+    assert r.status_code == 308 and r.headers["location"] == "/"
+    assert client.get("/static/v2/js/app.js").status_code == 200
 
 
-def test_classic_route_still_serves_original_ui():
-    from fastapi.testclient import TestClient
-    from main import app
-    with TestClient(app) as c:
-        r = c.get("/classic")
-        assert r.status_code == 200 and "CrawlR" in r.text
+def test_classic_ui_is_retired(client):
+    # The v1 interface and its files are gone; old bookmarks land on the current UI.
+    r = client.get("/classic", follow_redirects=False)
+    assert r.status_code == 308 and r.headers["location"] == "/"
+    assert client.get("/static/index.html").status_code == 404
+    assert client.get("/static/app.js").status_code == 404
