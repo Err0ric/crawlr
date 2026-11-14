@@ -189,3 +189,33 @@ def test_blocked_and_partial_sources_are_never_listed_as_successful():
     assert "Platform check (blocked by every site checked)" in failed and "Avatar comparison (no image could be read)" in failed
     partial = next(l for l in data.splitlines() if l.startswith("Sources that answered only IN PART"))
     assert "Hash lookup (partial: 2 of 4 sources answered)" in partial and "unknown, not a negative result" in partial
+
+
+def test_account_lines_mark_unverified_and_missing_urls():
+    from routers.analyze import AccountEvidence, _account_lines
+
+    class Req:
+        accounts = [
+            AccountEvidence(site="GitHub", url="https://github.com/x", status="linked", link_kind="verified_profile"),
+            AccountEvidence(site="BitBucket", url="https://bitbucket.org/x/", status="unverified", link_kind="templated_unverified"),
+            AccountEvidence(site="Gitee", url="https://gitee.com/x", status="unverified", link_kind="templated_unverified", link_check="verified"),
+            AccountEvidence(site="Giphy", url="", status="unverified", link_kind="none", link_check="not_found"),
+            AccountEvidence(site="Discord", url="", status="unverified", link_kind="none"),
+        ]
+
+    text = "\n".join(_account_lines(Req()))
+    assert "GitHub (https://github.com/x)" in text
+    assert "BitBucket (https://bitbucket.org/x/, unverified URL)" in text
+    assert "Gitee (https://gitee.com/x)" in text and "gitee.com/x, unverified" not in text
+    assert "Giphy (page not found when checked)" in text
+    assert "Discord," in text or text.rstrip().endswith("Discord") or "Discord\n" in text
+    assert "do not present it as an existing profile" in text
+
+
+def test_account_lines_without_link_kinds_add_no_link_note():
+    from routers.analyze import AccountEvidence, _account_lines
+
+    class Req:
+        accounts = [AccountEvidence(site="GitHub", url="https://github.com/x", status="linked")]
+
+    assert "unverified URL" not in "\n".join(_account_lines(Req()))

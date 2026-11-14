@@ -43,7 +43,7 @@ FastAPI (main.py)
 | Prefix | Router | Endpoints | Notes |
 |---|---|---|---|
 | `/api/recon` | `routers/recon.py` | sherlock, maigret, holehe, harvester, hibp, gravatar, github, enrich, platform-check, hunter, shodan, internetdb, scrape-profiles | sherlock, maigret, holehe run as subprocesses under `core/subprocess_guard.py`. Hunter and Shodan need the user's key (`X-Hunter-Key`, `X-Shodan-Key`) |
-| `/api/recon` | `routers/recon_identity.py` | github-deep, avatar-hash | Follow-up lookups that feed identity clustering. Both are cached for 24 hours |
+| `/api/recon` | `routers/recon_identity.py` | github-deep, avatar-hash, verify-links | Follow-up lookups: identity clustering inputs, and the check that a reported profile URL exists. All cached for 24 hours |
 | `/api/infra` | `routers/recon_infra.py` | dns, whois, ssl, headers, subdomains, email-posture, dns-depth, takeover, lookalikes, wellknown, asn, asn-detail, ip-asn, portscan, wayback, redirects, techfingerprint, summarize, prompt | Domain, IP and ASN recon. `summarize` is AI; `prompt` returns the same prompt without calling a model |
 | `/api/analyze` | `routers/analyze.py` | summarize, deep-dive, deep, correlate, email-headers, prompt, parse | All AI, through `core/ai_call.py`. Uses the user's key or the house key. Provider failures return `{detail, code}` with a matching status |
 | `/api/hash` | `routers/hash_lookup.py` | hash | MalwareBazaar, CIRCL, OTX, ThreatFox |
@@ -55,7 +55,7 @@ FastAPI (main.py)
 
 | Area | Files |
 |---|---|
-| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py` |
+| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py`, `link_verify.py` |
 | Infrastructure | `email_posture.py`, `dns_depth.py`, `takeover.py`, `lookalikes.py`, `wellknown.py`, `crtsh.py`, `dns_lookup.py`, `resolver.py`, `whois_lookup.py`, `ssl_check.py`, `headers_check.py`, `subdomain_enum.py`, `harvester.py`, `asn_lookup.py`, `asn_detail.py`, `port_scan.py`, `internetdb.py`, `shodan_lookup.py`, `wayback.py`, `redirect_chain.py`, `tech_fingerprint.py` |
 | AI | `ai_provider.py`: async Anthropic and Gemini calls, typed `AIError`, response cache keyed per caller |
 
@@ -122,6 +122,8 @@ Three ways to get a written report, none automatic:
 | `recon.js` | Recon mode for a domain, IP or ASN; loads the self-hosted d3 for the topology tab |
 | `graph.js` | D3 topology graph. Nodes are focusable and emit `crawlr:node` when selected, which Recon turns into a pivot bar |
 | `evidence.js` | Turns module responses into ranked evidence (`flag`, `linked`, `matches`, `different`, `unverified`, `noise`, plus `lead` and `hosts`), facts per identity, and the source plan for each target type. Pure functions, no DOM |
+| `links.js` | Gives every link a kind (`verified_profile`, `templated_unverified`, `evidence`, `none`), builds the evidence URLs, and applies link check results. Pure functions, no DOM |
+| `linkcheck.js` | Runs the link check for a ledger group when it is opened or scrolled into view: batches of 25, two in flight, stops on collapse or a new run |
 | `identity.js` | Groups read profiles into people and picks the primary identity. Pure functions, no DOM |
 | `reconfindings.js` | Recon findings and tiers, including shared-address neighbours. Pure functions, no DOM |
 | `renderers.js` | Per-source cards for the "By source" section |

@@ -1,7 +1,9 @@
 // Turns raw module responses into ranked evidence, identity clusters, leads and facts.
 // Pure: no DOM, no network. Old saved runs and case files go through the same code.
 //
-// An evidence item: { tier, what, url, meta, source, key, action? }
+// An evidence item: { tier, what, url, link_kind, meta, source, key, action?, hint?, check? }
+//   link_kind says what the URL is worth (see links.js): a profile a source read, a templated URL
+//   nothing checked, a page where the claim can be checked, or "none" (plain text, with a hint).
 //   tier:
 //     flag        something that changes the risk picture (breach, malware verdict, VOIP number)
 //     info        the answer to a lookup that is not about accounts (a hash verdict)
@@ -19,13 +21,15 @@
 //                 never a finding about the target.
 //     hosts       hostnames on an email's domain. Inventory, not a finding about the person.
 //     noise       sites known to answer yes to everything, collapsed by default
+//   The link check never moves a row to another tier: it changes what the link is worth.
 //   A source that FAILED contributes nothing here; failures are reported separately so an
 //   error is never read as "not found".
 //   key: stable id used for the checkbox state and the run diff, e.g. "acct:github"
 //
-// A fact: { k, v, source, url? }  (name, location, employer…), shown in "What we know".
+// A fact: { k, v, source, url?, link_kind }  (name, location, employer…), shown in "What we know".
 // Facts belong to an identity cluster, so one person's name is never shown beside another's.
 
+import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT } from "./links.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
@@ -143,7 +147,9 @@ export function collectProfiles(c, target, type = inferType(c, target)) {
     for (const l of p.websites || []) if (l && !cur.websites.includes(String(l))) cur.websites.push(String(l));
     return cur;
   };
-  const fact = (p, k, v, source, url) => { if (p && v !== undefined && v !== null && String(v).trim()) p.facts.push({ k, v: String(v), source, url }); };
+  // A fact links to the page it was read from: evidence, never a claim about who owns the page.
+  const secrets = [type === "email" ? target : "", searched].filter((x) => String(x || "").length > 2);
+  const fact = (p, k, v, source, url) => { if (p && v !== undefined && v !== null && String(v).trim()) p.facts.push(sealFact({ k, v: String(v), source, url }, { subjects: [searched], secrets })); };
   const lead = (p, kind, value, from) => { if (p && value && String(value).trim()) p.leads.push({ kind, value: String(value).trim(), from }); };
   const nameFact = (p, label, name, source, url) => { if (meaningfulName(name, [p?.handle, searched])) fact(p, label, name, source, url); };
   const cleanBio = (bio, flagged) => (flagged || !bio || looksBoilerplate(bio) ? "" : String(bio));
@@ -283,7 +289,8 @@ function buildLeads(c, target, type, profiles, rel, accountUrls) {
     meta: `${WORD[l.kind]} · ${l.from.join(", ")}${l.tied ? "" : " · on a profile not tied to the target"}`,
     source: l.sources.join(", "), key: l.key, lead: { kind: l.kind, value: l.value },
     action: l.kind === "handle" || l.kind === "email" ? { label: "Investigate this", pivot: "investigate", value: l.value } : l.kind === "domain" ? { label: "Open in Recon", pivot: "recon", value: l.value } : null,
-  }));
+  // A lead's link is the lead itself: the domain, or the link as it was found on the profile.
+  })).map((l) => sealLink(l, { subjects: [l.lead.value], secrets: [type === "email" ? target : "", searched].filter((x) => String(x || "").length > 2) }));
 }
 
 // ---- the ledger ----------------------------------------------------------------------
@@ -300,7 +307,10 @@ export function buildEvidence(collected, target, typeArg) {
     seen.add(dedupe);
     items.push(it);
   };
-  const fact = (k, v, source, url) => { if (v) general.push({ k, v: String(v), source, url }); };
+  const searchedHandle = type === "email" ? "" : String(target ?? "").trim().replace(/^@/, "");
+  // An email or a username never goes into a third-party query string.
+  const secrets = person ? [type === "email" ? target : "", searchedHandle].filter((x) => String(x || "").length > 2) : [];
+  const fact = (k, v, source, url) => { if (v) general.push(sealFact({ k, v: String(v), source, url }, { secrets })); };
 
   // One row per site across every source that names it.
   const accounts = new Map();
@@ -311,6 +321,8 @@ export function buildEvidence(collected, target, typeArg) {
     if (!row) { row = { what: SITE_DISPLAY[cs] || String(site), url: "", key: `acct:${cs}`, sources: [], kinds: new Set(), notes: [] }; accounts.set(cs, row); items.push(row); }
     if (!row.sources.includes(source)) row.sources.push(source);
     if (!row.url && url) row.url = url;
+    // The URL a source actually read. A templated URL from another tool never replaces it.
+    if (kind === "read" && !row.readUrl && url) row.readUrl = url;
     row.kinds.add(kind);
     if (meta && !row.notes.some((n) => n.kind === kind && n.meta === meta)) row.notes.push({ kind, meta });
   };
@@ -352,6 +364,7 @@ export function buildEvidence(collected, target, typeArg) {
   const rel = new Map();
   for (const p of profiles) { const s = standing(p, result, { handle: searched }); rel.set(p.id, { ...s, inPrimary: !!primary && result.byProfile[p.id] === primary.id }); }
 
+  const checks = readChecks(c.linkChecks);
   for (const row of accounts.values()) {
     const p = byId.get(row.key), r = rel.get(row.key);
     const reported = row.notes.filter((n) => n.kind === "reported").map((n) => n.meta);
@@ -373,14 +386,25 @@ export function buildEvidence(collected, target, typeArg) {
     } else {
       row.tier = "noise"; row.meta = "";
     }
-    delete row.kinds; delete row.notes;
+    // What the link is worth. A read profile's URL came from the source that read it; anything
+    // else is a site template plus the handle. A homepage is never a profile link.
+    row.srcUrl = row.url;
+    const lk = row.kinds.has("registered") && !row.readUrl ? { url: "", link_kind: "none", hint: REGISTERED_HINT }
+      : row.readUrl ? classifyLink({ url: row.readUrl, want: "verified_profile", site: row.what, subjects: [searchedHandle, p?.handle] })
+        : classifyLink({ url: row.url, want: "templated_unverified", site: row.what, subjects: [searchedHandle] });
+    row.url = lk.url; row.link_kind = lk.link_kind;
+    if (lk.hint) row.hint = lk.hint;
+    // The link check's answer for this row, when it has one (see links.js).
+    applyCheck(row, checks[row.key], { subjects: [searchedHandle] });
+    markUnsendable(row);
+    delete row.kinds; delete row.notes; delete row.readUrl;
   }
 
   // --- breaches -----------------------------------------------------------------------
   for (const b of c.hibp && !failed(c.hibp) ? breachList(c.hibp) : []) {
     // Two breaches can share one reference URL, so these are told apart by name, never by link.
     const key = `breach:${norm(b.name)}`;
-    if (!items.some((i) => i.key === key)) items.push({ tier: "flag", what: `Breach: ${b.name}`, url: b.url, meta: breachMeta(b), source: c.hibp.source || "Breaches", key });
+    if (!items.some((i) => i.key === key)) items.push({ tier: "flag", what: `Breach: ${b.name}`, url: b.url, meta: breachMeta(b), source: c.hibp.source || "Breaches", key, ...(b.url ? {} : { hint: BREACH_HINT }) });
   }
 
   // --- hunter -------------------------------------------------------------------------
@@ -403,24 +427,28 @@ export function buildEvidence(collected, target, typeArg) {
   const hs = c.hash, hv2 = hashView(hs);
   if (hv2) {
     const kind = hs.hash_type || "hash";
-    if (hv2.verdict === "TEST_FILE") add({ tier: "info", what: `${hv2.testFile.name}: ${TEST_FILE_TEXT}`, url: hs.virustotal_url, meta: "not malware", source: "Hash lookup", key: "hash:verdict" });
-    else if (hv2.verdict === "MALICIOUS") add({ tier: "flag", what: `Malicious ${kind}${hv2.family ? `: ${hv2.family}` : ""}`, url: hs.virustotal_url, meta: ["known malware", hv2.family && hv2.familySources.length ? `family named by ${hv2.familySources.join(", ")}` : "", hv2.detection ? detectionText(hv2) : ""].filter(Boolean).join(" · "), source: "Hash lookup", key: "hash:verdict" });
-    else if (hv2.verdict === "CLEAN") add({ tier: "info", what: `Known clean ${kind}`, url: hs.virustotal_url, meta: String(hs.verdict_basis || "CIRCL hashlookup"), source: "Hash lookup", key: "hash:verdict" });
+    // Where the verdict can be checked: the VirusTotal page for this hash, and OTX when it answered.
+    const vt = evidenceUrl.virustotal(hs.hash) || hs.virustotal_url || "";
+    const otx = hs.alienvault && typeof hs.alienvault === "object" && !hs.alienvault.error && !hs.alienvault.error_code ? evidenceUrl.otx(hs.hash) : "";
+    const verdict = (it) => { add(it); const row = items.find((i) => i.key === "hash:verdict"); if (row && !row.link_kind) { row.link_label = "VirusTotal"; if (otx) row.ev = { url: otx, label: "OTX" }; } };
+    if (hv2.verdict === "TEST_FILE") verdict({ tier: "info", what: `${hv2.testFile.name}: ${TEST_FILE_TEXT}`, url: vt, meta: "not malware", source: "Hash lookup", key: "hash:verdict" });
+    else if (hv2.verdict === "MALICIOUS") verdict({ tier: "flag", what: `Malicious ${kind}${hv2.family ? `: ${hv2.family}` : ""}`, url: vt, meta: ["known malware", hv2.family && hv2.familySources.length ? `family named by ${hv2.familySources.join(", ")}` : "", hv2.detection ? detectionText(hv2) : ""].filter(Boolean).join(" · "), source: "Hash lookup", key: "hash:verdict" });
+    else if (hv2.verdict === "CLEAN") verdict({ tier: "info", what: `Known clean ${kind}`, url: vt, meta: String(hs.verdict_basis || "CIRCL hashlookup"), source: "Hash lookup", key: "hash:verdict" });
     else {
       // Say how many sources actually answered. A source that could not be asked did not say "not seen".
       const cov = hashCoverage(hs), name = hs.hash_type || "Hash";
       const what = !cov.failed.length ? `${name} not seen by any source`
         : cov.answered ? `${name} not seen by the ${cov.answered} ${cov.answered === 1 ? "source" : "sources"} that answered; ${cov.failed.length} could not be asked (${cov.failed.join(", ")})`
           : `${name} could not be checked: no source could be asked (${cov.failed.join(", ")})`;
-      add({ tier: "info", what, url: hs.virustotal_url, meta: String(hs.verdict_basis || "unknown is not the same as clean"), source: "Hash lookup", key: "hash:verdict" });
+      verdict({ tier: "info", what, url: vt, meta: String(hs.verdict_basis || "unknown is not the same as clean"), source: "Hash lookup", key: "hash:verdict" });
     }
     fact("File name", hv2.fileName, "Hash lookup");
     fact("File type", hv2.fileType, "Hash lookup");
     fact("File size", hv2.fileSize != null && hv2.fileSize !== "" ? `${fmtNum(hv2.fileSize)} bytes` : "", "Hash lookup");
     fact("First seen", hv2.firstSeen.slice(0, 10), "Hash lookup");
     fact("Last seen", hv2.lastSeen.slice(0, 10), "Hash lookup");
-    fact("Family", hv2.family, hv2.familySources.join(", ") || "Hash lookup");
-    fact("Detection", detectionText(hv2), "Hash lookup");
+    fact("Family", hv2.family, hv2.familySources.join(", ") || "Hash lookup", vt);
+    fact("Detection", detectionText(hv2), "Hash lookup", vt);
     if (hs.malware_bazaar?.signature) fact("Signature", hs.malware_bazaar.signature, "MalwareBazaar");
   }
 
@@ -436,7 +464,7 @@ export function buildEvidence(collected, target, typeArg) {
 
   // --- leads --------------------------------------------------------------------------
   if (person) {
-    const urls = new Set([...accounts.values()].map((a) => linkParts(a.url)?.key).filter(Boolean));
+    const urls = new Set([...accounts.values()].map((a) => linkParts(a.srcUrl || a.url)?.key).filter(Boolean));
     for (const l of buildLeads(c, target, type, profiles, rel, urls)) items.push(l);
   }
 
@@ -445,7 +473,9 @@ export function buildEvidence(collected, target, typeArg) {
     // Two tools agreeing is worth saying, but it is still not verification.
     if (it.tier === "unverified" && it.sources.length > 1 && it.key?.startsWith("acct:")) it.meta = [it.meta, `reported by ${it.sources.length} tools`].filter(Boolean).join(" · ");
   }
-  items.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier] || (!a.key?.startsWith("acct:") || !b.key?.startsWith("acct:") ? 0 : (b.sources?.length || 1) - (a.sources?.length || 1) || a.what.localeCompare(b.what)));
+  for (const it of items) { delete it.srcUrl; sealLink(it, { subjects: [searchedHandle], secrets }); }
+  // A row whose page was not found stays in its group, at the end.
+  items.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier] || (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || (!a.key?.startsWith("acct:") || !b.key?.startsWith("acct:") ? 0 : (b.sources?.length || 1) - (a.sources?.length || 1) || a.what.localeCompare(b.what)));
 
   // --- identity views: whose facts "What we know" can show ------------------------------
   const sitesOf = (ids) => ids.map((id) => byId.get(id)?.site).filter(Boolean);
@@ -486,5 +516,5 @@ export const ledgerTiers = (target, type) => TIERS.map((t) => (t.id === "hosts" 
 // The account rows the AI prompt and the report use, so they match the screen exactly.
 // status is the tier id: linked, matches, different or unverified.
 export const accountsFor = (items) => items.filter((i) => i.key?.startsWith("acct:") && ACCOUNT_TIERS.includes(i.tier))
-  .map((i) => ({ site: String(i.what).slice(0, 120), url: String(i.url || "").slice(0, 600), status: i.tier, sources: (i.sources || [i.source]).slice(0, 8).map(String), note: i.tier === "unverified" ? "" : String(i.meta || "").slice(0, 200) }));
+  .map((i) => ({ site: String(i.what).slice(0, 120), url: i.link_kind === "none" ? "" : String(i.url || "").slice(0, 600), link_kind: i.link_kind || "none", ...(i.check ? { link_check: i.check } : {}), status: i.tier, sources: (i.sources || [i.source]).slice(0, 8).map(String), note: i.tier === "unverified" ? "" : String(i.meta || "").slice(0, 200) }));
 export const tierCounts = (items) => Object.fromEntries(ACCOUNT_TIERS.map((t) => [t, items.filter((i) => i.key?.startsWith("acct:") && i.tier === t).length]));

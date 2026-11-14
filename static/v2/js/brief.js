@@ -3,10 +3,13 @@
 // uncertain, and what to do next. Every line is a plain statement of what a source
 // returned; nothing here guesses.
 //
-// A row: { level: "flag" | "ok" | "info", text }   An action: { label, pivot, value } | { label, tab }
+// A row: { level: "flag" | "ok" | "info", text, url, link_kind, link_label? }
+//   url is the page where the statement can be checked, when one exists (see links.js).
+// An action: { label, pivot, value } | { label, tab } | { label, href }
 
 import { reconTimeline, domainAgeDays } from "./timeline.js";
 import { breachList, hashView, hashCoverage, TEST_FILE_TEXT, isFreeMail, emailParts } from "./evidence.js";
+import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 const list = (arr, n = 4) => arr.slice(0, n).join(", ") + (arr.length > n ? ` and ${arr.length - n} more` : "");
@@ -16,17 +19,18 @@ const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 // nothing about names, so it can never merge people on its own.
 export function investigateBrief({ collected: c, items, facts, identity, failed, type, target }) {
   const rows = [], actions = [];
-  const add = (level, text) => rows.push({ level, text });
+  const add = (level, text, ev) => rows.push(sealLink({ level, text, ev }, { subjects: [target] }));
   const accounts = items.filter((i) => i.key?.startsWith("acct:"));
   const tier = (t) => accounts.filter((i) => i.tier === t);
   const linked = tier("linked"), matches = tier("matches"), different = tier("different"), unverified = tier("unverified");
 
   if (type === "hash") {
     const v = hashView(c.hash);
+    const vt = ((u) => (u ? { url: u, label: "VirusTotal" } : null))(evidenceUrl.virustotal(c.hash?.hash));
     if (v) {
-      if (v.verdict === "TEST_FILE") add("ok", `${v.testFile.name}: ${TEST_FILE_TEXT}. It is not malware.`);
-      else if (v.verdict === "MALICIOUS") add("flag", `Known malware${v.family ? ` (${v.family})` : ""}. Do not run this file.`);
-      else if (v.verdict === "CLEAN") add("ok", "A known, benign file according to CIRCL.");
+      if (v.verdict === "TEST_FILE") add("ok", `${v.testFile.name}: ${TEST_FILE_TEXT}. It is not malware.`, vt);
+      else if (v.verdict === "MALICIOUS") add("flag", `Known malware${v.family ? ` (${v.family})` : ""}. Do not run this file.`, vt);
+      else if (v.verdict === "CLEAN") add("ok", "A known, benign file according to CIRCL.", vt);
       else {
         // Only the sources that answered can be said not to have seen it.
         const cov = hashCoverage(c.hash);
@@ -125,7 +129,8 @@ export const nullRecords = (ep) => { const r = (ep?.suggested_records || []).map
 
 export function reconBrief({ collected: c, items, failed, type, target, today }) {
   const rows = [], actions = [];
-  const add = (level, text) => rows.push({ level, text });
+  const add = (level, text, ev) => rows.push(sealLink({ level, text, ev }, { subjects: [target] }));
+  const domain = type === "domain" && isDomain(target) ? lc(target) : "";
   const flags = items.filter((i) => i.tier === "flag");
   const ok = (d) => d && !d.error;
 
@@ -136,14 +141,14 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
     if (flags.length) add("flag", `${plural(flags.length, "flag")}: ${list(flags.map((f) => f.what), 3)}.`);
     else if (!failed.length) add("ok", "No flags: nothing risky or misconfigured showed up in the checks that ran.");
 
-    if (c.dns?.cloudflare_proxied) add("info", "Behind Cloudflare. Open ports, the TLS certificate and HTTP headers describe Cloudflare's edge, not the origin server.");
+    if (c.dns?.cloudflare_proxied) add("info", "Behind Cloudflare. Open ports, the TLS certificate and HTTP headers describe Cloudflare's edge, not the origin server.", dnsEvidence(domain, "A"));
     const ep = c.email_posture;
     const mail = mailState(ep);
-    if (ok(ep) && mail === "none" && noMailOpen(ep)) add("info", `This domain has no MX records, so it does not receive mail, and it is not graded for spoofing. It publishes no policy that stops others using it in a From line: ${nullRecords(ep).slice(0, 2).join(" and ")} would close that.`);
-    else if (ok(ep) && mail === "none") add("ok", "This domain has no MX records, so it does not receive mail, and its SPF and DMARC records tell receivers to reject mail that claims to come from it. It is locked against spoofing.");
-    else if (ok(ep) && ep.grade && ep.grade !== "N/A") add(ep.spoofable === "yes" ? "flag" : "ok", ep.spoofable === "yes" ? "Mail from this domain can be spoofed: there is no enforced DMARC policy. Phishing that uses the real domain in the From line would be delivered." : `Email spoofing is ${ep.spoofable === "no" ? "rejected" : "mostly caught"} (grade ${ep.grade}).`);
+    if (ok(ep) && mail === "none" && noMailOpen(ep)) add("info", `This domain has no MX records, so it does not receive mail, and it is not graded for spoofing. It publishes no policy that stops others using it in a From line: ${nullRecords(ep).slice(0, 2).join(" and ")} would close that.`, dnsEvidence(domain, "MX"));
+    else if (ok(ep) && mail === "none") add("ok", "This domain has no MX records, so it does not receive mail, and its SPF and DMARC records tell receivers to reject mail that claims to come from it. It is locked against spoofing.", dnsEvidence(domain ? `_dmarc.${domain}` : "", "TXT"));
+    else if (ok(ep) && ep.grade && ep.grade !== "N/A") add(ep.spoofable === "yes" ? "flag" : "ok", ep.spoofable === "yes" ? "Mail from this domain can be spoofed: there is no enforced DMARC policy. Phishing that uses the real domain in the From line would be delivered." : `Email spoofing is ${ep.spoofable === "no" ? "rejected" : "mostly caught"} (grade ${ep.grade}).`, dnsEvidence(domain ? `_dmarc.${domain}` : "", "TXT"));
     const age = domainAgeDays(c, today);
-    if (age != null && age < 90) add("flag", `Registered ${age === 0 ? "today" : `${age} day${age === 1 ? "" : "s"} ago`}. A very new domain is common for phishing and throwaway infrastructure, and for any project that has just started. Weigh it with the other findings.`);
+    if (age != null && age < 90) add("flag", `Registered ${age === 0 ? "today" : `${age} day${age === 1 ? "" : "s"} ago`}. A very new domain is common for phishing and throwaway infrastructure, and for any project that has just started. Weigh it with the other findings.`, rdapEvidence(domain));
     const tk = c.takeover;
     const live = resolvedHosts(c, target);
     // A takeover row needs "dangling" from the backend, and is dropped if this run resolved the host.
@@ -152,7 +157,7 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
     const tkUnknown = ok(tk) ? Number(tk.unknown || 0) + (Array.isArray(tk.unchecked) ? tk.unchecked.length : Number(tk.unchecked || 0)) : 0;
     if (tkUnknown) add("info", `${plural(tkUnknown, "host")} could not be checked for takeover because a DNS lookup failed. That is unknown, not safe.`);
     const exp = c.shodan;
-    if (ok(exp) && exp.shared_host) add("info", `The address is shared ${exp.shared_host.provider || "hosting"}: ${plural((exp.neighbors || []).length, "other site")} answer${(exp.neighbors || []).length === 1 ? "s" : ""} on it, and the open ports are the provider's, not this site's.`);
+    if (ok(exp) && exp.shared_host) add("info", `The address is shared ${exp.shared_host.provider || "hosting"}: ${plural((exp.neighbors || []).length, "other site")} answer${(exp.neighbors || []).length === 1 ? "s" : ""} on it, and the open ports are the provider's, not this site's.`, exposureEvidence(exp));
 
     // hosts outside the main network
     const subs = c.subdomains?.subdomains || [], map = c.ipAsn || {};
@@ -167,7 +172,7 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
     const cs = c.subdomains?.ct_summary;
     // Never say "no longer resolves" about a name this same run resolved.
     const gone = (cs?.not_resolving || []).filter((x) => !live.has(lc(x)));
-    if (gone.length) add("info", `${plural(gone.length, "name")} in certificate logs no longer resolve${gone.length === 1 ? "s" : ""}${gone.length <= 3 ? ` (${gone.join(", ")})` : ""}. Retired hosts are worth a look in the Wayback Machine.`);
+    if (gone.length) add("info", `${plural(gone.length, "name")} in certificate logs no longer resolve${gone.length === 1 ? "s" : ""}${gone.length <= 3 ? ` (${gone.join(", ")})` : ""}. Retired hosts are worth a look in the Wayback Machine.`, certEvidence(domain));
     const unsure = (cs?.resolution_unknown || []).filter((x) => !live.has(lc(x)));
     if (unsure.length) add("info", `${plural(unsure.length, "name")} in certificate logs could not be checked${unsure.length <= 3 ? ` (${unsure.join(", ")})` : ""}: the DNS lookup failed, so whether ${unsure.length === 1 ? "it resolves" : "they resolve"} is unknown.`);
     const la = c.lookalikes;
@@ -175,10 +180,10 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
     const wk = c.wellknown;
     if (ok(wk) && wk.found && !wk.security_txt) add("info", "No security.txt, so there is no published contact for reporting a vulnerability.");
     const paths = Object.values(c.wayback?.interesting_paths || {}).reduce((n, v) => n + v.length, 0);
-    if (paths) add("info", `${plural(paths, "archived path")} look sensitive (admin pages, backups, config files). They are in the Wayback card under By source.`);
+    if (paths) add("info", `${plural(paths, "archived path")} look sensitive (admin pages, backups, config files). They are in the Wayback card under By source.`, waybackEvidence(domain));
     const sslDays = c.ssl?.found ? c.ssl.days_left : null;
-    if (sslDays != null && sslDays >= 30) add("ok", `TLS certificate is valid for another ${sslDays} days.`);
-    if (!c.portscan && c.shodan?.found && (c.shodan.ports || []).length) add("info", "Open ports come from a passive index, not a live scan. Turn on the port scan under Sources for a live check of hosts you are authorized to test.");
+    if (sslDays != null && sslDays >= 30) add("ok", `TLS certificate is valid for another ${sslDays} days.`, certEvidence(domain));
+    if (!c.portscan && c.shodan?.found && (c.shodan.ports || []).length) add("info", "Open ports come from a passive index, not a live scan. Turn on the port scan under Sources for a live check of hosts you are authorized to test.", exposureEvidence(c.shodan));
     if (wk?.favicon) actions.push({ label: "Find this favicon in Shodan", href: `https://www.shodan.io/search?query=${encodeURIComponent(wk.favicon.shodan_query)}` });
     if (subs.length) actions.push({ label: "Open the topology", tab: "topology" });
     if (reconTimeline(c, target, today).events.length > 2) actions.push({ label: "Open the timeline", tab: "timeline" });

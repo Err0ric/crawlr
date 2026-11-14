@@ -1,0 +1,334 @@
+{
+ "_note": "Link integrity fixtures. sherlockRecorded is the Sherlock response recorded for the audit target Err0ric on 2026-11-14 (response times dropped); it holds the Discord row whose URL is the site's homepage. verify is written to the POST /api/recon/verify-links contract. The old-shape cases use invented handles and names. The evidence sentences are the verifier's own fixed ones. The long-URL and homepage rows are invented.",
+ "cases": [
+  {
+   "name": "recorded Sherlock rows only",
+   "target": "Err0ric",
+   "type": "username",
+   "collected": {
+    "sherlock": {
+     "username": "Err0ric",
+     "total": 18,
+     "possible": 17,
+     "results": [
+      {
+       "site": "Bluesky",
+       "url": "https://bsky.app/profile/Err0ric.bsky.social",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "CashApp",
+       "url": "https://cash.app/$Err0ric",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "Discord",
+       "url": "https://discord.com",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "GitHub",
+       "url": "https://www.github.com/Err0ric",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "Steam Community (User)",
+       "url": "https://steamcommunity.com/id/Err0ric/",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "YouTube",
+       "url": "https://www.youtube.com/@Err0ric",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "threads",
+       "url": "https://www.threads.net/@Err0ric",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "7Cups",
+       "url": "https://www.7cups.com/@Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "F3.cool",
+       "url": "https://f3.cool/Err0ric/",
+       "confidence": "normal"
+      },
+      {
+       "site": "Giphy",
+       "url": "https://giphy.com/Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "HackerOne",
+       "url": "https://hackerone.com/Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "Houzz",
+       "url": "https://houzz.com/user/Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "Hugging Face",
+       "url": "https://huggingface.co/Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "Itch.io",
+       "url": "https://Err0ric.itch.io/",
+       "confidence": "normal"
+      },
+      {
+       "site": "LibraryThing",
+       "url": "https://www.librarything.com/profile/Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "OpenStreetMap",
+       "url": "https://www.openstreetmap.org/user/Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "VirusTotal",
+       "url": "https://www.virustotal.com/gui/user/Err0ric",
+       "confidence": "normal"
+      },
+      {
+       "site": "Trakt",
+       "url": "https://www.trakt.tv/users/Err0ric",
+       "confidence": "false_positive"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "platforms with no public username URL",
+   "target": "jdoe_example",
+   "type": "username",
+   "collected": {
+    "sherlock": {
+     "username": "jdoe_example",
+     "total": 10,
+     "results": [
+      {
+       "site": "Discord",
+       "url": "https://discord.com",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "WhatsApp",
+       "url": "https://wa.me/jdoe_example",
+       "confidence": "normal"
+      },
+      {
+       "site": "Signal",
+       "url": "https://signal.me/#u/jdoe_example",
+       "confidence": "normal"
+      },
+      {
+       "site": "Skype",
+       "url": "https://join.skype.com/invite/jdoe_example",
+       "confidence": "normal"
+      },
+      {
+       "site": "CashApp",
+       "url": "https://cash.app/",
+       "confidence": "major_platform"
+      },
+      {
+       "site": "Example Forum",
+       "url": "https://forum.example.org/",
+       "confidence": "normal"
+      },
+      {
+       "site": "Example Pages",
+       "url": "https://jdoe_example.pages.example.org/",
+       "confidence": "normal"
+      },
+      {
+       "site": "Archive.org",
+       "url": "https://archive.org",
+       "confidence": "normal"
+      },
+      {
+       "site": "last.fm",
+       "url": "https://www.last.fm/",
+       "confidence": "normal"
+      },
+      {
+       "site": "Itch.io",
+       "url": "https://itch.io/",
+       "confidence": "normal"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "old saved username case",
+   "target": "jdoe_old",
+   "type": "username",
+   "collected": {
+    "sherlock": {
+     "username": "jdoe_old",
+     "total": 3,
+     "results": [
+      {
+       "site": "Discord",
+       "url": "https://discord.com"
+      },
+      {
+       "site": "GitHub",
+       "url": "https://www.github.com/jdoe_old"
+      },
+      {
+       "site": "Reddit",
+       "url": "https://www.reddit.com/user/jdoe_old"
+      }
+     ]
+    },
+    "maigret": {
+     "username": "jdoe_old",
+     "total": 1,
+     "results": [
+      {
+       "site": "Reddit",
+       "url": "https://www.reddit.com/user/jdoe_old/",
+       "verified": true,
+       "profile": {
+        "name": "Jordan Doe"
+       }
+      }
+     ]
+    },
+    "platformCheck": {
+     "username": "jdoe_old",
+     "total": 1,
+     "checked": 2,
+     "results": [
+      {
+       "platform": "Instagram",
+       "url": "https://www.instagram.com/jdoe_old/",
+       "found": true
+      },
+      {
+       "platform": "OnlyFans",
+       "url": "https://onlyfans.com/jdoe_old",
+       "found": false,
+       "manual": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "old saved email case",
+   "target": "jordan.doe@example.org",
+   "type": "email",
+   "collected": {
+    "holehe": {
+     "email": "jordan.doe@example.org",
+     "total": 2,
+     "results": [
+      {
+       "site": "spotify",
+       "domain": "spotify.com"
+      },
+      {
+       "site": "discord",
+       "domain": "discord.com"
+      }
+     ]
+    },
+    "hibp": {
+     "email": "jordan.doe@example.org",
+     "total": 2,
+     "breaches": [
+      "ExampleBreach",
+      "OtherBreach"
+     ]
+    },
+    "gravatar": {
+     "email": "jordan.doe@example.org",
+     "found": true,
+     "display_name": "jordandoe",
+     "name": "Jordan Doe",
+     "profile_url": "https://gravatar.com/jordandoe",
+     "avatar_url": ""
+    }
+   }
+  }
+ ],
+ "verify": {
+  "results": [
+   {
+    "id": "acct:hackerone",
+    "state": "verified",
+    "final_url": "https://hackerone.com/err0ric?type=user",
+    "evidence": "The page loaded and its title names this handle.",
+    "hint": "",
+    "cached": false
+   },
+   {
+    "id": "acct:giphy",
+    "state": "not_found",
+    "final_url": "",
+    "evidence": "The site answered 404: there is no page at this address.",
+    "hint": "",
+    "cached": false
+   },
+   {
+    "id": "acct:librarything",
+    "state": "blocked",
+    "final_url": "",
+    "evidence": "The site asks visitors to sign in or accept a prompt before it shows this page.",
+    "hint": "",
+    "cached": true
+   },
+   {
+    "id": "acct:houzz",
+    "state": "unknown",
+    "final_url": "",
+    "evidence": "The site took too long to answer.",
+    "hint": "",
+    "cached": false
+   },
+   {
+    "id": "acct:virustotal",
+    "state": "no_public_url",
+    "final_url": "",
+    "evidence": "This site has no public profile page to check.",
+    "hint": "VirusTotal user pages need a sign-in. Search the handle after signing in.",
+    "cached": false
+   },
+   {
+    "id": "acct:7cups",
+    "state": "verified",
+    "final_url": "https://www.7cups.com/",
+    "evidence": "",
+    "hint": "",
+    "cached": false
+   },
+   {
+    "id": "acct:notsent",
+    "state": "verified",
+    "final_url": "https://example.org/x",
+    "evidence": "",
+    "hint": "",
+    "cached": false
+   },
+   {
+    "id": "acct:openstreetmap",
+    "state": "surprise",
+    "final_url": "",
+    "evidence": "",
+    "hint": "",
+    "cached": false
+   }
+  ]
+ }
+}

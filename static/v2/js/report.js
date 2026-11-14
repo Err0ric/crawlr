@@ -1,7 +1,8 @@
 // Investigation report: dossier card on top, then one scrolling report.
 // Everything the model says is escaped through markdown()/inline(); account tiles and
 // avatars come from collected data, never from the model.
-import { h, raw, esc, safeUrl } from "./core.js";
+import { h, raw, esc, safeUrl, link } from "./core.js";
+import { UNVERIFIED_TEXT, checkText } from "./links.js";
 import { markdown, splitSections, inline } from "./ai.js";
 
 const SECTION = {
@@ -52,7 +53,13 @@ function accountTiles(accounts, footprintMd) {
     const w = keyed(a);
     // A tile for another person's account says whose name is on it, whatever the model wrote.
     const sub = a.tier === "different" ? `different person: ${a.person || "another name"}` : w || (a.sources || [a.source]).join(", ");
-    return h`<a class="tile ${a.tier === "linked" ? "c" : "l"}${w && a.tier !== "different" ? " key" : ""}" href="${su(a.url) || "#"}" target="_blank" rel="noopener noreferrer" title="${TIER_WORD[a.tier]} · ${short(a.url)} · ${(a.sources || [a.source]).join(", ")}">${raw(icon(a.what, a.url))}<span class="n">${a.what}</span><span class="s">${sub}</span></a>`;
+    // A tile is a link only when the row has a usable URL. An unchecked URL says so on the tile.
+    const href = a.link_kind === "none" ? "" : su(a.url);
+    const unv = a.link_kind === "templated_unverified";
+    const cls = `tile ${a.tier === "linked" ? "c" : "l"}${w && a.tier !== "different" ? " key" : ""}${unv ? " unv" : ""}${a.gone ? " gone" : ""}`;
+    const inner = h`${raw(icon(a.what, a.url || a.checked_url))}<span class="n">${a.what}</span><span class="s">${sub}</span>${unv ? raw(`<span class="s lk-flag">(${UNVERIFIED_TEXT})</span>`) : ""}${checkText(a) ? raw(h`<span class="s">${checkText(a)}</span>`) : ""}`;
+    if (!href) return h`<div class="${cls}" title="${TIER_WORD[a.tier]} · no public page · ${(a.sources || [a.source]).join(", ")}">${raw(inner)}</div>`;
+    return h`<a class="${cls}" href="${href}" target="_blank" rel="noopener noreferrer nofollow" data-link-kind="${a.link_kind || ""}" title="${TIER_WORD[a.tier]} · ${short(a.url)} · ${(a.sources || [a.source]).join(", ")}">${raw(inner)}<span class="sr-only"> (opens in a new tab)</span></a>`;
   }).join("");
   const n = (t) => accounts.filter((a) => a.tier === t).length;
   return `<div class="grid-legend"><span class="c">Linked ${n("linked")}</span><span class="l">Exists (matches) ${n("matches")} · different person ${n("different")} · unverified ${n("unverified")}</span>${why.size ? `<span class="k">Key accounts first</span>` : ""}</div><div class="tiles">${tiles}</div>`
@@ -82,7 +89,7 @@ function leadCards(md) {
   if (!items.length) return markdown(md);
   return `<ol class="pivots">${items.map((t, i) => {
     const p = pivotFor(t);
-    const btn = (b, primary) => b.href ? `<a class="btn btn-sm${primary ? " btn-primary" : ""}" href="${esc(su(b.href) || "#")}" target="_blank" rel="noopener noreferrer">${esc(b.label)}</a>`
+    const btn = (b, primary) => b.href ? link(b.href, b.label, `btn btn-sm${primary ? " btn-primary" : ""}`)
       : `<button type="button" class="btn btn-sm${primary ? " btn-primary" : ""}" data-pivot="${esc(b.mode)}" data-value="${esc(b.value)}">${esc(b.label)}</button>`;
     const acts = p ? [btn(p, p.primary), p.secondary ? btn(p.secondary) : "", p.copy ? `<button type="button" class="btn btn-sm btn-ghost" data-copy="${esc(p.copy)}">Copy</button>` : ""].join("") : "";
     return `<li class="pivot"><span class="rank">${i + 1}</span><div class="t">${inline(t)}</div>${acts ? `<div class="acts">${acts}</div>` : ""}</li>`;
@@ -102,7 +109,8 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   const lvl = { Low: 1, Medium: 2, High: 3 }[exp] || 0;
   // Only accounts tied to the primary identity, or consistent with it, sit beside its name.
   const confirmed = accounts.filter((a) => a.tier === "linked" || a.tier === "matches");
-  const chips = confirmed.slice(0, 14).map((a) => `<a class="chip" href="${esc(su(a.url) || "#")}" target="_blank" rel="noopener noreferrer" title="${esc(a.what)}">${icon(a.what, a.url)}</a>`).join("");
+  // Linked and matching accounts were read, so their URLs came from the source. One with no public page is not a link.
+  const chips = confirmed.slice(0, 14).map((a) => (a.link_kind !== "none" && su(a.url) ? `<a class="chip" href="${esc(su(a.url))}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(a.what)}">${icon(a.what, a.url)}<span class="sr-only">${esc(a.what)} (opens in a new tab)</span></a>` : `<span class="chip" title="${esc(a.what)}">${icon(a.what, "")}<span class="sr-only">${esc(a.what)}</span></span>`)).join("");
   return `<div class="dossier">
     <div class="avatar">${avatar ? `<img src="${esc(avatar)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(initials(name || target))}</span></div>
     <div class="who">
@@ -123,7 +131,8 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
 const TITLE = { identity: "Identity", accounts: "Accounts", leads: "Next moves", exposure: "Exposure and risk", gaps: "Gaps", active: "Active techniques" };
 
 export function reportHtml({ ai, target, items, facts, collected }) {
-  const accounts = items.filter((i) => i.url && i.key?.startsWith("acct:") && i.tier in RANK);
+  // Every account row, with or without a URL: a row with no public page is a tile, not a link.
+  const accounts = items.filter((i) => i.key?.startsWith("acct:") && i.tier in RANK);
   const parts = splitSections(ai.summary);
   if (parts.length < 2) return dossier({ target, profile: ai.profile, facts, accounts, collected }) + `<div class="report-scroll">${markdown(ai.summary)}</div>`;
   const by = {}; const other = [];

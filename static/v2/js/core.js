@@ -12,11 +12,21 @@ export const safeUrl = (u) => {
   } catch { return ""; }
 };
 
-export const link = (url, text, cls = "") => {
-  const u = safeUrl(url);
+// Every external link opens in a new tab, says so to a screen reader, and carries a small icon.
+// kind (see links.js): "templated_unverified" gets a dashed underline and the words "unverified
+// URL" beside it; "none" is plain text, never an anchor. title names where an evidence link goes.
+const EXT_ICON = '<svg class="ext" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" focusable="false"><path d="M5 2.5H2.5v7h7V7M7 2h3v3M10 2 5.5 6.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+export const link = (url, text, cls = "", { kind = "", title = "" } = {}) => {
+  // safeUrl("") resolves to the site root, so blank stays blank.
+  const u = url && kind !== "none" ? safeUrl(url) : "";
   const t = esc(text ?? url);
-  return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer"${cls ? ` class="${cls}"` : ""}>${t}</a>` : t;
+  if (!u) return t;
+  const unv = kind === "templated_unverified";
+  const c = ["lk", unv ? "lk-unverified" : "", cls].filter(Boolean).join(" ");
+  return `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow" class="${esc(c)}"${kind ? ` data-link-kind="${esc(kind)}"` : ""}${unv ? ' title="unverified URL"' : title ? ` title="${esc(title)}"` : ""}>${t}${EXT_ICON}<span class="sr-only"> (${unv ? "unverified URL, " : ""}opens in a new tab)</span></a>${unv ? '<span class="lk-flag" aria-hidden="true">unverified URL</span>' : ""}`;
 };
+// The link of a ledger row, fact, lead or finding ({ url, link_kind }), around `text`.
+export const linkOf = (it, text = it?.what, cls = "") => link(it?.url, text, cls, { kind: it?.link_kind || "" });
 
 // Tagged template: interpolations are escaped unless wrapped in raw().
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
@@ -105,7 +115,7 @@ export const aiCost = (bucket = "analysis") => {
 // ---- API ---------------------------------------------------------------------
 // detail: a short message that is safe to show. raw: technical text for a "details" toggle.
 export class ApiError extends Error {
-  constructor(status, detail, { code = "", raw = "" } = {}) { super(detail || `HTTP ${status}`); this.status = status; this.detail = detail; this.code = code; this.raw = raw; }
+  constructor(status, detail, { code = "", raw = "", retryAfter = 0 } = {}) { super(detail || `HTTP ${status}`); this.status = status; this.detail = detail; this.code = code; this.raw = raw; this.retryAfter = retryAfter; }
 }
 
 export async function post(url, body, headers = {}, signal) {
@@ -127,6 +137,9 @@ export async function post(url, body, headers = {}, signal) {
     const d = j?.detail;
     // FastAPI validation errors arrive as a list; never show that to a person.
     if (r.status === 422 || Array.isArray(d)) throw new ApiError(r.status, "That input isn't valid for this source.", { code: "bad_input", raw: JSON.stringify(d ?? "").slice(0, 400) });
+    // A 429 says how long to wait. Callers that pace themselves (the link check) read it.
+    const retryAfter = r.status === 429 ? Math.max(0, Number(r.headers?.get?.("Retry-After")) || 0) : 0;
+    if (r.status === 429) throw new ApiError(429, typeof d === "string" ? d : "Too many requests. Try again in a minute.", { code: j?.code || "rate_limited", retryAfter });
     if (typeof d === "string" && r.status < 500) throw new ApiError(r.status, d, { code: j.code || "" });
     if (typeof d === "string" && j.code) throw new ApiError(r.status, d, { code: j.code });
     throw new ApiError(r.status, "CrawlR hit an error running this. Try again in a moment.", { code: "server", raw: `HTTP ${r.status} ${typeof d === "string" ? d : r.statusText}`.trim() });
@@ -166,6 +179,8 @@ export function sourceHasResults(d) {
 export function sourceCoverage(d) {
   if (!d || typeof d !== "object" || d.error || d.error_code || d.skipped) return null;
   const rows = Array.isArray(d.results) ? d.results.filter((r) => r && typeof r === "object") : [];
+  // The link check: a page that was verified or found missing is an answer; blocked is not.
+  if (d.link_check === true) return { answered: rows.filter((r) => ["verified", "not_found", "no_public_url"].includes(r.state)).length, total: rows.length, unit: "links", failedText: "no link could be checked" };
   if (rows.some((r) => typeof r.state === "string")) {
     const asked = rows.filter((r) => r.state !== "manual");
     return { answered: asked.filter((r) => r.state === "found" || r.state === "not_found").length, total: asked.length, unit: "sites", failedText: "blocked by every site checked" };
@@ -183,7 +198,7 @@ export function sourceCoverage(d) {
   }
   return null;
 }
-export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv.unit} ${cv.unit === "images" || cv.unit === "sections" ? "read" : "answered"}`;
+export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv.unit} ${cv.unit === "images" || cv.unit === "sections" ? "read" : cv.unit === "links" ? "checked" : "answered"}`;
 
 // The one place that counts sources, for the case header, the run log summary and the
 // "By source" tab in both modes. `names` maps a key in `collected` to the source's name.
