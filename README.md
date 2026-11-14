@@ -27,7 +27,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | **Recon** | Domain, IP or ASN | DNS, WHOIS, TLS, header grade, subdomains, email spoofing check, takeover candidates, lookalike domains, certificate history, ASN and prefixes, exposure data, a topology graph you can pivot from, optional top-20 port check |
 | **Headers** | Raw email headers | SPF, DKIM and DMARC results, hop-by-hop route with delays, sender origin, spoofing and phishing flags, verdict |
 | **Dorks** | Name, username, email, location, employer, keywords | A Google dork built live, with site filters; open it or copy it |
-| **Decoders** | Text | Base64, URL encoding, string hashing, VIN decode (NHTSA), US plate lookup |
+| **Decoders** | Text | Base64, URL encoding, string hashing, VIN decode (NHTSA) |
 
 ### Investigate sources
 
@@ -122,7 +122,7 @@ FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and 
 
 ## Responsible use
 
-For lawful purposes only: your own accounts, authorized assessments, research, journalism and missing-persons work. You accept these terms before first use. Results come from third parties and can be wrong. "Possible" findings are leads, not facts, and a confirmed account shows that a handle exists, not who owns it.
+The full acceptable-use statement is in the app under Settings. For lawful purposes only: your own accounts, authorized assessments, research, journalism and missing-persons work. You accept these terms before first use. Results come from third parties and can be wrong. "Possible" findings are leads, not facts, and a confirmed account shows that a handle exists, not who owns it.
 
 ## Security
 

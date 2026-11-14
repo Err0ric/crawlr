@@ -304,7 +304,7 @@
 
 <!-- ============ Decoders ============ -->
 <main class="tool tool-wide" id="decoders" hidden>
-  <header class="tool-head"><h1>Decoders</h1><p class="lede">Small conversions that come up mid-investigation. Base64, URL and hashing run entirely in your browser.</p></header>
+  <header class="tool-head"><h1>Decoders</h1><p class="lede">Small conversions that come up mid-investigation. Base64, URL and hashing run entirely in your browser. VIN decoding asks NHTSA's public database directly.</p></header>
   <div class="dec-grid">
     <article class="card"><div class="card-head"><h2 class="card-title"><label for="b64In">Base64</label></h2></div><div class="card-body">
       <textarea class="textarea mono" id="b64In" rows="3" placeholder="Text or Base64" spellcheck="false"></textarea>
@@ -320,10 +320,6 @@
     <article class="card"><div class="card-head"><h2 class="card-title"><label for="vinIn">VIN</label></h2><span class="tag">NHTSA</span></div><div class="card-body">
       <div class="inline-form"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" spellcheck="false" autocomplete="off"><button class="btn" id="vinGo" type="button">Decode</button></div>
       <div id="vinOut" aria-live="polite"></div></div></article>
-    <article class="card"><div class="card-head"><h2 class="card-title">License plate</h2><span class="tag">US</span></div><div class="card-body">
-      <div class="inline-form wrap"><label class="sr-only" for="plateIn">Plate number</label><input class="input mono plate" id="plateIn" placeholder="Plate" maxlength="10" spellcheck="false" autocomplete="off">
-        <label class="sr-only" for="plateState">State</label><select class="input state" id="plateState"><option value="">State</option></select><button class="btn" id="plateGo" type="button">Look up</button></div>
-      <div id="plateOut" aria-live="polite"></div></div></article>
   </div>
 </main>
 </div>

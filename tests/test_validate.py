@@ -140,8 +140,6 @@ def test_missing_tool_binary_is_reported_not_a_500(monkeypatch):
     ("/api/infra/dns", {"domain": "8.8.8.8"}),
     ("/api/infra/portscan", {"domain": "a.com; id"}),
     ("/api/infra/redirects", {"target": "https://user:pw@example.com"}),
-    ("/api/vehicles/plate", {"plate": "ABC123", "state": "W1"}),
-    ("/api/vehicles/plate", {"plate": "../x", "state": "WA"}),
 ])
 def test_routes_reject_bad_input_with_400(path, body):
     with TestClient(app) as c:

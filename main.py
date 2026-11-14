@@ -13,7 +13,7 @@ from core.logging import configure_logging, get_logger
 from middleware.observability import BodyLimitMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware, client_ip
 from middleware.rate_limit import RateLimitMiddleware
 from modules.ai_provider import AIError
-from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, vehicles
+from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone
 
 configure_logging()
 log = get_logger("crawlr")
@@ -30,7 +30,16 @@ async def lifespan(_app: FastAPI):
     log.info("crawlr stopping")
 
 
-app = FastAPI(title="CrawlR", version=APP_VERSION, lifespan=lifespan)
+# The generated API docs are for development. In production they only advertise the
+# endpoint list, so they are off unless ENABLE_API_DOCS is set.
+API_DOCS = os.getenv("ENABLE_API_DOCS", "").strip().lower() in ("1", "true", "yes", "on")
+
+app = FastAPI(
+    title="CrawlR", version=APP_VERSION, lifespan=lifespan,
+    docs_url="/docs" if API_DOCS else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if API_DOCS else None,
+)
 
 # Middleware runs in reverse registration order on the way in, so the request context
 # (request id + access log) is registered last to wrap everything, and gzip sits just
@@ -94,7 +103,6 @@ app.include_router(recon_infra.router, prefix="/api/infra", tags=["infra"])
 app.include_router(hash_lookup.router, prefix="/api/hash", tags=["hash"])
 app.include_router(email_headers.router, prefix="/api/email", tags=["email"])
 app.include_router(phone.router, prefix="/api/phone", tags=["phone"])
-app.include_router(vehicles.router, prefix="/api/vehicles", tags=["vehicles"])
 
 
 # HEAD is allowed on pages so uptime monitors, link checkers and crawlers get a 200.
@@ -117,7 +125,7 @@ def classic():
 
 @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
 def robots():
-    return PlainTextResponse(f"User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /docs\nDisallow: /openapi.json\n\nSitemap: {SITE_URL}/sitemap.xml\n")
+    return PlainTextResponse(f"User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: {SITE_URL}/sitemap.xml\n")
 
 
 @app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
@@ -142,7 +150,13 @@ def quota(request: Request):
     return quota_status(client_ip(request))
 
 
-@app.api_route("/api/health", methods=["GET", "HEAD"], tags=["meta"])
+@app.get("/api/health", tags=["meta"])
 def health():
     """Liveness probe for Railway and uptime monitors."""
     return {"status": "ok", "service": "crawlr", "version": APP_VERSION}
+
+
+@app.head("/api/health", include_in_schema=False)
+def health_head():
+    """HEAD for monitors that do not send GET. Kept out of the schema so the operation id stays unique."""
+    return Response()

@@ -224,6 +224,11 @@ function openSettings() {
       <section>
         <h3 class="set-h">Your data</h3>
         <p class="set-p">Cases, notes and keys live in this browser's storage and nowhere else. CrawlR has no accounts. Clear saved cases from History.</p>
+      </section>
+      <section>
+        <h3 class="set-h">Responsible use</h3>
+        <p class="set-p">What CrawlR is for, what it must not be used for, and what it does and does not record.</p>
+        <button class="btn btn-sm" type="button" data-open-use>Read the acceptable-use statement</button>
       </section>`,
   });
   roving(el, "[role=radio]", (b) => b.click());
@@ -275,6 +280,20 @@ function openHistory() {
   });
 }
 
+// ---- acceptable use -----------------------------------------------------------------------
+// The same commitments as the first-run gate, in full, reachable at any time.
+const USE_HTML = `<div class="terms">
+  <p><b>CrawlR is for</b> security work on systems you own or are authorized to test, checking your own exposure, research, journalism, incident response and training exercises such as CTFs.</p>
+  <p><b>Do not use it to</b> harass, stalk, dox or locate a private individual, to scan or probe systems without permission, or to try credentials found in breaches. CrawlR never logs in to anything, never triggers a password reset and never contacts a person.</p>
+  <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and stay off until you turn them on.</p>
+  <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Confirmed" means an account exists, not who owns it. "Possible" means a tool reported it and nothing verified it. A source that failed says nothing either way.</p>
+  <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
+  <p><b>Collect only what your purpose needs.</b> Public does not mean harmless: separate public facts can identify someone once combined. You are responsible for how you use what you find, under the law where you are and where the target is.</p>
+  <p>CrawlR is not a people-search service. Name and phone lookups only open links for you to search by hand.</p>
+</div>`;
+function openUse() { openModal({ title: "Acceptable use", wide: true, body: USE_HTML, actions: [{ label: "Close", primary: true, onClick: closeModal }] }); }
+document.addEventListener("click", (e) => { if (e.target.closest("[data-open-use]")) { closeDrawer({ restore: false }); openUse(); } });
+
 // ---- terms ---------------------------------------------------------------------------------
 // The gate cannot be dismissed with Escape, the backdrop or a close button: the only way
 // through is to tick the box and continue.
@@ -289,6 +308,7 @@ function termsIfNeeded() {
       <p>Results come from third parties and can be wrong. "Possible" findings are leads to check, not facts, and a confirmed account shows that a handle exists, not who owns it.</p>
       <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled and stay off until you turn them on. Only scan hosts you own or are authorized to test.</p>
       <p>Your cases and notes stay in this browser. Don't collect more about a person than your purpose needs.</p>
+      <p>The full acceptable-use statement is always under Settings.</p>
       <label class="terms-ok"><input type="checkbox" id="termsOk"> I understand and will use CrawlR responsibly.</label>
     </div>`,
     actions: [{ label: "Continue", primary: true, disabled: true, onClick: (m) => { if (!m.querySelector("#termsOk").checked) return; store.set("crawlr_terms_v1", Date.now()); closeModal({ restore: false }); show(current || "landing"); } }],

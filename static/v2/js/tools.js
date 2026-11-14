@@ -2,9 +2,6 @@
 import { $, $$, h, raw, esc, link, store, toast, post, postAi, aiAvailable, aiCost, providerName, looksLikeHeaders, fmtNum } from "./core.js";
 import { md5 } from "./md5.js";
 
-const STATES = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["DC","District of Columbia"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
-$("#plateState").insertAdjacentHTML("beforeend", STATES.map(([v, n]) => h`<option value="${v}">${n}</option>`).join(""));
-
 const copy = (text, btn) => navigator.clipboard?.writeText(text).then(() => { if (btn) { const t = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = t), 1400); } else toast("Copied"); });
 
 // =====================================================================================
@@ -193,21 +190,8 @@ $("#vinGo").addEventListener("click", async () => {
     out("#vinOut", rows.length ? `<dl class="kv">${rows.map(([k, v]) => h`<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>` : err("NHTSA has no record for that VIN."));
   } catch { out("#vinOut", err("Couldn't reach NHTSA. Try again in a moment.")); }
 });
-// plate
-$("#plateGo").addEventListener("click", async () => {
-  const plate = $("#plateIn").value.trim().toUpperCase(), state = $("#plateState").value;
-  if (!plate || !state) { out("#plateOut", err("Enter a plate and pick a state.")); return; }
-  out("#plateOut", `<p class="dec-wait">Looking up…</p>`);
-  try {
-    const d = await post("/api/vehicles/plate", { plate, state });
-    if (d.error) { out("#plateOut", err(d.error)); return; }
-    const rows = [["Year", d.year], ["Make", d.make], ["Model", d.model], ["Trim", d.trim], ["Engine", d.engine], ["VIN", d.vin]].filter(([, v]) => v);
-    out("#plateOut", rows.length ? `<dl class="kv">${rows.map(([k, v]) => h`<dt>${k}</dt><dd class="${k === "VIN" ? "mono" : ""}">${v}</dd>`).join("")}</dl>${d.vin ? `<button class="btn btn-sm mt" type="button" id="plateToVin">Decode this VIN</button>` : ""}` : err("No vehicle found for that plate."));
-    if (d.vin) $("#plateToVin").addEventListener("click", () => { $("#vinIn").value = d.vin; $("#vinGo").click(); $("#vinIn").scrollIntoView({ behavior: "smooth", block: "center" }); });
-  } catch (e) { out("#plateOut", err(e.detail || e.message)); }
-});
 // Enter submits each decoder
-[["#b64In", null], ["#urlIn", null], ["#hashIn", "#hashGo"], ["#vinIn", "#vinGo"], ["#plateIn", "#plateGo"]].forEach(([i, b]) => b && $(i).addEventListener("keydown", (e) => { if (e.key === "Enter") $(b).click(); }));
+[["#b64In", null], ["#urlIn", null], ["#hashIn", "#hashGo"], ["#vinIn", "#vinGo"]].forEach(([i, b]) => b && $(i).addEventListener("keydown", (e) => { if (e.key === "Enter") $(b).click(); }));
 
 // paste-detect on the decoders input is not needed; headers paste-detect lives in app.js
 export { looksLikeHeaders };

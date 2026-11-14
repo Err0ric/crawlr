@@ -44,7 +44,6 @@ RATE_LIMITS = {
     "/api/email": (30, 60),
     "/api/hash": (30, 60),
     "/api/phone": (15, 60),
-    "/api/vehicles": (10, 60),
 }
 MAX_KEYS = 20_000
 SWEEP_EVERY = 500      # requests between sweeps

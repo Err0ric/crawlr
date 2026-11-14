@@ -111,3 +111,33 @@ def test_ci_compiles_core():
     assert "compileall -q main.py routers modules middleware core" in ci
     for t in ("detect", "contrast", "brief"):
         assert f"node tests/js/{t}.test.mjs" in ci
+
+
+def test_api_docs_are_off_by_default(c):
+    assert c.get("/docs").status_code == 404
+    assert c.get("/openapi.json").status_code == 404
+    assert c.get("/redoc").status_code == 404
+    assert "/docs" not in c.get("/robots.txt").text      # nothing to hide, so nothing to list
+
+
+def test_api_docs_can_be_switched_on(monkeypatch):
+    import importlib
+    import main
+    monkeypatch.setenv("ENABLE_API_DOCS", "true")
+    try:
+        fresh = importlib.reload(main)
+        with TestClient(fresh.app) as client:
+            assert client.get("/docs").status_code == 200
+            assert "paths" in client.get("/openapi.json").json()
+    finally:
+        monkeypatch.delenv("ENABLE_API_DOCS")
+        importlib.reload(main)
+
+
+def test_plate_lookup_is_gone(c):
+    assert c.post("/api/vehicles/plate", json={"plate": "ABC123", "state": "WA"}).status_code == 404
+    html = c.get("/").text
+    assert "plateIn" not in html and "License plate" not in html
+    assert "vinIn" in html                                  # the VIN decoder (official NHTSA API) stays
+    fp = asset_fingerprint()
+    assert "kbb" not in c.get(f"/assets/{fp}/js/tools.js").text.lower()

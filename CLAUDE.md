@@ -34,7 +34,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 | Path | Holds |
 |---|---|
 | `main.py` | FastAPI app, middleware, router mounts, `/`, fingerprinted `/assets`, `robots.txt`, `sitemap.xml`, `/api/quota`, `/api/health` |
-| `routers/` | HTTP endpoints, one file per area (recon, infra, analyze, hash, email, phone, vehicles) |
+| `routers/` | HTTP endpoints, one file per area (recon, infra, analyze, hash, email, phone) |
 | `modules/` | One data source or tool per file (sherlock, maigret, dns, whois, ssl, ...) |
 | `core/` | Shared helpers: outbound request guard, input validation, error mapping, the AI call path, house AI key and quotas, logging, subprocess limits |
 | `middleware/` | Request ID and access log, security headers, body size limit, rate limiting, client IP |

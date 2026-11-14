@@ -36,7 +36,7 @@ FastAPI (main.py)
 | `/assets/<fingerprint>/*` | `static/v2/*`, cached for a year. The fingerprint is a hash of every UI file, so any change gives every asset a new URL |
 | `/static/*` | Static files at stable URLs, always revalidated |
 | `/robots.txt`, `/sitemap.xml` | Generated from `SITE_URL` |
-| `/docs`, `/openapi.json` | FastAPI's generated API docs |
+| `/docs`, `/openapi.json` | FastAPI's generated API docs. Off unless `ENABLE_API_DOCS=true` |
 
 ### API
 
@@ -48,7 +48,6 @@ FastAPI (main.py)
 | `/api/hash` | `routers/hash_lookup.py` | hash | MalwareBazaar, CIRCL, OTX, ThreatFox |
 | `/api/email` | `routers/email_headers.py` | analyze | Raw header parsing, SPF/DKIM/DMARC, hop analysis, IP geo |
 | `/api/phone` | `routers/phone.py` | lookup | Optional `X-Numlookup-Key` |
-| `/api/vehicles` | `routers/vehicles.py` | plate | Plate to VIN through an undocumented third-party endpoint. Flagged for a keep or remove decision |
 | `/api` | `main.py` | quota, health | Free-AI quota for the caller, liveness |
 
 ## Backend modules
@@ -122,7 +121,7 @@ Three ways to get a written report, none automatic:
 | `brief.js` | "At a glance": the rules-based written brief for Investigate and Recon. No model |
 | `report.js` | Investigation report: dossier card plus one scrolling report |
 | `ai.js` | AI response normalization, the markdown renderer used by every report, and the AI panel's start state (one-click analysis, copy prompt, paste reply) |
-| `tools.js` | Headers analyzer, dork builder, decoders (Base64, URL, hash, VIN, plate) |
+| `tools.js` | Headers analyzer, dork builder, decoders (Base64, URL, hash, VIN) |
 | `md5.js` | MD5 for the hash decoder and Gravatar |
 
 Design tokens and UI rules: `static/v2/DESIGN.md`.
