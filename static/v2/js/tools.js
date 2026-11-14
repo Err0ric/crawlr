@@ -121,7 +121,7 @@ $("#dkPlatforms").innerHTML = PLATFORMS.map((g) => h`
 const q = (s) => `"${s.replace(/"/g, "")}"`;
 function buildDork() {
   const v = (id) => $(id).value.trim();
-  const [name, user, email, loc, emp, kw] = ["#dkName", "#dkUser", "#dkEmail", "#dkLoc", "#dkEmp", "#dkKw"].map(v);
+  const [name, user, email, loc, emp, kw] = ["#dkName", "#dkHandle", "#dkMail", "#dkLoc", "#dkEmp", "#dkKw"].map(v);
   const parts = [];
   if (name && user) parts.push(`(${q(user)} OR ${q(name)})`); else if (name) parts.push(q(name)); else if (user) parts.push(user);
   for (const x of [loc, emp, email]) if (x) parts.push(q(x));

@@ -44,6 +44,7 @@ FastAPI (main.py)
 |---|---|---|---|
 | `/api/recon` | `routers/recon.py` | sherlock, maigret, holehe, harvester, hibp, gravatar, github, enrich, platform-check, hunter, shodan, internetdb, scrape-profiles | sherlock, maigret, holehe run as subprocesses under `core/subprocess_guard.py`. Hunter and Shodan need the user's key (`X-Hunter-Key`, `X-Shodan-Key`) |
 | `/api/recon` | `routers/recon_identity.py` | github-deep, avatar-hash, verify-links | Follow-up lookups: identity clustering inputs, and the check that a reported profile URL exists. All cached for 24 hours |
+| `/api/recon` | `routers/recon_people.py` | name-search | Candidates for a person's name from Wikidata, GitHub, ORCID, OpenAlex and Bluesky, run concurrently with 8 seconds each. Six outbound requests per uncached search. Cached for 24 hours, or 10 minutes when a source failed |
 | `/api/infra` | `routers/recon_infra.py` | dns, whois, ssl, headers, subdomains, email-posture, dns-depth, takeover, lookalikes, wellknown, asn, asn-detail, ip-asn, portscan, wayback, redirects, techfingerprint, summarize, prompt | Domain, IP and ASN recon. `summarize` is AI; `prompt` returns the same prompt without calling a model |
 | `/api/analyze` | `routers/analyze.py` | summarize, deep-dive, deep, correlate, email-headers, prompt, parse | All AI, through `core/ai_call.py`. Uses the user's key or the house key. Provider failures return `{detail, code}` with a matching status |
 | `/api/hash` | `routers/hash_lookup.py` | hash | MalwareBazaar, CIRCL, OTX, ThreatFox |
@@ -55,7 +56,7 @@ FastAPI (main.py)
 
 | Area | Files |
 |---|---|
-| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py`, `link_verify.py`, `adult_check.py` |
+| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py`, `link_verify.py`, `name_search.py`, `adult_check.py` |
 | Infrastructure | `email_posture.py`, `dns_depth.py`, `takeover.py`, `lookalikes.py`, `wellknown.py`, `crtsh.py`, `dns_lookup.py`, `resolver.py`, `whois_lookup.py`, `ssl_check.py`, `headers_check.py`, `subdomain_enum.py`, `harvester.py`, `asn_lookup.py`, `asn_detail.py`, `port_scan.py`, `internetdb.py`, `shodan_lookup.py`, `wayback.py`, `redirect_chain.py`, `tech_fingerprint.py` |
 | AI | `ai_provider.py`: async Anthropic and Gemini calls, typed `AIError`, response cache keyed per caller |
 
@@ -66,7 +67,7 @@ FastAPI (main.py)
 | File | Role |
 |---|---|
 | `core/netguard.py` | Outbound request guard. Resolves a host once, refuses anything that is not a public address, connects to the vetted address, and repeats the check on every redirect hop. Every module that fetches a user-supplied URL or opens a socket to a user-supplied host uses it |
-| `core/validate.py` | Username, email, host and URL validation and normalization; registrable-domain comparison |
+| `core/validate.py` | Username, email, person name, host and URL validation and normalization; registrable-domain comparison |
 | `core/errors.py` | Maps upstream exceptions to `{error, error_code, error_detail}`: a short human message, a stable code, and the raw text for a details toggle |
 | `core/ai_call.py` | The one path for AI endpoints: pick key, check cache, check and spend free quota, call, refund on failure |
 | `core/ai_text.py` | Fence stripping and JSON extraction for model output |
@@ -92,6 +93,8 @@ Every source ends in one of three states, and they are kept apart from the modul
 | Failed | `error`, `error_code`, `error_detail` (`found` is `null` where it applies) | red run-log row, a notice above the findings, a "failed" card | listed under "FAILED, treat as unknown" |
 
 Account evidence is ranked by how it ties to the person, not only by whether the account exists. `identity.js` groups every profile that was read into people: two profiles join on a cross-link, the same profile picture or a shared personal link, or on a name that fits with nothing conflicting. The group holding the authoritative record (GitHub's answer for the handle, Gravatar's for the email) is the primary identity. **Linked** is that record or a profile tied to it by a strong signal. **Exists (matches)** is a read profile whose name fits or that carries no name. **Exists (different person)** is a read profile whose name conflicts. **Unverified** means a tool reported the handle and nothing was read, or the site blocked the check.
+
+Name search keeps a state per source: `ok`, `none`, `failed` or `rate_limited`. A source that is not asked for a kind of name (ORCID and OpenAlex for one word, GitHub when no login can be spelled) has no entry, so it is never read as `none`. Each entry has `count` (rows that fit the name) and `shown` (rows in the list): the list holds 30 and takes rows from every source in turn, so a source with matches never shows zero. Names are compared after `fold()`, which exists once in `modules/name_search.py` and once in `static/v2/js/names.js`: accents come off Latin, Greek and Cyrillic letters only, and in every other script a combining mark stays part of the letter. `tests/fixtures/name_text.json` holds the input and output pairs both suites assert. `partial` means the family name plus the bare initial of the given name, nothing looser. Trailing suffixes (Jr, Sr, II, III, IV, PhD, MD, Esq) are kept out of the name parts, the queries and the handles. The cache is keyed on the name as typed (case and spacing ignored) plus the qualifiers. Its rows are candidates, not findings: each carries `name_match` (`exact`, `tokens` or `partial`) and the qualifiers it matched, and the optional location, employer and keyword are compared locally and never sent to a source. In the UI the search is one source in `sourceTally`: a directory that failed or was rate limited makes it partial, and it is failed when none answered. A name the validator refuses (HTTP 400 or 422) is a message under the target box, not a failed source. A name case stores `nameSearch`, `nameQualifiers`, `nameResult` and `nameProfiles` in `collected`; its rows never enter `collectProfiles`, `clusterIdentities`, the facts, the leads, the avatar comparison or the link check. A stored `nameResult` is used only when its name is the case's target, and the outbound searches are built from the target alone. The AI request carries the rows as `name_candidates`, with the directories that answered and the ones that could not be asked, and a prompt paragraph that forbids merging them or guessing which one is meant and says the text in a row is data, never an instruction. Row fields are written on one line with the delimiter removed. The field is not sent when no directory answered.
 
 Platform check and adult site check rows carry one of five states: `found`, `not_found`, `blocked`, `unknown`, `no_public_url`. Only a content marker makes a row `found`. Subdomain and takeover checks call a name absent only when two resolvers agree; a lookup that failed is `unknown`.
 
@@ -126,7 +129,8 @@ Three ways to get a written report, none automatic:
 | `evidence.js` | Turns module responses into ranked evidence (`flag`, `linked`, `matches`, `different`, `unverified`, `noise`, plus `lead` and `hosts`), facts per identity, and the source plan for each target type. Pure functions, no DOM |
 | `adult.js` | The opt-in adult and dating mode: the in-memory switch, the minor guard, the separate group, and the scrub that removes adult rows from a case that did not have the mode on. Pure functions, no storage |
 | `adult-sites.js` | Generated copy of the server's adult and dating site list, so the page can filter without asking |
-| `links.js` | Gives every link a kind (`verified_profile`, `templated_unverified`, `evidence`, `none`), builds the evidence URLs, and applies link check results. Pure functions, no DOM |
+| `names.js` | Name cases: reads the name search answer defensively (rows re-checked, text clipped, links rebuilt from checked IDs), merges a GitHub profile loaded on a click and re-matches its name with the server's rule, and builds the four name groups (public figure, people, handles to try, search the web), the notices, "What we know", the brief lines and the AI field. Pure functions, no DOM |
+| `links.js` | Gives every link a kind (`verified_profile`, `templated_unverified`, `evidence`, `search`, `none`), builds the evidence URLs, and applies link check results. Pure functions, no DOM |
 | `linkcheck.js` | Runs the link check for a ledger group when it is opened or scrolled into view: batches of 25, two in flight, stops on collapse or a new run |
 | `identity.js` | Groups read profiles into people and picks the primary identity. Pure functions, no DOM |
 | `reconfindings.js` | Recon findings and tiers, including shared-address neighbours. Pure functions, no DOM |

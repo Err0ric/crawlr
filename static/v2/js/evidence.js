@@ -24,6 +24,10 @@
 //                 Existence and text only. These rows are built apart from every other account:
 //                 they are never linked, matched, clustered, turned into facts or leads, or counted.
 //     noise       sites known to answer yes to everything, collapsed by default
+//     notable, people, handles, websearch
+//                 a name case only (see names.js): the public figure with that name, the
+//                 candidates the directories returned, handles built from the name, and outbound
+//                 searches. None of them is a finding, a fact, a profile or a cluster member.
 //   The link check never moves a row to another tier: it changes what the link is worth.
 //   A source that FAILED contributes nothing here; failures are reported separately so an
 //   error is never read as "not found".
@@ -35,6 +39,7 @@
 import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT, mdLink, mdNote } from "./links.js";
 import { TYPE_LABEL } from "./core.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
+import { NAME_TIERS, isNameTier, nameItems, nameForAi, nameMarkdownHead } from "./names.js";
 import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultMarkdown, reportForExport, adultHost, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
@@ -52,11 +57,12 @@ export const canonSite = (s) => { const n = norm(s).replace(/\s*\((?!twitter).*\
 const failed = (d) => !!(d && (d.error || d.error_code));
 const fmtNum = (n) => Number(n ?? 0).toLocaleString("en-US");
 
-export const TIER_ORDER = ["flag", "info", "linked", "matches", "different", "unverified", "adult", "lead", "hosts", "noise"];
+export const TIER_ORDER = ["flag", "info", "notable", "people", "handles", "websearch", "linked", "matches", "different", "unverified", "adult", "lead", "hosts", "noise"];
 const TIER_RANK = Object.fromEntries(TIER_ORDER.map((t, i) => [t, i]));
 // Leads and host inventory are not findings about the target, so no count includes them. Adult
 // and dating site rows are existence checks kept apart from the findings, with their own count.
-export const isFinding = (it) => it.tier !== "lead" && it.tier !== "hosts" && it.tier !== "adult";
+// A name case has candidates, suggestions and outbound searches, and none of them is a finding.
+export const isFinding = (it) => it.tier !== "lead" && it.tier !== "hosts" && it.tier !== "adult" && !isNameTier(it.tier);
 const ACCOUNT_TIERS = ["linked", "matches", "different", "unverified"];
 
 // ---- email ---------------------------------------------------------------------------
@@ -77,7 +83,7 @@ const HANDLE_OK = /^[A-Za-z0-9._-]{1,64}$/;
 export function sourcePlan(type, target, { adult = false } = {}) {
   if (type === "hash") return ["hash"];
   if (type === "phone") return ["phone"];
-  if (type === "name") return [];
+  if (type === "name") return ["namesearch"];
   if (type === "email") {
     const { domain } = emailParts(target);
     // No Sherlock, Maigret or Platform check: the part before the @ is only a lead.
@@ -257,7 +263,7 @@ export function avatarImages(c, target, type) {
   return collectProfiles(c, target, type).filter((p) => /^https:\/\//i.test(p.image)).map((p) => ({ id: p.id, url: p.image.slice(0, 600) })).slice(0, 30);
 }
 
-const inferType = (c, target) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(target ?? "").trim()) ? "email" : c?.hash ? "hash" : c?.phone ? "phone" : c?.nameSearch ? "name" : "username");
+const inferType = (c, target) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(target ?? "").trim()) ? "email" : c?.hash ? "hash" : c?.phone ? "phone" : c?.nameSearch || c?.nameResult ? "name" : "username");
 const dedupeFacts = (facts) => { const out = []; for (const f of facts) if (!out.some((x) => x.k === f.k && norm(x.v) === norm(f.v))) out.push(f); return out; };
 
 // ---- leads ---------------------------------------------------------------------------
@@ -474,6 +480,11 @@ export function buildEvidence(collected, target, typeArg) {
     if (ph.valid === false) add({ tier: "flag", what: "Number reported invalid", url: "", meta: "", source: "NumLookup", key: "phone:invalid" });
   }
 
+  // --- a name case: candidates, suggested handles and outbound searches -------------------
+  // Built on their own and only for a name. They never reach the profiles, clusters, facts or
+  // leads above, so a person who shares the name is never written up as the target.
+  if (type === "name") for (const r of nameItems(c, target)) items.push(r);
+
   // --- adult and dating sites: their own group, from the unfiltered case -----------------
   for (const r of adultRows(collected, target, type)) items.push(r);
 
@@ -526,8 +537,8 @@ export const TIERS = [
   { id: "hosts",      title: "Hosts on this domain",      cls: "",          open: false, limit: 300, blurb: "Hostnames on the email's domain, from public sources. This is the organisation's inventory. It says nothing about the person." },
   { id: "noise",      title: "Known noisy sites",         cls: "",          open: false, limit: 40, blurb: "Sites that answer yes to any username. Kept for completeness." },
 ];
-// The same tiers with the host group named after the email's domain.
-export const ledgerTiers = (target, type) => TIERS.map((t) => (t.id === "hosts" && type === "email" && emailParts(target).domain ? { ...t, title: `Hosts on ${emailParts(target).domain}` } : t));
+// The same tiers with the host group named after the email's domain. A name case has groups of its own and none of the others (see names.js).
+export const ledgerTiers = (target, type) => type === "name" ? NAME_TIERS.map((t) => ({ ...t })) : TIERS.map((t) => (t.id === "hosts" && type === "email" && emailParts(target).domain ? { ...t, title: `Hosts on ${emailParts(target).domain}` } : t));
 
 // The account rows the AI prompt and the report use, so they match the screen exactly.
 // status is the tier id: linked, matches, different or unverified.
@@ -549,8 +560,18 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
     sherlock: c.sherlock || null, maigret: c.maigret || null, holehe: c.holehe || null, harvester: c.harvester || null, hibp: c.hibp || null,
     gravatar: c.gravatar || null, github: c.github || null, enricher: c.enricher || null, platform_check: c.platformCheck || null,
     hunter: c.hunter || null, name_search: c.nameSearch ? { name: c.nameSearch } : null, active_techniques: !!active,
+    // A name case: the candidates as the screen shows them. Absent for every other case.
+    ...(type === "name" && nameForAi(c, target) ? { name_candidates: nameForAi(c, target) } : {}),
     ...(adult ? { adult_sites: adultForAi(items.filter((i) => i.tier === "adult")) } : {}),
   };
+}
+
+// What an AI report was written from. Two runs with the same signature get the same report, so a
+// re-run can reuse the last one. Computed from the case it is given, never from the one on screen.
+export function aiSignature(collected, target, type) {
+  const { items, facts } = buildEvidence(collected, target, type);
+  return JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]),
+    adultForAi(items.filter((i) => i.tier === "adult")), type === "name" ? nameForAi(withoutAdult(collected), target) : null]);
 }
 
 // The profile pages a Deep Dive may read. Built from the adult-free view, and a URL whose host is
@@ -573,9 +594,10 @@ export function caseMarkdown({ collected, target, type, ran = 0, tallyLine = "",
   return [`# CrawlR case: ${target}`, `Generated ${now.toISOString()} · ${TYPE_LABEL[type]}${ran ? ` · collected ${new Date(ran).toISOString()}` : ""}`, tallyLine, "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
     "> Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts. A link marked (unverified URL) is a site address built from the handle that nothing has checked. A profile that exists is not proof of who owns it, and leads are places to look, not findings.", "",
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a negative result)`), ""] : []),
-    `## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), "",
+    // A name case selects no one: the caveat line, then what is known about the search itself.
+    ...(type === "name" ? nameMarkdownHead(collected, target) : [`## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), ""]),
     ...(others.length ? ["## Other people using this handle", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
-    ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
+    ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...(isNameTier(t.id) ? [`_${t.blurb}_`] : []), ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
     ...adultMarkdown(adult),
     // A report's own sections about adult or dating sites are exported only for a case that has such rows.
     ...(ai ? ["## AI analysis", reportForExport(ai.summary, adult.length > 0), ""] : []),

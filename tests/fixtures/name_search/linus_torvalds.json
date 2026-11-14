@@ -1,0 +1,367 @@
+{
+ "_note": "Recorded 2026-11-14 for the public figure Linus Torvalds and trimmed. Every other account and person is invented.",
+ "github": {
+  "total_count": 13,
+  "incomplete_results": false,
+  "items": [
+   {
+    "login": "torvalds",
+    "id": 1024025,
+    "avatar_url": "https://avatars.githubusercontent.com/u/1024025?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/torvalds",
+    "html_url": "https://github.com/torvalds",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "lt-kernel-fan",
+    "id": 990000001,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000001?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/lt-kernel-fan",
+    "html_url": "https://github.com/lt-kernel-fan",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "penguin-patch-07",
+    "id": 990000002,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000002?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/penguin-patch-07",
+    "html_url": "https://github.com/penguin-patch-07",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "notlinus-example",
+    "id": 990000003,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000003?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/notlinus-example",
+    "html_url": "https://github.com/notlinus-example",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "tux-fixture-user",
+    "id": 990000004,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000004?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/tux-fixture-user",
+    "html_url": "https://github.com/tux-fixture-user",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "subsurface-fan-fx",
+    "id": 990000005,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000005?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/subsurface-fan-fx",
+    "html_url": "https://github.com/subsurface-fan-fx",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "example-lt-42",
+    "id": 990000006,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000006?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-lt-42",
+    "html_url": "https://github.com/example-lt-42",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "fixture-torv",
+    "id": 990000007,
+    "avatar_url": "https://avatars.githubusercontent.com/u/990000007?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/fixture-torv",
+    "html_url": "https://github.com/fixture-torv",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "score": 1.0
+   }
+  ]
+ },
+ "wikidata_search": {
+  "batchcomplete": "",
+  "query": {
+   "searchinfo": {
+    "totalhits": 6
+   },
+   "search": [
+    {
+     "ns": 0,
+     "title": "Q34253",
+     "pageid": 37031
+    },
+    {
+     "ns": 0,
+     "title": "Q990000001",
+     "pageid": 37032
+    },
+    {
+     "ns": 0,
+     "title": "Q990000002",
+     "pageid": 37033
+    }
+   ]
+  }
+ },
+ "wikidata_entities": {
+  "entities": {
+   "Q34253": {
+    "type": "item",
+    "id": "Q34253",
+    "labels": {
+     "en": {
+      "language": "en",
+      "value": "Linus Torvalds"
+     },
+     "mul": {
+      "language": "mul",
+      "value": "Linus Torvalds"
+     },
+     "fi": {
+      "language": "fi",
+      "value": "Linus Torvalds"
+     },
+     "ru": {
+      "language": "ru",
+      "value": "Линус Торвальдс"
+     },
+     "ja": {
+      "language": "ja",
+      "value": "リーナス・トーバルズ"
+     }
+    },
+    "descriptions": {
+     "en": {
+      "language": "en",
+      "value": "Finnish software engineer (born 1969)"
+     },
+     "fi": {
+      "language": "fi",
+      "value": "amerikansuomalainen tietotekniikka-asiantuntija, ohjelmoija ja hakkeri"
+     }
+    },
+    "aliases": {
+     "mul": [
+      {
+       "language": "mul",
+       "value": "Linus Benedict Torvalds"
+      }
+     ]
+    },
+    "sitelinks": {
+     "enwiki": {
+      "site": "enwiki",
+      "title": "Linus Torvalds",
+      "badges": []
+     }
+    }
+   },
+   "Q990000001": {
+    "type": "item",
+    "id": "Q990000001",
+    "labels": {
+     "en": {
+      "language": "en",
+      "value": "Lena Torvalds"
+     }
+    },
+    "descriptions": {
+     "en": {
+      "language": "en",
+      "value": "invented relative of Linus Torvalds"
+     }
+    },
+    "aliases": {},
+    "sitelinks": {}
+   },
+   "Q990000002": {
+    "type": "item",
+    "id": "Q990000002",
+    "labels": {
+     "en": {
+      "language": "en",
+      "value": "Tove Example"
+     }
+    },
+    "descriptions": {
+     "en": {
+      "language": "en",
+      "value": "invented person, cousin of Linus Torvalds"
+     }
+    },
+    "aliases": {},
+    "sitelinks": {}
+   }
+  },
+  "success": 1
+ },
+ "orcid": {
+  "expanded-result": null,
+  "num-found": 0
+ },
+ "openalex": {
+  "meta": {
+   "notice": "No API key, so this request shares one free daily budget with everyone on your network's IP address.",
+   "count": 2,
+   "db_response_time_ms": 14,
+   "page": 1,
+   "per_page": 8,
+   "groups_count": null,
+   "cost_usd": 0.001
+  },
+  "results": [
+   {
+    "id": "https://openalex.org/A5083555959",
+    "display_name": "Linus Torvalds",
+    "display_name_alternatives": [
+     "Linus Torvalds"
+    ],
+    "works_count": 10,
+    "last_known_institutions": [
+     {
+      "id": "https://openalex.org/I4403928327",
+      "ror": "https://ror.org/02krvw113",
+      "display_name": "Linux Foundation",
+      "country_code": "US",
+      "type": "nonprofit",
+      "lineage": [
+       "https://openalex.org/I4403928327"
+      ]
+     }
+    ],
+    "topics": [
+     {
+      "id": "https://openalex.org/T11675",
+      "display_name": "Open Source Software Innovations",
+      "count": 8
+     },
+     {
+      "id": "https://openalex.org/T11676",
+      "display_name": "History of Computing Technologies",
+      "count": 7
+     },
+     {
+      "id": "https://openalex.org/T11677",
+      "display_name": "Software Engineering Techniques and Practices",
+      "count": 6
+     }
+    ]
+   },
+   {
+    "id": "https://openalex.org/A5000713599",
+    "display_name": "Linus Torvalds",
+    "display_name_alternatives": [
+     "Linus Torvalds"
+    ],
+    "works_count": 3,
+    "last_known_institutions": null,
+    "topics": [
+     {
+      "id": "https://openalex.org/T11675",
+      "display_name": "Parallel Computing and Optimization Techniques",
+      "count": 8
+     },
+     {
+      "id": "https://openalex.org/T11676",
+      "display_name": "Logic, programming, and type systems",
+      "count": 7
+     },
+     {
+      "id": "https://openalex.org/T11677",
+      "display_name": "Distributed systems and fault tolerance",
+      "count": 6
+     }
+    ]
+   }
+  ],
+  "group_by": []
+ },
+ "bluesky": {
+  "actors": [
+   {
+    "did": "did:plc:fixture000000000000000001",
+    "handle": "linustorvalds.fixture-social.example",
+    "displayName": "Linus",
+    "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:fixture000000000000000001/bafkreifixture1",
+    "associated": {
+     "activitySubscription": {
+      "allowSubscriptions": "followers"
+     }
+    },
+    "labels": [],
+    "createdAt": "2024-10-20T21:03:11.112Z",
+    "indexedAt": "2024-10-23T13:04:20.309Z"
+   },
+   {
+    "did": "did:plc:fixture000000000000000002",
+    "handle": "handle.invalid",
+    "displayName": "Chair Fan",
+    "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:fixture000000000000000002/bafkreifixture2",
+    "associated": {
+     "activitySubscription": {
+      "allowSubscriptions": "followers"
+     }
+    },
+    "labels": [],
+    "createdAt": "2024-10-20T21:03:11.112Z",
+    "indexedAt": "2024-10-23T13:04:20.309Z",
+    "description": "Linus Torvalds » everyone else\nSign: Red Canids"
+   },
+   {
+    "did": "did:plc:fixture000000000000000003",
+    "handle": "penguin-notes.fixture-social.example",
+    "displayName": "Linus Torvalds",
+    "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:fixture000000000000000003/bafkreifixture3",
+    "associated": {
+     "activitySubscription": {
+      "allowSubscriptions": "followers"
+     }
+    },
+    "labels": [],
+    "createdAt": "2024-10-20T21:03:11.112Z",
+    "indexedAt": "2024-10-23T13:04:20.309Z",
+    "description": "Parody account. Not the real one.\nKernel jokes daily."
+   },
+   {
+    "did": "did:plc:fixture000000000000000004",
+    "handle": "kernelnews.fixture-social.example",
+    "displayName": "Kernel News",
+    "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:fixture000000000000000004/bafkreifixture4",
+    "associated": {
+     "activitySubscription": {
+      "allowSubscriptions": "followers"
+     }
+    },
+    "labels": [],
+    "createdAt": "2024-10-20T21:03:11.112Z",
+    "indexedAt": "2024-10-23T13:04:20.309Z",
+    "description": "News about the kernel and Linus Torvalds."
+   }
+  ],
+  "cursor": "eyJmaXh0dXJlIjp0cnVlfQ"
+ }
+}

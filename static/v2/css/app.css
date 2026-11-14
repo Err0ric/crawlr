@@ -898,6 +898,15 @@ details.more[open] > summary { margin-bottom: 6px; }
 }
 @media print { #rTimeline::before { content: "Timeline"; display: block; font-weight: 600; font-size: 13pt; margin: 16px 0 8px; } }
 
+/* name qualifiers: three optional boxes under the target, shown for a name (layout only, no new colors) */
+.casebar .qualifiers { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); max-width: 1100px; margin-top: 8px; }
+.casebar .qualifiers[hidden] { display: none; }
+.casebar .qualifiers .field { flex: 1 1 180px; min-width: 0; }
+.casebar .qualifiers .field label { font-size: var(--fs-0); margin-bottom: 4px; }
+.casebar .qualifiers .input { width: 100%; }
+.casebar .qualifiers .hint { flex: 1 1 100%; margin: 0; color: var(--ink-3); font-size: var(--fs-0); }
+.casebar .name-error { max-width: 1100px; margin: 8px 0 0; }
+
 /* purpose field, case files, and the print-only copy of purpose and notes */
 .purpose .hint { color: var(--ink-3); font-size: var(--fs-0); margin: 6px 0 0; }
 .hist-import { display: grid; gap: 8px; justify-items: start; padding-bottom: var(--s-3); margin-bottom: var(--s-3); border-bottom: 1px solid var(--line-soft); }

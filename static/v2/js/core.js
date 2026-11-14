@@ -179,7 +179,8 @@ export function sourceHasResults(d) {
   return !!(d.carrier || d.line_type || d.lookup_links || d.asn || d.grade);
 }
 // Some sources are several lookups in one answer: platform check asks each site, the avatar
-// comparison fetches each image, the hash lookup asks four services, GitHub details has sections.
+// comparison fetches each image, the hash lookup asks four services, GitHub details has sections,
+// the name search asks five directories.
 // When none of them answered, the source failed even though the request succeeded. When only
 // some did, it is partial. Returns null for a source that has no parts.
 //   { answered, total, unit, failedText }
@@ -203,6 +204,12 @@ export function sourceCoverage(d) {
   if (Array.isArray(d.failed_sources) && d.failed_sources.length) {
     const answered = ["malware_bazaar", "circl", "alienvault", "threatfox"].filter((k) => d[k] && typeof d[k] === "object" && (d[k].found === true || d[k].found === false) && !d[k].error && !d[k].error_code).length;
     return { answered, total: answered + d.failed_sources.length, unit: "sources", failedText: `no source could be asked (${d.failed_sources.join(", ")})` };
+  }
+  // The name search asks several directories in one request. One that failed or was rate limited
+  // did not answer: it is unknown, never "nobody by this name".
+  if (Array.isArray(d.candidates) && d.sources && typeof d.sources === "object" && Object.values(d.sources).some((s) => s && typeof s.state === "string")) {
+    const v = Object.values(d.sources).filter((s) => s && typeof s.state === "string");
+    return { answered: v.filter((s) => s.state === "ok" || s.state === "none").length, total: v.length, unit: "directories", failedText: "no directory could be asked" };
   }
   if (d.sections && typeof d.sections === "object" && Object.keys(d.sections).length) {
     const v = Object.values(d.sections);
@@ -285,6 +292,16 @@ const TLDS = new Set(("com org net edu gov mil int io co dev app ai me us uk ca 
   "solutions agency media design studio email zone guru ninja rocks lol wtf gg tv cc ly fm to sh so gl ws la page blog news tools security link run host website tk ml ga cf gq su").split(" "));
 const isDomain = (t) => RE.domain.test(t) && TLDS.has(t.split(".").pop().toLowerCase());
 
+// A person's name of two or more words, as the server's person_name accepts it: letters from any
+// script with hyphens, apostrophes, periods or a middle dot. A word with a dot between two longer
+// parts ("john.smith", "example.com") is a handle or a host, never a name, and a single word stays
+// a username unless the investigator picks Name.
+const NAME_WORD = /^[\p{L}\p{M}'\u2019\u02bc.\u00b7-]+$/u, DOTTED_WORD = /[\p{L}\p{M}\p{N}_]{2,}\.[\p{L}\p{M}\p{N}_]{2,}/u;
+export function looksLikeName(t) {
+  const words = String(t ?? "").trim().split(/\s+/);
+  return words.length > 1 && String(t).trim().length <= 80 && words.every((w) => NAME_WORD.test(w) && /\p{L}/u.test(w) && !w.startsWith("-") && !DOTTED_WORD.test(w));
+}
+
 export function detect(input) {
   const t = String(input ?? "").trim();
   if (!t) return "";
@@ -296,7 +313,7 @@ export function detect(input) {
   if (RE.hash.test(t)) return "hash";
   if (RE.phone.test(t) && t.replace(/\D/g, "").length >= 7 && t.replace(/\D/g, "").length <= 15) return "phone";
   if (isDomain(t)) return "domain";
-  if (RE.name.test(t)) return "name";
+  if (RE.name.test(t) || looksLikeName(t)) return "name";
   return "username";
 }
 export const TYPE_LABEL = { email: "Email", username: "Username", domain: "Domain", ip: "IP address", asn: "ASN", hash: "Hash", phone: "Phone", name: "Name", headers: "Email headers", multi: "Multiple targets" };

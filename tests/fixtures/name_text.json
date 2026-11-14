@@ -1,0 +1,211 @@
+{
+ "_note": "Pairs that modules/name_search.py and static/v2/js/names.js must both produce. tests/test_name_search.py and tests/js/names.test.mjs read this file, so the two implementations cannot drift.",
+ "fold": [
+  [
+   "Linus Torvalds",
+   "linus torvalds"
+  ],
+  [
+   "  LINUS   TORVALDS ",
+   "linus torvalds"
+  ],
+  [
+   "Renée Müller",
+   "renee muller"
+  ],
+  [
+   "Siobhán O’Brien",
+   "siobhan obrien"
+  ],
+  [
+   "Jean-Luc Picard",
+   "jean luc picard"
+  ],
+  [
+   "Straße Łódź",
+   "strasse lodz"
+  ],
+  [
+   "J. R. R. Tolkien",
+   "j r r tolkien"
+  ],
+  [
+   "Gil·les Marti",
+   "gilles marti"
+  ],
+  [
+   "José García",
+   "jose garcia"
+  ],
+  [
+   "Ελένη Παπαδοπούλου",
+   "ελενη παπαδοπουλου"
+  ],
+  [
+   "ΟΔΥΣΣΕΑΣ",
+   "οδυσσεασ"
+  ],
+  [
+   "Лев Толстой",
+   "лев толстои"
+  ],
+  [
+   "Алёна Йорк",
+   "алена иорк"
+  ],
+  [
+   "राम कुमार",
+   "राम कुमार"
+  ],
+  [
+   "रोम कमीर",
+   "रोम कमीर"
+  ],
+  [
+   "सचिन तेंदुलकर",
+   "सचिन तेंदुलकर"
+  ],
+  [
+   "山田 太郎",
+   "山田 太郎"
+  ],
+  [
+   "ながの がく",
+   "ながの がく"
+  ],
+  [
+   "なかの かく",
+   "なかの かく"
+  ],
+  [
+   "パク ジソン",
+   "パク ジソン"
+  ],
+  [
+   "ハク シソン",
+   "ハク シソン"
+  ],
+  [
+   "สมชาย ใจดี",
+   "สมชาย ใจดี"
+  ],
+  [
+   "สมชย จด",
+   "สมชย จด"
+  ],
+  [
+   "محمد صلاح",
+   "محمد صلاح"
+  ],
+  [
+   "مُحَمَّد",
+   "مُحَمَّد"
+  ],
+  [
+   "علی‌رضا کریمی",
+   "علیرضا کریمی"
+  ],
+  [
+   "דוד בן־גוריון",
+   "דוד בן גוריון"
+  ],
+  [
+   "김민준",
+   "김민준"
+  ],
+  [
+   "李小龙",
+   "李小龙"
+  ],
+  [
+   "Nguyễn Văn An",
+   "nguyen van an"
+  ],
+  [
+   "Zoë Example",
+   "zoe example"
+  ],
+  [
+   "O'Brien-Smith Jr.",
+   "obrien smith jr"
+  ],
+  [
+   "Ａｎｎ Ｌｅｅ",
+   "ann lee"
+  ],
+  [
+   "ශ්‍රී ලංකා",
+   "ශ්රී ලංකා"
+  ],
+  [
+   "Æsa Þórsdóttir",
+   "aesa thorsdottir"
+  ],
+  [
+   "Ali   Çelik",
+   "ali celik"
+  ],
+  [
+   "x1 y2",
+   "x1 y2"
+  ],
+  [
+   "<b>Ann</b> & Bob",
+   "b ann b bob"
+  ],
+  [
+   "",
+   ""
+  ]
+ ],
+ "strip_images": [
+  [
+   "A bio with no picture.",
+   "A bio with no picture."
+  ],
+  [
+   "See ![me](https://h.example/a.png) here",
+   "See here"
+  ],
+  [
+   "Photo: https://h.example/a.png, and more",
+   "Photo: , and more"
+  ],
+  [
+   "https://h.example/pic.JPG?size=2.",
+   ""
+  ],
+  [
+   "(https://cdn.example/x/y.webp)",
+   "( )"
+  ],
+  [
+   "Two https://a.example/1.gif https://a.example/2.svg#frag end",
+   "Two end"
+  ],
+  [
+   "Site https://example.org/about stays",
+   "Site https://example.org/about stays"
+  ],
+  [
+   "![alt text](not a url)",
+   ""
+  ],
+  [
+   "Icon https://h.example/favicon.ico!",
+   "Icon !"
+  ],
+  [
+   "https://h.example/a.png",
+   ""
+  ],
+  [
+   "A png file and a.png, mentioned",
+   "A png file and a.png, mentioned"
+  ],
+  [
+   "![](https://h.example/z.avif)tail",
+   "tail"
+  ]
+ ]
+}

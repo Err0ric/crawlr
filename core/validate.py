@@ -9,6 +9,7 @@ here so every module sees the same value.
 
 import ipaddress
 import re
+import unicodedata
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException
@@ -44,6 +45,71 @@ def email(value: str) -> str:
     v = (value or "").strip()
     if len(v) > 254 or not EMAIL_RE.fullmatch(v) or v.startswith("-") or ".." in v:
         raise _bad("Enter a valid email address.")
+    return v
+
+
+# "example.com" and "first.last" are made of name characters but are not names.
+_DOTTED_RE = re.compile(r"\w{2,}\.\w{2,}")
+_NAME_PUNCT = "-'.\u00b7"          # hyphen, apostrophe, period, middle dot (Gil·les)
+PERSON_NAME_MAX = 80
+PERSON_NAME_MAX_MARKS = 4          # combining marks on one base letter; real names use fewer
+PERSON_NAME_MSG = ("Enter a person's name: 2 to 80 characters, letters from any script, with spaces, hyphens, "
+                   "apostrophes, periods or a middle dot. Digits, commas, quotes, @, slashes and web addresses "
+                   "are not accepted.")
+_ZW_JOINERS = "\u200c\u200d"
+# Scripts whose spelling uses the zero width joiner or non-joiner inside a word.
+_JOINER_SCRIPTS = ("ARABIC", "SYRIAC", "DEVANAGARI", "BENGALI", "GURMUKHI", "GUJARATI", "ORIYA", "TAMIL", "TELUGU",
+                   "KANNADA", "MALAYALAM", "SINHALA")
+
+
+def _joiner_script(ch: str) -> bool:
+    return unicodedata.name(ch, "").startswith(_JOINER_SCRIPTS)
+
+
+def _strip_joiners(v: str) -> str:
+    """Keeps a zero width joiner or non-joiner only between two letters or marks of a script
+    that spells with them. Anywhere else it is invisible padding and is dropped."""
+    out = []
+    for i, ch in enumerate(v):
+        if ch in _ZW_JOINERS and not (0 < i < len(v) - 1 and _joiner_script(v[i - 1]) and _joiner_script(v[i + 1])):
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def person_name(value: str) -> str:
+    """A person's name as typed: letters from any script, spaces, hyphens, apostrophes,
+    periods and the middle dot. Returned NFC-normalized, trimmed, with runs of spaces collapsed.
+    Anything that looks like a URL, an email address, a handle or a number is refused. A word
+    that is a search operator in capitals (OR, AND, NOT) is a real name for some people, so it is
+    accepted here and made harmless where a query is built (modules/name_search.py)."""
+    msg = PERSON_NAME_MSG
+    # Trim first: a tab or line break pasted after the name is not part of it. Inside it is refused.
+    v = unicodedata.normalize("NFC", (value or "").strip())
+    v = v.replace("\u2019", "'").replace("\u02bc", "'")
+    if any(unicodedata.category(ch) == "Cc" for ch in v):
+        raise _bad(msg)
+    v = _strip_joiners(v)
+    v = " ".join("".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in v).split())
+    if not 2 <= len(v) <= PERSON_NAME_MAX:
+        raise _bad(msg)
+    # Marks are counted on the decomposed form, so stacking them on a letter that also has a
+    # composed spelling does not get one free.
+    marks = 0
+    for ch in unicodedata.normalize("NFD", v):
+        marks = marks + 1 if unicodedata.category(ch) in ("Mn", "Mc") else 0
+        if marks > PERSON_NAME_MAX_MARKS:
+            raise _bad(msg)
+    for ch in v:
+        # Combining marks are part of the letters in many scripts (Devanagari, Thai, Arabic).
+        mark = unicodedata.category(ch) in ("Mn", "Mc")
+        if not (ch == " " or ch in _NAME_PUNCT or ch in _ZW_JOINERS or ch.isalpha() or mark):
+            raise _bad(msg)
+    if sum(ch.isalpha() for ch in v) < 2:
+        raise _bad(msg)
+    for token in v.split(" "):
+        if token.startswith("-") or not any(ch.isalpha() for ch in token) or _DOTTED_RE.search(token):
+            raise _bad(msg)
     return v
 
 

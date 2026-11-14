@@ -2,6 +2,7 @@
 import { h, raw, esc, link, fmtNum, plural, sourceOutcome } from "./core.js";
 import { breachList, hashView, detectionText, TEST_FILE_TEXT, canonSite } from "./evidence.js";
 import { classifyLink, applyCheck, evidenceUrl, CHECK_TEXT } from "./links.js";
+import { readNameResult, DIRECTORIES, NAME_NOTICE, NAME_SOURCE } from "./names.js";
 import { isAdultRow, adultListHtml, adultCounts, adultCheckText, ADULT_SOURCE } from "./adult.js";
 
 // A profile link in a card carries the same link kind as its ledger row: a URL the source read
@@ -178,10 +179,18 @@ const CARDS = {
     const note = d?.api_error ? d.api_error : noData ? "Add a NumLookup key in Settings for carrier and line type." : "";
     return card("Phone lookup", badge, kv([["Number", h`<span class="mono">${d?.normalized || d?.input}</span>`], ["Carrier", esc(d?.carrier)], ["Line type", esc(d?.line_type)], ["Location", esc([d?.location, d?.country].filter(Boolean).join(", "))], ["Lookups", links]]) + (note ? h`<p style="color:var(--ink-3);font-size:var(--fs-0);margin-top:8px">${note}</p>` : ""));
   },
-  nameSearch: (name) => {
-    const q = encodeURIComponent(name);
-    const sites = [["TruePeopleSearch", `https://www.truepeoplesearch.com/results?name=${q}`], ["FastPeopleSearch", `https://www.fastpeoplesearch.com/name/${q}`], ["Spokeo", `https://www.spokeo.com/${q}`], ["BeenVerified", `https://www.beenverified.com/people/${q}/`], ["WhitePages", `https://www.whitepages.com/name/${q}`], ["LinkedIn", `https://www.linkedin.com/search/results/people/?keywords=${q}`], ["Facebook", `https://www.facebook.com/search/people/?q=${q}`]];
-    return card("People search", tag("manual"), list(sites.map(([n, u]) => li(link(u, n)))) + h`<p style="color:var(--ink-3);font-size:var(--fs-0);margin-top:8px">These open in a new tab. CrawlR does not query people-search sites itself.</p>`);
+  // One line per directory: how many rows it gave, that it had no one, or that it is unknown.
+  // The outbound searches are no longer a card: they are the "Search the web" group in the ledger.
+  nameResult: (d) => {
+    const r = readNameResult(d);
+    if (!r || r.error) return "";
+    const asked = DIRECTORIES.filter((k) => r.sources[k]);
+    const down = asked.filter((k) => r.sources[k].state === "failed" || r.sources[k].state === "rate_limited");
+    const word = (s) => (s.state === "ok" ? `${fmtNum(s.count)} found${s.shown < s.count ? `, ${fmtNum(s.shown)} shown` : ""}${s.total != null && s.total > s.count ? ` (the directory returned ${fmtNum(s.total)})` : ""}`
+      : s.state === "none" ? "answered, no one by this name" : s.state === "rate_limited" ? "unknown: rate limited" : `unknown: ${s.error || "failed"}`);
+    return card(NAME_SOURCE, tag(plural(r.candidates.length, "candidate"), r.candidates.length ? "ok" : "") + (down.length ? " " + tag(`${fmtNum(down.length)} not asked`, "warn") : ""),
+      h`<p class="muted">${NAME_NOTICE}</p>` + kv(asked.map((k) => [k, esc(word(r.sources[k]))]))
+      + h`<p class="muted small">Only rows whose name fits are counted, and the list holds 30 in all, taken from every directory in turn. A directory that could not be asked is unknown, not "nobody by this name". The location, employer and keyword are compared here and never sent to a directory.</p>`);
   },
   reverseImage: (url) => {
     const q = encodeURIComponent(url);
@@ -212,5 +221,5 @@ function githubDeepBody(dp) {
   ]);
 }
 
-const TITLES = { adultCheck: ADULT_SOURCE, linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
+const TITLES = { nameResult: NAME_SOURCE, adultCheck: ADULT_SOURCE, linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
 export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d, extra) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d, extra))]));

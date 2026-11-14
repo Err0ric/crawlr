@@ -5,6 +5,8 @@ import { h, raw, esc, safeUrl, link } from "./core.js";
 import { UNVERIFIED_TEXT, checkText } from "./links.js";
 import { markdown, splitSections, inline } from "./ai.js";
 import { adultListHtml, splitAdultProse, ADULT_SECTION } from "./adult.js";
+import { NAME_NOTICE } from "./names.js";
+import { evWhat } from "./workbench.js";
 
 const SECTION = {
   "case summary": "summary", "identity assessment": "identity", "platform footprint": "footprint",
@@ -131,7 +133,17 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
 
 const TITLE = { identity: "Identity", accounts: "Accounts", leads: "Next moves", exposure: "Exposure and risk", gaps: "Gaps", active: "Active techniques", adult: ADULT_SECTION };
 
-export function reportHtml({ ai, target, items, facts, collected }) {
+// A name case has no dossier: nobody is selected, so there is no name, picture or account grid.
+// The caveat comes first, then what the model wrote, then the candidates as the ledger lists them.
+function nameReport({ ai, items }) {
+  const rows = (tier) => items.filter((i) => i.tier === tier);
+  const sec = (id, title, list) => (list.length ? `<section class="rsec" id="rs-${id}"><h3>${esc(title)} (${list.length})</h3><ul>${list.map((i) => h`<li>${raw(evWhat(i))} <span class="dim small">${i.source}</span></li>`).join("")}</ul></section>` : "");
+  return h`<div class="notice" role="note">${NAME_NOTICE}</div>`
+    + `<div class="report-scroll">${markdown(splitAdultProse(ai.summary).rest)}${sec("notable", "Public figure", rows("notable"))}${sec("people", "People with this name", rows("people"))}</div>`;
+}
+
+export function reportHtml({ ai, target, items, facts, collected, type = "" }) {
+  if (type === "name" || items.some((i) => i.tier === "people" || i.tier === "websearch")) return nameReport({ ai, items });
   // Every account row, with or without a URL: a row with no public page is a tile, not a link.
   const accounts = items.filter((i) => i.key?.startsWith("acct:") && i.tier in RANK);
   // Adult and dating site rows are in the items only when the case had that mode on. They get
