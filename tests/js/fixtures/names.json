@@ -1,0 +1,814 @@
+{
+ "_note": "Name cases. Linus Torvalds and Madonna are the public-figure examples; every other person, login and handle here is invented.",
+ "cases": [
+  {
+   "name": "public figure",
+   "target": "Linus Torvalds",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Linus Torvalds",
+    "nameResult": {
+     "name": "Linus Torvalds",
+     "parsed": {
+      "given": "Linus",
+      "middle": "",
+      "family": "Torvalds",
+      "single_token": false
+     },
+     "candidates": [
+      {
+       "source": "Wikidata",
+       "kind": "public_figure",
+       "name": "Linus Torvalds",
+       "handle": "Q34253",
+       "url": "https://www.wikidata.org/wiki/Q34253",
+       "description": "Finnish software engineer (born 1969)",
+       "location": "",
+       "affiliation": "",
+       "name_match": "exact",
+       "qualifier_hits": []
+      },
+      {
+       "source": "Bluesky",
+       "kind": "account",
+       "name": "Linus Torvalds",
+       "handle": "linus-quotes.bsky.social",
+       "url": "https://bsky.app/profile/linus-quotes.bsky.social",
+       "description": "Unofficial. Quotes from mailing list posts.",
+       "location": "",
+       "affiliation": "",
+       "name_match": "exact",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "torvalds",
+       "url": "https://github.com/torvalds",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "linus-torvalds-fan",
+       "url": "https://github.com/linus-torvalds-fan",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "ltorvalds-notes",
+       "url": "https://github.com/ltorvalds-notes",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "linustorvalds",
+       "url": "https://github.com/linustorvalds",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "torvalds-linus-mirror",
+       "url": "https://github.com/torvalds-linus-mirror",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "linus-t-archive",
+       "url": "https://github.com/linus-t-archive",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "penguin-linus",
+       "url": "https://github.com/penguin-linus",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "lt-kernel-quotes",
+       "url": "https://github.com/lt-kernel-quotes",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      }
+     ],
+     "sources": {
+      "Wikidata": {
+       "state": "ok",
+       "count": 1,
+       "total": 6
+      },
+      "GitHub": {
+       "state": "ok",
+       "count": 8,
+       "total": 13
+      },
+      "ORCID": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "OpenAlex": {
+       "state": "rate_limited",
+       "count": 0,
+       "total": null,
+       "error": "Rate limited by the source. Try again in a few minutes.",
+       "error_code": "rate_limited",
+       "error_detail": "HTTP 403 from api.openalex.org"
+      },
+      "Bluesky": {
+       "state": "ok",
+       "count": 1,
+       "total": null
+      }
+     },
+     "handles": [
+      {
+       "value": "linustorvalds",
+       "pattern": "givenfamily"
+      },
+      {
+       "value": "linus.torvalds",
+       "pattern": "given.family"
+      },
+      {
+       "value": "linus_torvalds",
+       "pattern": "given_family"
+      },
+      {
+       "value": "ltorvalds",
+       "pattern": "gfamily"
+      },
+      {
+       "value": "linust",
+       "pattern": "givenf"
+      },
+      {
+       "value": "torvaldslinus",
+       "pattern": "familygiven"
+      },
+      {
+       "value": "torvalds.linus",
+       "pattern": "family.given"
+      },
+      {
+       "value": "linus-torvalds",
+       "pattern": "given-family"
+      }
+     ],
+     "notable": {
+      "name": "Linus Torvalds",
+      "description": "Finnish software engineer (born 1969)",
+      "url": "https://www.wikidata.org/wiki/Q34253",
+      "wikipedia": "https://en.wikipedia.org/wiki/Linus_Torvalds"
+     },
+     "cached": false
+    }
+   }
+  },
+  {
+   "name": "qualifiers",
+   "target": "Dana Whitfield",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Dana Whitfield",
+    "nameQualifiers": {
+     "location": "Leeds",
+     "employer": "Northgate University",
+     "keyword": "hydrology"
+    },
+    "nameResult": {
+     "name": "Dana Whitfield",
+     "parsed": {
+      "given": "Dana",
+      "middle": "",
+      "family": "Whitfield",
+      "single_token": false
+     },
+     "candidates": [
+      {
+       "source": "OpenAlex",
+       "kind": "researcher",
+       "name": "Dana Whitfield",
+       "handle": "A5000000001",
+       "url": "https://openalex.org/A5000000001",
+       "description": "12 works indexed. Topics: Hydrology, River Catchment Modelling.",
+       "location": "GB",
+       "affiliation": "Northgate University",
+       "name_match": "exact",
+       "qualifier_hits": [
+        "employer",
+        "keyword"
+       ]
+      },
+      {
+       "source": "ORCID",
+       "kind": "researcher",
+       "name": "Dana Whitfield",
+       "handle": "0000-0002-1825-0097",
+       "url": "https://orcid.org/0000-0002-1825-0097",
+       "description": "",
+       "location": "",
+       "affiliation": "Northgate University; Leeds Water Institute",
+       "name_match": "exact",
+       "qualifier_hits": [
+        "location",
+        "employer"
+       ]
+      },
+      {
+       "source": "Bluesky",
+       "kind": "account",
+       "name": "Dana Whitfield",
+       "handle": "dana.example.org",
+       "url": "https://bsky.app/profile/dana.example.org",
+       "description": "Hydrology in Leeds. Rivers, mostly.",
+       "location": "",
+       "affiliation": "",
+       "name_match": "exact",
+       "qualifier_hits": [
+        "location",
+        "keyword"
+       ]
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "danawhitfield",
+       "url": "https://github.com/danawhitfield",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "dwhitfield-maps",
+       "url": "https://github.com/dwhitfield-maps",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "tokens",
+       "qualifier_hits": []
+      },
+      {
+       "source": "Bluesky",
+       "kind": "account",
+       "name": "D. Whitfield",
+       "handle": "danaw.bsky.social",
+       "url": "https://bsky.app/profile/danaw.bsky.social",
+       "description": "Potter. Whitby.",
+       "location": "",
+       "affiliation": "",
+       "name_match": "partial",
+       "qualifier_hits": []
+      }
+     ],
+     "sources": {
+      "Wikidata": {
+       "state": "none",
+       "count": 0,
+       "total": 2
+      },
+      "GitHub": {
+       "state": "ok",
+       "count": 2,
+       "total": 2
+      },
+      "ORCID": {
+       "state": "ok",
+       "count": 1,
+       "total": 1
+      },
+      "OpenAlex": {
+       "state": "ok",
+       "count": 1,
+       "total": 1
+      },
+      "Bluesky": {
+       "state": "ok",
+       "count": 2,
+       "total": null
+      }
+     },
+     "handles": [
+      {
+       "value": "danawhitfield",
+       "pattern": "givenfamily"
+      },
+      {
+       "value": "dana.whitfield",
+       "pattern": "given.family"
+      },
+      {
+       "value": "dana_whitfield",
+       "pattern": "given_family"
+      },
+      {
+       "value": "dwhitfield",
+       "pattern": "gfamily"
+      },
+      {
+       "value": "danaw",
+       "pattern": "givenf"
+      },
+      {
+       "value": "whitfielddana",
+       "pattern": "familygiven"
+      },
+      {
+       "value": "whitfield.dana",
+       "pattern": "family.given"
+      },
+      {
+       "value": "dana-whitfield",
+       "pattern": "given-family"
+      }
+     ],
+     "notable": null,
+     "cached": true
+    }
+   }
+  },
+  {
+   "name": "nobody",
+   "target": "Zed Quillfeather",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Zed Quillfeather",
+    "nameResult": {
+     "name": "Zed Quillfeather",
+     "parsed": {
+      "given": "Zed",
+      "middle": "",
+      "family": "Quillfeather",
+      "single_token": false
+     },
+     "candidates": [],
+     "sources": {
+      "Wikidata": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "GitHub": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "ORCID": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "OpenAlex": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "Bluesky": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      }
+     },
+     "handles": [
+      {
+       "value": "zedquillfeather",
+       "pattern": "givenfamily"
+      },
+      {
+       "value": "zed.quillfeather",
+       "pattern": "given.family"
+      },
+      {
+       "value": "zed_quillfeather",
+       "pattern": "given_family"
+      },
+      {
+       "value": "zquillfeather",
+       "pattern": "gfamily"
+      },
+      {
+       "value": "zedq",
+       "pattern": "givenf"
+      },
+      {
+       "value": "quillfeatherzed",
+       "pattern": "familygiven"
+      },
+      {
+       "value": "quillfeather.zed",
+       "pattern": "family.given"
+      },
+      {
+       "value": "zed-quillfeather",
+       "pattern": "given-family"
+      }
+     ],
+     "notable": null,
+     "cached": false
+    }
+   }
+  },
+  {
+   "name": "some not asked",
+   "target": "Zed Quillfeather",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Zed Quillfeather",
+    "nameResult": {
+     "name": "Zed Quillfeather",
+     "parsed": {
+      "given": "Zed",
+      "middle": "",
+      "family": "Quillfeather",
+      "single_token": false
+     },
+     "candidates": [],
+     "sources": {
+      "Wikidata": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "GitHub": {
+       "state": "rate_limited",
+       "count": 0,
+       "total": null,
+       "error": "Rate limited by the source. Try again in a few minutes.",
+       "error_code": "rate_limited",
+       "error_detail": "HTTP 403 from api.github.com"
+      },
+      "ORCID": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "OpenAlex": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      },
+      "Bluesky": {
+       "state": "failed",
+       "count": 0,
+       "total": null,
+       "error": "The source took too long to answer.",
+       "error_code": "timeout",
+       "error_detail": "ReadTimeout"
+      }
+     },
+     "handles": [
+      {
+       "value": "zedquillfeather",
+       "pattern": "givenfamily"
+      },
+      {
+       "value": "zed.quillfeather",
+       "pattern": "given.family"
+      },
+      {
+       "value": "zed_quillfeather",
+       "pattern": "given_family"
+      },
+      {
+       "value": "zquillfeather",
+       "pattern": "gfamily"
+      },
+      {
+       "value": "zedq",
+       "pattern": "givenf"
+      },
+      {
+       "value": "quillfeatherzed",
+       "pattern": "familygiven"
+      },
+      {
+       "value": "quillfeather.zed",
+       "pattern": "family.given"
+      },
+      {
+       "value": "zed-quillfeather",
+       "pattern": "given-family"
+      }
+     ],
+     "notable": null,
+     "cached": false
+    }
+   }
+  },
+  {
+   "name": "none answered",
+   "target": "Zed Quillfeather",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Zed Quillfeather",
+    "nameResult": {
+     "name": "Zed Quillfeather",
+     "parsed": {
+      "given": "Zed",
+      "middle": "",
+      "family": "Quillfeather",
+      "single_token": false
+     },
+     "candidates": [],
+     "sources": {
+      "Wikidata": {
+       "state": "failed",
+       "count": 0,
+       "total": null,
+       "error": "The source took too long to answer.",
+       "error_code": "timeout",
+       "error_detail": "ReadTimeout"
+      },
+      "GitHub": {
+       "state": "rate_limited",
+       "count": 0,
+       "total": null,
+       "error": "Rate limited by the source. Try again in a few minutes.",
+       "error_code": "rate_limited",
+       "error_detail": "HTTP 403 from api.github.com"
+      },
+      "ORCID": {
+       "state": "failed",
+       "count": 0,
+       "total": null,
+       "error": "The source took too long to answer.",
+       "error_code": "timeout",
+       "error_detail": "ReadTimeout"
+      },
+      "OpenAlex": {
+       "state": "rate_limited",
+       "count": 0,
+       "total": null,
+       "error": "Rate limited by the source. Try again in a few minutes.",
+       "error_code": "rate_limited",
+       "error_detail": "HTTP 403 from api.openalex.org"
+      },
+      "Bluesky": {
+       "state": "failed",
+       "count": 0,
+       "total": null,
+       "error": "The source took too long to answer.",
+       "error_code": "timeout",
+       "error_detail": "ReadTimeout"
+      }
+     },
+     "handles": [
+      {
+       "value": "zedquillfeather",
+       "pattern": "givenfamily"
+      },
+      {
+       "value": "zed.quillfeather",
+       "pattern": "given.family"
+      },
+      {
+       "value": "zed_quillfeather",
+       "pattern": "given_family"
+      },
+      {
+       "value": "zquillfeather",
+       "pattern": "gfamily"
+      },
+      {
+       "value": "zedq",
+       "pattern": "givenf"
+      },
+      {
+       "value": "quillfeatherzed",
+       "pattern": "familygiven"
+      },
+      {
+       "value": "quillfeather.zed",
+       "pattern": "family.given"
+      },
+      {
+       "value": "zed-quillfeather",
+       "pattern": "given-family"
+      }
+     ],
+     "notable": null,
+     "cached": false
+    }
+   }
+  },
+  {
+   "name": "one word",
+   "target": "Madonna",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Madonna",
+    "nameResult": {
+     "name": "Madonna",
+     "parsed": {
+      "given": "Madonna",
+      "middle": "",
+      "family": "",
+      "single_token": true
+     },
+     "candidates": [
+      {
+       "source": "Wikidata",
+       "kind": "public_figure",
+       "name": "Madonna",
+       "handle": "Q1744",
+       "url": "https://www.wikidata.org/wiki/Q1744",
+       "description": "American singer and actress (born 1958)",
+       "location": "",
+       "affiliation": "",
+       "name_match": "exact",
+       "qualifier_hits": []
+      },
+      {
+       "source": "GitHub",
+       "kind": "account",
+       "name": "",
+       "handle": "madonna",
+       "url": "https://github.com/madonna",
+       "description": "",
+       "location": "",
+       "affiliation": "",
+       "name_match": "exact",
+       "qualifier_hits": []
+      }
+     ],
+     "sources": {
+      "Wikidata": {
+       "state": "ok",
+       "count": 1,
+       "total": 40
+      },
+      "GitHub": {
+       "state": "ok",
+       "count": 1,
+       "total": 1
+      },
+      "Bluesky": {
+       "state": "none",
+       "count": 0,
+       "total": 0
+      }
+     },
+     "handles": [
+      {
+       "value": "madonna",
+       "pattern": "name"
+      }
+     ],
+     "notable": {
+      "name": "Madonna",
+      "description": "American singer and actress (born 1958)",
+      "url": "https://www.wikidata.org/wiki/Q1744",
+      "wikipedia": "https://en.wikipedia.org/wiki/Madonna"
+     },
+     "cached": false
+    }
+   }
+  },
+  {
+   "name": "request failed",
+   "target": "Dana Whitfield",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Dana Whitfield",
+    "nameResult": {
+     "error": "Too many requests. Try again in 30 seconds.",
+     "error_code": "rate_limited",
+     "error_detail": ""
+    }
+   }
+  },
+  {
+   "name": "old saved case",
+   "target": "Jordan Example",
+   "type": "name",
+   "collected": {
+    "nameSearch": "Jordan Example"
+   }
+  }
+ ],
+ "githubProfiles": {
+  "torvalds": {
+   "found": true,
+   "username": "torvalds",
+   "name": "Linus Torvalds",
+   "bio": null,
+   "company": "Linux Foundation",
+   "location": "Portland, OR",
+   "email": null,
+   "blog": "",
+   "twitter_username": null,
+   "public_repos": 11,
+   "followers": 290000,
+   "created_at": "2011-09-03T15:26:22Z",
+   "avatar_url": "https://avatars.githubusercontent.com/u/1024025?v=4",
+   "profile_url": "https://github.com/torvalds"
+  },
+  "linus-torvalds-fan": {
+   "found": true,
+   "username": "linus-torvalds-fan",
+   "name": "Kernel Fan Page",
+   "bio": "Not Linus. A fan account.",
+   "company": "",
+   "location": "",
+   "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+   "profile_url": "https://github.com/linus-torvalds-fan"
+  },
+  "ltorvalds-notes": {
+   "found": true,
+   "username": "ltorvalds-notes",
+   "name": "L. Torvalds",
+   "bio": "Notes.",
+   "company": "",
+   "location": "Helsinki",
+   "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4"
+  },
+  "linustorvalds": {
+   "found": true,
+   "username": "linustorvalds",
+   "name": null,
+   "bio": null,
+   "company": null,
+   "location": null,
+   "avatar_url": "https://avatars.githubusercontent.com/u/3?v=4"
+  },
+  "torvalds-linus-mirror": {
+   "found": false
+  },
+  "linus-t-archive": {
+   "error": "GitHub is rate limiting CrawlR.",
+   "error_code": "rate_limited",
+   "error_detail": "403",
+   "found": null
+  },
+  "danawhitfield": {
+   "found": true,
+   "username": "danawhitfield",
+   "name": "Dána Whitfield",
+   "bio": "Hydrology and open data.",
+   "company": "Northgate University",
+   "location": "Leeds, UK",
+   "avatar_url": "https://avatars.githubusercontent.com/u/4?v=4"
+  },
+  "dwhitfield-maps": {
+   "found": true,
+   "username": "dwhitfield-maps",
+   "name": "Derek Whitfield-Jones",
+   "bio": "Maps.",
+   "company": "",
+   "location": "Leeds",
+   "avatar_url": "https://avatars.githubusercontent.com/u/5?v=4"
+  }
+ }
+}

@@ -78,7 +78,7 @@
   <div class="routes">
     <h2 class="mini-h">Where a target goes</h2>
     <div class="route-grid">
-      <a class="route" href="#investigate" data-goto="investigate"><b>Investigate</b><span>People and handles: username, email, phone number, file hash, name.</span></a>
+      <a class="route" href="#investigate" data-goto="investigate"><b>Investigate</b><span>People and handles: username, email, phone number, file hash, name. A name lists the people who share it in five public directories, as candidates to pick from.</span></a>
       <a class="route" href="#recon" data-goto="recon"><b>Recon</b><span>Infrastructure: domain, IP address, ASN.</span></a>
     </div>
     <h2 class="mini-h">Tools that need no target</h2>
@@ -106,6 +106,13 @@
       <button class="btn sources-btn" id="sourcesBtn" type="button" aria-expanded="false" aria-controls="rail">Sources <span class="count" id="sourcesCount"></span></button>
     </div>
     <div class="detected" id="targetDetected" aria-live="polite"></div>
+    <div class="qualifiers" id="nameQualifiers" role="group" aria-label="Details about the person" hidden>
+      <div class="field"><label for="qLocation">Location</label><input class="input" id="qLocation" name="q-place" maxlength="80" aria-describedby="qualHint" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <div class="field"><label for="qEmployer">Employer or school</label><input class="input" id="qEmployer" name="q-org" maxlength="80" aria-describedby="qualHint" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <div class="field"><label for="qKeyword">Keyword</label><input class="input" id="qKeyword" name="q-word" maxlength="80" aria-describedby="qualHint" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
+      <p class="hint" id="qualHint">Optional. Used to rank the people found, not to search for them.</p>
+    </div>
+    <p class="notice err name-error" id="nameError" role="alert" hidden></p>
     <div class="rail" id="rail" hidden>
       <div class="rail-head"><h2 id="sourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
       <p class="rail-note">Sources that apply to this target type. Your choices are remembered.</p>
@@ -148,7 +155,7 @@
       <div class="ledger" id="ledger"></div>
       <div class="empty hero" id="emptyState">
         <h1 class="empty-h">No case open</h1>
-        <p>Type a username, email, phone number, file hash or name above and run. Linked accounts, breaches and extracted facts appear here, ranked.</p>
+        <p>Type a username, email, phone number, file hash or name above and run. Linked accounts, breaches and extracted facts appear here, ranked. A name lists the people who share it as candidates, not as findings about one person.</p>
       </div>
     </div>
     <div id="panelSources" role="tabpanel" aria-labelledby="tabSources" tabindex="-1" class="panel" hidden>

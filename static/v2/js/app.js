@@ -110,12 +110,14 @@ const WILL_RUN = {
   email: "Runs in Investigate: Holehe, breaches, Gravatar and the email's domain.",
   hash: "Runs in Investigate: MalwareBazaar, CIRCL, OTX and ThreatFox.",
   phone: "Runs in Investigate: carrier lookup and search links.",
-  name: "Runs in Investigate: people-search links to open by hand.",
+  name: "Runs in Investigate: lists people with this name from Wikidata, GitHub, ORCID, OpenAlex and Bluesky as candidates to pick from.",
   headers: "Opens the email header analyzer.",
   multi: "One target at a time for now.",
 };
 $("#landingInput").addEventListener("input", (e) => { const t = detect(e.target.value); detectBox.innerHTML = t ? h`<span class="pill ${INVESTIGATE_TYPES.includes(t) || RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t]}</span><span>${WILL_RUN[t] || ""}</span>` : ""; });
-function startInvestigate(v) { $("#targetInput").value = v; typeOverride = ""; onTargetInput(); show("investigate", { focus: false }); run(v).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
+// type: set by a button that knows what its value is, so a suggested handle such as "maria.co"
+// is searched as a username and not opened as a domain.
+function startInvestigate(v, type = "") { $("#targetInput").value = v; typeOverride = INVESTIGATE_TYPES.includes(type) && detect(v) !== type ? type : ""; onTargetInput(); show("investigate", { focus: false }); run(v, typeOverride || undefined).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
 function startRecon(v) { show("recon", { focus: false }); recon.run(v).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
 $("#landingForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -129,7 +131,7 @@ $("#landingForm").addEventListener("submit", (e) => {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-pivot]"); if (!b) return;
   const v = b.dataset.value; if (!v) return;
-  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v); };
+  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v, b.dataset.pivotType || ""); };
   if (state.running || recon.state.running) {
     // A lead button asks before it ends a run in flight; other pivots just say why they wait.
     if (!b.dataset.confirmRun) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
@@ -331,7 +333,7 @@ const USE_HTML = `<div class="terms">
   <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Linked" means a strong signal ties an account to the primary identity. "Exists" means a profile was read, which shows the handle is taken there, not who owns it. "Unverified" means a tool reported it and nothing was read. A source that failed says nothing either way.</p>
   <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
   <p><b>Collect only what your purpose needs.</b> Public does not mean harmless: separate public facts can identify someone once combined. You are responsible for how you use what you find, under the law where you are and where the target is.</p>
-  <p>CrawlR is not a people-search service. Name and phone lookups only open links for you to search by hand.</p>
+  <p><b>A name is not a person.</b> A name search asks five public directories (Wikidata, GitHub, ORCID, OpenAlex and Bluesky) who shares the name and lists them as candidates. It never decides which one you mean, and nothing about a candidate is fetched until you click. CrawlR does not query people-search sites: those links, and the phone lookup links, only open for you to search by hand.</p>
 </div>`;
 function openUse() { openModal({ title: "Acceptable use", wide: true, body: USE_HTML, actions: [{ label: "Close", primary: true, onClick: closeModal }] }); }
 document.addEventListener("click", (e) => { if (e.target.closest("[data-open-use]")) { closeDrawer({ restore: false }); openUse(); } });

@@ -131,6 +131,8 @@ export function patchRow(el, it, doc = globalThis.document) {
   if (was) ((was === "link" && what.querySelector("a.lk")) || box)?.focus({ preventScroll: true });
   return true;
 }
+// A row may carry two buttons: `action` (a pivot, with an optional target type so a handle such
+// as "maria.co" is searched as a username) and `fetch` (a name case: load one GitHub profile).
 // opts.check(tierId): how many of the group's links the link check could look at now. When it is
 // more than none the group header carries a "Check these links" button (see linkcheck.js).
 export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
@@ -155,7 +157,7 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
             <div class="ev ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}">
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
               <div class="what">${raw(evWhat(it))}</div>
-              <span class="src">${it.action ? raw(h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>`) : ""}${it.source}</span>
+              <span class="src">${it.fetch ? raw(h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}" aria-label="${it.fetch.label}: ${it.fetch.login}">${it.fetch.label}</button>`) : ""}${it.action ? raw(h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${it.action.type ? raw(h`data-pivot-type="${it.action.type}"`) : ""} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>`) : ""}${it.source}</span>
             </div>`).join(""))}
           ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
           ${rows.length > limit ? raw(h`<div class="ev-more">${fmtNum(rows.length - limit)} more not shown. Export for the full list.</div>`) : ""}
@@ -256,6 +258,13 @@ export function renderIdentityFacts(el, { views, primary, noPrimary }, factsOf, 
     + none + h`<p class="who-why">${why}${joined}</p>` + box.innerHTML;
   return view.id;
 }
+
+// "What we know" for a name case: nobody is selected, so there are no facts to show.
+export function renderNameKnown(el, { lead, lines }) {
+  el.innerHTML = h`<p class="who-one">${lead}</p>${raw(lines.map((l) => h`<p class="who-why">${l}</p>`).join(""))}`;
+}
+// The notices above a name case: [{ level: "note" | "err", title?, text }].
+export const nameNoticesHtml = (notices) => notices.map((n) => h`<div class="notice ${n.level === "err" ? "err" : ""}" role="note">${n.title ? raw(h`<strong>${n.title}</strong>`) : ""}<span>${n.text}</span></div>`).join("");
 
 // Fact collector with de-duplication on (label, value).
 export function factCollector() {

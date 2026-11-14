@@ -9,6 +9,9 @@
 //                         Maigret without a profile read, a platform check that was blocked)
 //   evidence              where the claim can be checked: a public lookup page for that exact
 //                         record, or the thing the row is about (a host, a link found on a profile)
+//   search                an outbound search the investigator chooses to open (a name case only,
+//                         see names.js). It carries the name on purpose, proves nothing, and is
+//                         never used for a finding, a fact or a lead.
 //   none                  no usable public URL. Rendered as plain text, never as an anchor.
 //
 // An item's link: { url, link_kind, hint?, link_label?, more? }
@@ -17,7 +20,7 @@
 //   more        one further evidence link: { url, label, link_kind: "evidence" }
 //   hint        how to check by hand, for a row that has no public URL
 
-export const LINK_KINDS = ["verified_profile", "templated_unverified", "evidence", "none"];
+export const LINK_KINDS = ["verified_profile", "templated_unverified", "evidence", "search", "none"];
 export const UNVERIFIED_TEXT = "unverified URL";
 
 const lc = (s) => String(s ?? "").trim().toLowerCase();

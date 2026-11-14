@@ -179,7 +179,8 @@ export function sourceHasResults(d) {
   return !!(d.carrier || d.line_type || d.lookup_links || d.asn || d.grade);
 }
 // Some sources are several lookups in one answer: platform check asks each site, the avatar
-// comparison fetches each image, the hash lookup asks four services, GitHub details has sections.
+// comparison fetches each image, the hash lookup asks four services, GitHub details has sections,
+// the name search asks five directories.
 // When none of them answered, the source failed even though the request succeeded. When only
 // some did, it is partial. Returns null for a source that has no parts.
 //   { answered, total, unit, failedText }
@@ -203,6 +204,12 @@ export function sourceCoverage(d) {
   if (Array.isArray(d.failed_sources) && d.failed_sources.length) {
     const answered = ["malware_bazaar", "circl", "alienvault", "threatfox"].filter((k) => d[k] && typeof d[k] === "object" && (d[k].found === true || d[k].found === false) && !d[k].error && !d[k].error_code).length;
     return { answered, total: answered + d.failed_sources.length, unit: "sources", failedText: `no source could be asked (${d.failed_sources.join(", ")})` };
+  }
+  // The name search asks several directories in one request. One that failed or was rate limited
+  // did not answer: it is unknown, never "nobody by this name".
+  if (Array.isArray(d.candidates) && d.sources && typeof d.sources === "object" && Object.values(d.sources).some((s) => s && typeof s.state === "string")) {
+    const v = Object.values(d.sources).filter((s) => s && typeof s.state === "string");
+    return { answered: v.filter((s) => s.state === "ok" || s.state === "none").length, total: v.length, unit: "directories", failedText: "no directory could be asked" };
   }
   if (d.sections && typeof d.sections === "object" && Object.keys(d.sections).length) {
     const v = Object.values(d.sections);
