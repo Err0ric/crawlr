@@ -41,7 +41,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Breaches | Known breaches for an email (XposedOrNot), with date, data classes, record count and a link, newest first | None |
 | GitHub | Profile, repos, linked email. A details lookup adds organisations, top repositories and languages, linked social accounts, README links, key fingerprints and public commit emails. Rate limits are reported as rate limits | None (optional server `GITHUB_TOKEN`) |
 | Gravatar | Profile and avatar for an email | None |
-| Name search | People with a given name on Wikidata (with the Wikipedia link), GitHub, ORCID, OpenAlex and Bluesky, plus usernames such a person might use. Results are candidates to look at, since many people share a name. Text only, no people-search sites | None (optional server `GITHUB_TOKEN`) |
+| Name search | Type a name, with an optional location, employer or keyword that only ranks the answer. CrawlR lists the people with that name on Wikidata (with the Wikipedia link), GitHub, ORCID, OpenAlex and Bluesky as candidates, says how each name fits and which details it matches, and suggests handles such a person might use. Nothing is followed on its own: "Show profile" loads one GitHub profile, "Investigate this" starts a username case for one handle, and the people-search and search engine links only open in a new tab. A directory that could not be asked is shown as unknown. Text only, no pictures | None (optional server `GITHUB_TOKEN`) |
 | Platform check | Instagram, X, Threads, TikTok, Facebook and LinkedIn, decided from what the page says, not from the status code. A site that walls the request is shown as "Blocked by site" | None |
 | Link check | Opens each reported profile URL once to see whether the page really exists, when you open a group. Marks links as checked, not found, blocked by the site or unclear. Can be switched off under Sources | None |
 | Avatar comparison | Fingerprints public profile pictures so two accounts with the same picture can be linked. Placeholder pictures are ignored | None |
@@ -118,6 +118,7 @@ node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
 node tests/js/adult.test.mjs
+node tests/js/names.test.mjs
 ```
 
 ## How it is built

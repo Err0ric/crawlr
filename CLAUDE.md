@@ -31,6 +31,7 @@ node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
 node tests/js/adult.test.mjs
+node tests/js/names.test.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally to match `runtime.txt`.
@@ -61,7 +62,8 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - An account that exists is not an account that belongs to the target. Profiles are grouped by person in `static/v2/js/identity.js`; facts and AI input come from the primary identity only.
 - Leads are followed one hop at a time and only on a click.
 - Adult and dating sites are opt-in per case and never remembered. With the mode off no path may query one: ask `core/adult_sites.py`. Results stay in their own group, text only, with no image of any kind. `core/adult_guard.py` runs before any such request and has no override. Sherlock and Maigret run on the site lists that ship with the installed packages, so the queried set is known; regenerate `static/v2/js/adult-sites.js` when either package is upgraded.
-- Every link gets a kind from `static/v2/js/links.js`. No finding links to a bare homepage, and no third-party URL carries a username or email in its query. `node tests/js/links.test.mjs` enforces both.
+- Every link gets a kind from `static/v2/js/links.js`. No finding links to a bare homepage, and no third-party URL carries a username or email in its query. `node tests/js/links.test.mjs` enforces both. The one exception is the "Search the web" group of a name case: link kind `search`, opened by the investigator, never evidence.
+- A name case holds candidates, not findings (`static/v2/js/names.js`). A candidate never becomes a fact, a cluster member or an avatar to compare, carries no picture, and nothing about it is fetched without a click. `node tests/js/names.test.mjs` enforces this.
 - Tests never use the network. Recorded responses live in `tests/fixtures/` and `tests/js/fixtures/`; use invented names for private people.
 - Do not log target values (usernames, emails, domains) on the server.
 - Bulk DNS work (more than a handful of queries) goes through `core.dnspool.dns_thread`, not `asyncio.to_thread`.
