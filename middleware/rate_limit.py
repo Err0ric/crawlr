@@ -40,6 +40,7 @@ RATE_LIMITS = {
     "/api/recon/github-deep": (10, 60),
     "/api/recon/avatar-hash": (10, 60),
     "/api/recon/platform-check": (10, 60),   # up to 6 page fetches plus canaries per call
+    "/api/recon/adult-check": (10, 60),      # opt-in: up to 7 fetches plus a canary per call, 300 KB each, cached for a day
     "/api/recon/verify-links": (12, 60),     # up to 25 page fetches per call, 300 KB each, cached for a day
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
