@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import validate
+from core import adult_guard, validate
+from modules.adult_check import run_adult_check
 from modules.sherlock import run_sherlock
 from modules.holehe import run_holehe
 from modules.harvester import run_harvester
@@ -26,11 +28,23 @@ SiteList = Field(default=None, max_length=1000)
 
 class SherlockRequest(BaseModel):
     username: str = Short
+    nsfw: bool = False   # adult sites are opt-in
 
 
 class MaigretRequest(BaseModel):
     username: str = Short
     nsfw: bool = False   # adult sites are opt-in
+
+
+class AdultCheckRequest(BaseModel):
+    username: str = Short
+
+
+def _minor_guard(username: str) -> JSONResponse | None:
+    """The 400 every adult or dating path answers with when the handle suggests a minor.
+    Nothing is run and no site is contacted. There is no way to switch this off."""
+    refusal = adult_guard.refusal(username)
+    return JSONResponse(status_code=400, content=refusal) if refusal else None
 
 
 class HoleheRequest(BaseModel):
@@ -58,12 +72,33 @@ def ping():
 
 @router.post("/sherlock")
 async def sherlock_scan(req: SherlockRequest):
-    return await run_sherlock(validate.username(req.username))
+    username = validate.username(req.username)
+    if req.nsfw:
+        blocked = _minor_guard(username)
+        if blocked:
+            return blocked
+    return await run_sherlock(username, nsfw=req.nsfw)
 
 
 @router.post("/maigret")
 async def maigret_scan(req: MaigretRequest):
-    return await run_maigret(validate.username(req.username), nsfw=req.nsfw)
+    username = validate.username(req.username)
+    if req.nsfw:
+        blocked = _minor_guard(username)
+        if blocked:
+            return blocked
+    return await run_maigret(username, nsfw=req.nsfw)
+
+
+@router.post("/adult-check")
+async def adult_check_scan(req: AdultCheckRequest):
+    """Opt-in: verified existence checks on adult and dating sites. Text metadata only.
+    The UI calls this only when the investigator switched the adult mode on."""
+    username = validate.username(req.username)
+    blocked = _minor_guard(username)
+    if blocked:
+        return blocked
+    return await run_adult_check(username)
 
 
 @router.post("/holehe")

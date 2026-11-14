@@ -33,8 +33,9 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 
 | Source | What it does | Key |
 |---|---|---|
-| Sherlock | Username across 400+ sites | None |
-| Maigret | Username across the top 500 sites. Reads profile data where it can, which is what lets an account be compared with the others. Adult and dating sites are off unless you opt in | None |
+| Sherlock | Username across 450+ sites, from the site list that ships with the installed package. Adult and dating sites are left out unless you switch them on for the case | None |
+| Maigret | Username across the top 500 sites. Reads profile data where it can, which is what lets an account be compared with the others. Adult and dating sites are left out unless you switch them on for the case; then a second pass covers every site with those tags | None |
+| Adult site check | Opt-in, per case, never remembered. Existence checks on named adult and dating platforms, decided from page content. Text only: no picture or post is ever loaded. Refused for a handle that suggests a minor | None |
 | Holehe | Which services an email is registered with | None |
 | Domain harvest | Hosts and addresses on an email's domain (crt.sh, CertSpotter, HackerTarget, RapidDNS, urlscan, OTX, Anubis, Wayback) | None |
 | Breaches | Known breaches for an email (XposedOrNot), with date, data classes, record count and a link, newest first | None |
@@ -115,6 +116,7 @@ node tests/js/casefile.test.mjs
 node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
+node tests/js/adult.test.mjs
 ```
 
 ## How it is built

@@ -2,6 +2,7 @@
 import { h, raw, esc, link, fmtNum, plural, sourceOutcome } from "./core.js";
 import { breachList, hashView, detectionText, TEST_FILE_TEXT, canonSite } from "./evidence.js";
 import { classifyLink, applyCheck, evidenceUrl, CHECK_TEXT } from "./links.js";
+import { isAdultRow, adultListHtml, adultCounts, adultCheckText, ADULT_SOURCE } from "./adult.js";
 
 // A profile link in a card carries the same link kind as its ledger row: a URL the source read
 // is solid, a templated one is marked unverified, a homepage is plain text. `checks` is the
@@ -33,7 +34,8 @@ export function errorCard(title, d) {
 const none = (text) => h`<p class="muted">${text}</p>`;
 
 function accountCard(title, data, checks, limit = 8) {
-  const all = data?.results || [];
+  // Adult and dating site rows are never listed here: they have their own group and card.
+  const all = (data?.results || []).filter((r) => !isAdultRow(r));
   const ok = all.filter((r) => r.confidence !== "false_positive");
   const verified = ok.filter((r) => r.verified);
   const rows = ok.slice(0, limit).map((r) => li(h`${raw(profileLink(r.site || r.name, r.url, r.verified ? "verified_profile" : "templated_unverified", data?.username, checks))}${r.verified ? raw(' <span class="tag">profile read</span>') : ""}${r.profile?.name ? h` ${r.profile.name}` : ""}`));
@@ -63,23 +65,32 @@ const CARDS = {
     return card("Holehe", tag(`${fmtNum(rows.length)} registered`, rows.length ? "ok" : ""), rows.length ? list(rows) : h`<p class="muted">Answered, nothing found: no registrations detected.</p>`);
   },
   platformCheck: (d, checks) => {
-    const all = d?.results || [];
+    // An adult site (older cases list OnlyFans as "check by hand") is never part of this card.
+    const all = (d?.results || []).filter((r) => !isAdultRow(r));
     // Only "found" read the page. A blocked or unclear check leaves a templated URL; a page the
     // site says does not exist is not linked at all.
-    const WANT = { found: "verified_profile", not_found: "", blocked: "templated_unverified", unknown: "templated_unverified", manual: "templated_unverified" };
+    const WANT = { found: "verified_profile", not_found: "", blocked: "templated_unverified", unknown: "templated_unverified" };
     const pl = (r, want) => (want ? profileLink(r.platform, r.url, want, d?.username, checks) : esc(r.platform));
     // New shape: each result carries a state and the reason for it.
     if (all.some((r) => r.state)) {
-      const WORD = { found: ["profile read", "ok"], not_found: ["not found", ""], blocked: ["Blocked by site", "warn"], unknown: ["could not tell", ""], manual: ["check by hand", ""] };
+      const WORD = { found: ["profile read", "ok"], not_found: ["not found", ""], blocked: ["Blocked by site", "warn"], unknown: ["could not tell", ""] };
       const n = (st) => all.filter((r) => r.state === st).length;
       const rows = all.map((r) => li(h`${raw(pl(r, WANT[r.state] ?? "templated_unverified"))} <span class="tag ${(WORD[r.state] || ["", ""])[1]}">${(WORD[r.state] || [r.state])[0]}</span>${r.display_name ? ` ${r.display_name}` : ""}${r.evidence ? raw(h`<div class="dim small">${r.evidence}</div>`) : ""}`));
       return card("Platform check", tag(`${fmtNum(n("found"))} read`, n("found") ? "ok" : "") + (n("blocked") ? " " + tag(`${fmtNum(n("blocked"))} blocked`, "warn") : ""),
         (rows.length ? list(rows) : none("No platforms were checked.")) + h`<p class="muted small">"Profile read" means a marker on the page matched, never a bare response. "Blocked by site" means the site refused or walled the check, so it is unknown, not absent.</p>`);
     }
     const found = all.filter((r) => r.found);
-    const manual = all.filter((r) => r.manual);
-    const rows = [...found.map((r) => li(pl(r, "templated_unverified"))), ...manual.map((r) => li(h`${raw(pl(r, "templated_unverified"))} <span class="tag">check by hand</span>`))];
+    const rows = found.map((r) => li(pl(r, "templated_unverified")));
     return card("Platform check", tag(`${fmtNum(found.length)} unverified`), (rows.length ? list(rows) : none("Answered, nothing found: no profile URLs answered.")) + h`<p class="muted small">A profile URL that answers is a weak signal. These sites often answer for any name.</p>`);
+  },
+  // rows: the ledger's adult group (adultRows), so the card and the group say the same thing.
+  // Text and links only: no picture, no favicon, no preview.
+  adultCheck: (d, rows) => {
+    const mine = (rows || []).filter((r) => (r.sources || []).includes(ADULT_SOURCE));
+    const c = adultCounts(mine);
+    return card(ADULT_SOURCE, tag(`${fmtNum(c.read)} read`, c.read ? "ok" : "") + (c.blocked ? " " + tag(`${fmtNum(c.blocked)} blocked`, "warn") : "") + " " + tag("existence only"),
+      h`<p class="muted">${adultCheckText(d)}.</p>` + (mine.length ? adultListHtml(mine) : none("No adult or dating site was checked."))
+      + h`<p class="muted small">"Profile read" means a marker on the page matched. "Blocked by site" and "could not be checked" are unknown, not absent. Nothing here says who owns an account.</p>`);
   },
   hibp: (d) => {
     const b = breachList(d);
@@ -201,5 +212,5 @@ function githubDeepBody(dp) {
   ]);
 }
 
-const TITLES = { linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
+const TITLES = { adultCheck: ADULT_SOURCE, linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
 export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d, extra) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d, extra))]));

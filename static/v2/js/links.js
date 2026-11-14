@@ -218,6 +218,7 @@ export const KNOWN_EVIDENCE = [
   "This link does not name this handle, so it was not checked.",
   "This link is not a plain http or https address, so it was not checked.",
   "CrawlR has checked this site many times in the last minute, so this link was not checked this time.",
+  "Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor.",
   "This site has no public profile page to check.",
   "This link points at the site's homepage, not at a profile.",
 ];
@@ -292,7 +293,7 @@ export function markUnsendable(row) {
 // What the row says about its check, for the screen and for exports.
 export const checkText = (it) => (it?.check && CHECK_TEXT[it.check] ? CHECK_TEXT[it.check] + (it.check_evidence && it.check !== "verified" ? ` (${String(it.check_evidence).replace(/\.$/, "")})` : "") : "");
 // Rows the link check has not looked at yet: templated account links only, sent whole.
-export const pendingChecks = (items, tier) => (items || []).filter((i) => i && i.link_kind === "templated_unverified" && !i.check && /^acct:/.test(i.key || "") && (!tier || i.tier === tier)
+export const pendingChecks = (items, tier) => (items || []).filter((i) => i && i.link_kind === "templated_unverified" && !i.check && !i.no_check && /^acct:/.test(i.key || "") && (!tier || i.tier === tier)
   && String(i.url).length <= MAX_CHECK_URL && String(i.key).length <= MAX_CHECK_ID && !hasPort(i.url) && ((x) => x && !x.username && !x.password)(parseUrl(i.url)))
   .map((i) => ({ id: i.key, site: String(i.what).slice(0, 120), url: String(i.url) }));
 export const batches = (rows, size = CHECK_BATCH) => { const out = []; for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size)); return out; };

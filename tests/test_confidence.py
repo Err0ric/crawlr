@@ -45,6 +45,9 @@ REPORT = {
 }
 
 
+_LAST: dict = {}      # every command line of the last _run_maigret call, under "all"
+
+
 def _run_maigret(monkeypatch, **kwargs):
     seen = {}
 
@@ -54,13 +57,17 @@ def _run_maigret(monkeypatch, **kwargs):
 
     async def fake_exec(*argv, cwd=None, **kw):
         seen["argv"] = list(argv)
+        seen.setdefault("all", []).append(list(argv))
         with open(f"{cwd}/report_jdoe_simple.json", "w") as f:
             json.dump(REPORT, f)
         return Proc()
 
     monkeypatch.setattr(mm, "MAIGRET_AVAILABLE", True)
     monkeypatch.setattr(mm.asyncio, "create_subprocess_exec", fake_exec)
-    return asyncio.run(mm._run_maigret_impl("jdoe", **kwargs)), seen["argv"]
+    out = asyncio.run(mm._run_maigret_impl("jdoe", **kwargs))
+    _LAST.clear()
+    _LAST.update(seen)
+    return out, seen["argv"]
 
 
 def test_maigret_only_marks_hits_with_profile_data_as_verified(monkeypatch):
@@ -79,8 +86,24 @@ def test_adult_sites_are_excluded_by_default(monkeypatch):
     excluded = argv[argv.index("--exclude-tags") + 1].split(",")
     assert {"porn", "erotic", "webcam", "dating"} <= set(excluded)
     assert "--tags" not in argv and "!nsfw" not in argv     # the old filter matched no sites at all
-    _, argv = _run_maigret(monkeypatch, nsfw=True)           # explicit opt-in
-    assert "--exclude-tags" not in argv
+
+
+def test_adult_opt_in_keeps_the_normal_pass_and_adds_a_pass_restricted_to_the_adult_tags(monkeypatch):
+    sensitive = {"porn", "erotic", "webcam", "dating", "nsfw"}
+    _run_maigret(monkeypatch)
+    default_argv = _LAST["all"]
+    assert len(default_argv) == 1                            # no opt-in, one command
+    _run_maigret(monkeypatch, nsfw=True)                     # explicit opt-in
+    normal, adult = _LAST["all"]
+    # the normal pass is the same command, still excluding every adult tag
+    strip = lambda argv: [a for i, a in enumerate(argv) if argv[i - 1] != "--folderoutput"]
+    assert strip(normal) == strip(default_argv[0])
+    assert set(normal[normal.index("--exclude-tags") + 1].split(",")) == sensitive and "--tags" not in normal
+    assert normal[normal.index("--top-sites") + 1] == "500" and "--all-sites" not in normal
+    # the adult pass is the one restricted to those tags, over the whole site list
+    assert set(adult[adult.index("--tags") + 1].split(",")) == sensitive
+    assert "--exclude-tags" not in adult and "--all-sites" in adult and "--top-sites" not in adult
+    assert normal[-2:] == adult[-2:] == ["--", "jdoe"]
 
 
 def test_adult_sites_default_is_off_at_every_layer():
@@ -93,9 +116,12 @@ def test_adult_sites_default_is_off_at_every_layer():
 
 def test_adult_sites_default_is_off_in_the_ui():
     src = open("static/v2/js/investigate.js").read()
-    assert 'label: "include adult and dating sites", on: false' in src
-    assert 'srcState["maigret.nsfw"] === true' in src
-    assert 'srcState["maigret.nsfw"] !== false' not in src
+    # The old Maigret-only extra and its stored preference are gone: the mode is one switch for
+    # one case, held in memory, and nothing reads a stored value.
+    assert "include adult and dating sites" not in src
+    assert 'delete srcState["maigret.nsfw"]' in src
+    assert src.count("maigret.nsfw") == 1
+    assert "nsfw: adult === true" in open("static/v2/js/adult.js").read()
 
 
 # ---- the AI prompt uses the ledger's vocabulary ---------------------------------------
@@ -219,3 +245,70 @@ def test_account_lines_without_link_kinds_add_no_link_note():
         accounts = [AccountEvidence(site="GitHub", url="https://github.com/x", status="linked")]
 
     assert "unverified URL" not in "\n".join(_account_lines(Req()))
+
+
+# ---- adult and dating sites in the prompt ------------------------------------------------
+ADULT_ROWS = [
+    {"site": "Velvet Lounge", "category": "adult", "state": "read", "url_kind": "verified_profile"},
+    {"site": "MatchHarbor", "category": "dating", "state": "reported", "url_kind": "templated_unverified"},
+    {"site": "NightOwl Cams", "category": "adult", "state": "blocked", "url_kind": "templated_unverified"},
+    {"site": "Ember Dating", "category": "dating", "state": "unknown", "url_kind": "templated_unverified"},
+    {"site": "PrivateRoom", "category": "adult", "state": "no_public_url", "url_kind": "none"},
+    {"site": "Rosewater", "category": "adult", "state": "not_found", "url_kind": "none"},
+]
+
+
+def test_prompt_without_adult_sites_never_mentions_them():
+    for body in (
+        {"target": "torvalds", "accounts": [{"site": "GitHub", "url": "https://github.com/torvalds", "status": "linked"}]},
+        {"target": "torvalds", "accounts": [{"site": "GitHub", "status": "linked"}], "adult_sites": None},
+        {"target": "torvalds", "accounts": [{"site": "GitHub", "status": "linked"}], "adult_sites": []},
+        {"target": "jdoe@example.org", "target_type": "email", "hibp": {"breaches": []}},
+        {"target": "torvalds", "active_techniques": True},
+    ):
+        prompt = investigation_prompt(AnalyzeRequest(**body)).lower()
+        assert "adult" not in prompt and "dating" not in prompt and "sexual" not in prompt
+
+
+def test_prompt_with_adult_sites_words_them_as_existence_only():
+    req = AnalyzeRequest(target="jdoe_example", accounts=[{"site": "GitHub", "url": "https://github.com/jdoe_example", "status": "linked"}], adult_sites=ADULT_ROWS)
+    prompt = investigation_prompt(req)
+    rules, data = prompt.split("Collected data:")
+    # the rules
+    assert 'Report them only as "a handle with this name exists on X" or "X could not be checked"' in rules
+    assert "Do not infer or speculate about the person's sexuality, relationships, occupation, habits or character" in rules
+    assert "Do not attribute them to the primary identity unless a strong signal listed under LINKED ties them to it" in rules
+    assert '## Adult and dating sites (existence checks only)' in rules
+    # the data: its own block, grouped by what is known
+    assert "ADULT AND DATING SITES (6), existence checks only" in data
+    assert "A handle with this name exists on: Velvet Lounge (adult site), MatchHarbor (dating site) [reported by a tool, nothing read]" in data
+    assert "Could not be checked (unknown, not absent): NightOwl Cams (adult site), Ember Dating (dating site)" in data
+    assert "No public page to check: PrivateRoom (adult site)" in data
+    assert "No handle with this name on: Rosewater (adult site)" in data
+    # never inside the account groups, and no URL travels with them
+    linked = data.split("LINKED accounts (1)")[1].split("ADULT AND DATING SITES")[0]
+    assert "Velvet" not in linked and "MatchHarbor" not in linked
+    assert data.count("https://") == 1
+
+
+def test_adult_sites_model_carries_no_name_bio_or_url():
+    from routers.analyze import AdultSiteEvidence
+    assert set(AdultSiteEvidence.model_fields) == {"site", "category", "state", "url_kind"}
+    row = AdultSiteEvidence(site="Velvet Lounge", state="read", bio="x", display_name="y", url="https://velvet.example/u")
+    assert not hasattr(row, "bio") and not hasattr(row, "display_name") and not hasattr(row, "url")
+    # an unknown state is worded as unchecked, never as existing
+    data = _data(target="jdoe_example", adult_sites=[{"site": "Velvet Lounge", "state": "something_new"}])
+    assert "Could not be checked (unknown, not absent): Velvet Lounge" in data and "exists on" not in data
+
+
+def test_client_adult_site_list_is_the_servers():
+    """static/v2/js/adult-sites.js is a generated copy of core/adult_sites.py's lists. To refresh it,
+    write sorted(HOSTS) and sorted(NAMES) as the two JSON arrays in that file."""
+    import json
+    import re
+    from core import adult_sites
+    src = open("static/v2/js/adult-sites.js", encoding="utf-8").read()
+    hosts = json.loads(re.search(r"^export const ADULT_SITE_HOSTS = (\[.*\]);$", src, re.M).group(1))
+    names = json.loads(re.search(r"^export const ADULT_SITE_NAMES = (\[.*\]);$", src, re.M).group(1))
+    assert hosts == sorted(adult_sites.HOSTS), sorted(set(hosts) ^ set(adult_sites.HOSTS))
+    assert names == sorted(adult_sites.NAMES), sorted(set(names) ^ set(adult_sites.NAMES))

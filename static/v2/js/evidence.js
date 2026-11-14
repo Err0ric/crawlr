@@ -20,6 +20,9 @@
 //     lead        a handle, address, domain or link found on a profile. Somewhere to look next,
 //                 never a finding about the target.
 //     hosts       hostnames on an email's domain. Inventory, not a finding about the person.
+//     adult       an adult or dating site, only in a case that had that mode on (see adult.js).
+//                 Existence and text only. These rows are built apart from every other account:
+//                 they are never linked, matched, clustered, turned into facts or leads, or counted.
 //     noise       sites known to answer yes to everything, collapsed by default
 //   The link check never moves a row to another tier: it changes what the link is worth.
 //   A source that FAILED contributes nothing here; failures are reported separately so an
@@ -29,8 +32,10 @@
 // A fact: { k, v, source, url?, link_kind }  (name, location, employer…), shown in "What we know".
 // Facts belong to an identity cluster, so one person's name is never shown beside another's.
 
-import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT } from "./links.js";
+import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT, mdLink, mdNote } from "./links.js";
+import { TYPE_LABEL } from "./core.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
+import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultMarkdown, reportForExport, adultHost, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 
@@ -47,10 +52,11 @@ export const canonSite = (s) => { const n = norm(s).replace(/\s*\((?!twitter).*\
 const failed = (d) => !!(d && (d.error || d.error_code));
 const fmtNum = (n) => Number(n ?? 0).toLocaleString("en-US");
 
-export const TIER_ORDER = ["flag", "info", "linked", "matches", "different", "unverified", "lead", "hosts", "noise"];
+export const TIER_ORDER = ["flag", "info", "linked", "matches", "different", "unverified", "adult", "lead", "hosts", "noise"];
 const TIER_RANK = Object.fromEntries(TIER_ORDER.map((t, i) => [t, i]));
-// Leads and host inventory are not findings about the target, so no count includes them.
-export const isFinding = (it) => it.tier !== "lead" && it.tier !== "hosts";
+// Leads and host inventory are not findings about the target, so no count includes them. Adult
+// and dating site rows are existence checks kept apart from the findings, with their own count.
+export const isFinding = (it) => it.tier !== "lead" && it.tier !== "hosts" && it.tier !== "adult";
 const ACCOUNT_TIERS = ["linked", "matches", "different", "unverified"];
 
 // ---- email ---------------------------------------------------------------------------
@@ -66,7 +72,9 @@ const HANDLE_OK = /^[A-Za-z0-9._-]{1,64}$/;
 
 // Which sources run for a target type, in order. Investigate uses this list to run them,
 // so the test of the email flow and the app cannot drift apart.
-export function sourcePlan(type, target) {
+// opts.adult: the case-level switch. The adult site check is planned only for a username whose
+// handle passes the minor guard; with the switch off it is never part of a run.
+export function sourcePlan(type, target, { adult = false } = {}) {
   if (type === "hash") return ["hash"];
   if (type === "phone") return ["phone"];
   if (type === "name") return [];
@@ -75,7 +83,7 @@ export function sourcePlan(type, target) {
     // No Sherlock, Maigret or Platform check: the part before the @ is only a lead.
     return ["holehe", "hibp", "gravatar", ...(isFreeMail(domain) ? [] : ["harvester"]), "hunter"];
   }
-  return ["sherlock", "maigret", "github", "platform"];
+  return ["sherlock", "maigret", "github", "platform", ...(adultOn(type, target, adult) ? ["adult"] : [])];
 }
 
 // ---- breaches ------------------------------------------------------------------------
@@ -130,7 +138,9 @@ export const detectionText = (v) => (v.detection ? `${fmtNum(v.detection.positiv
 
 // ---- profiles ------------------------------------------------------------------------
 // Every profile a source actually read, one per site, with the facts and leads found on it.
-export function collectProfiles(c, target, type = inferType(c, target)) {
+// Rows from adult and dating sites are removed first: they are never profiles.
+export function collectProfiles(collected, target, type = inferType(collected, target)) {
+  const c = withoutAdult(collected);
   const searched = type === "email" ? "" : String(target ?? "").trim().replace(/^@/, "");
   const map = new Map();
   const put = (site, source, p) => {
@@ -295,7 +305,9 @@ function buildLeads(c, target, type, profiles, rel, accountUrls) {
 
 // ---- the ledger ----------------------------------------------------------------------
 export function buildEvidence(collected, target, typeArg) {
-  const c = collected || {};
+  // Everything below reads the case without its adult and dating site rows. Those are built
+  // on their own (adultRows) and only for a case that had the mode on.
+  const c = withoutAdult(collected);
   const type = typeArg || inferType(c, target);
   const person = type === "username" || type === "email";
   const items = [];
@@ -346,7 +358,7 @@ export function buildEvidence(collected, target, typeArg) {
     else if (r.state === "unknown") addAccount(r.platform, { source: "Platform check", url: r.url, kind: "reported", meta: `Could not tell${r.evidence ? ` (${r.evidence})` : ""}` });
     // Old shape: a bare 200 on the profile URL, which these sites often give for any name.
     else if (r.state === undefined && r.found === true) addAccount(r.platform, { source: "Platform check", url: r.url, kind: "reported", meta: "profile URL answered, check by hand" });
-    // not_found adds nothing; "manual" is a link in the source card.
+    // not_found adds nothing.
   }
   const gh = c.github;
   if (gh?.found && !failed(gh)) addAccount("GitHub", { source: "GitHub", url: gh.profile_url, kind: "read" });
@@ -462,6 +474,9 @@ export function buildEvidence(collected, target, typeArg) {
     if (ph.valid === false) add({ tier: "flag", what: "Number reported invalid", url: "", meta: "", source: "NumLookup", key: "phone:invalid" });
   }
 
+  // --- adult and dating sites: their own group, from the unfiltered case -----------------
+  for (const r of adultRows(collected, target, type)) items.push(r);
+
   // --- leads --------------------------------------------------------------------------
   if (person) {
     const urls = new Set([...accounts.values()].map((a) => linkParts(a.srcUrl || a.url)?.key).filter(Boolean));
@@ -506,6 +521,7 @@ export const TIERS = [
   { id: "matches",    title: "Exists (matches)",          cls: "possible",  open: true,  blurb: "A profile was read. Its name fits the primary identity, or it carries no name that conflicts. Consistent is not proven: open the ones that matter." },
   { id: "different",  title: "Exists (different person)", cls: "",          open: false, blurb: "A profile was read, and the name on it conflicts with the primary identity. These are other people who use the same handle." },
   { id: "unverified", title: "Unverified",                cls: "",          open: true,  blurb: "A tool reported the handle and nothing was read, or the site blocked the check. Many sites answer yes to any name. Open and check before relying on one." },
+  { id: "adult",      title: ADULT_GROUP,                 cls: "",          open: false, blurb: `${ADULT_NOTICE} Each row says how it is known. Nothing here is tied to the target, and no picture or post is ever loaded.` },
   { id: "lead",       title: "Leads from profiles",       cls: "",          open: true,  blurb: "Handles, addresses, domains and links found on the profiles above. Each says where it came from. They are places to look next, not findings about this target, and nothing is followed until you click." },
   { id: "hosts",      title: "Hosts on this domain",      cls: "",          open: false, limit: 300, blurb: "Hostnames on the email's domain, from public sources. This is the organisation's inventory. It says nothing about the person." },
   { id: "noise",      title: "Known noisy sites",         cls: "",          open: false, limit: 40, blurb: "Sites that answer yes to any username. Kept for completeness." },
@@ -518,3 +534,52 @@ export const ledgerTiers = (target, type) => TIERS.map((t) => (t.id === "hosts" 
 export const accountsFor = (items) => items.filter((i) => i.key?.startsWith("acct:") && ACCOUNT_TIERS.includes(i.tier))
   .map((i) => ({ site: String(i.what).slice(0, 120), url: i.link_kind === "none" ? "" : String(i.url || "").slice(0, 600), link_kind: i.link_kind || "none", ...(i.check ? { link_check: i.check } : {}), status: i.tier, sources: (i.sources || [i.source]).slice(0, 8).map(String), note: i.tier === "unverified" ? "" : String(i.meta || "").slice(0, 200) }));
 export const tierCounts = (items) => Object.fromEntries(ACCOUNT_TIERS.map((t) => [t, items.filter((i) => i.key?.startsWith("acct:") && i.tier === t).length]));
+
+// Everything the model is told about a case. Sources are sent without their adult and dating
+// site rows. Those travel only as `adult_sites` (site, category, state and link kind: no names,
+// no bios, no URLs), only for a case that had the mode on, and never inside `accounts`.
+export function aiPayloadFor(collected, target, type, { source_status = {}, active = false } = {}) {
+  const c = withoutAdult(collected);
+  const { items } = buildEvidence(collected, target, type);
+  const adult = adultAllowed(collected, target, type);
+  return {
+    target, target_type: type, accounts: accountsFor(items),
+    source_status: adult ? source_status : Object.fromEntries(Object.entries(source_status).filter(([k]) => k !== ADULT_SOURCE)),
+    hash: c.hash || null, phone: c.phone || null, github_deep: c.githubDeep || null,
+    sherlock: c.sherlock || null, maigret: c.maigret || null, holehe: c.holehe || null, harvester: c.harvester || null, hibp: c.hibp || null,
+    gravatar: c.gravatar || null, github: c.github || null, enricher: c.enricher || null, platform_check: c.platformCheck || null,
+    hunter: c.hunter || null, name_search: c.nameSearch ? { name: c.nameSearch } : null, active_techniques: !!active,
+    ...(adult ? { adult_sites: adultForAi(items.filter((i) => i.tier === "adult")) } : {}),
+  };
+}
+
+// The profile pages a Deep Dive may read. Built from the adult-free view, and a URL whose host is
+// on the adult and dating list is left out whatever row it sits on: the scraper refuses those.
+export function deepDiveUrls(collected) {
+  const c = withoutAdult(collected), urls = [];
+  for (const k of ["sherlock", "maigret"]) for (const r of c[k]?.results || []) if (r && r.url && r.confidence !== "false_positive") urls.push({ site: r.site, url: r.url });
+  for (const r of c.platformCheck?.results || []) if (r && r.found && r.url) urls.push({ site: r.platform, url: r.url });
+  const seen = new Set();
+  return urls.filter((u) => /^https?:\/\//i.test(u.url) && !adultHost(u.url) && !seen.has(u.url) && seen.add(u.url)).slice(0, 20);
+}
+
+// The Markdown export of a case. Adult and dating site rows come after every other finding,
+// under their own heading, and only exist for a case that had the mode on.
+export function caseMarkdown({ collected, target, type, ran = 0, tallyLine = "", failed = [], purpose = "", ai = null, deep = null, notes = "", now = new Date() }) {
+  const { items, facts, identity } = buildEvidence(collected, target, type);
+  const main = identity.views.find((v) => v.primary);
+  const others = identity.views.filter((v) => v.named && !v.primary);
+  const adult = items.filter((i) => i.tier === "adult");
+  return [`# CrawlR case: ${target}`, `Generated ${now.toISOString()} · ${TYPE_LABEL[type]}${ran ? ` · collected ${new Date(ran).toISOString()}` : ""}`, tallyLine, "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
+    "> Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts. A link marked (unverified URL) is a site address built from the handle that nothing has checked. A profile that exists is not proof of who owns it, and leads are places to look, not findings.", "",
+    ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a negative result)`), ""] : []),
+    `## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), "",
+    ...(others.length ? ["## Other people using this handle", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
+    ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
+    ...adultMarkdown(adult),
+    // A report's own sections about adult or dating sites are exported only for a case that has such rows.
+    ...(ai ? ["## AI analysis", reportForExport(ai.summary, adult.length > 0), ""] : []),
+    ...(deep ? ["## Deep Dive", reportForExport(deep.summary, false), ""] : []),
+    ...(String(notes).trim() ? ["## Notes", String(notes).trim(), ""] : []),
+  ].join("\n");
+}
