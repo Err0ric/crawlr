@@ -55,7 +55,7 @@ FastAPI (main.py)
 
 | Area | Files |
 |---|---|
-| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py`, `link_verify.py` |
+| Identity | `sherlock.py`, `maigret_mod.py`, `holehe.py`, `github.py`, `gravatar.py`, `hibp.py`, `platform_check.py`, `profile_scraper.py`, `enricher.py`, `hunter.py`, `avatar_hash.py`, `link_verify.py`, `adult_check.py` |
 | Infrastructure | `email_posture.py`, `dns_depth.py`, `takeover.py`, `lookalikes.py`, `wellknown.py`, `crtsh.py`, `dns_lookup.py`, `resolver.py`, `whois_lookup.py`, `ssl_check.py`, `headers_check.py`, `subdomain_enum.py`, `harvester.py`, `asn_lookup.py`, `asn_detail.py`, `port_scan.py`, `internetdb.py`, `shodan_lookup.py`, `wayback.py`, `redirect_chain.py`, `tech_fingerprint.py` |
 | AI | `ai_provider.py`: async Anthropic and Gemini calls, typed `AIError`, response cache keyed per caller |
 
@@ -71,6 +71,8 @@ FastAPI (main.py)
 | `core/ai_call.py` | The one path for AI endpoints: pick key, check cache, check and spend free quota, call, refund on failure |
 | `core/ai_text.py` | Fence stripping and JSON extraction for model output |
 | `core/dnspool.py` | One bounded thread pool for bulk DNS work, so a burst of lookups cannot starve the rest of a run |
+| `core/adult_sites.py` | The one list of adult and dating sites, by name and host. Every path that could reach one asks it: Sherlock and Maigret site selection, link check, profile scrape, avatar comparison |
+| `core/adult_guard.py` | Refuses adult and dating checks for a handle that suggests a minor. No override. Mirrored in `static/v2/js/adult.js`, with a test that fails if the two drift |
 | `core/boilerplate.py` | Recognises platform marketing text ("streams live on Twitch!") so it is never shown as a person's bio |
 | `core/shared_hosting.py` | Tells a shared edge address (Vercel, Cloudflare, Fastly, CloudFront, Netlify, GitHub Pages) from the target's own, so neighbours and edge ports are not read as the target's |
 | `core/house_key.py` | Free AI tier: server-side Gemini key, per-IP daily quotas, global daily cap |
@@ -91,7 +93,7 @@ Every source ends in one of three states, and they are kept apart from the modul
 
 Account evidence is ranked by how it ties to the person, not only by whether the account exists. `identity.js` groups every profile that was read into people: two profiles join on a cross-link, the same profile picture or a shared personal link, or on a name that fits with nothing conflicting. The group holding the authoritative record (GitHub's answer for the handle, Gravatar's for the email) is the primary identity. **Linked** is that record or a profile tied to it by a strong signal. **Exists (matches)** is a read profile whose name fits or that carries no name. **Exists (different person)** is a read profile whose name conflicts. **Unverified** means a tool reported the handle and nothing was read, or the site blocked the check.
 
-Platform check rows carry one of five states: `found`, `not_found`, `blocked`, `unknown`, `manual`. Only a content marker makes a row `found`. Subdomain and takeover checks call a name absent only when two resolvers agree; a lookup that failed is `unknown`.
+Platform check and adult site check rows carry one of five states: `found`, `not_found`, `blocked`, `unknown`, `no_public_url`. Only a content marker makes a row `found`. Subdomain and takeover checks call a name absent only when two resolvers agree; a lookup that failed is `unknown`.
 
 ## AI without a key
 
@@ -122,6 +124,8 @@ Three ways to get a written report, none automatic:
 | `recon.js` | Recon mode for a domain, IP or ASN; loads the self-hosted d3 for the topology tab |
 | `graph.js` | D3 topology graph. Nodes are focusable and emit `crawlr:node` when selected, which Recon turns into a pivot bar |
 | `evidence.js` | Turns module responses into ranked evidence (`flag`, `linked`, `matches`, `different`, `unverified`, `noise`, plus `lead` and `hosts`), facts per identity, and the source plan for each target type. Pure functions, no DOM |
+| `adult.js` | The opt-in adult and dating mode: the in-memory switch, the minor guard, the separate group, and the scrub that removes adult rows from a case that did not have the mode on. Pure functions, no storage |
+| `adult-sites.js` | Generated copy of the server's adult and dating site list, so the page can filter without asking |
 | `links.js` | Gives every link a kind (`verified_profile`, `templated_unverified`, `evidence`, `none`), builds the evidence URLs, and applies link check results. Pure functions, no DOM |
 | `linkcheck.js` | Runs the link check for a ledger group when it is opened or scrolled into view: batches of 25, two in flight, stops on collapse or a new run |
 | `identity.js` | Groups read profiles into people and picks the primary identity. Pure functions, no DOM |
