@@ -84,32 +84,64 @@ export async function refreshQuota() {
   return quota.state;
 }
 export const aiAvailable = () => !!userAiKey() || !!quota.state.house_ai;
+export const freeLeft = (bucket = "analysis") => quota.state.remaining?.[bucket] ?? 0;
+// short: what fits in the top bar at any width. long: the accessible name and tooltip.
 export const aiLabel = () => {
-  if (userAiKey()) return { text: providerName(), cls: "ok" };
+  if (userAiKey()) return { text: providerName(), long: `AI analysis uses your ${providerName()} key. Open settings.`, cls: "ok" };
   if (quota.state.house_ai) {
-    const left = quota.state.remaining?.analysis ?? 0;
-    return { text: `Free AI · ${left} left today`, cls: left > 0 ? "violet" : "warn" };
+    const left = freeLeft();
+    return { text: `Free AI · ${left}`, long: `Free AI: ${left} of ${quota.state.limits?.analysis ?? left} analyses left today. Open settings.`, cls: left > 0 ? "violet" : "warn" };
   }
-  return { text: "AI off", cls: "" };
+  return { text: "AI off", long: "AI analysis is off. Add a key in settings.", cls: "" };
+};
+// What one AI call will cost the user, said before they spend it.
+export const aiCost = (bucket = "analysis") => {
+  if (userAiKey()) return `Uses your ${providerName()} key.`;
+  if (!quota.state.house_ai) return "";
+  const left = freeLeft(bucket), what = bucket === "deepdive" ? "Deep Dive" : "analysis";
+  return left > 0 ? `Uses 1 of your ${left} free ${what} ${left === 1 ? "credit" : "credits"} left today.` : `No free ${what} credits left today. Add your own key in Settings.`;
 };
 
 // ---- API ---------------------------------------------------------------------
+// detail: a short message that is safe to show. raw: technical text for a "details" toggle.
 export class ApiError extends Error {
-  constructor(status, detail) { super(detail || `HTTP ${status}`); this.status = status; this.detail = detail; }
+  constructor(status, detail, { code = "", raw = "" } = {}) { super(detail || `HTTP ${status}`); this.status = status; this.detail = detail; this.code = code; this.raw = raw; }
 }
 
-export async function post(url, body, headers = {}) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
+export async function post(url, body, headers = {}, signal) {
+  let r;
+  try {
+    r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw new ApiError(0, "Cancelled", { code: "cancelled" });
+    throw new ApiError(0, "Could not reach CrawlR. Check your connection and try again.", { code: "network", raw: String(e.message || e) });
+  }
   if (!r.ok) {
-    let detail = r.statusText;
-    try { detail = (await r.json()).detail || detail; } catch {}
-    throw new ApiError(r.status, detail);
+    let j = null;
+    try { j = await r.json(); } catch {}
+    const d = j?.detail;
+    // FastAPI validation errors arrive as a list; never show that to a person.
+    if (r.status === 422 || Array.isArray(d)) throw new ApiError(r.status, "That input isn't valid for this source.", { code: "bad_input", raw: JSON.stringify(d ?? "").slice(0, 400) });
+    if (typeof d === "string" && r.status < 500) throw new ApiError(r.status, d, { code: j.code || "" });
+    if (typeof d === "string" && j.code) throw new ApiError(r.status, d, { code: j.code });
+    throw new ApiError(r.status, "CrawlR hit an error running this. Try again in a moment.", { code: "server", raw: `HTTP ${r.status} ${typeof d === "string" ? d : r.statusText}`.trim() });
   }
   return r.json();
+}
+
+// Outcome of one source, used by the run log, the source cards and the AI prompt.
+// "error" and "not found" are different things and must never be merged.
+export function sourceOutcome(d) {
+  if (!d) return { state: "error", text: "No response" };
+  if (d.error || d.error_code) return { state: "error", text: String(d.message || d.error || "Failed"), detail: String(d.error_detail || ""), code: d.error_code || "" };
+  if (d.skipped) return { state: "skipped", text: String(d.message || "Skipped") };
+  if (d.found === false) return { state: "none", text: "Not found" };
+  return { state: "ok", text: "" };
 }
 
 export function aiHeaders() {
@@ -118,9 +150,9 @@ export function aiHeaders() {
   if (k) hdr["X-Api-Key"] = k;
   return hdr;
 }
-export async function postAi(url, body) {
+export async function postAi(url, body, signal) {
   try {
-    return await post(url, body, aiHeaders());
+    return await post(url, body, aiHeaders(), signal);
   } finally {
     if (!userAiKey()) refreshQuota();
   }
@@ -164,3 +196,28 @@ export function detect(input) {
 export const TYPE_LABEL = { email: "Email", username: "Username", domain: "Domain", ip: "IP address", asn: "ASN", hash: "Hash", phone: "Phone", name: "Name", headers: "Email headers", multi: "Multiple targets" };
 export const INVESTIGATE_TYPES = ["username", "email", "hash", "phone", "name"];
 export const RECON_TYPES = ["domain", "ip", "asn"];
+
+// ---- keyboard helpers -------------------------------------------------------------
+// Roving tabindex for a group of tabs or radios: one tab stop, arrows move, Home/End jump.
+// `select(el)` is called when the user lands on an item.
+export function roving(container, itemSel, select) {
+  const items = () => $$(itemSel, container).filter((el) => !el.disabled);
+  const sync = () => { const all = items(); const cur = all.find((el) => el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-checked") === "true") || all[0]; all.forEach((el) => (el.tabIndex = el === cur ? 0 : -1)); };
+  container.addEventListener("keydown", (e) => {
+    const all = items(); const i = all.indexOf(e.target.closest(itemSel)); if (i < 0) return;
+    const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    const el = all[(next + all.length) % all.length];
+    select(el); sync(); (container.contains(el) ? el : items().find((x) => x.tabIndex === 0))?.focus();
+  });
+  sync();
+  return sync;
+}
+export const fmtAgo = (ts) => { const s = Math.max(0, (Date.now() - ts) / 1000); return s < 90 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
+export function download(name, content, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+export const slug = (s) => String(s).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60) || "case";

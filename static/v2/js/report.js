@@ -51,7 +51,7 @@ function accountTiles(accounts, footprintMd) {
     return h`<a class="tile ${a.tier === "confirmed" ? "c" : "l"}${w ? " key" : ""}" href="${su(a.url) || "#"}" target="_blank" rel="noopener noreferrer" title="${short(a.url)} · ${(a.sources || [a.source]).join(", ")}">${raw(icon(a.what, a.url))}<span class="n">${a.what}</span><span class="s">${w || (a.sources || [a.source]).join(", ")}</span></a>`;
   }).join("");
   const nC = accounts.filter((a) => a.tier === "confirmed").length;
-  return `<div class="grid-legend"><span class="c">Confirmed ${nC}</span><span class="l">Likely ${accounts.length - nC}</span>${why.size ? `<span class="k">Key accounts first</span>` : ""}</div><div class="tiles">${tiles}</div>`
+  return `<div class="grid-legend"><span class="c">Confirmed ${nC}</span><span class="l">Possible ${accounts.length - nC}</span>${why.size ? `<span class="k">Key accounts first</span>` : ""}</div><div class="tiles">${tiles}</div>`
     + (footprintMd ? markdown(notTable(footprintMd)) : "");
 }
 
@@ -89,7 +89,7 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   const fact = (k) => facts.find((f) => f.k === k)?.v || "";
   const name = profile.name || fact("Name");
   const loc = profile.location || fact("Location");
-  const gh = collected.github?.found ? collected.github : null;
+  const gh = collected.github?.found && !collected.github.error ? collected.github : null;
   const avatar = su(gh?.avatar_url || (collected.gravatar?.found && collected.gravatar.avatar_url) || "");
   const since = gh?.created_at ? String(gh.created_at).slice(0, 10) : "";
   const line = [name ? `likely <b>${esc(name)}</b>` : "", loc ? esc(loc) : "", since ? `on GitHub since ${esc(since)}` : ""].filter(Boolean).join(" · ");
@@ -118,7 +118,7 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
 const TITLE = { identity: "Identity", accounts: "Accounts", leads: "Next moves", exposure: "Exposure and risk", gaps: "Gaps", active: "Active techniques" };
 
 export function reportHtml({ ai, target, items, facts, collected }) {
-  const accounts = items.filter((i) => i.url && i.key?.startsWith("acct:") && (i.tier === "confirmed" || i.tier === "likely"));
+  const accounts = items.filter((i) => i.url && i.key?.startsWith("acct:") && (i.tier === "confirmed" || i.tier === "possible"));
   const parts = splitSections(ai.summary);
   if (parts.length < 2) return dossier({ target, profile: ai.profile, facts, accounts, collected }) + `<div class="report-scroll">${markdown(ai.summary)}</div>`;
   const by = {}; const other = [];

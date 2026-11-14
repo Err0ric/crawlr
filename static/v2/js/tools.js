@@ -1,6 +1,9 @@
 // Headers analyzer, dork builder, decoders.
-import { $, $$, h, raw, esc, link, store, toast, post, postAi, aiAvailable, providerName, looksLikeHeaders, fmtNum } from "./core.js";
+import { $, $$, h, raw, esc, link, store, toast, post, postAi, aiAvailable, aiCost, providerName, looksLikeHeaders, fmtNum } from "./core.js";
 import { md5 } from "./md5.js";
+
+const STATES = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["DC","District of Columbia"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
+$("#plateState").insertAdjacentHTML("beforeend", STATES.map(([v, n]) => h`<option value="${v}">${n}</option>`).join(""));
 
 const copy = (text, btn) => navigator.clipboard?.writeText(text).then(() => { if (btn) { const t = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = t), 1400); } else toast("Copied"); });
 
@@ -38,18 +41,18 @@ function renderHeaders(d) {
       <p>${meta.text}</p>
       <div class="chips">${raw(authChip("SPF", a.spf) + authChip("DKIM", a.dkim) + authChip("DMARC", a.dmarc))}</div>
     </div>
-    <div id="hdrAi">${raw(aiAvailable() ? `<button class="btn btn-sm" type="button" id="hdrAiBtn">Ask ${esc(providerName())} for a verdict</button>` : "")}</div>
+    <div id="hdrAi">${raw(aiAvailable() ? `<button class="btn btn-sm" type="button" id="hdrAiBtn">Ask ${esc(providerName())} for a verdict</button> <span class="hint-inline">${esc(aiCost())}</span>` : "")}</div>
     ${anomalies.length ? raw(h`
-      <article class="card"><div class="card-head"><h3>Flags</h3><span class="tag warn">${anomalies.length}</span></div>
+      <article class="card"><div class="card-head"><h2 class="card-title">Flags</h2><span class="tag warn">${anomalies.length}</span></div>
       <div class="card-body flags">${raw([...anomalies].sort((x, y) => (sevOrder[x.severity] ?? 3) - (sevOrder[y.severity] ?? 3)).map((f) => h`<div class="flag ${f.severity}"><span class="sev">${f.severity}</span><span>${f.detail}</span></div>`).join(""))}</div></article>`) : ""}
     <div class="sources-grid">
-      <article class="card"><div class="card-head"><h3>Message</h3></div><div class="card-body"><dl class="kv">${raw(["From", "Reply-To", "Return-Path", "To", "Subject", "Date", "Message-ID", "X-Mailer", "User-Agent"].filter((k) => kh[k]).map((k) => h`<dt>${k}</dt><dd class="${/ID|Path/.test(k) ? "mono" : ""}">${kh[k]}</dd>`).join(""))}</dl></div></article>
-      <article class="card"><div class="card-head"><h3>Sender origin</h3></div><div class="card-body">${raw(d.sender_ip ? h`<dl class="kv"><dt>IP</dt><dd class="mono">${d.sender_ip}</dd>${raw(sender ? h`<dt>Location</dt><dd>${[sender.city, sender.region, sender.country].filter(Boolean).join(", ")}</dd><dt>Network</dt><dd>${[sender.isp, sender.org, sender.asn].filter(Boolean).join(" · ")}</dd>` : "")}</dl>` : `<p style="color:var(--ink-3);font-size:var(--fs-1)">No originating IP in the headers.</p>`)}
+      <article class="card"><div class="card-head"><h2 class="card-title">Message</h2></div><div class="card-body"><dl class="kv">${raw(["From", "Reply-To", "Return-Path", "To", "Subject", "Date", "Message-ID", "X-Mailer", "User-Agent"].filter((k) => kh[k]).map((k) => h`<dt>${k}</dt><dd class="${/ID|Path/.test(k) ? "mono" : ""}">${kh[k]}</dd>`).join(""))}</dl></div></article>
+      <article class="card"><div class="card-head"><h2 class="card-title">Sender origin</h2></div><div class="card-body">${raw(d.sender_ip ? h`<dl class="kv"><dt>IP</dt><dd class="mono">${d.sender_ip}</dd>${raw(sender ? h`<dt>Location</dt><dd>${[sender.city, sender.region, sender.country].filter(Boolean).join(", ")}</dd><dt>Network</dt><dd>${[sender.isp, sender.org, sender.asn].filter(Boolean).join(" · ")}</dd>` : "")}</dl>` : `<p style="color:var(--ink-3);font-size:var(--fs-1)">No originating IP in the headers.</p>`)}
         ${raw(Object.keys(geo).filter((ip) => ip !== d.sender_ip).length ? h`<details style="margin-top:8px;font-size:var(--fs-0)"><summary style="cursor:pointer;color:var(--ink-3)">Other IPs in the chain</summary>${raw(Object.entries(geo).filter(([ip]) => ip !== d.sender_ip).map(([ip, g]) => h`<div><span class="mono">${ip}</span> <span style="color:var(--ink-3)">${[g.city, g.country, g.org].filter(Boolean).join(", ")}</span></div>`).join(""))}</details>` : "")}
       </div></article>
     </div>
     ${hops.length ? raw(h`
-      <article class="card"><div class="card-head"><h3>Route</h3><span class="tag">${hops.length} hops${d.total_delay_seconds != null ? ` · ${fmtDelay(d.total_delay_seconds)} total` : ""}</span></div>
+      <article class="card"><div class="card-head"><h2 class="card-title">Route</h2><span class="tag">${hops.length} hops${d.total_delay_seconds != null ? ` · ${fmtDelay(d.total_delay_seconds)} total` : ""}</span></div>
       <div class="card-body flush"><ol class="hops">${raw(hops.map((x) => h`
         <li><div class="hop-main"><span class="mono">${x.from || "?"}</span> <span style="color:var(--ink-4)">to</span> <span class="mono">${x.by || "?"}</span></div>
         <div class="hop-meta">${[...(x.ips || [])].join(", ")}${x.geo ? ` · ${[x.geo.city, x.geo.country].filter(Boolean).join(", ")}` : ""}${raw(x.delay_seconds != null ? h` <span class="tag ${delayCls(x.delay_seconds)}">${fmtDelay(x.delay_seconds)}</span>` : "")}</div></li>`).join(""))}</ol></div></article>`) : ""}`;
@@ -64,23 +67,23 @@ async function runHeaders() {
     $("#hdrOut").innerHTML = renderHeaders(lastHeaders);
     saveHeaderHistory(text);
   } catch (err) {
-    $("#hdrOut").innerHTML = h`<div class="empty"><h3>Couldn't analyze those headers</h3><p>${err.detail || err.message}</p></div>`;
+    $("#hdrOut").innerHTML = h`<div class="empty"><h2 class="empty-h">Couldn't analyze those headers</h2><p>${err.detail || err.message}</p></div>`;
   } finally { btn.disabled = false; btn.textContent = "Analyze headers"; }
 }
 async function runHeaderAi() {
   const box = $("#hdrAi");
-  box.innerHTML = `<p style="color:var(--ink-3);font-size:var(--fs-1)">Asking ${esc(providerName())}…</p>`;
+  box.innerHTML = `<p class="muted" role="status">Asking ${esc(providerName())}…</p>`;
   try {
     const d = await postAi("/api/analyze/email-headers", { header_analysis: lastHeaders });
     const v = String(d.verdict || "").toUpperCase();
     const cls = v === "LEGITIMATE" ? "ok" : /PHISH|BEC|SPOOF/.test(v) ? "bad" : "warn";
-    box.innerHTML = h`<article class="card"><div class="card-head"><h3>AI verdict</h3><span class="pill ${cls}"><span class="dot"></span>${v.toLowerCase()}</span></div>
+    box.innerHTML = h`<article class="card"><div class="card-head"><h2 class="card-title">AI verdict</h2><span class="pill ${cls}"><span class="dot"></span>${v.toLowerCase()}</span></div>
       <div class="card-body report">${d.summary ? raw(h`<p>${d.summary}</p>`) : ""}
         ${raw((d.reasons || []).length ? h`<h3>Why</h3><ul>${raw(d.reasons.map((r) => h`<li>${r}</li>`).join(""))}</ul>` : "")}
         ${raw((d.next_steps || []).length ? h`<h3>Next steps</h3><ul>${raw(d.next_steps.map((r) => h`<li>${r}</li>`).join(""))}</ul>` : "")}
         <div class="ai-meta">${[d.model, d.tokens ? `${fmtNum(d.tokens)} tokens` : "", d.ai_source === "house" ? "free tier" : ""].filter(Boolean).join(" · ")}</div></div></article>`;
   } catch (err) {
-    box.innerHTML = h`<p style="color:var(--warn);font-size:var(--fs-1)">${err.detail || err.message}</p>`;
+    box.innerHTML = h`<p class="dec-err" role="alert">${err.detail || err.message}</p>`;
   }
 }
 function saveHeaderHistory(text) {
@@ -153,7 +156,7 @@ buildDork();
 // Decoders
 // =====================================================================================
 const out = (id, html) => ($(id).innerHTML = html);
-const result = (text, cls = "") => h`<div class="dec-out ${cls}"><code>${text}</code><button class="btn btn-sm" type="button" data-copy="${text}">Copy</button></div>`;
+const result = (text, cls = "") => h`<div class="dec-out ${cls}"><code>${text}</code><button class="btn btn-sm" type="button" data-copy="${text}" aria-label="Copy result">Copy</button></div>`;
 const err = (text) => h`<p class="dec-err">${text}</p>`;
 
 // base64 (UTF-8 safe both ways)
@@ -199,7 +202,7 @@ $("#plateGo").addEventListener("click", async () => {
     const d = await post("/api/vehicles/plate", { plate, state });
     if (d.error) { out("#plateOut", err(d.error)); return; }
     const rows = [["Year", d.year], ["Make", d.make], ["Model", d.model], ["Trim", d.trim], ["Engine", d.engine], ["VIN", d.vin]].filter(([, v]) => v);
-    out("#plateOut", rows.length ? `<dl class="kv">${rows.map(([k, v]) => h`<dt>${k}</dt><dd class="${k === "VIN" ? "mono" : ""}">${v}</dd>`).join("")}</dl>${d.vin ? `<button class="btn btn-sm" type="button" id="plateToVin" style="margin-top:8px">Decode this VIN</button>` : ""}` : err("No vehicle found for that plate."));
+    out("#plateOut", rows.length ? `<dl class="kv">${rows.map(([k, v]) => h`<dt>${k}</dt><dd class="${k === "VIN" ? "mono" : ""}">${v}</dd>`).join("")}</dl>${d.vin ? `<button class="btn btn-sm mt" type="button" id="plateToVin">Decode this VIN</button>` : ""}` : err("No vehicle found for that plate."));
     if (d.vin) $("#plateToVin").addEventListener("click", () => { $("#vinIn").value = d.vin; $("#vinGo").click(); $("#vinIn").scrollIntoView({ behavior: "smooth", block: "center" }); });
   } catch (e) { out("#plateOut", err(e.detail || e.message)); }
 });

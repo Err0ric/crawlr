@@ -1,39 +1,85 @@
-// Pieces shared by every workbench mode: run log, tiered ledger, facts panel.
-import { h, raw, esc, link, store, fmtNum } from "./core.js";
+// Pieces shared by every workbench mode: run log, tiered ledger, facts panel, run diff.
+import { h, raw, esc, link, store, fmtNum, fmtAgo, plural } from "./core.js";
 
 // ---- run log ------------------------------------------------------------------
+// One row per source. While a run is in flight the strip shows "3 of 7 sources" with a
+// bar and a ticking clock; each row keeps its own timer until it settles. Row states:
+//   run   in flight            done  returned data
+//   none  ran, found nothing   err   failed (never the same thing as "none")
+//   skip  not run / cancelled
+// A polite live region announces each source as it settles, for screen readers.
+let logSeq = 0;
 export function makeLog(el) {
-  const icon = (s) => (s === "run" ? "◌" : s === "done" ? "✓" : s === "err" ? "✕" : "…");
+  const ICON = { run: "◌", done: "✓", none: "–", err: "✕", skip: "○" };
+  const LABEL = { run: "running", done: "done", none: "nothing found", err: "failed", skip: "skipped" };
+  const id = `runlog${++logSeq}`;
+  const live = document.createElement("div");
+  live.className = "sr-only"; live.setAttribute("role", "status"); live.setAttribute("aria-live", "polite");
+  el.after(live);
+  const secs = (t0) => `${((performance.now() - t0) / 1000).toFixed(1)}s`;
+  let timer = null;
+  const rows = () => [...el.querySelectorAll(".lg")];
+  const counts = () => { const all = rows(); return { total: all.length, settled: all.filter((r) => !r.classList.contains("run")).length, failed: all.filter((r) => r.classList.contains("err")).length }; };
+  function paint() {
+    const { total, settled } = counts();
+    const s = el.querySelector(".runlog-summary");
+    if (!s || !log.running) return;
+    s.querySelector(".st").textContent = total ? `Running · ${settled} of ${plural(total, "source")} done` : "Starting";
+    s.querySelector(".t").textContent = secs(log.t0);
+    s.querySelector(".bar i").style.width = `${total ? Math.round((settled / total) * 100) : 0}%`;
+    for (const r of rows()) if (r.classList.contains("run")) r.querySelector(".t").textContent = secs(+r.dataset.t0);
+  }
+  const setOpen = (open) => { el.classList.toggle("collapsed", !open); el.querySelector(".runlog-summary")?.setAttribute("aria-expanded", open); };
   const log = {
-    t0: 0,
+    t0: 0, running: false,
     start() {
-      el.hidden = false; el.classList.remove("collapsed");
-      el.innerHTML = `<div class="runlog-summary"><span>Running</span><span class="spacer"></span><span class="t"></span></div>`;
-      this.t0 = performance.now();
+      el.hidden = false; this.running = true; this.t0 = performance.now();
+      el.innerHTML = `<button type="button" class="runlog-summary" aria-expanded="true" aria-controls="${id}"><span class="st">Starting</span><span class="bar" aria-hidden="true"><i></i></span><span class="t"></span><span class="chev" aria-hidden="true">▾</span></button><div class="runlog-rows" id="${id}"></div>`;
+      setOpen(true);
+      clearInterval(timer); timer = setInterval(paint, 200);
+      live.textContent = "Run started.";
     },
     add(text, status = "run") {
       const r = document.createElement("div");
-      r.className = `lg ${status}`;
-      r.innerHTML = `<span class="ic">${icon(status)}</span><span class="m"></span><span class="t"></span>`;
+      r.className = `lg ${status}`; r.dataset.t0 = performance.now();
+      r.innerHTML = `<span class="ic" aria-hidden="true">${ICON[status]}</span><span class="m"></span><span class="t"></span>`;
       r.querySelector(".m").textContent = text;
-      el.appendChild(r);
+      el.querySelector(".runlog-rows").appendChild(r);
+      paint();
       return r;
     },
-    set(r, text, status) {
+    // detail: raw technical text, tucked behind a "details" toggle on the row.
+    set(r, text, status, detail = "") {
       r.className = `lg ${status}`;
-      r.querySelector(".ic").textContent = icon(status);
-      r.querySelector(".m").textContent = text;
-      r.querySelector(".t").textContent = `${((performance.now() - this.t0) / 1000).toFixed(1)}s`;
+      r.querySelector(".ic").textContent = ICON[status] || "";
+      const m = r.querySelector(".m"); m.textContent = text;
+      if (detail) {
+        const d = document.createElement("details"); d.className = "lg-detail";
+        d.innerHTML = `<summary>details</summary><code></code>`;
+        d.querySelector("code").textContent = detail;
+        m.append(" ", d);
+      }
+      r.querySelector(".t").textContent = secs(+r.dataset.t0);
+      live.textContent = `${text}${status === "err" ? " (failed)" : ""}`;
+      paint();
     },
     finish(summary) {
-      const s = el.querySelector(".runlog-summary");
-      s.firstChild.textContent = summary;
-      s.querySelector(".t").textContent = `${((performance.now() - this.t0) / 1000).toFixed(1)}s`;
-      el.classList.add("collapsed");
+      this.running = false; clearInterval(timer);
+      const s = el.querySelector(".runlog-summary"); if (!s) return;
+      const { failed } = counts();
+      for (const r of rows()) if (r.classList.contains("run")) { r.className = "lg skip"; r.querySelector(".ic").textContent = ICON.skip; }
+      s.querySelector(".st").textContent = summary + (failed ? ` · ${failed} failed` : "");
+      s.classList.toggle("has-err", failed > 0);
+      s.querySelector(".t").textContent = secs(this.t0);
+      s.querySelector(".bar").hidden = true;
+      // Collapse to one line when everything worked; stay open when something failed so it is seen.
+      setOpen(failed > 0);
+      live.textContent = `Run finished. ${summary}${failed ? `, ${failed} failed` : ""}.`;
     },
-    open() { el.classList.remove("collapsed"); },
+    open() { setOpen(true); },
+    statusOf: (r) => Object.keys(LABEL).find((k) => r.classList.contains(k)),
   };
-  el.addEventListener("click", (e) => { if (e.target.closest(".runlog-summary")) el.classList.toggle("collapsed"); });
+  el.addEventListener("click", (e) => { if (e.target.closest(".runlog-summary")) setOpen(el.classList.contains("collapsed")); });
   return log;
 }
 
@@ -49,17 +95,18 @@ export function renderTiers(el, items, tiers, done, emptyHtml) {
     const open = t.collapseOver ? rows.length <= t.collapseOver : t.open;
     // Long tiers (a heavily breached email can have 200+ rows) show the first PREVIEW rows.
     const clip = Math.min(rows.length, limit) > PREVIEW + 5;
+    const bodyId = `tier-${el.id}-${t.id}`;
     return h`
       <section class="tier ${t.cls} ${open ? "" : "collapsed"} ${clip ? "clipped" : ""}" data-tier="${t.id}">
-        <div class="tier-head" role="button" tabindex="0" aria-expanded="${open}">
-          <span class="tier-rail"></span><h3>${t.title}</h3><span class="count">${fmtNum(rows.length)}</span><span class="chev">▾</span>
-        </div>
-        <div class="tier-body">
+        <h2 class="tier-h"><button type="button" class="tier-head" aria-expanded="${open}" aria-controls="${bodyId}">
+          <span class="tier-rail" aria-hidden="true"></span><span class="tier-title">${t.title}</span><span class="count">${fmtNum(rows.length)}</span><span class="chev" aria-hidden="true">▾</span>
+        </button></h2>
+        <div class="tier-body" id="${bodyId}">
           <div class="tier-blurb">${t.blurb}</div>
           ${raw(rows.slice(0, limit).map((it, i) => h`
             <div class="ev ${done.has(it.key) ? "done" : ""} ${i >= PREVIEW ? "ev-extra" : ""}">
-              <input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""} aria-label="Mark reviewed">
-              <div class="what">${raw(it.url ? link(it.url, it.what) : esc(it.what))}${it.meta ? raw(h`<span class="meta">${it.meta}</span>`) : ""}</div>
+              <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
+              <div class="what">${raw(it.url ? link(it.url, it.what) : esc(it.what))}${it.isNew ? raw('<span class="tag violet">new</span>') : ""}${it.meta ? raw(h`<span class="meta">${it.meta}</span>`) : ""}</div>
               <span class="src">${it.source}</span>
             </div>`).join(""))}
           ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
@@ -81,12 +128,9 @@ export function bindLedger(el, storageKey) {
     }
     const head = e.target.closest(".tier-head");
     if (!head) return;
-    const sec = head.parentElement;
+    const sec = head.closest(".tier");
     sec.classList.toggle("collapsed");
     head.setAttribute("aria-expanded", !sec.classList.contains("collapsed"));
-  });
-  el.addEventListener("keydown", (e) => {
-    if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("tier-head")) { e.preventDefault(); e.target.click(); }
   });
   el.addEventListener("change", (e) => {
     const k = e.target.dataset.key;
@@ -99,11 +143,44 @@ export function bindLedger(el, storageKey) {
   });
 }
 
+// ---- failed sources ---------------------------------------------------------------
+// Shown above the findings so a failure is never mistaken for an empty result.
+export function failedNotice(failed) {
+  if (!failed.length) return "";
+  return h`<div class="notice err" role="note">
+    <strong>${plural(failed.length, "source")} could not be checked.</strong>
+    <span>Nothing below says anything about ${failed.length === 1 ? "it" : "them"}: a failed source is unknown, not "not found".</span>
+    <ul>${raw(failed.map((f) => h`<li><b>${f.name}</b> ${f.text}${f.detail ? raw(h` <details class="lg-detail"><summary>details</summary><code>${f.detail}</code></details>`) : ""}</li>`).join(""))}</ul>
+  </div>`;
+}
+
+// ---- changes since the last run of the same target ----------------------------------
+// Compares finding keys with the previous saved case. Purely local and only on a manual
+// re-run: CrawlR does not watch targets in the background.
+export function diffRuns(prevKeys, items) {
+  if (!prevKeys) return null;
+  const before = new Set(prevKeys), now = new Set(items.map((i) => i.key));
+  const added = items.filter((i) => !before.has(i.key));
+  const removed = [...before].filter((k) => !now.has(k));
+  return { added, removed, same: items.length - added.length };
+}
+const keyLabel = (k) => String(k).replace(/^[a-z]+:/, "");
+export function diffNotice(diff, prevTs) {
+  if (!diff) return "";
+  const when = h`<span class="when" title="${new Date(prevTs).toLocaleString()}">compared with your run ${fmtAgo(prevTs)}</span>`;
+  if (!diff.added.length && !diff.removed.length) return h`<div class="notice diff" role="note"><strong>No changes</strong> ${raw(when)}</div>`;
+  const list = (title, arr) => arr.length ? h`<details><summary>${title} (${arr.length})</summary><ul>${raw(arr.slice(0, 60).map((x) => h`<li>${x}</li>`).join(""))}${arr.length > 60 ? raw(h`<li>and ${arr.length - 60} more</li>`) : ""}</ul></details>` : "";
+  return h`<div class="notice diff" role="note">
+    <strong>${diff.added.length} new, ${diff.removed.length} gone, ${diff.same} unchanged</strong> ${raw(when)}
+    ${raw(list("New this run", diff.added.map((i) => i.what)))}${raw(list("No longer reported", diff.removed.map(keyLabel)))}
+  </div>`;
+}
+
 // ---- facts panel -------------------------------------------------------------------
 export function renderFacts(el, facts, emptyText = "No facts extracted yet.") {
   el.innerHTML = facts.length
-    ? facts.map((f) => h`<div class="fact"><span class="k">${f.k}</span><span class="v">${raw(f.url ? link(f.url, f.v) : esc(f.v))}<span class="src">${f.source}</span></span></div>`).join("")
-    : h`<p class="empty" style="padding:0">${emptyText}</p>`;
+    ? `<dl class="facts-list">${facts.map((f) => h`<div class="fact"><dt class="k">${f.k}</dt><dd class="v">${raw(f.url ? link(f.url, f.v) : esc(f.v))}<span class="src">${f.source}</span></dd></div>`).join("")}</dl>`
+    : h`<p class="empty flat">${emptyText}</p>`;
 }
 
 // Fact collector with de-duplication on (label, value).
@@ -128,4 +205,16 @@ export function itemCollector() {
     items.push(it);
   };
   return { items, add };
+}
+
+// ---- print / standalone HTML export --------------------------------------------------
+// The same markup as the screen, with every collapsed section opened, wrapped in a page
+// that carries its own stylesheet. Nothing is uploaded: the file is built in the browser.
+export async function standaloneHtml(title, mainEl, asideEl) {
+  const cssUrl = document.querySelector('link[rel="stylesheet"]').href;
+  let css = "";
+  try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
+  css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
+  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true)); return c.innerHTML; };
+  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Possible" items are leads, not facts.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
 }

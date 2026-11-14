@@ -7,7 +7,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     const colorASN = '#a855f7', colorV4 = '#d97706', colorV6 = '#14b8a6';
     const v4 = (data.prefixes_v4 || []).slice(0, 40);
     const v6 = (data.prefixes_v6 || []).slice(0, 20);
-    const orgLabel = data.org ? `${data.asn} — ${data.org}` : data.asn;
+    const orgLabel = data.org ? `${data.asn} · ${data.org}` : data.asn;
 
     function prefixSize(cidr) {
       const m = cidr.match(/\/(\d+)$/);
@@ -113,7 +113,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
           .attr('fill', _css('--ink-3')).attr('font-family', MONO).attr('font-size', '10px')
           .text(count + ' IPs');
       }
-      ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} — ${count} IPs`))
+      ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} · ${count} IPs`))
         .on('mousemove', (e) => tooltip.style('left', (e.offsetX + 14) + 'px').style('top', (e.offsetY - 10) + 'px'))
         .on('mouseout', () => tooltip.style('display', 'none'));
     });
@@ -155,7 +155,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
           .attr('fill', _css('--ink-3')).attr('font-family', MONO).attr('font-size', '10px')
           .text(count + ' IPs');
       }
-      ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} — ${count} IPs`))
+      ng.on('mouseover', () => tooltip.style('display', 'block').text(`${prefix} · ${count} IPs`))
         .on('mousemove', (e) => tooltip.style('left', (e.offsetX + 14) + 'px').style('top', (e.offsetY - 10) + 'px'))
         .on('mouseout', () => tooltip.style('display', 'none'));
     });
@@ -277,7 +277,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
       }
     }
 
-    if (treeNodes.length <= 1 && subNodes.length === 0) { emptyMsg('No graph data — run a recon scan first'); return; }
+    if (treeNodes.length <= 1 && subNodes.length === 0) { emptyMsg('No graph data · run a recon scan first'); return; }
 
     const rect = container.getBoundingClientRect();
     const W = rect.width || 900;
@@ -464,15 +464,15 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
       ng.on('mouseover', (e) => {
         let info = n.label;
         if (isCf) {
-          info += ' — Cloudflare Proxy - real origin hidden';
+          info += ' · Cloudflare Proxy - real origin hidden';
         } else if (isCfAsn) {
-          info += ' — Cloudflare edge server';
+          info += ' · Cloudflare edge server';
         } else if (n.type === 'ip') {
           const ipAsn = ipAsnMap[n.label];
           if (ipAsn && ipAsn.asn) {
-            info += ` — ${ipAsn.asn} (${ipAsn.org || ''})`;
+            info += ` · ${ipAsn.asn} (${ipAsn.org || ''})`;
           } else if (asnInfo.asn) {
-            info += ` — ${asnInfo.asn} (${asnInfo.org || ''})`;
+            info += ` · ${asnInfo.asn} (${asnInfo.org || ''})`;
           }
         }
         tooltip.style('display', 'block').text(info);
