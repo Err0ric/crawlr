@@ -40,14 +40,17 @@ Dark is the default. Light tokens apply when the system asks for light (`prefers
 | `--violet` | #a78bfa | #6d28d9 | the brand mark, the active mode, the focus ring |
 | `--violet-2` / `--violet-3` | #7c3aed / #6d28d9 | same | the one primary button and its hover |
 | `--flag` (= `--warn`) | #f5a623 | #8a3f03 | flags, caution |
-| `--linked` (= `--ok`) | #4ade80 | #17642b | linked, confirmed, good |
-| `--match` | #22c7dc | #0a5c6b | exists and matches |
+| `--linked` (= `--ok`) | #4ade80 | #2a6a10 | linked, confirmed, good |
+| `--match` | #22c7dc | #075985 | exists and matches |
+| `--plate` | #ece9f5 | #ffffff | the light plate behind a site icon, so a dark icon shows on a dark page |
 | `--different` | #a6a2ba | #555169 | exists, different person |
 | `--unverified` | #9a96b0 | #5f5b74 | reported, nothing read (always with a dashed line) |
 | `--bad` | #f87171 | #b91c1c | a failed source |
 | `--switch-on` | #c7c3d6 | #35324a | a switch that is on |
 
 `--flag-bg`, `--linked-bg` and `--match-bg` are the same colors at low alpha, for pills.
+
+Linked and Matches sit side by side, so the contrast test also holds them at least 40 degrees of hue apart in both themes.
 
 Every text token meets WCAG 2.2 AA (4.5:1) on every surface it sits on, in both themes, including muted text and the tinted pills; every card and tile edge meets 3:1 against the surface beside it. `node tests/js/contrast.test.mjs` enforces this and runs in CI. Add a token there when you add one here.
 
@@ -143,7 +146,8 @@ Results first. Each workbench is:
 - With no case open the summary column is not shown: it has nothing to say, and the empty state gets the page.
 - Under 1180px the summary column drops beneath the results.
 - Under 760px the mode links move to a fixed bottom tab bar, History and Settings become icon buttons, the case bar scrolls with the page, and the sources panel becomes a bottom sheet above the tab bar.
-- Under 760px the summary column is a drawer. The case sheet shows the verdict tiles as a compact row of numbers with a **Case details** button under them, which opens What we know, AI analysis, Purpose and Notes from the top of the screen. It is a real dialog (`openSheet` in `ui.js`): the column itself is moved into the dialog and put back on close, so its fields and their state are the same ones. Focus moves in, Tab is trapped, Escape closes, the page behind is inert and focus returns to the button.
+- Long unbroken strings (a 60 character handle, name or address) wrap inside their box: the case header, tiles, identity header, brief, cards and History entries. Under 360px the tiles go two by two.
+- Under 760px the summary column is a drawer. The case sheet shows the verdict tiles as a compact row of numbers with a **Case details** button under them, which opens What we know, AI analysis, Purpose and Notes from the top of the screen. It is a real dialog (`openSheet` in `ui.js`): the column itself is moved into the dialog and put back on close, so its fields and their state are the same ones. Focus moves in, Tab is trapped, Escape closes, the page behind is inert and does not scroll, and focus returns to the button. A dialog opened from inside the drawer (the prompt to copy by hand, a Deep Dive confirmation) sits over it: the drawer stays open and inert, and focus returns to the control inside it that opened the dialog.
 
 Checked at 375, 390, 768, 1024 and 1440. Nothing scrolls sideways at any of them.
 
@@ -158,14 +162,16 @@ One sheet at the top of a case, in this order.
 | Case | Tiles |
 |---|---|
 | Username | Linked, Exists, Unverified, Leads |
-| Email | Linked, Breaches, Unverified, Leads |
+| Email | Linked, Breaches, Flags or Unverified, Leads. The third tile is Flags when the case has flags that are not breaches, otherwise Unverified |
 | Hash | Verdict, Engines flagging it, Sources answered |
 | Phone | Line type, Carrier, Flags |
 | Name | Candidates, Directories answered, Handles to try, Public figure |
 | Domain | Flags, Open ports, Subdomains, Expiring soon |
 | IP address | Flags, Open ports, Expiring soon |
 
-Three states are never merged on a tile. A count above zero is drawn in its tier color. **Zero** means the sources answered and found nothing: the number is muted and the tile is not a button to anywhere. **Unknown** means a source the count depends on failed and nothing was found: the tile is dashed, says "unknown" and opens By source, where the failure is. A count beside a failed source says "at least". A tile whose source was not run says "not checked".
+Three states are never merged on a tile. A count above zero is drawn in its tier color. **Zero** means every source the count depends on answered in full and found nothing: the number is muted and the tile is not a button to anywhere. **Unknown** means nothing was found and a source the count depends on did not fully answer: it failed, it answered only in part, or it was asked and had not answered when the run was cancelled. The tile is dashed, says "unknown" and opens By source. A count beside such a source is a lower bound: the tile shows "2+", reads "at least 2" to a screen reader and says why underneath. That caveat line is shown at every width; on a phone only the plain description lines are dropped. A tile whose source was not run says "not checked". The sources a cancelled run never heard from are saved with the case (`notAnswered`), so the tiles say the same when it is opened again. No tile is drawn while a run is in flight.
+
+"At a glance" follows the same states: while any source did not fully answer, its count line starts "At least", names those sources and is tagged Note, never Good.
 
 Why not Linked, Breaches, Flags, Leads on every case: breaches are only looked up for an email address and the Flags group of a person case holds nothing but breaches, so on a username case two of the four tiles could never be anything but empty. Each case type gets the four counts that can actually change.
 
@@ -189,11 +195,22 @@ One component, `renderTiers` in `workbench.js`, for every ledger in Investigate 
 - **Evidence line.** Only what a source returned for that profile: the name on it, the location, repo and follower counts, the year it was made, a bio excerpt. `cardSnippet` builds it and never fills anything in. When a profile carries none of these, the card says what kind of check found it ("Profile page read by Maigret. It carries no name, bio or dates." or "Reported by Sherlock. Nothing was read.").
 - **Why here.** The reason the row sits in its group: "GitHub's own record for this handle", "same avatar image", "name does not conflict".
 - **Pill and edge.** The tier word in the tier color, solid or dashed.
+- **After the link check.** A templated URL the link check looked at stays in Unverified, because nothing was read about who owns the page, but the row stops saying that nothing checked it (`rowCertainty` in `present.js`). *Page checked*: the pill reads "Page checked" with a solid neutral line and the card edge turns solid neutral, matching the link, which is now solid. *Page not found*: a greyed, struck pill "Page not found" and a muted solid edge; the row moves to the end of its group. *Blocked by site* and *could not be checked* stay dashed "Unverified", with the reason on the row. The Unverified tile says how many pages were checked ("reported, 3 pages checked").
 - **Source chips.** One per source that named the site.
 
 Account rows are cards. Leads, hosts on a domain, known noisy sites, name candidates and Recon's inventory rows stay compact rows: the same surface and edge, one line, no mark and no pill. Recon's flags carry the Flag pill.
 
-**Pictures.** A profile picture is never loaded from the site that hosts it: that would send the investigator's address to that host. The avatar comparison already fetches each picture on the server, and now returns a 48 pixel grayscale thumbnail with it. Grayscale is deliberate: it is enough to recognise a picture, it reads as a photocopy in a file, and it is a third of the bytes. A placeholder picture gets no thumbnail. Favicons come from the icon service by host name alone. Adult and dating rows and name candidates get no image of any kind: text and an initials badge.
+**Pictures.** A profile picture is never loaded from the site that hosts it: that would send the investigator's address to that host. The avatar comparison already fetches each picture on the server, and now returns a 48 pixel grayscale thumbnail with it. Grayscale is deliberate: it is enough to recognise a picture, it reads as a photocopy in a file, and it is a third of the bytes. A placeholder picture gets no thumbnail. The AI report's header uses the same thumbnail. There is one place in the JS that writes an image element, `mark` in `core.js`, and a test fails if another appears; the HTML export removes any image that is not an embedded thumbnail.
+
+**Site icons.** The only remote image is a site's icon from the icon service, and the rules for it are in `iconDomain` and `mayFavicon` in `present.js`:
+
+- Only account rows get one. Leads, host inventory, Recon rows, name candidates and adult and dating rows never do: they show initials.
+- The icon is asked for by the site's registrable domain, never a subdomain (some sites put the handle there) and never a domain that has the handle as a label.
+- Never for an IP address, a single-label name or an internal name.
+- A case opened from a case file asks for no icon at all until the investigator runs it: its hosts were chosen by whoever made the file.
+- The icon sits on a light plate so a dark icon shows on the dark page, and the initials stay underneath until it has loaded.
+
+**Storage.** Thumbnails are saved with the case in History and in an exported case file, at most 30 per case, each checked by `safeThumb`. When the browser's storage is full they are the first thing dropped: from older runs, then from the run being saved, and only then is the older half of History dropped (`writeHistory`). A case without its thumbnails shows initials.
 
 **Placeholders.** While a run is in flight, the ledger ends with three placeholder rows under a line that names the sources still out, and By source holds one placeholder card per pending source. They have a dashed outline, no tier color, no review box and no numbers, so they cannot be read as results. They are hidden from screen readers, which get the run log's polite live region. They pulse gently, and not at all under `prefers-reduced-motion`.
 
@@ -208,7 +225,7 @@ An empty page is centered: one sentence on what the page does, then example targ
 
 ## History
 
-History shows one entry per target and workbench (`groupHistory`), newest first: the target, the workbench, how many runs, when the last one was, and what changed between the last two runs ("2 new, 0 gone since the run before", from the same finding keys the re-run notice uses). The entry opens the latest run. An entry with more than one run has "Show the N runs", which lists each run with its own open and delete buttons. A single run is deleted from its entry. "From a case file" is marked on the entry and on the run. Grouping is how History is drawn: nothing stored is merged, migrated or removed.
+History shows one entry per target and workbench (`groupHistory`), newest first: the target, the workbench, how many runs, when the last one was, and what changed between the last two runs ("2 new, 0 gone since the run before", from the same finding keys the re-run notice uses). The entry opens the latest run. An entry with more than one run has "Show the N runs", which lists each run with its own open and delete buttons, under a "Delete all N runs" button that asks first. A single run is deleted from its entry. The workbench is named in sentence case (Investigate, Recon, Email headers). "From a case file" is marked on the entry and on the run. Grouping is how History is drawn: nothing stored is merged, migrated or removed.
 
 ## Results
 
@@ -226,6 +243,8 @@ History shows one entry per target and workbench (`groupHistory`), newest first:
 - One count, one function: the case header, the run log summary and the By source tab all read `sourceTally`. Every source that ran has a card, including ones that found nothing or failed.
 - Search and tool inputs opt out of browser and password manager autofill. The key fields in Settings do not. Recon: Flags, Exposed services, Subdomains, Lookalike domains, Unrelated neighbours on a shared address (collapsed). A domain with no MX is "not graded" for email, with the null-mail records shown as a note.
 - **At a glance** sits above the tabs once a run finishes: a few sentences built from rules, each tagged Check, Good or Note. It never appears mid-run, so it never describes half a picture. It states what sources returned and does not guess; where profiles under one handle carry different names it says they may be different people.
+- The topology graph is drawn in neutral ink tones from the tokens. Purple and amber mean the primary action and a flag on a case page, so the graph uses neither; a node says what it is in its own label (A, NS, the host or address), the legend names the kinds, and a Cloudflare address carries a CF badge.
+- The AI report's account tiles and their legend use the ledger's grammar (`rowCertainty`): tier color on the tile's edge, dashed when nothing read the account, and the legend is the same pills.
 - In the topology graph a node is a button. Selecting one shows a bar with what can be done: run recon on it, or open it. One click is one run; nothing expands on its own.
 - Re-running a target shows what is new and what is gone since the last local run. This is manual only; CrawlR does not watch targets.
 

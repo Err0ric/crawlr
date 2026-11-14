@@ -107,6 +107,8 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     if (leads && type !== "email") add("info", `${plural(leads, "lead")} from profiles (handles, addresses, domains, links) ${leads === 1 ? "is" : "are"} listed under the findings. Nothing is followed until you click.`);
     if (unverified.length || read > linked.length) add("info", "Next: open the accounts that matter and tick them off as you check them. The review boxes are saved with the case.");
   }
+  // A run that was cancelled before its sources answered: nothing is known, and that is said.
+  if (incomplete.length && !failed.length && !items.length && (type === "username" || type === "email")) add("info", `${list(incomplete)} did not answer, so nothing is known about this target yet. Run it again.`);
   if (failed.length) add("flag", `${plural(failed.length, "source")} failed (${list(failed.map((f) => f.name))}), so this picture has gaps. Re-run to fill them.`);
   return { rows, actions };
 }

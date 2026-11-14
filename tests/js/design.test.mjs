@@ -253,6 +253,8 @@ const THUMB = extra.avatarHash.results.find((r) => r.thumb).thumb;
     if (/createElement\(["']img["']\)|new Image\(/.test(src)) hits.push(`${f}: creates an image element`);
   }
   ok(hits.length === 2 && hits.every((x) => x.startsWith("core.js: ")) && hits.some((x) => x.includes('class="mark-thumb" src="${esc(img)}"')) && hits.some((x) => x.includes('class="mark-fav" src="https://icons.duckduckgo.com/ip3/${esc(host)}.ico"')), "the only <img> in the JS is the mark helper's checked thumbnail and site icon: " + hits.join(" | "));
+  // The export removes the review boxes, so its rows need their own columns (seen broken once).
+  ok(/\.ev\{grid-template-columns:minmax\(0,1fr\) auto\}\.ev\.rich\{grid-template-columns:32px minmax\(0,1fr\) auto\}/.test(fs.readFileSync(new URL("workbench.js", dir), "utf8")), "the HTML export lays its rows out without the review box column");
   ok(EXPORT_STRIP.includes(".mark img.mark-fav") && EXPORT_STRIP.includes('img:not([src^="data:image/"])') && EXPORT_STRIP.includes(".sk-wrap") && EXPORT_STRIP.includes(".sk-card") && EXPORT_STRIP.includes(".who-switch"), "the HTML export strips site icons, any other remote image, and the placeholders");
 }
 
