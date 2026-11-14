@@ -88,10 +88,10 @@ export function reconBrief({ collected: c, items, failed, type, target }) {
       const sorted = [...byAsn.entries()].sort((x, y) => y[1].hosts.size - x[1].hosts.size);
       const [mainAsn, main] = sorted[0];
       const outliers = sorted.slice(1).filter(([, v]) => v.hosts.size <= 2);
-      if (outliers.length && main.hosts.size >= 3) add("info", `Most hosts sit in ${mainAsn}${main.org ? ` (${main.org})` : ""}. ${plural(outliers.reduce((n, [, v]) => n + v.hosts.size, 0), "host")} sit elsewhere (${list(outliers.map(([a, v]) => `${[...v.hosts][0]} in ${a}`), 3)}), which often means a third-party service or a forgotten server.`);
+      if (outliers.length && main.hosts.size >= 3) add("info", `Most hosts sit in ${mainAsn}${main.org ? ` (${main.org})` : ""}. ${((n) => `${plural(n, "host")} ${n === 1 ? "sits" : "sit"}`)(outliers.reduce((n, [, v]) => n + v.hosts.size, 0))} elsewhere (${list(outliers.map(([a, v]) => `${[...v.hosts][0]} in ${a}`), 3)}), which often means a third-party service or a forgotten server.`);
     }
     const cs = c.subdomains?.ct_summary;
-    if (cs?.not_resolving?.length) add("info", `${plural(cs.not_resolving.length, "name")} in certificate logs no longer resolve${cs.not_resolving.length <= 3 ? ` (${cs.not_resolving.join(", ")})` : ""}. Retired hosts are worth a look in the Wayback Machine.`);
+    if (cs?.not_resolving?.length) add("info", `${plural(cs.not_resolving.length, "name")} in certificate logs no longer resolve${cs.not_resolving.length === 1 ? "s" : ""}${cs.not_resolving.length <= 3 ? ` (${cs.not_resolving.join(", ")})` : ""}. Retired hosts are worth a look in the Wayback Machine.`);
     const la = c.lookalikes;
     if (ok(la) && la.registered) add(la.with_mail ? "flag" : "info", `${plural(la.registered, "lookalike domain")} ${la.registered === 1 ? "is" : "are"} registered${la.with_mail ? `, ${la.with_mail} of them able to receive mail` : ""}. Registered does not mean malicious; check who owns the mail-capable ones first.`);
     const wk = c.wellknown;

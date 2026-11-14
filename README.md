@@ -24,7 +24,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Mode | Input | What you get |
 |---|---|---|
 | **Investigate** | Username, email, name, phone, hash | Accounts, breaches, profiles and facts ranked into flags, confirmed, possible and known noisy sites. A source that fails is shown as failed, never as "not found". AI report on request |
-| **Recon** | Domain, IP or ASN | DNS, WHOIS, TLS, header grade, subdomains, ASN and prefixes, exposure data, topology graph, optional top-20 port check |
+| **Recon** | Domain, IP or ASN | DNS, WHOIS, TLS, header grade, subdomains, email spoofing check, takeover candidates, lookalike domains, certificate history, ASN and prefixes, exposure data, a topology graph you can pivot from, optional top-20 port check |
 | **Headers** | Raw email headers | SPF, DKIM and DMARC results, hop-by-hop route with delays, sender origin, spoofing and phishing flags, verdict |
 | **Dorks** | Name, username, email, location, employer, keywords | A Google dork built live, with site filters; open it or copy it |
 | **Decoders** | Text | Base64, URL encoding, string hashing, VIN decode (NHTSA), US plate lookup |
@@ -45,7 +45,8 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Hash lookup | MalwareBazaar, CIRCL, AlienVault OTX, ThreatFox | None |
 | Phone lookup | Number normalization, carrier info, people-search links | Optional Numlookup key |
 | Hunter.io | Email addresses and patterns for a domain | Your key |
-| AI analysis and deep dive | Investigation report: identity, accounts, exposure, next moves. Runs only when you ask, and shows what it costs first | Free tier or your key |
+| At a glance | A short written brief built from rules, with no AI: what stands out, what is uncertain, what failed | None |
+| AI analysis and deep dive | Investigation report: identity, accounts, exposure, next moves. Runs only when you ask, and shows what it costs first | Free tier, your key, or no key at all (copy the prompt into an assistant you already use) |
 
 ### Recon sources
 
@@ -56,16 +57,23 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | TLS | Issuer, SANs, expiry | None |
 | HTTP headers | Server info and a security-header grade | None |
 | Subdomains | DNS plus certificate transparency | None |
+| Email security | SPF, DMARC, DKIM selectors, MTA-STS, TLS-RPT, BIMI, with a grade and a plain answer to "can this domain be spoofed?" | None |
+| DNS hardening | CAA, DNSSEC, wildcard DNS, reverse DNS | None |
+| Takeover candidates | Subdomains whose CNAME points at a claimable cloud service, split into dangling and pointing. DNS only | None |
+| Lookalike domains | Registered typo, lookalike-character and TLD variants, mail-capable ones first. DNS only | None |
+| Certificate history | Issuance timeline, issuers, and certified names that no longer resolve | None |
+| Published files | security.txt, robots.txt paths worth a look, favicon hash for Shodan pivots | None |
 | ASN / BGP | IP to ASN, org, prefixes (RIPE, ARIN RDAP) | None |
 | Port check | Top 20 TCP ports (active technique, off by default) | None |
 | InternetDB | Open ports, CVEs, hostnames (Shodan InternetDB) | None |
 | Shodan | Banners, org, geo | Your key |
-| Wayback, redirects, tech fingerprint | History, redirect chain, detected stack | None |
-| AI summary | Attack-surface summary and next steps | Free tier or your key |
+| Wayback, redirects, tech fingerprint | History, archived paths worth a look, redirect chain, detected stack | None |
+| At a glance | Rules-based brief of the run, no AI | None |
+| AI summary | Attack-surface summary and next steps | Free tier, your key, or no key (copy the prompt) |
 
 ## Free tier and your own keys
 
-Every non-AI source runs with no key. AI is opt-in per case: nothing is sent to a model until you press Analyze. Without your own key it runs on a shared Gemini key with a small daily allowance per visitor, and a cached answer or an identical re-run does not use a credit. Add your own key in Settings for unlimited AI (Claude or Gemini) and the Hunter and Shodan sources.
+Every non-AI source runs with no key, and every case gets a written "At a glance" brief that uses no AI at all. AI is opt-in per case: nothing is sent to a model until you press Analyze. Without your own key it runs on a shared Gemini key with a small daily allowance per visitor, and a cached answer or an identical re-run does not use a credit. Add your own key in Settings for unlimited AI (Claude or Gemini) and the Hunter and Shodan sources.
 
 | | Free | With your key |
 |---|---|---|
@@ -73,6 +81,8 @@ Every non-AI source runs with no key. AI is opt-in per case: nothing is sent to 
 | AI analysis | 5 per day | Unlimited |
 | Deep dive | 1 per day | Unlimited |
 | AI provider | Gemini Flash | Claude or Gemini |
+
+**No key at all:** press **Copy prompt** in the AI panel and paste it into Claude, ChatGPT, Gemini or any assistant you already use. Paste the reply back and CrawlR formats it as the same report. Nothing is sent to a model by CrawlR, and no credit is used.
 
 **How keys are handled:** keys stay in your browser's `localStorage`. They are sent with each request to the CrawlR server, which passes them straight to the matching provider. CrawlR does not store them. Use a key with a spending limit.
 
@@ -96,6 +106,7 @@ pip install pytest && pytest -q
 for f in static/v2/js/*.js; do node --check "$f"; done
 node tests/js/detect.test.mjs
 node tests/js/contrast.test.mjs
+node tests/js/brief.test.mjs
 ```
 
 ## How it is built
@@ -121,9 +132,9 @@ Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
 Ranked proposals with sources are in [docs/research.md](docs/research.md). Next candidates:
 
-- Graph pivots: click a node to run it
 - Per-source reliability labels
-- Certificate detail, with one shared crt.sh query per run
+- Client-side correlation rules beyond the current brief
+- A timeline view for domain cases
 - Portable case files (export on one machine, open read-only on another)
 - Case mode for Trace Labs competitions
 

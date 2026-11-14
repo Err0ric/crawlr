@@ -107,4 +107,7 @@ def test_page_loads_nothing_from_third_party_origins(c):
 
 
 def test_ci_compiles_core():
-    assert "compileall -q main.py routers modules middleware core" in open(".github/workflows/ci.yml").read()
+    ci = open(".github/workflows/ci.yml").read()
+    assert "compileall -q main.py routers modules middleware core" in ci
+    for t in ("detect", "contrast", "brief"):
+        assert f"node tests/js/{t}.test.mjs" in ci
