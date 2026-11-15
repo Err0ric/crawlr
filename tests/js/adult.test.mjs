@@ -1,8 +1,9 @@
-// Adult and dating site coverage: an opt-in for one case, existence and text only.
+// Adult and dating site coverage: an opt-in for the page session, existence and text only.
 // Checks the source plan and request bodies both ways, the separate ledger group, that its rows
 // never reach clustering, facts, leads, the avatar list, the account counts or `accounts`, the
 // exports and the AI payload both ways, that nothing ever renders an image, the minor guard and
-// its drift from core/adult_guard.py, and that the switch is never stored. No browser, no network.
+// its drift from core/adult_guard.py, and that the switch is never stored. The switch itself is a
+// session mode: see modes.test.mjs. No browser, no network.
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document = { addEventListener() {} };   // ai.js and report.js register delegated listeners on import
@@ -344,41 +345,48 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(/ADULT_AGE = 18\b/.test(py) && /^MIN_PLAIN_AGE = 6\b/m.test(py) && /^CLASS_AHEAD = 15\b/m.test(py) && /CLASS_AHEAD = 15\b/.test(read(J + "adult.js")) && /MIN_PLAIN_AGE = 6\b/.test(read(J + "adult.js")) && /_LETTER_MIN_AGE = 8\b/.test(py) && /str\.maketrans\("013457", "oieast"\)/.test(py) && /str\.maketrans\("013457", "oleast"\)/.test(py) && /ERROR_CODE = "minor_guard"/.test(py), "and so are the age limits, the digit readings and the error code");
 }
 
-// ---- 10. the switch: off by default, never stored, reset per case ---------------------------------
+// ---- 10. the switch: off on every page load, never stored, on for the page session ------------------
+// The switch is a session mode now (static/v2/js/modes.js, tested in full by modes.test.mjs). What
+// this suite still pins is the adult side of it: off by default, never stored, the minor guard
+// with no override, the server's refusal, and that the run uses the tested plan and bodies.
 {
   const before = writes.length;
-  const sw = A.makeAdultSwitch();
-  const v0 = sw.view(T, "username");
-  ok(v0.show && v0.on === false && v0.disabled === false && v0.reason === "", "off by default, whatever an old stored preference says");
-  ok(sw.set(true, T, "username").on === true && sw.view(T, "username").on === true, "on for this handle, and it stays on for that case's re-runs");
-  ok(sw.view("@JDoe_Example ", "username").on === true, "the same handle written another way is the same case");
-  ok(sw.view("someone_else", "username").on === false && sw.view(T, "username").on === false, "another handle is a new case: off, and it does not come back");
-  sw.set(true, T, "username"); sw.reset();
-  ok(sw.view(T, "username").on === false, "reset (New case, Clear, a case opened from History) turns it off");
-  sw.set(true, T, "username");
-  ok(sw.view(T, "email").show === false && sw.view(T, "email").on === false && sw.view(T, "username").on === false && sw.view("", "").show === false, "it only exists for a username case");
-  ok(A.makeAdultSwitch().view(T, "username").on === false, "a new page load starts with it off: the state lives in memory only");
-  // the disabled state
-  const blocked = sw.view("anna15", "username");
-  ok(blocked.show && blocked.disabled && !blocked.on && blocked.reason === "Adult and dating sites are not checked for this handle: it suggests a minor (the handle starts or ends with a number from 10 to 17).", "a handle that suggests a minor disables the switch and says why");
-  ok(sw.set(true, "anna15", "username").on === false && sw.view("anna15", "username").disabled, "and there is no override");
+  const M = await import(J + "modes.js");
+  const yes = ({ accept }) => accept();
+  const s = M.makeSessionModes(), refusals = M.makeRefusals();
+  const view = (target, type) => M.adultCase(s.on("adult"), target, type, refusals);
+  const v0 = view(T, "username");
+  ok(v0.on === false && v0.state === "off" && v0.applies === false && v0.reason === "", "off by default, whatever an old stored preference says");
+  s.request("adult", true, yes);
+  ok(view(T, "username").applies === true && view(T, "username").on === true, "on for this handle, and it stays on for that case's re-runs");
+  ok(view("someone_else", "username").applies === true && view(T, "username").applies === true, "another handle is another case and the mode is still on: it is not tied to one handle");
+  ok(!("reset" in s) && s.on("adult"), "there is no reset: a new case, Clear and a case opened from History leave it on");
+  ok(view(T, "email").on === true && view(T, "email").applies === false && view(T, "email").note === "Not used for this kind of target." && view(T, "username").applies === true && view("", "").applies === false, "it only applies to a username case, and stays on through any other");
+  ok(M.makeSessionModes().on("adult") === false && (await import(J + "modes.js?fresh=" + n)).session.on("adult") === false, "a new page load starts with it off: the state lives in memory only");
+  // the suspended state
+  const blocked = view("anna15", "username");
+  ok(blocked.on && blocked.state === "suspended" && !blocked.applies && blocked.reason === "Adult and dating sites are not checked for this handle: it suggests a minor (the handle starts or ends with a number from 10 to 17).", "a handle that suggests a minor suspends the mode for that case and says why");
+  ok(A.adultOn("username", "anna15", view("anna15", "username").applies) === false && A.adultOn("username", "anna15", true) === false && s.on("adult"), "and there is no override, while the session mode stays on");
   // the server's guard wins when the two disagree
-  sw.set(true, T, "username"); sw.refuse(T, "The handle contains a word that suggests a minor.");
-  const refused = sw.view(T, "username");
-  ok(refused.disabled && !refused.on && /it suggests a minor \(the handle contains a word that suggests a minor\)\.$/.test(refused.reason) && sw.set(true, T, "username").on === false, "a refusal from the server turns the mode off for that case, with its reason");
-  ok(sw.view("someone_else", "username").disabled === false, "and only for that case");
-  sw.refuse(T, ""); ok(sw.view(T, "username").disabled && /it suggests a minor \(/.test(sw.view(T, "username").reason), "a refusal with no reason still disables it");
+  refusals.add(T, "The handle contains a word that suggests a minor.");
+  const refused = view(T, "username");
+  ok(refused.state === "suspended" && !refused.applies && /it suggests a minor \(the handle contains a word that suggests a minor\)\.$/.test(refused.reason) && s.on("adult"), "a refusal from the server suspends the mode for that case, with its reason");
+  ok(view("someone_else", "username").applies === true, "and only for that case");
+  refusals.add("other_one", ""); ok(view("other_one", "username").state === "suspended" && /it suggests a minor \(/.test(view("other_one", "username").reason), "a refusal with no reason still suspends it");
   ok(writes.length === before, "none of this wrote to storage");
 
-  const adultSrc = read(J + "adult.js").replace(/\/\/.*$/gm, ""), inv = read(J + "investigate.js");
-  ok(!/localStorage|sessionStorage|indexedDB|document\.cookie|\bstore\b/.test(adultSrc), "adult.js never touches storage");
-  const handler = inv.slice(inv.indexOf('if ("adultToggle" in e.target.dataset)'), inv.indexOf("if (t) {", inv.indexOf('if ("adultToggle" in e.target.dataset)')));
-  ok(handler.length > 100 && /adultSwitch\.set\(/.test(handler) && /return;/.test(handler) && !/setSrc|store\.|localStorage|crawlr_v2_sources/.test(handler), "the switch's handler sets it in memory and returns before any preference is written");
-  ok(!/data-toggle="?adult|data-extra|maigret\.\$\{|nsfwOn|source-extra/.test(inv) && inv.split("maigret.nsfw").length === 2 && /delete srcState\["maigret\.nsfw"\];/.test(inv), "the old stored Maigret preference is gone: its one mention deletes it");
-  ok((inv.match(/store\.set\("crawlr_v2_sources", srcState\)/g) || []).length === 1 && !/adult/i.test(inv.slice(inv.indexOf("const setSrc"), inv.indexOf("\n", inv.indexOf("const setSrc")))), "crawlr_v2_sources is written in one place, and never with this mode");
-  ok(/adultSwitch\.reset\(\);\s*\n\s*const kind = e\.kind/.test(inv) && /cancel\(\); checker\.reset\(\); linkRow = null; adultSwitch\.reset\(\);/.test(inv), "opening a case from History and clearing the case both reset it");
+  const strip = (f) => read(J + f).replace(/\/\/.*$/gm, "");
+  const adultSrc = strip("adult.js"), inv = read(J + "investigate.js");
+  ok(!/localStorage|sessionStorage|indexedDB|document\.cookie|\bstore\b/.test(adultSrc) && !/localStorage|sessionStorage|indexedDB|document\.cookie|\bstore\b/.test(strip("modes.js")) && !/localStorage|sessionStorage|indexedDB|document\.cookie|\bstore\b/.test(strip("modeui.js")), "adult.js, modes.js and modeui.js never touch storage");
+  const ui = strip("modeui.js");
+  const handler = ui.slice(ui.indexOf('document.addEventListener("change"'), ui.indexOf('document.addEventListener("click"'));
+  ok(handler.length > 100 && /session\.request\(id, e\.target\.checked === true, ask\(id\)\)/.test(handler) && !/setSrc|store\.|localStorage|crawlr_v2_sources/.test(handler) && !/adultToggle|data-adult-toggle/.test(inv), "the switch's handler asks the session, in memory, and writes no preference");
+  ok(!/data-toggle="?adult|data-extra|maigret\.\$\{|nsfwOn|source-extra|maigret\.nsfw/.test(inv) && M.LEGACY_PREFS.includes("maigret.nsfw") && M.LEGACY_PREFS.includes("active") && !("maigret.nsfw" in M.cleanPrefs({ "maigret.nsfw": true, sherlock: true }).prefs), "the old stored Maigret preference is gone: reading the preferences drops it");
+  ok((inv.match(/store\.set\("crawlr_v2_sources", srcState\)/g) || []).length === 1 && /const setSrc = \(id, v\) => \{ if \(!mayStore\(id\)\) return;/.test(inv) && !M.mayStore("adult") && !M.mayStore("active"), "crawlr_v2_sources is written in one place, and never with a mode");
+  const fn = (name) => { const a = inv.indexOf(`export function ${name}(`); return inv.slice(a, inv.indexOf("\n}\n", a)); };
+  ok(fn("loadHistory").length > 200 && fn("clearCase").length > 200 && !/session\.|refusals|adultSwitch/.test(fn("loadHistory").replace(/\/\/.*$/gm, "")) && !/session\.|refusals|adultSwitch/.test(fn("clearCase")), "opening a case from History and clearing the case leave the mode alone");
   ok(/usernameBody\(handle, state\.adultMode\)/.test(inv) && /plan\.has\("adult"\)\) jobs\.push\(runSource\(ADULT_SOURCE, "\/api\/recon\/adult-check", \{ username: handle \}/.test(inv) && (inv.match(/adult-check/g) || []).length === 1, "the run uses the tested plan and bodies, and adult-check is called from one place, behind the plan");
-  ok(/aria-labelledby="adultModeName" aria-describedby="adultModeDesc\$\{/.test(inv) && /role="switch" data-adult-toggle/.test(inv) && /id="adultModeNote"/.test(inv), "the switch is a labelled role=switch, described by the notice");
+  ok(/role="switch" id="\$\{base\}" data-session-mode="\$\{id\}"/.test(read(J + "modes.js")) && /aria-labelledby="\$\{base\}-l" aria-describedby="\$\{base\}-d"/.test(read(J + "modes.js")), "the switch is a labelled role=switch, described by its one-line description");
 }
 
 // ---- 11. old saved cases --------------------------------------------------------------------------
@@ -396,7 +404,7 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(avatarImages(old, "jdoe_old", "username").length === 0 && collectProfiles(old, "jdoe_old", "username").map((p) => p.site).join() === "Reddit", "nor in clustering or the avatar list");
   const kept = A.scrubCollected(old, "jdoe_old", "username");
   ok(kept.maigret.results.length === 1 && kept.maigret.results[0].site === "Reddit", "and they are dropped when the case is opened");
-  ok(JSON.parse(globalThis.localStorage.getItem("crawlr_v2_sources"))["maigret.nsfw"] === true && A.makeAdultSwitch().view("jdoe_old", "username").on === false, "the old stored preference turns nothing on");
+  ok(JSON.parse(globalThis.localStorage.getItem("crawlr_v2_sources"))["maigret.nsfw"] === true && (await import(J + "modes.js")).session.on("adult") === false && A.adultOn("username", "jdoe_old", (await import(J + "modes.js")).session.on("adult")) === false, "the old stored preference turns nothing on");
 }
 
 // ---- 12. the server's answer and the copy ---------------------------------------------------------
@@ -410,13 +418,15 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   err = null; try { await post("/api/recon/sherlock", { username: "x", nsfw: true }); } catch (e) { err = e; }
   ok(err?.code === "minor_guard" && /word that suggests a minor/.test(err.reason), "in either shape");
   const inv = read(J + "investigate.js");
-  ok(/err\.code === "minor_guard"\) \{ adultRefused\(err\.reason\)/.test(inv) && /d === GUARDED \? runSource\(label, url, usernameBody\(handle, false\)/.test(inv), "the run then drops the mode for the case and asks the tool again without it");
+  ok(/err\.code === "minor_guard"\) \{ adultRefused\(err\.reason\)/.test(inv) && /d === GUARDED \? runSource\(label, url, usernameBody\(handle, false\)/.test(inv), "the run then suspends the mode for the case and asks the tool again without it");
 
-  ok(A.ADULT_NOTICE === "Adult and dating sites are existence checks only. A match shows a handle is taken there, not who owns it." && A.ADULT_SWITCH === "Include adult sites" && A.ADULT_SECTION === "Adult and dating sites (existence checks only)", "the fixed strings");
+  ok(A.ADULT_NOTICE === "Adult and dating sites are existence checks only. A match shows a handle is taken there, not who owns it." && A.ADULT_SWITCH === "Adult sites" && (await import(J + "modes.js")).MODE.adult.label === A.ADULT_SWITCH && A.ADULT_SECTION === "Adult and dating sites (existence checks only)", "the fixed strings");
   const app = read(J + "app.js"), html = read("../../static/v2/index.html");
   ok(app.split(A.ADULT_COPY).length === 2 && html.split(A.ADULT_COPY).length === 2, "the consent gate and the Sources panel say the one sentence");
-  ok(/<b>Adult and dating sites are opt-in\.<\/b> They are checked only when you switch that on for a case: existence checks only, never for a handle that suggests a minor, and only for lawful purposes\./.test(app) && /existence checks only/.test(A.ADULT_COPY) && /minor/.test(A.ADULT_COPY) && /lawful/.test(A.ADULT_COPY) && /switch that on for a case/.test(A.ADULT_COPY), "it says opt-in, existence only, not for minors, lawful purposes");
-  const srcs = ["adult.js", "evidence.js", "investigate.js", "renderers.js", "report.js", "workbench.js", "brief.js", "casefile.js", "core.js", "links.js", "app.js"].map((f) => read(J + f)).join("\n") + html + read("./fixtures/adult.json");
+  ok(/<b>Adult and dating sites are opt-in\.<\/b> They are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes\./.test(app) && /existence checks only/.test(A.ADULT_COPY) && /minor/.test(A.ADULT_COPY) && /lawful/.test(A.ADULT_COPY) && /when you switch that on:/.test(A.ADULT_COPY) && !/for a case/.test(A.ADULT_COPY), "it says opt-in, existence only, not for minors, lawful purposes");
+  ok(A.ADULT_LASTS === "The switch is off when the page loads, and stays on until you switch it off or reload." && app.split(A.ADULT_LASTS).length === 3 && !/off for every new case|for a case:/.test(app + html), "the consent gate and the acceptable-use statement say how long the switch lasts, and no longer say it is off for every new case");
+  ok(/const TERMS_KEY = "crawlr_terms_v3";/.test(app) && !/crawlr_terms_v2/.test(app), "the gate's wording changed, so its stored key was bumped and everyone sees it once more");
+  const srcs = ["modes.js", "modeui.js", "adult.js", "evidence.js", "investigate.js", "renderers.js", "report.js", "workbench.js", "brief.js", "casefile.js", "core.js", "links.js", "app.js"].map((f) => read(J + f)).join("\n") + html + read("./fixtures/adult.json");
   ok(!srcs.includes(String.fromCharCode(8212)), "no em dash in anything this change touched");
 }
 

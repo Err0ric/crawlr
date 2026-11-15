@@ -968,6 +968,30 @@ details.more[open] > summary { margin-bottom: 6px; }
 /* adult and dating sites: the case switch, the site mark and the text-only list (no new colors) */
 .adult-note { margin: 4px 0 0; font-size: var(--fs-0); color: var(--ink-2); }
 .adult-note[hidden] { display: none; }
+/* session modes: two compact switches in the case bar, the line that says one is on, and their
+   rows in the Sources sheet. Ink, never the primary color: these are settings, not the action. */
+.casebar-sub { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px var(--s-6); margin-top: 8px; }
+.casebar-sub .detected { margin-top: 0; flex: 0 1 auto; }
+.casebar-sub .detected:empty { display: none; }
+.modes { display: flex; flex-wrap: wrap; gap: 6px var(--s-5); padding-top: 3px; }
+.mode { display: flex; align-items: flex-start; gap: 8px; max-width: 100%; }
+.mode .switch { margin-top: 3px; }
+.mode-text { display: flex; flex-direction: column; min-width: 0; }
+.mode-label { font-size: var(--fs-1); font-weight: 500; color: var(--ink); cursor: pointer; }
+.mode-label .tag { margin-left: 4px; }
+.mode-desc { font-size: var(--fs-0); color: var(--ink-3); }
+.mode.off .mode-label { color: var(--ink-2); }
+.mode-status { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.mode-status[hidden] { display: none; }
+.mode-line { margin: 0; padding: 1px 0 1px 10px; border-left: 3px solid var(--line-strong); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
+.mode-line .linklike { margin-left: 6px; font-size: var(--fs-0); cursor: pointer; }
+.mode-line .linklike:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+@media (max-width: 760px) {
+  .casebar-sub { flex-direction: column; gap: 8px; margin-top: 6px; }
+  .casebar-sub .detected { flex: 0 0 auto; }
+  .modes { padding-top: 0; width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px var(--s-3); }
+  .mode { max-width: none; }
+}
 .switch input:disabled { cursor: not-allowed; }
 .switch input:disabled + span { opacity: .55; }
 .site-glyph { display: inline-grid; place-items: center; min-width: 22px; height: 18px; padding: 0 3px; margin-right: 8px; border-radius: var(--r-1); background: var(--bg-hover); box-shadow: 0 0 0 1px var(--line) inset; font: 600 var(--fs-0) var(--mono); color: var(--ink-2); vertical-align: 1px; }

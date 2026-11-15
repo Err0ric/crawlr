@@ -10,6 +10,8 @@ import { buildCaseFile } from "./casefile.js";
 import { harvestCard, errorCard } from "./renderers.js";
 import { buildFindings, takeoverForAi, TIERS, RISKY, flat, day, lc } from "./reconfindings.js";
 import { findingsWithEvidence, evidenceUrl, exposureEvidence, isDomain, mdLink, mdNote } from "./links.js";
+import { session, MODE, activeCase, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
+import { paintBar } from "./modeui.js";
 
 // ---- sources -----------------------------------------------------------------
 export const SOURCES = [
@@ -26,34 +28,52 @@ export const SOURCES = [
   { id: "wellknown", how: "record",  name: "Published files",  desc: "security.txt, robots.txt, favicon hash",         types: ["domain"],        on: true },
   { id: "asn", how: "index",        name: "Network owner",    desc: "ASN, organization, announced prefixes",          types: ["domain", "ip"],  on: true },
   { id: "exposure", how: "index",   name: "Exposure",         desc: "open ports and CVEs (InternetDB, or Shodan with your key)", types: ["domain", "ip"], on: true },
-  { id: "portscan", how: "record",   name: "Port scan",        desc: "connects to 20 common ports on the target. Only scan hosts you own or are authorized to test.", types: ["domain", "ip"], on: false, warn: "active" },
+  { id: "portscan", how: "record",   name: "Port scan",        desc: "connects to 20 common ports on the target. Only scan hosts you own or are authorized to test.", types: ["domain", "ip"], on: false, warn: "active", mode: "active" },
   { id: "redirects", how: "record",  name: "Redirect chain",   desc: "every hop to the final URL",                     types: ["domain", "ip"],  on: true },
   { id: "techfp", how: "guess",     name: "Tech fingerprint", desc: "CMS, server, frameworks, CDN",                   types: ["domain"],        on: true },
   { id: "wayback", how: "index",    name: "Wayback Machine",  desc: "archived snapshots",                             types: ["domain"],        on: true },
   { id: "asndetail", how: "index",  name: "ASN detail",       desc: "organization, prefixes, peers",                  types: ["asn"],           on: true },
 ];
-const srcState = store.get("crawlr_v2_recon_sources", {});
-const srcOn = (id) => (id in srcState ? !!srcState[id] : SOURCES.find((s) => s.id === id)?.on ?? false);
+// Stored switches for the passive sources only. The port scan is an active technique: it follows
+// the "Active techniques" session mode (modes.js), is off on every page load, and is never stored.
+// A "portscan" preference saved by an older version is ignored and removed at once.
+const { prefs: srcState, dirty: srcDirty } = cleanPrefs(store.get("crawlr_v2_recon_sources", {}));
+const saveSrc = () => store.set("crawlr_v2_recon_sources", srcState);
+if (srcDirty) saveSrc();
+const modeOf = (id) => SOURCES.find((s) => s.id === id)?.mode || "";
+export const srcOn = (id) => (modeOf(id) ? session.on(modeOf(id)) : id in srcState ? !!srcState[id] : SOURCES.find((s) => s.id === id)?.on ?? false);
+let sourcesType = "";   // the target type the panel was last drawn for
+const PORTSCAN_DESC = "Connects to 20 common ports on the target. Only scan hosts you own or are authorized to test. This is the Active techniques switch.";
+const activeView = () => activeCase(session.on("active"), sourcesType, "recon");
+function paintModes() {
+  const v = activeView();
+  paintBar($("#rModes"), $("#rModeStatus"), [{ id: "active", view: v, desc: MODE.active.reconDesc, prefix: "r" }]);
+  $('#rSources [data-mode-row="active"]')?.classList.toggle("off", !v.on);
+}
+session.subscribe(() => { paintModes(); paintCount(); });
 
 export function renderSources(type) {
+  sourcesType = type || "";
   const rows = SOURCES.filter((s) => !type || s.types.includes(type));
-  $("#rSources").innerHTML = rows.length ? rows.map((s) => h`
+  // The port scan's row is the "Active techniques" switch, mirrored: one state, also in the case bar.
+  $("#rSources").innerHTML = rows.length ? rows.map((s) => (s.mode ? sheetRowHtml(s.mode, activeView(), { prefix: "r", name: s.name, desc: PORTSCAN_DESC, tag: s.warn }) : h`
     <div class="source ${srcOn(s.id) ? "" : "off"}">
       <div>
         <div class="name" id="rsrc-${s.id}">${s.name}${s.warn ? raw(h` <span class="tag warn">${s.warn}</span>`) : ""}${s.id === "exposure" && getKey("shodan") ? raw(' <span class="tag violet">Shodan</span>') : ""}</div>
         <div class="desc" id="rsrcd-${s.id}">${raw(howTag(s.how))}${s.desc}</div>
       </div>
       <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-label="${s.name}" aria-labelledby="rsrc-${s.id}" aria-describedby="rsrcd-${s.id}"><span></span></label>
-    </div>`).join("") : `<p class="empty flat">Type a domain, IP or ASN to see which sources apply.</p>`;
+    </div>`)).join("") : `<p class="empty flat">Type a domain, IP or ASN to see which sources apply.</p>`;
+  paintModes();
   paintCount();
 }
 function paintCount() {
-  const on = $$("#rSources [data-toggle]").filter((el) => el.checked).length, all = $$("#rSources [data-toggle]").length;
+  const sw = $$("#rSources [data-toggle], #rSources [data-session-mode]"), on = sw.filter((el) => el.checked).length, all = sw.length;
   $("#rSourcesCount").textContent = all ? `${on} of ${all}` : "";
 }
 $("#rSources").addEventListener("change", (e) => {
-  const t = e.target.dataset.toggle; if (!t) return;
-  srcState[t] = e.target.checked; store.set("crawlr_v2_recon_sources", srcState);
+  const t = e.target.dataset.toggle; if (!t || !mayStore(t)) return;
+  srcState[t] = e.target.checked; saveSrc();
   e.target.closest(".source").classList.toggle("off", !e.target.checked);
   paintCount();
 });
@@ -293,7 +313,7 @@ bindVerdict($("#rVerdict"), { ledger: $("#rLedger"), setTab, tabEl: (t) => $(`#r
 
 // ---- graph pivots --------------------------------------------------------------------
 // Selecting a node offers to run it. One click is one run: nothing expands on its own,
-// and the port scan stays behind its own switch.
+// and the port scan only runs while the Active techniques session mode is on.
 function hidePivot() { $("#rPivot").hidden = true; $("#rPivot").innerHTML = ""; }
 $("#rGraph").addEventListener("crawlr:node", (e) => {
   const { type, label } = e.detail;

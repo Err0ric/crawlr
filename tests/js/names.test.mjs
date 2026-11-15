@@ -15,7 +15,7 @@ const { evWhat, evSrc, patchRow, renderTiers, renderBrief, renderNameKnown, name
 const { sourceCards } = await import(J + "renderers.js");
 const { reportHtml } = await import(J + "report.js");
 const { parseCaseFile, buildCaseFile } = await import(J + "casefile.js");
-const { makeAdultSwitch } = await import(J + "adult.js");
+const { adultCase } = await import(J + "modes.js");
 
 let bad = 0, n = 0;
 const ok = (cond, name) => { n++; if (!cond) { bad++; console.log("FAIL", name); } };
@@ -38,7 +38,7 @@ const linus = kase("public figure"), dana = kase("qualifiers");
 
 // ---- the plan and the switches ----------------------------------------------------------------
 eq(sourcePlan("name", "Linus Torvalds"), ["namesearch"], "a name case runs one source, the name search");
-ok(makeAdultSwitch().view("Linus Torvalds", "name").show === false && sourcePlan("name", "Linus Torvalds", { adult: true }).join() === "namesearch", "the adult mode switch is not offered for a name, and never planned");
+ok(adultCase(true, "Linus Torvalds", "name").applies === false && adultCase(true, "Linus Torvalds", "name").note === "Not used for this kind of target." && sourcePlan("name", "Linus Torvalds", { adult: true }).join() === "namesearch", "the adult mode is not used for a name, says so, and is never planned");
 ok(L.checkPolicy({ type: "name", live: true }).allowed === false && L.pendingChecks(ev(linus).items).length === 0, "the link check is never used for a name case");
 ok(detect("Linus Torvalds") === "name" && ev({ collected: linus.collected, target: linus.target }).type === "name" && ev({ collected: { nameResult: linus.collected.nameResult }, target: "x" }).type === "name", "a name case is recognised with or without the type");
 
@@ -583,7 +583,7 @@ for (const [raw, clean] of TEXT.strip_images) ok(N.stripImages(raw) === clean, `
 {
   const app = fs.readFileSync(new URL("../../static/v2/js/app.js", import.meta.url), "utf8");
   ok(app.includes("<p>A name search asks public directories (Wikidata, GitHub, ORCID, OpenAlex and Bluesky) who shares a name and lists them as candidates. It does not tell you which of them is the person you mean.</p>"), "the first-run gate has the name search sentence");
-  ok(app.includes('const TERMS_KEY = "crawlr_terms_v2";') && !app.includes("crawlr_terms_v1") && (app.match(/TERMS_KEY/g) || []).length === 3, "and its stored key was bumped, so people who accepted the old text see it again");
+  ok(app.includes('const TERMS_KEY = "crawlr_terms_v3";') && !app.includes("crawlr_terms_v1") && !app.includes("crawlr_terms_v2") && (app.match(/TERMS_KEY/g) || []).length === 3, "and its stored key was bumped, so people who accepted the old text see it again");
 }
 
 console.log(bad ? `${bad} of ${n} name checks failed` : `${n}/${n} name checks passed`);

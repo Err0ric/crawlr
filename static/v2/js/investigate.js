@@ -1,7 +1,9 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
 import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
-import { makeAdultSwitch, adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultForAi, adultSummary, adultCheckText, guardText, ADULT_SWITCH, ADULT_SWITCH_DESC, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
+import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultForAi, adultSummary, adultCheckText, guardText, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
+import { session, MODE, adultCase, activeCase, makeRefusals, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
+import { paintBar } from "./modeui.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
 import { investigateBrief } from "./brief.js";
@@ -34,29 +36,31 @@ export const SOURCES = [
   { id: "namesearch", how: "index", name: NAME_SOURCE,      desc: NAME_SOURCE_DESC,                         types: ["name"],              on: true },
   // Not part of the run: it starts when a ledger group with unchecked profile URLs is on screen.
   { id: "linkcheck", how: "guess", name: "Link check",      desc: "checks that each reported profile URL really exists, when you open a group", types: ["username"], on: true },
-  { id: "active", how: "record",    name: "Active techniques", desc: "profile scraping for Deep Dive. May notify the target.", types: ["username"], on: false, warn: true },
 ];
+// "Active techniques" and "Adult sites" are not in this list: they are session modes (modes.js),
+// off on every page load and never stored with these preferences.
 
-const srcState = store.get("crawlr_v2_sources", {});
+// Stored switches for ordinary sources only. An older version kept "active" and an adult sites
+// choice here; both are ignored and removed at once, so nobody arrives with a mode already on.
+const { prefs: srcState, dirty: srcDirty } = cleanPrefs(store.get("crawlr_v2_sources", {}));
+const saveSrc = () => store.set("crawlr_v2_sources", srcState);
+if (srcDirty) saveSrc();
 export const srcOn = (id) => (id in srcState ? !!srcState[id] : SOURCES.find((s) => s.id === id)?.on ?? false);
-const setSrc = (id, v) => { srcState[id] = v; store.set("crawlr_v2_sources", srcState); };
-// An older version kept an adult sites choice here. It is ignored, and dropped on the next write:
-// that mode is a switch for one case and is never stored (see adult.js).
-delete srcState["maigret.nsfw"];
-// "Include adult sites": off by default, held in memory only, tied to the handle in the box.
-const adultSwitch = makeAdultSwitch();
-const adultView = (type) => adultSwitch.view($("#targetInput").value, type);
-function adultSwitchHtml(v) {
-  return h`
-    <div class="source adult-mode ${v.on ? "" : "off"}" data-adult>
-      <div>
-        <div class="name" id="adultModeName">${ADULT_SWITCH}</div>
-        <div class="desc" id="adultModeDesc">${ADULT_SWITCH_DESC}</div>
-        <p class="adult-note" id="adultModeNote" ${v.on ? "" : "hidden"}>${ADULT_NOTICE}</p>
-        ${v.reason ? raw(h`<p class="adult-note" id="adultModeWhy">${v.reason}</p>`) : ""}
-      </div>
-      <label class="switch"><input type="checkbox" role="switch" data-adult-toggle ${v.on ? "checked" : ""} ${v.disabled ? "disabled" : ""} aria-labelledby="adultModeName" aria-describedby="adultModeDesc${v.reason ? " adultModeWhy" : v.on ? " adultModeNote" : ""}"><span></span></label>
-    </div>`;
+const setSrc = (id, v) => { if (!mayStore(id)) return; srcState[id] = v; saveSrc(); };
+
+// ---- session modes: Adult sites and Active techniques ------------------------------------------
+// Both live in modes.js, in memory only: off when the page loads, and on until the investigator
+// switches them off or reloads. Nothing in this file switches one off for a new handle, a new
+// case, Clear or a case opened from History, and nothing a case holds can switch one on.
+// The handles the server's own minor guard refused in this session: suspended for that handle only.
+const refusals = makeRefusals();
+const adultView = (type, target = $("#targetInput").value) => adultCase(session.on("adult"), target, type, refusals);
+const activeView = (type) => activeCase(session.on("active"), type, "investigate");
+// The two switches in the case bar, the status line under them, and the same two rows in the sheet.
+function paintModes() {
+  const rows = [{ id: "adult", view: adultView(sourcesType), desc: MODE.adult.desc }, { id: "active", view: activeView(sourcesType), desc: MODE.active.desc }];
+  paintBar($("#modes"), $("#modeStatus"), rows);
+  for (const r of rows) $(`#sources [data-mode-row="${r.id}"]`)?.classList.toggle("off", !r.view.on);
 }
 
 // ---- name qualifiers ---------------------------------------------------------------
@@ -96,28 +100,18 @@ export function renderSources(type) {
       <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-label="${s.name}" aria-labelledby="src-${s.id}" aria-describedby="srcd-${s.id}"><span></span></label>
     </div>`).join("");
   if (!rows.length) box.innerHTML = h`<p class="empty flat">Type a target to see which sources apply.</p>`;
-  // Username cases only: an email case does not run the username tools.
-  const av = adultView(type);
-  if (av.show) box.insertAdjacentHTML("beforeend", adultSwitchHtml(av));
+  // The two session modes close the list: the same switches as in the case bar, one state.
+  box.insertAdjacentHTML("beforeend", sheetRowHtml("adult", adultView(sourcesType)) + sheetRowHtml("active", activeView(sourcesType)));
+  paintModes();
   paintCount();
 }
 // The Sources button shows how many are switched on for this target type.
 function paintCount() {
-  const on = $$("#sources [data-toggle]").filter((el) => el.checked).length, all = $$("#sources [data-toggle]").length;
+  const sw = $$("#sources [data-toggle], #sources [data-session-mode]"), on = sw.filter((el) => el.checked).length, all = sw.length;
   $("#sourcesCount").textContent = all ? `${on} of ${all}` : "";
 }
 $("#sources").addEventListener("change", (e) => {
   const t = e.target.dataset.toggle;
-  if ("adultToggle" in e.target.dataset) {
-    // Held in memory for this handle only. Nothing is written to storage.
-    const v = adultSwitch.set(e.target.checked, $("#targetInput").value, sourcesType);
-    e.target.checked = v.on;
-    const row = e.target.closest("[data-adult]");
-    row.classList.toggle("off", !v.on);
-    $("#adultModeNote").hidden = !v.on;
-    e.target.setAttribute("aria-describedby", `adultModeDesc${v.reason ? " adultModeWhy" : v.on ? " adultModeNote" : ""}`);
-    return;
-  }
   if (t) {
     const s = SOURCES.find((q) => q.id === t);
     if (e.target.checked && s?.pro && !s.proOptional && !getKey(s.pro)) {
@@ -131,6 +125,10 @@ $("#sources").addEventListener("change", (e) => {
     if (t === "linkcheck") { if (e.target.checked) checker.watch(); else { checker.reset(); renderLedger(); } }
   }
 });
+
+// A mode changed: the bar and the sheet follow in place (no redraw, so focus stays on the switch),
+// and Deep Dive in the AI panel becomes available or not.
+session.subscribe((id) => { paintModes(); paintCount(); if (id === "active" && state.ai && !state.aiBusy) renderAiPanel(); });
 
 // ---- run log + result tabs -----------------------------------------------------
 const log = makeLog($("#runlog"));
@@ -366,11 +364,11 @@ function renderAiPanel() {
     box.innerHTML = aiStartHtml("inv", state.type === "name" && nameCase(state.collected, state.target).people.length ? AI_PITCH.nameFound : AI_PITCH[state.type] || AI_PITCH.username);
     return;
   }
-  const canDeep = srcOn("active") && profileUrls().length && aiAvailable();
+  const canDeep = session.on("active") && profileUrls().length && aiAvailable();
   const deepBtn = state.deepDive
     ? `<button class="btn btn-sm" type="button" data-open-report="deep">Deep Dive report</button>`
     : canDeep ? `<button class="btn btn-sm" type="button" id="deepDiveBtn">Deep Dive…</button>`
-    : srcOn("active") ? "" : `<span class="hint-inline">Deep Dive needs Active techniques on</span>`;
+    : session.on("active") ? "" : `<span class="hint-inline">Deep Dive needs Active techniques on</span>`;
   box.innerHTML = summaryBlock(state.ai, { reportId: "summary", attr: "data-open-report", deepDive: deepBtn }).replace(">Full report<", ">Read report<");
   renderReport();
 }
@@ -423,7 +421,7 @@ function aiPayload(extra = {}) {
   const source_status = Object.fromEntries(tally().rows.filter((r) => r.state !== "skipped").map((r) => [r.name, statusForAi(r)]));
   // Built in evidence.js so it can be tested: adult and dating site rows travel only as their
   // own field, and only for a case that had the mode on.
-  return { ...aiPayloadFor(state.collected, state.target, state.type, { source_status, active: srcOn("active") }), ...extra };
+  return { ...aiPayloadFor(state.collected, state.target, state.type, { source_status, active: session.on("active") }), ...extra };
 }
 
 // Runs only from the "Analyze with AI" button. One click, one credit, and the cost is on screen first.
@@ -505,13 +503,14 @@ function resultText(key, data) {
   return n ? `${fmtNum(n)} result${n === 1 ? "" : "s"}` : "";
 }
 // The server's own minor guard refused the adult part of a request. It wins over the client's
-// copy: the mode goes off for this case, the reason is shown, and nothing adult is kept.
+// copy: the mode is suspended for this handle (it stays on for the session), the reason is shown,
+// and nothing adult is kept.
 const GUARDED = Symbol("minor guard");
 function adultRefused(reason) {
   const why = reason || "";
   if (!state.adultBlocked) toast(guardText(why), 6000);
   state.adultMode = false; state.adultBlocked = guardText(why);
-  adultSwitch.refuse(state.target, why);
+  refusals.add(state.target, why);
   const clean = withoutAdult(state.collected);
   for (const k of Object.keys(state.collected)) delete state.collected[k];
   Object.assign(state.collected, clean);
@@ -584,12 +583,14 @@ export async function run(targetRaw, typeOverride) {
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: aiSignature(scrubNames(last.results || {}, last.target), last.target, last.kind) }; }
 
   checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear();
-  // The switch as it stands for this handle, and only if the handle passes the minor guard.
-  const adult = adultOn(type, target, adultSwitch.view(target, type).on);
+  // The session mode as it applies to this target: a username, and only if the handle passes the
+  // minor guard. A pivot, a similar handle or a re-run reads the same session state, with no click.
+  const av = adultView(type, target);
+  const adult = adultOn(type, target, av.applies);
   // The similar handles checked in the last run of this target are the investigator's work: they
   // are carried into the new run, and every line-up is evaluated again against what it finds.
   const carried = last && last.kind === type ? readSimilar(last.results?.similar, similarBase(target, type)) : {};
-  Object.assign(state, { target, type, collected: { ...(adult ? { adultMode: true } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}) }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
+  Object.assign(state, { target, type, collected: { ...(adult ? { adultMode: true } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}) }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: av.state === "suspended" ? av.reason : "" });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -819,9 +820,9 @@ export function loadHistory(idOrEntry) {
   const e = typeof idOrEntry === "string" ? getHistory().find((x) => x.id === idOrEntry) : idOrEntry;
   if (!e) return false;
   checker.reset(); linkRow = null;
-  // A case opened from History starts with the switch off. It shows adult and dating site rows
-  // only if it recorded that the mode was on; otherwise any such row is dropped here.
-  adultSwitch.reset();
+  // Opening a case runs nothing and changes no session mode. The case shows adult and dating site
+  // rows only if it recorded that the mode was on for that run; otherwise any such row is dropped
+  // here. That record never switches the mode on.
   const kind = e.kind || detect(e.target);
   Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", nameInvalid: "", collected: scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target), ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
   $("#targetInput").value = e.target;
@@ -837,7 +838,7 @@ export function loadHistory(idOrEntry) {
   return true;
 }
 export function clearCase() {
-  cancel(); checker.reset(); linkRow = null; adultSwitch.reset(); nameError(""); setQualifiers(null);
+  cancel(); checker.reset(); linkRow = null; nameError(""); setQualifiers(null);
   Object.assign(state, { nameInvalid: "", live: false, imported: false, adultMode: false, adultBlocked: "", target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
