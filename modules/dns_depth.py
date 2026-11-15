@@ -74,7 +74,7 @@ async def run_dns_depth(domain: str) -> dict:
     else:
         add("info", "DNSSEC is not enabled", "DNS answers for this domain are not signed, so they can be forged on a hostile network.")
     if wildcard:
-        add("info", f"Wildcard DNS: any subdomain resolves ({', '.join(wildcard[:2])})", "Subdomain guessing will report names that do not really exist. Treat wordlist hits with care.")
+        add("info", f"Wildcard DNS: any subdomain resolves ({', '.join(wildcard[:2])})", "A name that resolves is not proof a host exists. The subdomain check leaves out guessed names that only match the wildcard.")
     return {
         "domain": domain,
         "found": True,

@@ -61,7 +61,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | WHOIS | Registrar, dates, nameservers, privacy | None |
 | TLS | Issuer, SANs, expiry | None |
 | HTTP headers | Server info and a security-header grade | None |
-| Subdomains | DNS plus certificate transparency | None |
+| Subdomains | DNS plus certificate transparency. Detects wildcard DNS first, so a name that only resolves because every name does is not listed as a subdomain | None |
 | Email security | SPF, DMARC, DKIM selectors, MTA-STS, TLS-RPT, BIMI, with a grade and a plain answer to "can this domain be spoofed?" | None |
 | DNS hardening | CAA, DNSSEC, wildcard DNS, reverse DNS | None |
 | Takeover candidates | Subdomains whose CNAME points at a claimable cloud service, split into dangling and pointing. DNS only | None |
@@ -124,6 +124,7 @@ node tests/js/names.test.mjs
 node tests/js/design.test.mjs
 node tests/js/phone.test.mjs
 node tests/js/similar.test.mjs
+node tests/js/wildcard.test.mjs
 ```
 
 ## How it is built

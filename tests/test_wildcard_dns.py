@@ -159,7 +159,7 @@ def test_the_wildcard_is_one_info_finding_that_says_why_it_matters(monkeypatch):
         f"So a name that resolves is not proof a host exists. {len(WORDS)} guessed names were left out because they only matched the wildcard. "
         "The wildcard points at Porkbun, a third-party parking or forwarding service: what answers there is Porkbun's, not a server of this domain's own.")
     assert out["wildcard"]["note"] == f"{f['title']}. {f['detail']}"
-    assert "—" not in f["title"] + f["detail"]
+    assert chr(0x2014) not in f["title"] + f["detail"]
 
 
 def test_a_real_host_in_a_wildcard_zone_is_kept(monkeypatch):
