@@ -206,7 +206,7 @@ _canary: dict[str, tuple[float, bool]] = {}
 def clear_cache_for_tests() -> None:
     _cache.clear()
     _canary.clear()
-    _reddit_token.update(value="", expires=0.0)
+    _reddit_token.update(value="", expires=0.0, retry_at=0.0)
 
 
 def _cache_get(key: tuple[str, str]) -> dict | None:
@@ -419,7 +419,11 @@ def _reddit_text(value, cap: int) -> str:
     return re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()[:cap] if isinstance(value, str) else ""
 
 
-def classify_reddit(username: str, status: int, content_type: str, body: str) -> dict:
+REDDIT_HIDDEN = "Reddit's API has no visible account with this name (a hidden or shadow-banned account looks the same)"
+REDDIT_TOKEN_RETRY = 300      # seconds before a refused token request is tried again
+
+
+def classify_reddit(username: str, status: int, content_type: str, body: str, api: bool = False) -> dict:
     """One Reddit answer (keyless or OAuth) as a verdict. Pure, so it is tested from fixtures.
 
     found      a JSON body whose data.name is this handle
@@ -454,6 +458,10 @@ def classify_reddit(username: str, status: int, content_type: str, body: str) ->
                 out["evidence"] = "Reddit's own record for this handle, which Reddit marks as suspended"
             return out
         if data.get("error") == 404 or (status == 404 and str(data.get("message") or "").lower() == "not found"):
+            if api:
+                # The API answers 404 for an account it hides (shadow-banned) as well as for a
+                # name nobody holds. Still not found, but a tool's report of Reddit is kept.
+                return {"state": "not_found", "evidence": REDDIT_HIDDEN, "display_name": "", "hidden_possible": True}
             return {"state": "not_found", "evidence": "Reddit says nobody goes by that name", "display_name": ""}
     if status in (401, 403, 429) or "html" in (content_type or "").lower() or re.match(r"\s*<", body or ""):
         return {"state": "blocked", "evidence": REDDIT_BLOCKED, "display_name": "", "hint": REDDIT_HINT,
@@ -467,6 +475,10 @@ async def _reddit_bearer(client: httpx.AsyncClient, creds: tuple[str, str]) -> s
     """The application-only token, kept until shortly before it expires. "" when it cannot be had."""
     if _reddit_token["value"] and time.time() < _reddit_token["expires"]:
         return _reddit_token["value"]
+    # A refused request (a wrong secret) is not repeated on every lookup.
+    if time.time() < _reddit_token.get("retry_at", 0.0):
+        return ""
+    _reddit_token["retry_at"] = time.time() + REDDIT_TOKEN_RETRY
     resp = await client.post(REDDIT_TOKEN_URL, data={"grant_type": "client_credentials"}, auth=creds,
                              headers={"User-Agent": _reddit_ua(), "Accept": "application/json"})
     if resp.status_code != 200:
@@ -480,7 +492,7 @@ async def _reddit_bearer(client: httpx.AsyncClient, creds: tuple[str, str]) -> s
         ttl = float(data.get("expires_in") or 0)
     except (TypeError, ValueError):
         ttl = 0.0
-    _reddit_token.update(value=token, expires=time.time() + max(0.0, min(ttl, 86400.0) - 60))
+    _reddit_token.update(value=token, expires=time.time() + max(0.0, min(ttl, 86400.0) - 60), retry_at=0.0)
     return token
 
 
@@ -493,11 +505,11 @@ async def _reddit_oauth(client: httpx.AsyncClient, username: str, creds: tuple[s
     resp = await client.get(REDDIT_OAUTH_ABOUT.format(username=username),
                             headers={"User-Agent": _reddit_ua(), "Authorization": f"Bearer {token}", "Accept": "application/json"})
     if resp.status_code == 401:
-        _reddit_token.update(value="", expires=0.0)      # a revoked or expired token is not reused
+        _reddit_token.update(value="", expires=0.0, retry_at=0.0)      # a revoked or expired token is not reused
     if resp.status_code in (401, 403, 429) or resp.status_code >= 500:
         log.warning("reddit api did not answer", extra={"status": resp.status_code})
         return {"state": "", "limited": resp.status_code == 429}
-    verdict = classify_reddit(username, resp.status_code, resp.headers.get("content-type", ""), resp.text[:REDDIT_MAX_BODY])
+    verdict = classify_reddit(username, resp.status_code, resp.headers.get("content-type", ""), resp.text[:REDDIT_MAX_BODY], api=True)
     return verdict if verdict["state"] in ("found", "not_found") else {"state": "", "limited": False}
 
 
@@ -506,6 +518,8 @@ def _reddit_row(username: str, verdict: dict) -> dict:
     for k in ("bio", "created", "karma", "avatar_url", "note"):
         if verdict.get(k) not in (None, "") and row["state"] == "found":
             row[k] = verdict[k]
+    if verdict.get("hidden_possible") and row["state"] == "not_found":
+        row["hidden_possible"] = True
     if verdict.get("hint") and row["state"] in ("blocked", "unknown"):
         row["hint"] = verdict["hint"]
     return row

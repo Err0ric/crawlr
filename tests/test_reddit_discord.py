@@ -83,7 +83,7 @@ def test_reddit_keyless_found_reads_the_documented_fields(monkeypatch):
     assert "note" not in row and "hint" not in row
 
 
-def test_reddit_json_naming_another_account_is_not_found_true(monkeypatch):
+def test_reddit_json_that_names_another_account_is_unknown(monkeypatch):
     fake(monkeypatch, lambda r: json_resp(200, "reddit_about_found.json"))
     row = run("someone_else", ("Reddit",))["Reddit"]
     assert row["state"] == "unknown" and row["found"] is None
@@ -169,7 +169,11 @@ def test_reddit_oauth_token_is_cached_until_it_expires(monkeypatch):
     with_credentials(monkeypatch)
     calls = []
     fake(monkeypatch, oauth_site(json_resp(404, "reddit_not_found.json")), calls)
-    assert run("first_handle", ("Reddit",))["Reddit"]["state"] == "not_found"
+    first = run("first_handle", ("Reddit",))["Reddit"]
+    assert first["state"] == "not_found" and first["found"] is False
+    # the API hides shadow-banned accounts behind the same 404, and the row says so
+    assert first["hidden_possible"] is True
+    assert first["evidence"] == "Reddit's API has no visible account with this name (a hidden or shadow-banned account looks the same)"
     assert run("second_handle", ("Reddit",))["Reddit"]["state"] == "not_found"
     urls = [str(c.url) for c in calls]
     assert urls.count("https://www.reddit.com/api/v1/access_token") == 1 and len(urls) == 3
@@ -211,6 +215,26 @@ def test_reddit_oauth_falls_back_when_the_token_cannot_be_had(monkeypatch):
     row = run("sam_example", ("Reddit",))["Reddit"]
     assert row["state"] == "found"            # the keyless answer is used when it has one
     assert [str(c.url) for c in calls] == ["https://www.reddit.com/api/v1/access_token", "https://www.reddit.com/user/sam_example/about.json"]
+
+
+def test_a_refused_token_request_is_not_repeated_on_every_lookup(monkeypatch):
+    with_credentials(monkeypatch)
+    calls = []
+    fake(monkeypatch, oauth_site(None, token=httpx.Response(401, json={"message": "Unauthorized", "error": 401})), calls)
+    for handle in ("first_handle", "second_handle", "third_handle"):
+        assert run(handle, ("Reddit",))["Reddit"]["state"] == "blocked"
+    urls = [str(c.url) for c in calls]
+    assert urls.count("https://www.reddit.com/api/v1/access_token") == 1 and len(urls) == 4
+    # after a few minutes it is tried again
+    pc._reddit_token["retry_at"] = 0
+    run("fourth_handle", ("Reddit",))
+    assert [str(c.url) for c in calls].count("https://www.reddit.com/api/v1/access_token") == 2
+
+
+def test_the_keyless_404_makes_no_claim_about_hidden_accounts(monkeypatch):
+    fake(monkeypatch, lambda r: json_resp(404, "reddit_not_found.json"))
+    row = run("zq7xkv3mwp9tjh2r", ("Reddit",))["Reddit"]
+    assert row["state"] == "not_found" and "hidden_possible" not in row
 
 
 def test_reddit_oauth_network_failure_falls_back(monkeypatch):
