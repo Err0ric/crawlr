@@ -125,9 +125,10 @@ def _phone_lines(ph: dict) -> list[str]:
         lines.append(f"- range first assigned to: {first} (numbers are ported between carriers, so this may not be the current one)")
     if asg.get("block_assigned") is False:
         lines.append("- the six-digit block this number starts with is not assigned to any carrier")
-    zones = [_cell(z, 40) for z in (num.get("time_zones") or [])[:3] if isinstance(z, str)]
-    if zones:
-        lines.append(f"- time zone of the range: {', '.join(zones)}")
+    # Offsets only. The library's zone names carry a city that is often in another country.
+    offsets = [o for o in (num.get("utc_offsets") or [])[:3] if isinstance(o, str) and re.fullmatch(r"UTC(?:[+-]\d{1,2}(?::\d{2})?)?", o)]
+    if offsets:
+        lines.append(f"- time offset of the range: {offsets[0] if len(offsets) == 1 else f'{offsets[0]} to {offsets[-1]}'}")
     for f in (ph.get("findings") or [])[:12]:
         if isinstance(f, dict) and f.get("title"):
             lines.append(f"- [{_cell(f.get('level'), 4) or 'info'}] {_cell(f.get('title'), 120)}: {_cell(f.get('detail'), 300)}")

@@ -92,8 +92,11 @@ def _country_name(region: str | None) -> str:
     name = names.get("en", "")
     if name.startswith("*"):            # "*aa" means the name is held under that other language key
         name = names.get(name[1:], "")
-    return name or region
+    return name or _EXTRA_NAMES.get(region, region)
 
+
+# Regions the library can read numbers for and has no English name for.
+_EXTRA_NAMES = {"XK": "Kosovo", "TA": "Tristan da Cunha", "AC": "Ascension Island"}
 
 _ARTICLE = ("United ", "Netherlands", "Philippines", "Bahamas", "Gambia", "Maldives", "Czech Republic", "Dominican Republic",
             "Central African Republic", "Democratic Republic", "Republic of", "Isle of", "British ", "U.S. ", "Cayman ", "Cook ",
@@ -144,9 +147,17 @@ def fiction_range(n: pn.PhoneNumber, number_type: int = T.FIXED_LINE_OR_MOBILE) 
 
 
 # ---- parsing ----------------------------------------------------------------------------
-def _parse(raw: str, region: str) -> tuple[pn.PhoneNumber, str]:
-    """(number, how the country was decided): "given", "assumed" (the region hint was used) or
-    "no_plus" (digits that only make a valid number when read as country code first)."""
+_IDD_00 = re.compile(r"^\(?\s*00\s*\)?[\s\-./]*(?=[1-9])")
+
+
+def _parse(raw: str, region: str) -> tuple[pn.PhoneNumber, str, str]:
+    """(number, how the country was decided, the international prefix that was read).
+    how is "given" (a + or a country code the library recognised), "idd" (the international call
+    prefix of the chosen country: 00 in most, 011 in North America, 0011 in Australia, 010 in
+    Japan; the library knows each one), "idd00" (00 where the chosen country uses another
+    prefix, read as international because 00 is what most of the world dials), "no_plus"
+    (digits that only make a valid number when read as country code first) or "assumed" (the
+    chosen country was used)."""
     try:
         n = pn.parse(raw, region, keep_raw_input=True)
     except pn.NumberParseException as e:
@@ -159,27 +170,36 @@ def _parse(raw: str, region: str) -> tuple[pn.PhoneNumber, str]:
             pn.NumberParseException.TOO_LONG: "That is too long to be a phone number.",
         }.get(e.error_type, "That does not read as a phone number.")) from None
     src = n.country_code_source
+    if src == pn.CountryCodeSource.FROM_NUMBER_WITH_IDD:
+        meta = pn.PhoneMetadata.metadata_for_region(region, None)
+        m = re.match(meta.international_prefix, re.sub(r"\D", "", raw)) if meta and meta.international_prefix else None
+        return n, "idd", m.group(0) if m else ""
     if src != pn.CountryCodeSource.FROM_DEFAULT_COUNTRY:
-        return n, "given"
+        return n, "given", ""
     digits = "" if n.extension or pn.is_alpha_number(raw) else re.sub(r"\D", "", raw)
-    # "00" is the international prefix in most of the world. Where the hint region uses another
-    # one (011 in North America) the library reads 00 as part of a national number.
-    if re.match(r"^\(?00[1-9]", raw.strip()):
+    # 00 is the international prefix in most of the world, and people write it with a space or a
+    # dash after it. Where the chosen country dials something else (011 in North America) the
+    # library reads 00 as part of a national number, so it is tried here as international. It is
+    # only taken when what follows is a possible number: "0011 44 ..." is Australia's prefix, not
+    # 00 followed by country code 1.
+    m = _IDD_00.match(raw.strip())
+    if m:
         try:
-            return pn.parse("+" + re.sub(r"^\(?00", "", raw.strip()), None, keep_raw_input=True), "given"
-        except pn.NumberParseException as e:
-            if e.error_type == pn.NumberParseException.INVALID_COUNTRY_CODE:
-                raise
+            alt = pn.parse("+" + raw.strip()[m.end():], None, keep_raw_input=True)
+            if pn.is_possible_number_with_reason(alt) == pn.ValidationResult.IS_POSSIBLE:
+                return alt, "idd00", "00"
+        except pn.NumberParseException:
+            pass
     # Digits that are not a number in the hint region but are one when the country code comes
     # first ("447911123456"): people often leave the + out.
     if not pn.is_valid_number(n) and 10 <= len(digits) <= 15 and not raw.strip().startswith("0"):
         try:
             alt = pn.parse("+" + raw.strip(), None, keep_raw_input=True)
             if pn.is_valid_number(alt):
-                return alt, "no_plus"
+                return alt, "no_plus", ""
         except pn.NumberParseException:
             pass
-    return n, "assumed"
+    return n, "assumed", ""
 
 
 def _short_code(raw: str, region: str) -> dict | None:
@@ -194,7 +214,14 @@ def _short_code(raw: str, region: str) -> dict | None:
     except pn.NumberParseException:
         return None
     emergency = shortnumberinfo.is_emergency_number(digits, region)
-    if not emergency and not shortnumberinfo.is_valid_short_number_for_region(n, region):
+    # The library's short-number data has to say what the code is. Its catch-all pattern for
+    # text-message codes (any five or six digits in the United States) is not that: "90210"
+    # fits it and is nobody's service.
+    listed = shortnumberinfo.is_valid_short_number_for_region(n, region) and (
+        shortnumberinfo.is_carrier_specific_for_region(n, region)
+        or shortnumberinfo.expected_cost_for_region(n, region) != shortnumberinfo.ShortNumberCost.UNKNOWN_COST
+        or not shortnumberinfo.is_sms_service_for_region(n, region))
+    if not emergency and not listed:
         return None
     country = _country_name(region)
     if emergency:
@@ -251,6 +278,38 @@ def search_links(e164: str, international: str, national: str, *, nanp: bool) ->
     return out
 
 
+def _offset_name(minutes: int) -> str:
+    if minutes == 0:
+        return "UTC"
+    h, m = divmod(abs(minutes), 60)
+    return f"UTC{'+' if minutes > 0 else '-'}{h}{f':{m:02d}' if m else ''}"
+
+
+def utc_offsets(zones: list[str], now=None) -> list[str]:
+    """The UTC offsets a number range covers today, smallest first: ["UTC+2"], or several for a
+    range that spans them. The library names each range by a representative time zone, and that
+    zone's city is often in another country (Estonia is filed under Europe/Bucharest), so a zone
+    name is never shown: only the offset is true of the range. Empty when there are more than
+    three offsets (the range is not tied to a place) or no time zone database is installed."""
+    from datetime import datetime, timezone as _utc
+    from zoneinfo import ZoneInfo
+    now = now or datetime.now(_utc.utc)
+    minutes = set()
+    for z in zones:
+        try:
+            minutes.add(int(ZoneInfo(z).utcoffset(now).total_seconds() // 60))
+        except Exception:
+            return []
+    return [_offset_name(m) for m in sorted(minutes)] if 0 < len(minutes) <= 3 else []
+
+
+# Exchanges in North America that no carrier holds as an ordinary block. The block source lists
+# nothing for them, which must not be read as "this number cannot exist".
+def special_exchange(nsn: str) -> str:
+    nxx = nsn[3:6]
+    return nxx if nxx in ("555", "950", "976") or nxx[1:] == "11" else ""
+
+
 # ---- offline facts ----------------------------------------------------------------------
 def offline_facts(raw: str, region: str = "US") -> dict:
     """Everything the numbering plan says, with no network. Raises PhoneInputError for text
@@ -277,13 +336,23 @@ def offline_facts(raw: str, region: str = "US") -> dict:
         return base
 
     try:
-        n, how = _parse(raw, region)
+        n, how, idd = _parse(raw, region)
     except pn.NumberParseException:
         base.update(valid=False)
         base["number"] = {"possible": False, "valid": False, "possible_reason": "the country code is not in use",
                           "validity_text": "Not valid: the country code is not in use."}
         base["findings"] = [_finding("flag", "invalid", "Not a valid number", "The digits after the + do not start with a country code that is in use.")]
         return base
+
+    # Mexican mobiles were written with a 1 after +52 until 2019, and still are. The library
+    # documents the change and no longer accepts the 1, so it is taken off when that is the only
+    # thing wrong with the number.
+    legacy = ""
+    old = str(n.national_number)
+    if n.country_code == 52 and len(old) == 11 and old.startswith("1") and not pn.is_valid_number(n):
+        alt = pn.PhoneNumber(country_code=52, national_number=int(old[1:]), extension=n.extension)
+        if pn.is_valid_number(alt):
+            n, legacy = alt, "1"
 
     number_type = pn.number_type(n)
     iso, country = _country(n, number_type)
@@ -302,6 +371,8 @@ def offline_facts(raw: str, region: str = "US") -> dict:
         validity_text = f"Valid: the digits fit a number range in the numbering plan of {where}."
     elif possible:
         validity_text = f"Not valid: the length is right for {where}, but no number range in its plan starts with these digits."
+    elif how == "assumed" and len(re.sub(r"\D", "", raw)) <= 6:
+        validity_text = f"Not valid: not a phone number for {where}. It is too short, and it is not a service number the numbering data lists."
     else:
         validity_text = f"Not valid: {reason}."
 
@@ -311,6 +382,7 @@ def offline_facts(raw: str, region: str = "US") -> dict:
     if area == country:
         area = ""                       # the library fell back to the country: no finer area is known
     assigned_carrier = _clip(pn_carrier.name_for_number(n, "en")) if valid else ""
+    offsets = utc_offsets(zones)
 
     assumed_text = ""
     if how == "assumed":
@@ -322,8 +394,17 @@ def offline_facts(raw: str, region: str = "US") -> dict:
     findings = []
     if how == "assumed":
         findings.append(_finding("info", "assumed_country", assumed_text.rstrip("."), "Add the country code with a + (for example +44) if the number belongs somewhere else."))
+    elif how == "idd":
+        findings.append(_finding("info", "idd_prefix", f"{idd or 'The prefix'} read as the international call prefix of {_the(_country_name(region))}",
+                                 f"The digits after it were read as country code +{n.country_code} and the number. Writing the number with a + means the same in every country."))
+    elif how == "idd00":
+        findings.append(_finding("info", "idd_prefix", "00 read as the international call prefix",
+                                 f"00 is what most countries dial before a country code, though not {_the(_country_name(region))}. The digits after it were read as country code +{n.country_code} and the number. Write the number with a + to be sure."))
     elif how == "no_plus":
         findings.append(_finding("info", "assumed_plus", f"No + given, read with country code +{n.country_code}", "The digits only make a valid number when the country code comes first, so they were read that way. Write the + to be sure."))
+    if legacy:
+        findings.append(_finding("info", "legacy_prefix", "Read without the old mobile 1 after +52",
+                                 f"Mexican mobile numbers were written with a 1 after the country code until 2019, and often still are. The 1 is no longer part of the number, so it was read as {international}."))
     if pn.is_alpha_number(raw):
         findings.append(_finding("info", "vanity", "Letters read as keypad digits", f"The letters were turned into the digits they share a key with: {national}."))
     if n.extension:
@@ -366,11 +447,21 @@ def offline_facts(raw: str, region: str = "US") -> dict:
         "possible": possible, "possible_reason": reason or None, "valid": valid, "validity_text": validity_text,
         "line_type": code if valid else "unknown", "line_type_text": type_text if valid else "Unknown", "line_type_note": type_note or None,
         "region_assumed": how == "assumed", "assumed_text": assumed_text or None,
-        "time_zones": zones[:3] if len(zones) <= 3 else [], "time_zone_count": len(zones),
+        "utc_offsets": offsets, "utc_offset_text": (offsets[0] if len(offsets) == 1 else f"{offsets[0]} to {offsets[-1]}") if offsets else None,
         "vanity": pn.is_alpha_number(raw), "fiction": bool(fiction),
     }
     nsn = str(n.national_number)
-    nanp_block = n.country_code == 1 and len(nsn) == 10 and iso in ("US", "CA") and number_type in _GEO_TYPES and bool(re.fullmatch(r"[2-9]\d\d[2-9]\d\d\d{4}", nsn))
+    nanp_geo = n.country_code == 1 and len(nsn) == 10 and iso in ("US", "CA") and number_type in _GEO_TYPES and bool(re.fullmatch(r"[2-9]\d\d[2-9]\d\d\d{4}", nsn))
+    special = special_exchange(nsn) if nanp_geo else ""
+    # The block source is asked about ordinary geographic blocks only: not a special exchange,
+    # and (by the line type) not a toll-free, premium or other non-geographic area code.
+    nanp_block = nanp_geo and not special
+    if special == "555" and nsn[6:] == "1212":
+        findings.append(_finding("info", "directory_assistance", "Directory assistance",
+                                 f"{nsn[:3]}-555-1212 is the directory assistance number for area code {nsn[:3]}. It is a service, not a subscriber's line."))
+    elif special and not fiction:
+        findings.append(_finding("info", "special_exchange", "Special-use exchange",
+                                 f"Exchange {special} is set aside for special services in North America. No carrier holds it as an ordinary block, so no block assignment is looked up."))
     base["assignment"] = {
         "area": area or None, "area_note": AREA_NOTE if area else None,
         "carrier": assigned_carrier or None, "carrier_note": CARRIER_NOTE if assigned_carrier else None,

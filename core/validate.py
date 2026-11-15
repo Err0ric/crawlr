@@ -179,11 +179,27 @@ _PHONE_RE = re.compile(r"^[+(]?[0-9(][0-9A-Za-z()\-. /,;=#*]*$")
 _REGION_RE = re.compile(r"^[A-Za-z]{2}$")
 
 
+def phone_text(value: str) -> str:
+    """A pasted phone number as plain text. Phones and contact apps wrap a number in invisible
+    direction marks and write it with non-breaking spaces and typographic dashes. Format
+    characters (Unicode category Cf) are dropped, every Unicode dash becomes "-", every Unicode
+    space becomes " ", and runs of whitespace collapse. normalizePhoneText in
+    static/v2/js/core.js does the same; tests/fixtures/phone_text.json holds the pairs both
+    suites assert."""
+    out = []
+    for ch in unicodedata.normalize("NFKC", value or ""):
+        cat = unicodedata.category(ch)
+        if cat == "Cf":
+            continue
+        out.append("-" if cat == "Pd" or ch == "\u2212" else " " if cat == "Zs" else ch)
+    return " ".join("".join(out).split())
+
+
 def phone(value: str) -> str:
-    """The number as typed, trimmed, with runs of spaces collapsed. Refuses text that is not
-    written like a phone number. Whether it is a possible or a valid number is decided later,
-    by modules/phone_lookup.py."""
-    v = " ".join(unicodedata.normalize("NFKC", value or "").split())
+    """The number as typed, cleaned by phone_text. Refuses text that is not written like a
+    phone number. Whether it is a possible or a valid number is decided later, by
+    modules/phone_plan.py."""
+    v = phone_text(value)
     if not v or len(v) > PHONE_MAX or not _PHONE_RE.fullmatch(v) or sum(ch.isdigit() for ch in v) < 2:
         raise _bad(PHONE_MSG)
     return v

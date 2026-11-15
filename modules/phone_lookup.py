@@ -39,7 +39,6 @@ from urllib.parse import quote
 import httpx
 
 from core.errors import classify, classify_status, error_fields
-from core.subprocess_guard import ToolBusy, tool_slot
 
 PLAN_SOURCE = "Numbering plan"
 NPA_SOURCE = "Local Calling Guide"
@@ -63,8 +62,13 @@ CARRIER_NOTE = ("The carrier this number range was first assigned to. Numbers ar
 # The numbering plan is read in a child process (see modules/phone_worker.py).
 WORKER_CMD = [sys.executable, "-m", "modules.phone_worker"]
 WORKER_CWD = str(Path(__file__).resolve().parent.parent)
-WORKER_TIMEOUT = 6             # seconds; a lookup takes a fraction of one
+# A warm lookup takes a fraction of a second. A cold one, on a machine with no compiled
+# bytecode for the library's 40 MB of tables, took about 6 s, so the limit leaves room for that.
+WORKER_TIMEOUT = 20
 WORKER_MAX = 2                 # workers at once: each holds about 130 MB while it runs
+WORKER_QUEUE_TIMEOUT = 10      # how long a lookup waits for one of those two before it reports busy
+WARM_DELAY = 5                 # seconds after start before the one warming run
+WARM_NUMBER = "+1 202 555 0100"   # reserved for fiction: nobody's number
 WORKER_MAX_BYTES = 100_000
 PLAN_TTL = 24 * 3600
 PLAN_CACHE_MAX = 2000
@@ -110,9 +114,15 @@ async def _worker(raw: str, region: str) -> dict:
     try:
         out, _ = await asyncio.wait_for(proc.communicate(json.dumps({"phone": raw, "region": region}).encode()), timeout=WORKER_TIMEOUT)
     except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
         raise PlanUnavailable("timeout", "worker timed out") from None
+    finally:
+        # Timed out, or the request that wanted it was cancelled: the child is never left behind.
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await asyncio.shield(proc.wait())
     if proc.returncode != 0 or len(out) > WORKER_MAX_BYTES:
         raise PlanUnavailable("unknown", f"worker exit {proc.returncode}")
     try:
@@ -124,24 +134,50 @@ async def _worker(raw: str, region: str) -> dict:
     return answer
 
 
+async def _run_worker(raw: str, region: str) -> dict:
+    """One worker run inside the module's own limit. Waiting too long for a place is "busy"."""
+    global _worker_sem
+    if _worker_sem is None:
+        _worker_sem = asyncio.Semaphore(WORKER_MAX)
+    sem = _worker_sem
+    try:
+        await asyncio.wait_for(sem.acquire(), timeout=WORKER_QUEUE_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise PlanUnavailable("busy", "no worker free") from None
+    try:
+        return await _worker(raw, region)
+    finally:
+        sem.release()
+
+
+async def warm(delay: float | None = None) -> None:
+    """One throwaway run shortly after the app starts, so the library's bytecode is compiled
+    before the first real lookup where the image lets it be written. A fixed fictional number,
+    nothing kept, nothing logged, any failure ignored. Started as a background task by main.py:
+    it never holds up startup, and it takes one of the two worker places only while it runs."""
+    try:
+        await asyncio.sleep(WARM_DELAY if delay is None else delay)
+        await _run_worker(WARM_NUMBER, "US")
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        pass
+
+
 async def plan_facts(raw: str, region: str) -> dict:
     """The offline facts for a number, from the cache or from a worker. Raises PhoneInputError
     for text that is not a phone number and PlanUnavailable when the plan could not be read.
-    At most WORKER_MAX workers run at once, inside the limit every external tool shares."""
-    global _worker_sem
-    key = f"{re.sub(r'[^0-9a-z+#*;=,x]', '', raw.lower())}|{region}"
+    At most WORKER_MAX workers run at once. They have their own limit and do not share the
+    slots of the long-running username tools: a lookup that takes a fraction of a second must
+    not wait behind a five-minute scan."""
+    # Keyed on the text as typed with its whitespace collapsed, and nothing else removed: two
+    # inputs that could parse differently ("9/11" and "911") never share an answer.
+    key = f"{' '.join(raw.split())}|{region}"
     hit = _plan_cache.get(key)
     if hit and time.time() - hit[0] < PLAN_TTL:
         _plan_cache.move_to_end(key)
         return {**copy.deepcopy(hit[1]), "input": raw}
-    if _worker_sem is None:
-        _worker_sem = asyncio.Semaphore(WORKER_MAX)
-    try:
-        async with _worker_sem:
-            async with tool_slot("phone_plan"):
-                answer = await _worker(raw, region)
-    except ToolBusy:
-        raise PlanUnavailable("busy") from None
+    answer = await _run_worker(raw, region)
     if "result" not in answer:
         raise PhoneInputError(answer["bad_input"][:300])
     _plan_cache[key] = (time.time(), answer["result"])
@@ -188,17 +224,22 @@ async def npa_nxx_lookup(npa: str, nxx: str) -> dict:
     if now < _npa_pause_until:
         return {**src, "state": "rate_limited", **error_fields(code="rate_limited")}
     try:
+        status, body = 0, bytearray()
         async with httpx.AsyncClient(timeout=NPA_TIMEOUT) as client:
-            resp = await client.get(NPA_URL, params={"npa": npa, "nxx": nxx}, headers=HEADERS)
-        if resp.status_code != 200:
-            code = classify_status(resp.status_code)
+            # Read as a stream with a cap, so an oversized answer is dropped before it is held in memory.
+            async with client.stream("GET", NPA_URL, params={"npa": npa, "nxx": nxx}, headers=HEADERS) as resp:
+                status = resp.status_code
+                if status == 200:
+                    async for chunk in resp.aiter_bytes():
+                        body += chunk
+                        if len(body) > NPA_MAX_BYTES:
+                            raise ValueError("answer too large")
+        if status != 200:
+            code = classify_status(status)
             if code == "rate_limited":
                 _npa_pause_until = time.time() + NPA_PAUSE
-            return {**src, "state": "rate_limited" if code == "rate_limited" else "failed", **error_fields(code=code, detail=f"HTTP {resp.status_code}")}
-        text = resp.text
-        if len(text) > NPA_MAX_BYTES:
-            raise ValueError("answer too large")
-        row = parse_npa_xml(text, npa, nxx)
+            return {**src, "state": "rate_limited" if code == "rate_limited" else "failed", **error_fields(code=code, detail=f"HTTP {status}")}
+        row = parse_npa_xml(bytes(body).decode("utf-8", "replace"), npa, nxx)
     except Exception as e:
         return {**src, "state": "failed", **error_fields(code=classify(e), detail=type(e).__name__)}
     answer = {"state": "ok", **row} if row else {"state": "none"}
