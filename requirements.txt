@@ -19,5 +19,6 @@ pillow==13.0.0
 python-nmap==0.7.1
 # Google's libphonenumber for modules/phone_lookup.py: validity, formats, line type, and where
 # and to whom a number range was assigned. Pure Python, Apache 2.0, and it needs no network:
-# every table ships inside the package (about 48 MB on disk).
+# every table ships inside the package (about 48 MB on disk). Only the short-lived worker
+# (modules/phone_worker.py) imports it; the web process never does.
 phonenumbers==9.0.43

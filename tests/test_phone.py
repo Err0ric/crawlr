@@ -1,8 +1,14 @@
-"""Phone lookup: offline numbering facts, the NPA-NXX source from answers recorded on
-2026-11-14 (tests/fixtures/phone), and NumLookup with the visitor's key. No network."""
+"""Phone lookup: offline numbering facts, the worker that reads them in a child process, the
+NPA-NXX source from answers recorded on 2026-11-14 (tests/fixtures/phone), and NumLookup with
+the visitor's key. No network."""
 
 import asyncio
+import json
 import logging
+import re
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -13,6 +19,7 @@ from fastapi.testclient import TestClient
 from core import validate
 from main import app
 from modules import phone_lookup as pl
+from modules import phone_plan as plan
 
 FIX = Path(__file__).parent / "fixtures" / "phone"
 XML = {k: (FIX / f"lcg_{k}.xml").read_text() for k in ("202_456", "202_555", "604_687")}
@@ -39,9 +46,25 @@ def fake_client(calls, *, npa=None, numlookup=None):
     return Client
 
 
+REAL_WORKER = pl._worker
+WORKER_CALLS = []
+
+
+async def inline_worker(raw, region):
+    """What the worker answers, computed in this process: the tests of the facts themselves do
+    not need a child process each. The worker tests below use the real one."""
+    WORKER_CALLS.append((raw, region))
+    try:
+        return {"result": json.loads(json.dumps(plan.offline_facts(raw, region)))}
+    except plan.PhoneInputError as e:
+        return {"bad_input": str(e)}
+
+
 @pytest.fixture(autouse=True)
 def _fresh(monkeypatch):
     pl.clear_cache_for_tests()
+    WORKER_CALLS.clear()
+    monkeypatch.setattr(pl, "_worker", inline_worker)
     # Nothing in this file may reach the network: a test that needs a service installs its own fake.
     monkeypatch.setattr(pl.httpx, "AsyncClient", fake_client([]))
     yield
@@ -80,13 +103,13 @@ def test_region_hint_is_two_letters():
     for bad in ["GBR", "4", "U$"]:
         with pytest.raises(HTTPException):
             validate.phone_region(bad)
-    with pytest.raises(pl.PhoneInputError):
-        pl.offline_facts("020 7946 0958", "ZZ")
+    with pytest.raises(plan.PhoneInputError):
+        plan.offline_facts("020 7946 0958", "ZZ")
 
 
 # ---- offline facts, per number ------------------------------------------------------------------
 def test_us_geographic_number():
-    o = pl.offline_facts(WHITE_HOUSE)
+    o = plan.offline_facts(WHITE_HOUSE)
     n, a = o["number"], o["assignment"]
     assert o["parsed"] and o["kind"] == "number" and o["valid"] is True
     assert (n["e164"], n["international"], n["national"]) == ("+12024561111", "+1 202-456-1111", "(202) 456-1111")
@@ -104,7 +127,7 @@ def test_us_geographic_number():
 
 
 def test_us_toll_free_belongs_to_no_country_or_place():
-    o = pl.offline_facts("+1 800 356 9377")
+    o = plan.offline_facts("+1 800 356 9377")
     assert o["valid"] and o["number"]["line_type"] == "toll_free" and o["line_type"] == "Toll free"
     assert o["country_code"] is None and o["country"] == "North America (+1)"
     assert o["assignment"]["area"] is None and o["assignment"]["prefix"] is None and o["number"]["time_zones"] == []
@@ -112,25 +135,25 @@ def test_us_toll_free_belongs_to_no_country_or_place():
 
 
 def test_us_fiction_number():
-    o = pl.offline_facts("+1 202 555 0143")
+    o = plan.offline_facts("+1 202 555 0143")
     assert o["number"]["fiction"] is True and codes(o) == {"fiction": "flag"}
     f = o["findings"][0]
     assert "reserved for fiction" in f["detail"] and "not in use" in f["detail"] and f["title"] == "Reserved for fiction"
-    assert pl.offline_facts("+1 202 555 1212")["number"]["fiction"] is False        # 555-1212 is directory assistance
-    assert pl.offline_facts("+1 202 555 0200")["number"]["fiction"] is False
+    assert plan.offline_facts("+1 202 555 1212")["number"]["fiction"] is False        # 555-1212 is directory assistance
+    assert plan.offline_facts("+1 202 555 0200")["number"]["fiction"] is False
 
 
 def test_canadian_number():
-    o = pl.offline_facts("+1 604 687 1234")
+    o = plan.offline_facts("+1 604 687 1234")
     assert (o["country"], o["country_code"], o["location"]) == ("Canada", "CA", "Vancouver, BC")
     assert o["assignment"]["prefix"] == "604-687" and o["number"]["time_zones"] == ["America/Vancouver"]
 
 
 def test_uk_landline_and_mobile():
-    land = pl.offline_facts("+44 121 234 5678")
+    land = plan.offline_facts("+44 121 234 5678")
     assert (land["country_code"], land["line_type"], land["location"]) == ("GB", "Fixed line", "Birmingham")
     assert land["number"]["national"] == "0121 234 5678" and land["assignment"]["prefix"] is None and land["number"]["line_type_note"] is None
-    mob = pl.offline_facts("+44 7400 123456")
+    mob = plan.offline_facts("+44 7400 123456")
     assert (mob["country_code"], mob["line_type"], mob["location"]) == ("GB", "Mobile", None)
     # The range's first assignee, with the porting caveat beside it.
     assert mob["assignment"]["carrier"] == "Three" and mob["carrier"] == "Three" and "ported" in mob["assignment"]["carrier_note"]
@@ -139,94 +162,110 @@ def test_uk_landline_and_mobile():
 
 @pytest.mark.parametrize("raw, where", [("+44 20 7946 0958", "London"), ("+44 7700 900123", "mobile"), ("+44 1632 960123", "no area"), ("+44 8081 570123", "freephone")])
 def test_uk_drama_ranges(raw, where):
-    o = pl.offline_facts(raw)
+    o = plan.offline_facts(raw)
     f = next(f for f in o["findings"] if f["code"] == "fiction")
     assert f["level"] == "flag" and "Ofcom" in f["detail"] and where in f["detail"] and "reserved for fiction" in f["detail"]
     assert "valid" not in codes(o) and "invalid" not in codes(o)      # one statement, not two that disagree
+
+
+@pytest.mark.parametrize("raw, who", [("+61 2 5550 1234", "ACMA"), ("+61 3 7010 9876", "ACMA"), ("+61 7 5550 0000", "ACMA"), ("+61 8 7010 4321", "ACMA"),
+                                      ("+353 20 912 3456", "ComReg"), ("020 918 7654", "ComReg")])
+def test_australian_and_irish_drama_ranges(raw, who):
+    o = plan.offline_facts(raw, "IE" if who == "ComReg" else "US")
+    f = next(f for f in o["findings"] if f["code"] == "fiction")
+    assert f["level"] == "flag" and who in f["detail"] and "reserved for fiction" in f["detail"] and o["number"]["fiction"] is True
+
+
+@pytest.mark.parametrize("raw", ["+61 2 5551 1234", "+61 2 7011 1234", "+61 4 5550 1234", "+61 412 345 678", "+61 491 570 156", "+353 20 812 3456", "+353 21 912 3456",
+                                 "+353 1 209 1234", "+44 20 7946 1958", "+44 20 7947 0958", "+44 7700 901123", "+1 202 555 0200", "+44 121 496 1234",
+                                 "+44 28 9018 0123", "+44 28 9649 6123", "+353 89 011 0123", "+61 1800 160 401"])
+def test_numbers_beside_a_drama_range_are_not_flagged(raw):
+    # A wrong "reserved for fiction" on a real number is worse than a missing one.
+    assert plan.offline_facts(raw)["number"]["fiction"] is False
 
 
 @pytest.mark.parametrize("raw, iso, carrier, area", [
     ("+49 1512 3456789", "DE", "T-Mobile", None), ("+91 98765 43210", "IN", "Airtel", None),
     ("+55 11 91234 5678", "BR", None, "São Paulo"), ("+61 412 345 678", "AU", "Optus", None)])
 def test_mobiles_in_other_countries(raw, iso, carrier, area):
-    o = pl.offline_facts(raw)
+    o = plan.offline_facts(raw)
     assert o["valid"] and o["country_code"] == iso and o["line_type"] == "Mobile" and o["number"]["line_type"] == "mobile"
     assert o["assignment"]["carrier"] == carrier and o["assignment"]["area"] == area
     assert (o["assignment"]["carrier_note"] is not None) == (carrier is not None)
 
 
 def test_premium_voip_and_personal_numbers_are_flagged():
-    prem = pl.offline_facts("+1 900 234 5678")
+    prem = plan.offline_facts("+1 900 234 5678")
     assert prem["line_type"] == "Premium rate" and codes(prem)["premium_rate"] == "flag"
     assert "charged at a premium" in next(f["detail"] for f in prem["findings"] if f["code"] == "premium_rate")
-    voip = pl.offline_facts("+44 5600 123456")
+    voip = plan.offline_facts("+44 5600 123456")
     assert voip["line_type"] == "VoIP" and codes(voip)["voip"] == "flag" and "easy to get and discard" in voip["findings"][-1]["detail"]
-    assert pl.offline_facts("+33 9 12 34 56 78")["number"]["line_type"] == "voip"
-    pers = pl.offline_facts("+44 70 1234 5678")
+    assert plan.offline_facts("+33 9 12 34 56 78")["number"]["line_type"] == "voip"
+    pers = plan.offline_facts("+44 70 1234 5678")
     assert pers["line_type"] == "Personal number" and codes(pers)["personal_number"] == "flag" and "easy to get and discard" in pers["findings"][-1]["detail"]
 
 
 def test_possible_and_valid_are_two_things():
-    short = pl.offline_facts("+44 20 7946")
+    short = plan.offline_facts("+44 20 7946")
     assert short["parsed"] and short["valid"] is False and short["number"]["possible"] is False
     assert short["normalized"] is None and short["number"]["e164"] is None and short["search_links"] == []
-    assert pl.offline_facts("+44 12")["number"]["possible_reason"] == "too short for the United Kingdom"
-    assert pl.offline_facts("+44 20 7946 09588888")["number"]["possible_reason"] == "too long for the United Kingdom"
+    assert plan.offline_facts("+44 12")["number"]["possible_reason"] == "too short for the United Kingdom"
+    assert plan.offline_facts("+44 20 7946 09588888")["number"]["possible_reason"] == "too long for the United Kingdom"
     # The right length, and no range that starts with these digits.
-    nope = pl.offline_facts("+1 555 555 1234")
+    nope = plan.offline_facts("+1 555 555 1234")
     assert nope["number"]["possible"] is True and nope["valid"] is False and "no number range" in nope["number"]["validity_text"]
     assert codes(nope) == {"invalid": "flag"} and nope["line_type"] is None and nope["assignment"]["prefix"] is None
-    cc = pl.offline_facts("+999 123456789")
+    cc = plan.offline_facts("+999 123456789")
     assert cc["parsed"] is False and cc["valid"] is False and codes(cc) == {"invalid": "flag"} and "country code" in cc["number"]["validity_text"]
 
 
 def test_extension_vanity_and_international_prefix():
-    ext = pl.offline_facts("+1 202 456 1111 ext. 22")
+    ext = plan.offline_facts("+1 202 456 1111 ext. 22")
     assert ext["number"]["extension"] == "22" and ext["number"]["e164"] == "+12024561111" and codes(ext)["extension"] == "info"
-    van = pl.offline_facts("1-800-FLOWERS")
+    van = plan.offline_facts("1-800-FLOWERS")
     assert van["number"]["e164"] == "+18003569377" and van["number"]["vanity"] is True and codes(van)["vanity"] == "info"
     for raw, region in [("0044 20 7946 0958", "US"), ("011 44 20 7946 0958", "US"), ("0011 44 20 7946 0958", "AU"), ("00 44 20 7946 0958", "DE")]:
-        o = pl.offline_facts(raw, region)
+        o = plan.offline_facts(raw, region)
         assert o["number"]["e164"] == "+442079460958" and o["number"]["region_assumed"] is False, raw
 
 
 def test_no_country_code_uses_the_hint_and_says_so():
-    us = pl.offline_facts("2535551234")
+    us = plan.offline_facts("2535551234")
     assert us["number"]["e164"] == "+12535551234" and us["number"]["region_assumed"] is True
     assert us["number"]["assumed_text"] == "No country code given, read as a United States number."
     assert codes(us)["assumed_country"] == "info"
-    gb = pl.offline_facts("0121 234 5678", "GB")
+    gb = plan.offline_facts("0121 234 5678", "GB")
     assert gb["number"]["e164"] == "+441212345678" and gb["number"]["assumed_text"] == "No country code given, read as a United Kingdom number."
-    assert pl.offline_facts("030 123456", "DE")["number"]["assumed_text"] == "No country code given, read as a number from Germany."
+    assert plan.offline_facts("030 123456", "DE")["number"]["assumed_text"] == "No country code given, read as a number from Germany."
     # The same digits without the hint are not a United States number, and the answer says which country was tried.
-    wrong = pl.offline_facts("0121 234 5678")
+    wrong = plan.offline_facts("0121 234 5678")
     assert wrong["valid"] is False and wrong["country_code"] == "US" and wrong["number"]["possible_reason"] == "too long for the United States"
     # Digits that only make a number with the country code first are read that way, and the answer says so.
-    bare = pl.offline_facts("447400123456")
+    bare = plan.offline_facts("447400123456")
     assert bare["number"]["e164"] == "+447400123456" and codes(bare)["assumed_plus"] == "info" and bare["number"]["region_assumed"] is False
-    assert pl.offline_facts("1 202 456 1111")["number"]["region_assumed"] is False
+    assert plan.offline_facts("1 202 456 1111")["number"]["region_assumed"] is False
 
 
 def test_short_codes_and_emergency_numbers_are_not_subscriber_numbers():
-    e = pl.offline_facts("911")
+    e = plan.offline_facts("911")
     assert e["kind"] == "emergency" and e["valid"] is False and e["normalized"] is None and e["search_links"] == [] and e["assignment"] is None
     assert codes(e) == {"emergency": "flag"} and "not a subscriber number" in e["findings"][0]["detail"] and "the United States" in e["findings"][0]["detail"]
-    assert pl.offline_facts("112", "DE")["kind"] == "emergency" and pl.offline_facts("999", "GB")["kind"] == "emergency"
-    s = pl.offline_facts("46645")
+    assert plan.offline_facts("112", "DE")["kind"] == "emergency" and plan.offline_facts("999", "GB")["kind"] == "emergency"
+    s = plan.offline_facts("46645")
     assert s["kind"] == "short_code" and codes(s) == {"short_code": "info"} and s["line_type"] == "Short code"
-    assert pl.offline_facts("12")["kind"] == "number"            # not a service: just too short
+    assert plan.offline_facts("12")["kind"] == "number"            # not a service: just too short
 
 
 def test_search_links_are_free_pages_with_the_search_kind():
-    links = pl.offline_facts(WHITE_HOUSE)["search_links"]
-    assert [l["site"] for l in links] == ["Google", "Bing", "DuckDuckGo", "800notes", "Should I Answer", "WhoCallsMe"]
+    links = plan.offline_facts(WHITE_HOUSE)["search_links"]
+    assert [l["site"] for l in links] == ["Google", "Bing", "DuckDuckGo", "800notes", "WhoCallsMe"]
     assert all(l["kind"] == "search" and l["url"].startswith("https://") and l["label"] for l in links)
     g = links[0]["url"]
     assert g == "https://www.google.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22"
     assert links[3]["url"] == "https://800notes.com/Phone.aspx/1-202-456-1111"
     # No data broker, and none of the pages that wanted a login or a payment.
     text = " ".join(l["url"] + l["site"] for l in links).lower()
-    for gone in ["spokeo", "whitepages", "beenverified", "truecaller", "numverify", "calleridtest", "nomorobo", "youmail"]:
+    for gone in ["spokeo", "whitepages", "beenverified", "truecaller", "numverify", "calleridtest", "nomorobo", "youmail", "shouldianswer"]:
         assert gone not in text
 
 
@@ -290,6 +329,7 @@ def test_block_answers_are_cached_and_a_rate_limit_pauses_the_source(monkeypatch
 
 def test_block_lookup_is_only_for_us_and_canadian_geographic_numbers(monkeypatch):
     for raw in ["+1 800 356 9377", "+1 900 234 5678", "+44 121 234 5678", "+1 242 302 1234", "+1 555 555 1234", "911", "+44 20 7946"]:
+        pl.clear_cache_for_tests()
         calls = []
         o = look(monkeypatch, raw, calls=calls)          # any request would fail the fake
         assert calls == [] and "npa_nxx" not in o["sources"], raw
@@ -340,6 +380,7 @@ def test_endpoint_shape_bad_input_and_region(monkeypatch):
                 "number", "assignment", "findings", "sources", "search_links", "owner_note"} == set(j)
         assert "lookup_links" not in j and j["assignment"]["company"] == "VERIZON WASHINGTON DC, INC."
         assert c.post("/api/phone/lookup", json={"phone": "0121 234 5678", "region": "gb"}).json()["normalized"] == "+441212345678"
+        assert c.post("/api/phone/lookup", json={"phone": "0121 234 5678"}).json()["valid"] is False     # the same digits read as a United States number
         for bad in [{"phone": "hello there"}, {"phone": ""}, {"phone": "abc 253 def 555 ghi 1234"}, {"phone": "2024561111", "region": "Z1"}, {"phone": "2024561111", "region": "ZZ"}]:
             r = c.post("/api/phone/lookup", json=bad)
             assert r.status_code == 400 and isinstance(r.json()["detail"], str), bad
@@ -379,3 +420,114 @@ def test_prompt_describes_the_number_and_never_an_owner(monkeypatch):
     # A case saved before this change still gets its one line.
     old = investigation_prompt(AnalyzeRequest(target=WHITE_HOUSE, target_type="phone", phone={"valid": True, "carrier": "Example Mobile", "line_type": "mobile"}))
     assert "Phone lookup: carrier: Example Mobile, line type: mobile" in old and "PHONE NUMBER (" not in old
+
+
+# ---- the worker: the numbering plan is read in a child process ---------------------------------------
+def test_worker_reads_one_request_and_writes_one_answer():
+    run = lambda body: subprocess.run([sys.executable, "-m", "modules.phone_worker"], input=body, capture_output=True, text=True, cwd=pl.WORKER_CWD, timeout=30)
+    ok = run(json.dumps({"phone": WHITE_HOUSE, "region": "US"}))
+    assert ok.returncode == 0 and ok.stderr == ""
+    assert json.loads(ok.stdout)["result"] == json.loads(json.dumps(plan.offline_facts(WHITE_HOUSE)))
+    bad = run(json.dumps({"phone": "2024561111", "region": "ZZ"}))
+    assert bad.returncode == 0 and "region" in json.loads(bad.stdout)["bad_input"]
+    assert run("not json").returncode == 2 and run("not json").stdout == ""
+
+
+def test_lookup_goes_through_the_real_worker_and_the_parent_never_loads_the_tables():
+    # A fresh interpreter, so what this process has imported for the other tests does not count.
+    code = (
+        "import asyncio, json, sys, resource\n"
+        "import main\n"
+        "from modules import phone_lookup as pl\n"
+        "async def none(*a): return {'name': 'x', 'state': 'failed', 'error': 'x', 'error_code': 'timeout'}\n"
+        "pl.npa_nxx_lookup = none\n"
+        "o = asyncio.run(pl.lookup('+1 202 456 1111'))\n"
+        "heavy = [m for m in sys.modules if m.startswith('phonenumbers')]\n"
+        "print(json.dumps({'e164': o['number']['e164'], 'area': o['location'], 'heavy': heavy}))\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=pl.WORKER_CWD, timeout=60)
+    assert r.returncode == 0, r.stderr[-400:]
+    got = json.loads(r.stdout.strip().splitlines()[-1])
+    assert got["e164"] == "+12024561111" and got["area"] == "Washington D.C."
+    assert got["heavy"] == []          # not the geocoder, the carrier or time zone tables, nor the library at all
+    src = Path(pl.__file__).read_text()
+    assert not re.search(r"^\s*(import|from)\s+(phonenumbers|modules\.phone_plan|modules import phone_plan)", src, flags=re.M)
+
+
+def test_worker_failure_or_timeout_is_a_failed_source_never_not_valid(monkeypatch):
+    monkeypatch.setattr(pl, "_worker", REAL_WORKER)
+    for cmd, timeout, code in [([sys.executable, "-c", "import time; time.sleep(30)"], 0.4, "timeout"),
+                               ([sys.executable, "-c", "import sys; sys.exit(3)"], 6, "unknown"),
+                               ([sys.executable, "-c", "print('oops')"], 6, "bad_response"),
+                               ([sys.executable, "-c", "print('{}')"], 6, "bad_response"),
+                               (["/nonexistent/python"], 6, "not_installed")]:
+        pl.clear_cache_for_tests()
+        monkeypatch.setattr(pl, "WORKER_CMD", cmd)
+        monkeypatch.setattr(pl, "WORKER_TIMEOUT", timeout)
+        calls = []
+        o = look(monkeypatch, WHITE_HOUSE, key="k-123", calls=calls)
+        assert calls == []                                           # nothing else is asked
+        assert o["error_code"] == code and o["error"] and o["sources"]["numbering_plan"]["state"] == "failed", cmd
+        assert "valid" not in o and "number" not in o and "findings" not in o
+        assert "2024561111" not in o["error"] + o["error_detail"]
+        assert pl._plan_cache == {}                                   # a failure is not remembered
+    with TestClient(app) as c:
+        monkeypatch.setattr(pl, "WORKER_CMD", [sys.executable, "-c", "import sys; sys.exit(3)"])
+        r = c.post("/api/phone/lookup", json={"phone": WHITE_HOUSE})
+        assert r.status_code == 200 and r.json()["error_code"] == "unknown" and r.json()["sources"]["numbering_plan"]["state"] == "failed"
+
+
+def test_plan_answers_are_cached_for_a_day_and_bounded(monkeypatch):
+    look(monkeypatch, WHITE_HOUSE, npa=(200, XML["202_456"]))
+    a = look(monkeypatch, "+1 (202) 456-1111", npa=(200, XML["202_456"]))        # the same number, written another way
+    b = look(monkeypatch, "+1 202 456 1111", region="GB", npa=(200, XML["202_456"]))
+    assert WORKER_CALLS == [(WHITE_HOUSE, "US"), ("+1 202 456 1111", "GB")] and a["input"] == "+1 (202) 456-1111" and a["number"]["e164"] == b["number"]["e164"]
+    a["findings"].clear(); a["number"]["e164"] = "x"                              # a caller cannot spoil the cached copy
+    assert look(monkeypatch, WHITE_HOUSE, npa=(200, XML["202_456"]))["number"]["e164"] == "+12024561111"
+    look(monkeypatch, "hello 12")                                                 # refused input is not cached either
+    monkeypatch.setattr(pl.time, "time", lambda t=time.time(): t + pl.PLAN_TTL + 1)
+    look(monkeypatch, WHITE_HOUSE, npa=(200, XML["202_456"]))
+    assert WORKER_CALLS.count((WHITE_HOUSE, "US")) == 2
+    monkeypatch.undo()
+    monkeypatch.setattr(pl, "_worker", inline_worker)
+    monkeypatch.setattr(pl, "PLAN_CACHE_MAX", 2)
+    pl.clear_cache_for_tests()
+    for raw in ["+44 121 234 5678", "+44 121 234 5679", "+44 121 234 5670"]:
+        look(monkeypatch, raw)
+    assert len(pl._plan_cache) == 2 and "+441212345678|US" not in pl._plan_cache
+
+
+def test_bad_input_from_the_worker_is_a_400_message(monkeypatch):
+    with pytest.raises(pl.PhoneInputError) as e:
+        look(monkeypatch, "2024561111", region="ZZ")
+    assert "region" in str(e.value)
+
+
+def test_at_most_two_workers_run_at_once(monkeypatch):
+    live, peak = 0, 0
+
+    async def slow(raw, region):
+        nonlocal live, peak
+        live += 1; peak = max(peak, live)
+        await asyncio.sleep(0.05)
+        live -= 1
+        return await inline_worker(raw, region)
+
+    async def many():
+        monkeypatch.setattr(pl, "_worker", slow)
+        return await asyncio.gather(*(pl.plan_facts(f"+44 121 234 56{i:02d}", "US") for i in range(8)))
+
+    out = asyncio.run(many())
+    assert peak == 2 == pl.WORKER_MAX and len(out) == 8 and all(o["valid"] for o in out)
+
+
+# ---- the country list the page offers -----------------------------------------------------------
+def test_region_list_for_the_page_matches_the_library():
+    """static/v2/js/phone-regions.js is a generated copy of phone_plan.regions(). To refresh it:
+    python -c "import json; from modules import phone_plan as p; print(json.dumps(p.regions(), ensure_ascii=False))"
+    and paste the list into the file."""
+    src = (Path(pl.WORKER_CWD) / "static" / "v2" / "js" / "phone-regions.js").read_text(encoding="utf-8")
+    rows = json.loads(src[src.index("["):src.rindex("]") + 1])
+    assert rows == plan.regions() and len(rows) > 200
+    assert ["US", "United States"] in rows and ["GB", "United Kingdom"] in rows and all(re.fullmatch(r"[A-Z]{2}", r[0]) and r[1] for r in rows)
+    assert [r[1] for r in rows] == sorted((r[1] for r in rows), key=plan._fold)
