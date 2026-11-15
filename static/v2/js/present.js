@@ -178,11 +178,12 @@ function tile(id, label, n, { tone = "", line = "solid", feeds = [], collected =
     sub: state === "unknown" ? `${why}, so this is not zero` : atLeast ? `at least: ${why}` : sub,
   };
 }
-const word = (id, label, value, { tone = "", unknown = false, sub = "", jump = null } = {}) => ({ id, label, value: unknown ? "unknown" : value, tone: unknown ? "" : tone, line: unknown ? "dashed" : "solid", state: unknown ? "unknown" : "word", sub, jump });
+// caveat: the line under the word changes what the word means ("the range, not the phone"), so it is shown at every width.
+const word = (id, label, value, { tone = "", unknown = false, sub = "", jump = null, caveat = false } = {}) => ({ id, label, value: unknown ? "unknown" : value, tone: unknown ? "" : tone, line: unknown ? "dashed" : "solid", state: unknown ? "unknown" : "word", sub, jump, ...(caveat && sub ? { caveat: true } : {}) });
 
 // extra: values the caller already computed with the functions the page uses.
 //   hash:  { verdict, detection: { positives, total } | null, answered, asked }
-//   phone: { lineType, carrier }
+//   phone: { known, valid, validWord, validSub, lineType, lineSub, place, placeSub }   (phoneTileExtra in phone.js)
 //   name:  { answered, asked }   (directories)
 // running: a run is in flight, so there are no tiles (a count mid-run is half a picture).
 // partialKeys: sources that answered only in part. missingKeys: sources that were asked and had
@@ -203,11 +204,17 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
     ];
   }
   if (type === "phone") {
-    const x = extra.phone || {}, down = failed.has("phone");
+    // Valid, Line type, Assigned in, Flags. Each is read from the numbering data, so it is solid
+    // when there is a value. A lookup that failed, or a value this number cannot have, is dashed
+    // "unknown" with the reason under it.
+    const x = extra.phone || {}, down = failed.has("phone") || !x.known;
+    const why = (sub) => (down ? "the lookup failed" : sub || "not known for this number");
+    const info = { tier: n("info") ? "info" : "flag" };
     return [
-      word("line", "Line type", x.lineType || "", { unknown: !x.lineType, sub: x.lineType ? "" : down ? "the lookup failed" : "needs a NumLookup key", jump: { tab: "sources" } }),
-      word("carrier", "Carrier", x.carrier || "", { unknown: !x.carrier, sub: x.carrier ? "" : down ? "the lookup failed" : "needs a NumLookup key", jump: { tab: "sources" } }),
-      tile("flags", "Flags", n("flag"), { ...o, tone: "flag", feeds: ["phone"], jump: { tier: "flag" } }),
+      word("valid", "Valid", x.validWord || "", { tone: x.valid === true ? (x.fiction ? "" : "linked") : x.valid === false ? "flag" : "", unknown: down || !x.validWord, sub: down || !x.validWord ? why(x.validSub) : x.validSub || "", caveat: down || !x.validWord || !!x.validCaveat, jump: down ? { tab: "sources" } : info }),
+      word("line", "Line type", x.lineType || "", { unknown: down || !x.lineType, sub: down || !x.lineType ? why(x.lineSub) : x.lineSub || "", caveat: down || !x.lineType || !!x.lineCaveat, jump: down ? { tab: "sources" } : info }),
+      word("place", "Assigned in", x.place || "", { unknown: down || !x.place, sub: down || !x.place ? why(x.placeSub) : x.placeSub || "", caveat: true, jump: down ? { tab: "sources" } : info }),
+      tile("flags", "Flags", n("flag"), { ...o, tone: "flag", feeds: ["phone"], jump: { tier: "flag" }, sub: "read these first" }),
     ];
   }
   if (type === "name") {

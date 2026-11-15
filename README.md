@@ -48,7 +48,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Avatar comparison | Fingerprints public profile pictures so two accounts with the same picture can be linked. Placeholder pictures are ignored | None |
 | Profile scraper | Bios, display names and links from found profiles (active technique, off by default) | None |
 | Hash lookup | CIRCL, AlienVault OTX, and MalwareBazaar and ThreatFox when the server has an abuse.ch key. Recognises the EICAR test file. Community tags are kept apart from malware families | None (optional server `ABUSECH_AUTH_KEY`) |
-| Phone lookup | Number normalization, carrier info, people-search links | Optional Numlookup key |
+| Phone lookup | What a number is, with no key: whether it is valid, how it is written, its country, line type, time offset, and where and to whom its number range was assigned (libphonenumber, offline). For United States and Canadian numbers, the rate centre and first assignee of the block from Local Calling Guide, which is asked for the area code and exchange only. Flags for premium-rate, VoIP, personal, fiction and invalid ranges, short codes and emergency numbers. A number typed without a country code is read as the country picked in the Country select. Search links to search engines and free spam-report sites. It never says who uses a number, and links to no data broker | None. An optional NumLookup key adds the current carrier |
 | Hunter.io | Email addresses and patterns for a domain | Your key |
 | At a glance | A short written brief built from rules, with no AI: what stands out, what is uncertain, what failed | None |
 | AI analysis and deep dive | Investigation report: identity, accounts, exposure, next moves. Runs only when you ask, and shows what it costs first | Free tier, your key, or no key at all (copy the prompt into an assistant you already use) |
@@ -121,6 +121,7 @@ node tests/js/links.test.mjs
 node tests/js/adult.test.mjs
 node tests/js/names.test.mjs
 node tests/js/design.test.mjs
+node tests/js/phone.test.mjs
 node tests/js/similar.test.mjs
 ```
 

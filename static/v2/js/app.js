@@ -116,7 +116,7 @@ const WILL_RUN = {
   username: "Runs in Investigate: Sherlock, Maigret, GitHub and platform checks.",
   email: "Runs in Investigate: Holehe, breaches, Gravatar and the email's domain.",
   hash: "Runs in Investigate: MalwareBazaar, CIRCL, OTX and ThreatFox.",
-  phone: "Runs in Investigate: carrier lookup and search links.",
+  phone: "Runs in Investigate: validity, country, line type and where the number range is assigned.",
   name: "Runs in Investigate: lists people with this name from Wikidata, GitHub, ORCID, OpenAlex and Bluesky as candidates to pick from.",
   headers: "Opens the email header analyzer.",
   multi: "One target at a time for now.",

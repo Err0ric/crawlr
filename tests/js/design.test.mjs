@@ -143,8 +143,10 @@ const THUMB = extra.avatarHash.results.find((r) => r.thumb).thumb;
   ok(hu.every((t) => t.state === "unknown" && t.line === "dashed"), "a hash no source could be asked about is unknown on every tile");
   const nt = investigateTiles({ items: [{ tier: "people" }, { tier: "people" }, { tier: "handles" }], collected: { nameResult: {} }, type: "name", extra: { name: { answered: 3, asked: 5 } } });
   ok(nt.map((t) => `${t.label}=${t.value}`).join("|") === "Candidates=2|Directories answered=3 of 5|Handles to try=1|Public figure=0" && nt[1].sub === "the rest are unknown", "a name case counts candidates, never findings");
-  const pt = investigateTiles({ items: [], collected: { phone: { error: "x", error_code: "timeout" } }, type: "phone", failedKeys: ["phone"], extra: { phone: { lineType: "", carrier: "" } } });
-  ok(pt[0].value === "unknown" && pt[2].state === "unknown", "a failed phone lookup is unknown");
+  const pt = investigateTiles({ items: [], collected: { phone: { error: "x", error_code: "timeout" } }, type: "phone", failedKeys: ["phone"], extra: { phone: { known: false } } });
+  ok(pt.map((t) => t.label).join("|") === "Valid|Line type|Assigned in|Flags" && pt.every((t) => t.state === "unknown" && t.line === "dashed") && pt[0].sub === "the lookup failed", "a failed phone lookup is unknown on every tile");
+  const pv = investigateTiles({ items: [{ tier: "flag", key: "phone:voip" }, { tier: "info", key: "phone:valid" }], collected: { phone: { number: {} } }, type: "phone", extra: { phone: { known: true, valid: true, validWord: "Valid", validSub: "fits the numbering plan", lineType: "VoIP", lineSub: "by number range", place: "", placeSub: "" } } });
+  ok(pv.map((t) => `${t.label}=${t.value}`).join("|") === "Valid=Valid|Line type=VoIP|Assigned in=unknown|Flags=1" && pv[0].tone === "linked" && pv[0].line === "solid" && pv[2].line === "dashed" && pv[2].sub === "not known for this number" && pv[3].tone === "flag", "a phone case: Valid, Line type, Assigned in, Flags, solid where the plan was read");
 
   // Recon.
   const rcol = { ...rc.collected, shodan: rc.internetdbV2, email_posture: rc.emailPostureV2 };

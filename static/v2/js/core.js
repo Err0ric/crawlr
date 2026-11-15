@@ -179,11 +179,11 @@ export function sourceHasResults(d) {
   }
   if (d.records && typeof d.records === "object" && Object.values(d.records).some((v) => [].concat(v ?? []).length)) return true;
   if (d.verdict) return String(d.verdict).toUpperCase() !== "UNKNOWN";
-  return !!(d.carrier || d.line_type || d.lookup_links || d.asn || d.grade);
+  return !!(d.carrier || d.line_type || d.lookup_links || d.asn || d.grade || (d.number && typeof d.number === "object"));
 }
 // Some sources are several lookups in one answer: platform check asks each site, the avatar
 // comparison fetches each image, the hash lookup asks four services, GitHub details has sections,
-// the name search asks five directories.
+// the name search asks five directories, a phone lookup reads up to three sources.
 // When none of them answered, the source failed even though the request succeeded. When only
 // some did, it is partial. Returns null for a source that has no parts.
 //   { answered, total, unit, failedText }
@@ -207,6 +207,13 @@ export function sourceCoverage(d) {
   if (Array.isArray(d.failed_sources) && d.failed_sources.length) {
     const answered = ["malware_bazaar", "circl", "alienvault", "threatfox"].filter((k) => d[k] && typeof d[k] === "object" && (d[k].found === true || d[k].found === false) && !d[k].error && !d[k].error_code).length;
     return { answered, total: answered + d.failed_sources.length, unit: "sources", failedText: `no source could be asked (${d.failed_sources.join(", ")})` };
+  }
+  // A phone lookup is up to three sources in one answer: the numbering plan (offline), the
+  // North American block lookup, and NumLookup with the investigator's key. One that failed or
+  // was rate limited did not answer, so the lookup is partial and a flag count is a lower bound.
+  if (d.number && typeof d.number === "object" && d.sources && typeof d.sources === "object" && !Array.isArray(d.candidates)) {
+    const v = Object.values(d.sources).filter((s) => s && typeof s.state === "string");
+    if (v.length) return { answered: v.filter((s) => s.state === "ok" || s.state === "none").length, total: v.length, unit: "sources", failedText: "no source could be asked" };
   }
   // The name search asks several directories in one request. One that failed or was rate limited
   // did not answer: it is unknown, never "nobody by this name".
@@ -281,7 +288,6 @@ const RE = {
   ip: /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/,
   asn: /^AS\d+$/i,
   hash: /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i,
-  phone: /^\+?\d[\d\s\-().]{7,}$/,
   name: /^[A-Za-z]{2,}\s+[A-Za-z]{2,}/,
 };
 export const looksLikeHeaders = (t) =>
@@ -305,6 +311,34 @@ export function looksLikeName(t) {
   return words.length > 1 && String(t).trim().length <= 80 && words.every((w) => NAME_WORD.test(w) && /\p{L}/u.test(w) && !w.startsWith("-") && !DOTTED_WORD.test(w));
 }
 
+// A phone number as people write it: with or without a +, with spaces, dashes, dots, slashes or
+// parentheses, with a leading 00, with an extension, or as a vanity number after a toll-free or
+// premium prefix (1-800-FLOWERS). It must not take a date, a year range, a decimal or an
+// all-digit handle: bare digits are a phone number only at the lengths national numbers have.
+const PHONE_EXT = /\s*(?:;ext=|ext\.?|extension|x|#)\s*\d{1,6}$/i;
+// A pasted number as plain text: invisible format characters (the direction marks phones and
+// contact apps wrap a number in) are dropped, every Unicode dash becomes "-", every Unicode space
+// becomes " ", and runs of whitespace collapse. core.validate.phone_text on the server does the
+// same; tests/fixtures/phone_text.json holds the pairs both suites assert.
+export const normalizePhoneText = (input) => String(input ?? "").normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/[\p{Pd}\u2212]/gu, "-").replace(/\p{Zs}/gu, " ").split(/\s+/).filter(Boolean).join(" ");
+const VANITY = /^\+?(?:1[\s.-]*)?\(?(?:800|833|844|855|866|877|888|900)\)?[\s.-]+(?=[A-Za-z0-9\s.-]*[A-Za-z])[A-Za-z0-9](?:[\s.-]?[A-Za-z0-9]){6,10}$/;
+const DATE_LIKE = /^(?:\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}|(?:19|20)\d\d\s*[-/]\s*(?:19|20)\d\d)$/;
+export function looksLikePhone(input) {
+  const t = normalizePhoneText(input);
+  if (!t || t.length > 40) return false;
+  if (VANITY.test(t)) return true;
+  const body = t.replace(PHONE_EXT, "");
+  if (!/^\+?[\d(][\d\s\-./()]*\d$/.test(body) || /[-./]{2}|\(\)/.test(body)) return false;
+  const digits = body.replace(/\D/g, "").length;
+  if (body.startsWith("+")) return digits >= 7 && digits <= 15;
+  if (/^\(?00[\s\-.)]*[1-9]/.test(body)) return digits >= 9 && digits <= 17;
+  if (DATE_LIKE.test(body) || /^\d+\.\d+$/.test(body)) return false;
+  // Bare digits: ten (North America), eleven starting with 1, or a national number with its leading 0.
+  if (/^\d+$/.test(body)) return (digits === 10 && /^[2-9]/.test(body)) || (digits === 11 && body[0] === "1") || (body[0] === "0" && digits >= 10 && digits <= 11);
+  // Written in groups: at least seven digits, and no group longer than a subscriber number.
+  return digits >= 7 && digits <= 15 && body.split(/[\s\-./()]+/).filter(Boolean).every((g) => g.length <= 8);
+}
+
 export function detect(input) {
   const t = String(input ?? "").trim();
   if (!t) return "";
@@ -314,7 +348,7 @@ export function detect(input) {
   if (RE.asn.test(t)) return "asn";
   if (RE.ip.test(t)) return "ip";
   if (RE.hash.test(t)) return "hash";
-  if (RE.phone.test(t) && t.replace(/\D/g, "").length >= 7 && t.replace(/\D/g, "").length <= 15) return "phone";
+  if (looksLikePhone(t)) return "phone";
   if (isDomain(t)) return "domain";
   if (RE.name.test(t) || looksLikeName(t)) return "name";
   return "username";

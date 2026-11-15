@@ -27,6 +27,7 @@ node tests/js/contrast.test.mjs
 node tests/js/brief.test.mjs
 node tests/js/timeline.test.mjs
 node tests/js/casefile.test.mjs
+node tests/js/phone.test.mjs
 node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
@@ -48,7 +49,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 | `core/` | Shared helpers: outbound request guard, input validation, error mapping, the AI call path, house AI key and quotas, logging, subprocess limits |
 | `middleware/` | Request ID and access log, security headers, body size limit, rate limiting, client IP |
 | `static/v2/` | The UI: vanilla ES modules, no build step. Self-hosted fonts in `fonts/`, d3 in `vendor/` |
-| `tests/` | pytest suite plus `tests/js` for the target detector, the color contrast check, the brief rules, the recon timeline and case files |
+| `tests/` | pytest suite plus `tests/js` for the target detector, the color contrast check, the brief rules, the recon timeline, case files and phone cases |
 
 ## Rules for working in this repo
 
@@ -69,6 +70,8 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - Tests never use the network. Recorded responses live in `tests/fixtures/` and `tests/js/fixtures/`; use invented names for private people.
 - Do not log target values (usernames, emails, domains) on the server.
 - Bulk DNS work (more than a handful of queries) goes through `core.dnspool.dns_thread`, not `asyncio.to_thread`.
+- `phonenumbers` is imported only by `modules/phone_plan.py`, which runs in the short-lived worker (`python -m modules.phone_worker`). Never import it, or `phone_plan`, in the web process: its tables take about 115 MB.
+- A phone lookup says what a number is (valid, country, line type, range assignment), never who uses it. No data brokers or paid people-search links. Only the area code and exchange go to the block source; the full number leaves the server only for NumLookup, with the visitor's own key.
 - Recon checks return their own `findings` list (`level`: `flag`, `ok` or `info`). Only `flag` rows become ledger flags.
 - Prompts are built by `investigation_prompt()` and `recon_prompt()` so the one-click and copy-prompt paths stay identical.
 - Follow `static/v2/DESIGN.md` tokens and copy rules. Update it when a design decision changes.

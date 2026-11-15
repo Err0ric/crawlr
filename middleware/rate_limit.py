@@ -52,7 +52,7 @@ RATE_LIMITS = {
     "/api/infra": (90, 60),
     "/api/email": (30, 60),
     "/api/hash": (30, 60),
-    "/api/phone": (15, 60),
+    "/api/phone": (15, 60),               # one short-lived worker process (cached a day, two at once), one request to the NPA-NXX source (cached 7 days), one more with a NumLookup key
 }
 MAX_KEYS = 20_000
 SWEEP_EVERY = 500      # requests between sweeps

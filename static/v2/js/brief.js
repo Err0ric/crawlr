@@ -11,6 +11,7 @@ import { reconTimeline, domainAgeDays } from "./timeline.js";
 import { breachList, hashView, hashCoverage, TEST_FILE_TEXT, isFreeMail, emailParts } from "./evidence.js";
 import { adultBriefText } from "./adult.js";
 import { nameBrief } from "./names.js";
+import { phoneBrief } from "./phone.js";
 import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -49,9 +50,8 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
       if (down.length) add("info", `${list(down.map(String))} could not be asked, so ${down.length === 1 ? "it is" : "they are"} unknown, not "not found".`);
     }
   } else if (type === "phone") {
-    const p = c.phone || {};
-    if (p.carrier || p.line_type) add(/voip/i.test(p.line_type || "") ? "flag" : "info", `${p.line_type || "Line"}${p.carrier ? ` on ${p.carrier}` : ""}${p.location || p.country ? `, ${[p.location, p.country].filter(Boolean).join(", ")}` : ""}.${/voip/i.test(p.line_type || "") ? " VOIP numbers are easy to get and discard." : ""}`);
-    else add("info", "No carrier data without a NumLookup key. The lookup links under By source open in a new tab.");
+    // What the number is, what its flags mean and what cannot be known (see phone.js).
+    for (const r of phoneBrief(c.phone)) add(r.level, r.text, r.ev);
   } else if (type === "name") {
     // Candidates, never findings: how many, where from, what could not be asked, one next step.
     for (const r of nameBrief(c, target)) add(r.level, r.text, r.ev);

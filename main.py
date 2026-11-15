@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 from contextlib import asynccontextmanager
@@ -12,6 +13,7 @@ from core.house_key import quota_status
 from core.logging import configure_logging, get_logger
 from middleware.observability import BodyLimitMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware, client_ip
 from middleware.rate_limit import RateLimitMiddleware
+from modules import phone_lookup
 from modules.ai_provider import AIError
 from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, recon_identity, recon_people
 
@@ -26,7 +28,11 @@ UI_DIR = Path("static/v2")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     log.info("crawlr started", extra={"version": APP_VERSION, "assets": asset_fingerprint()})
+    # One throwaway phone worker run in the background, so the first real lookup is not the one
+    # that compiles the numbering library. It never blocks startup and its failure is ignored.
+    warm = asyncio.create_task(phone_lookup.warm())
     yield
+    warm.cancel()
     log.info("crawlr stopping")
 
 

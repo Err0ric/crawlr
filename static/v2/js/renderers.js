@@ -4,6 +4,7 @@ import { breachList, hashView, detectionText, TEST_FILE_TEXT, canonSite } from "
 import { classifyLink, applyCheck, evidenceUrl, CHECK_TEXT } from "./links.js";
 import { readNameResult, DIRECTORIES, NAME_NOTICE, NAME_SOURCE } from "./names.js";
 import { isAdultRow, adultListHtml, adultCounts, adultCheckText, ADULT_SOURCE } from "./adult.js";
+import { phoneView, phoneSourceRows, PHONE_SOURCE, OWNER_NOTE, AREA_NOTE, PORTED_NOTE } from "./phone.js";
 
 // A profile link in a card carries the same link kind as its ledger row: a URL the source read
 // is solid, a templated one is marked unverified, a homepage is plain text. `checks` is the
@@ -174,11 +175,29 @@ const CARDS = {
       + (v.tags.length ? h`<p class="muted small">Community tags are free text written by whoever submitted a report. They are not a family name and are never used in a headline.</p>` : ""));
   },
   phone: (d) => {
-    const links = Object.entries(d?.lookup_links || {}).map(([n, u]) => link(u, n)).join(" · ");
-    const noData = !d?.carrier && !d?.line_type;
-    const badge = d?.api_error ? tag("key problem", "warn") : noData ? tag("links only") : tag(d?.valid === false ? "invalid" : "valid", d?.valid === false ? "warn" : "ok");
-    const note = d?.api_error ? d.api_error : noData ? "Add a NumLookup key in Settings for carrier and line type." : "";
-    return card("Phone lookup", badge, kv([["Number", h`<span class="mono">${d?.normalized || d?.input}</span>`], ["Carrier", esc(d?.carrier)], ["Line type", esc(d?.line_type)], ["Location", esc([d?.location, d?.country].filter(Boolean).join(", "))], ["Lookups", links]]) + (note ? h`<p style="color:var(--ink-3);font-size:var(--fs-0);margin-top:8px">${note}</p>` : ""));
+    const v = phoneView(d);
+    if (!v) return "";
+    // A case saved before open numbering data was read: what NumLookup said then, and nothing else.
+    // The people-search links those runs carried are not shown.
+    if (v.legacy) {
+      const badge = v.valid === false ? tag("invalid", "warn") : v.valid === true ? tag("valid", "ok") : tag("saved by an older version");
+      return card(PHONE_SOURCE, badge, kv([["Number", h`<span class="mono">${v.written}</span>`], ["Carrier", esc(v.carrier)], ["Line type", esc(v.lineType)], ["Location", esc(v.place)]])
+        + h`<p class="muted small">${v.apiError ? `${v.apiError} ` : ""}Run this number again to read open numbering data: validity, line type and where its range is assigned.</p>`);
+    }
+    const down = [v.block, v.nl].filter((s) => s && (s.state === "failed" || s.state === "rate_limited")).length;
+    const badge = (v.kind !== "number" ? tag(v.lineType.toLowerCase()) : tag(v.valid ? "valid" : "not valid", v.valid ? "ok" : "warn")) + (down ? " " + tag(`${fmtNum(down)} not asked`, "warn") : "");
+    const first = v.company || v.carrier;
+    return card(PHONE_SOURCE, badge,
+      kv([["Number", h`<span class="mono">${v.written}</span>`], ["National format", v.kind === "number" ? h`<span class="mono">${v.national}</span>` : ""], ["E.164", v.e164 ? h`<span class="mono">${v.e164}</span>` : ""],
+        ["Validity", esc(v.validityText)], ["Country", esc(v.country)], ["Line type", esc([v.lineType, v.lineTypeNote].filter(Boolean).join(". "))],
+        ["Range assigned in", v.area ? h`${v.area} <span class="dim">${AREA_NOTE}</span>` : ""],
+        ["Rate centre", v.rateCentre ? h`${[v.rateCentre, v.region].filter(Boolean).join(", ")} ${raw(ev(v.evidenceUrl, "Block record"))}` : ""],
+        ["Range first assigned to", first ? h`${first} <span class="dim">${PORTED_NOTE}</span>` : ""],
+        ["Time offset of the range", esc(v.offset)],
+        ["Current carrier", v.nl?.state === "ok" && v.nl.carrier ? h`${v.nl.carrier} <span class="dim">from NumLookup</span>` : ""],
+        ["Line type from NumLookup", v.nl?.state === "ok" ? esc(v.nl.line_type) : ""]])
+      + h`<p class="muted small">Sources in this lookup:</p>` + kv(phoneSourceRows(v).map(([k, t]) => [k, esc(t)]))
+      + h`<p class="muted small">${OWNER_NOTE} A source that could not be asked is unknown. It never means "unassigned" or "not valid".</p>`);
   },
   // One line per directory: how many rows it gave, that it had no one, or that it is unknown.
   // The outbound searches are no longer a card: they are the "Search the web" group in the ledger.

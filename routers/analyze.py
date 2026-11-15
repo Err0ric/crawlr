@@ -97,6 +97,53 @@ def _cell(value, cap: int) -> str:
     return " ".join(s.split())[:cap].strip()
 
 
+def _phone_lines(ph: dict) -> list[str]:
+    """A phone lookup as the prompt states it: what the number is, from open numbering data.
+    Every value is written as one inert line. A source that failed is named as unknown."""
+    def d(v):
+        return v if isinstance(v, dict) else {}
+    num, asg, src = d(ph.get("number")), d(ph.get("assignment")), d(ph.get("sources"))
+    lines = ["PHONE NUMBER (open numbering data: it describes the number and its range, never the person using it):"]
+    written = _cell(num.get("international") or num.get("national") or num.get("short"), 40)
+    if written:
+        lines.append(f"- written: {written}" + (f", extension {_cell(num.get('extension'), 12)}" if num.get("extension") else ""))
+    if ph.get("kind") in ("emergency", "short_code"):
+        lines.append("- this is an emergency number, not a subscriber number" if ph.get("kind") == "emergency" else "- this is a short code, not a subscriber number")
+    if num.get("validity_text"):
+        lines.append(f"- validity: {_cell(num.get('validity_text'), 200)}")
+    if num.get("assumed_text"):
+        lines.append(f"- {_cell(num.get('assumed_text'), 200)}")
+    if num.get("country"):
+        lines.append(f"- country of the number range: {_cell(num.get('country'), 80)}")
+    if num.get("valid") and num.get("line_type_text"):
+        lines.append(f"- line type: {_cell(num.get('line_type_text'), 40)}" + (f" ({_cell(num.get('line_type_note'), 220)})" if num.get("line_type_note") else ""))
+    where = ", ".join(x for x in (_cell(asg.get("rate_centre"), 80), _cell(asg.get("region"), 8)) if x) or _cell(asg.get("area"), 80)
+    if where:
+        lines.append(f"- number range assigned in: {where} (where the range is assigned, not where the phone or its user is)")
+    first = _cell(asg.get("company") or asg.get("carrier"), 80)
+    if first:
+        lines.append(f"- range first assigned to: {first} (numbers are ported between carriers, so this may not be the current one)")
+    if asg.get("block_assigned") is False:
+        lines.append("- the six-digit block this number starts with is not assigned to any carrier")
+    # Offsets only. The library's zone names carry a city that is often in another country.
+    offsets = [o for o in (num.get("utc_offsets") or [])[:3] if isinstance(o, str) and re.fullmatch(r"UTC(?:[+-]\d{1,2}(?::\d{2})?)?", o)]
+    if offsets:
+        lines.append(f"- time offset of the range: {offsets[0] if len(offsets) == 1 else f'{offsets[0]} to {offsets[-1]}'}")
+    for f in (ph.get("findings") or [])[:12]:
+        if isinstance(f, dict) and f.get("title"):
+            lines.append(f"- [{_cell(f.get('level'), 4) or 'info'}] {_cell(f.get('title'), 120)}: {_cell(f.get('detail'), 300)}")
+    block, nl = d(src.get("npa_nxx")), d(src.get("numlookup"))
+    if block.get("state") in ("failed", "rate_limited"):
+        lines.append("- the block assignment lookup FAILED: whether the block is assigned is unknown, not unassigned")
+    if nl.get("state") == "ok":
+        got = ", ".join(x for x in (f"current carrier {_cell(nl.get('carrier'), 80)}" if nl.get("carrier") else "", f"line type {_cell(nl.get('line_type'), 40)}" if nl.get("line_type") else "") if x)
+        lines.append(f"- NumLookup (a commercial index, asked with the investigator's own key): {got or 'no carrier or line type returned'}")
+    elif nl.get("state") == "failed":
+        lines.append("- NumLookup FAILED: the current carrier is unknown")
+    lines.append("Who uses this number is not something open numbering data shows.")
+    return lines
+
+
 def _has_name_candidates(req) -> bool:
     nc = getattr(req, "name_candidates", None)
     return bool(nc and nc.candidates)
@@ -152,9 +199,13 @@ TARGET_FOCUS = {
         "Use a family name only if the data lists one; community tags are unverified free text."
     ),
     "phone": (
-        "This target is a phone number. Do not guess who owns it. Leave name blank in the profile block. "
+        "This target is a phone number. The collected data describes the number and the range it sits in: whether it is "
+        "valid, its country, its line type, and where and to whom the range was first assigned. None of that says who uses "
+        "the number or where that person is. Do not name, guess or hint at an owner, a person, an address or a current "
+        "location, and do not recommend a paid people-search or data broker service. A carrier marked as first assigned "
+        "may no longer be the current one, because numbers are ported. Leave name and location blank in the profile block. "
         "In the report write only Case summary, Exposure and risk, Investigative leads and Gaps and next pivots: "
-        "what the line type and carrier suggest and what to check next. Skip the identity and platform sections."
+        "what kind of number this is, what its flags mean, and what to check next. Skip the identity and platform sections."
     ),
     "name": (
         "This target is a person's name typed by the investigator. A name is shared by many people, and nothing was "
@@ -631,7 +682,9 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
                 + ", ".join(str(t) for t in hs["community_tags"][:12])
             )
 
-    if _ok(req.phone):
+    if _ok(req.phone) and isinstance(req.phone.get("number"), dict):
+        prompt_parts.extend(_phone_lines(req.phone))
+    elif _ok(req.phone):
         ph = req.phone
         parts = [f"{label}: {ph[k]}" for k, label in (("carrier", "carrier"), ("line_type", "line type"), ("location", "location"), ("country", "country")) if ph.get(k)]
         if ph.get("valid") is False:
