@@ -267,12 +267,15 @@ async def dns_depth_scan(req: DomainRequest):
 class TakeoverRequest(BaseModel):
     domain: str = Field(max_length=320)
     hosts: list[str] = Field(max_length=400)
+    # CNAME targets of the zone's wildcard record, from the subdomain check. A host that only
+    # repeats the wildcard is not a candidate of its own.
+    wildcard_cnames: list[str] = Field(default_factory=list, max_length=8)
 
 
 @router.post("/takeover")
 async def takeover_scan(req: TakeoverRequest):
     """Subdomains whose CNAME points at a claimable cloud service. DNS only."""
-    return await run_takeover(validate.host(req.domain, allow_ip=False), [h[:260] for h in req.hosts])
+    return await run_takeover(validate.host(req.domain, allow_ip=False), [h[:260] for h in req.hosts], [c[:260] for c in req.wildcard_cnames])
 
 
 @router.post("/lookalikes")
@@ -285,6 +288,37 @@ async def lookalikes_scan(req: DomainRequest):
 async def wellknown_scan(req: DomainRequest):
     """security.txt, robots.txt and the favicon hash. Three requests to the target's web server."""
     return await run_wellknown(validate.host(req.domain))
+
+
+def wildcard_lines(req) -> list[str]:
+    """Prompt lines about a wildcard DNS record found by the subdomain check. The subdomain
+    list that follows holds real names only, so the model is told what was left out and why."""
+    subs = getattr(req, "subdomains", None)
+    if not isinstance(subs, dict) or subs.get("error") or not isinstance(subs.get("wildcard"), dict):
+        return []
+    w = subs["wildcard"]
+    names = lambda key, n: [str(x)[:260] for x in (w.get(key) or []) if isinstance(x, str)][:n]
+    lines = []
+    if w.get("state") == "yes":
+        target = ", ".join(names("cnames", 2)) or ", ".join(names("ips", 4)) or "the same answer"
+        provider = w.get("provider") if isinstance(w.get("provider"), dict) else None
+        try:
+            left = int(w.get("suppressed") or 0)
+        except (TypeError, ValueError):
+            left = 0
+        lines.append(
+            f"WILDCARD DNS: every name under {subs.get('domain') or req.target} resolves to {target}"
+            + (f" ({str(provider.get('name'))[:60]}, a third-party {str(provider.get('kind'))[:60]})" if provider and provider.get("name") else "")
+            + f". A name that resolves is not proof that a host exists. {left} guessed names that only matched the wildcard were left out "
+            "and are not hosts. Do not infer mail, DNS, API or admin servers from names that are not listed below."
+        )
+        if w.get("service") and w.get("target_state") == "absent":
+            lines.append(f"The wildcard's CNAME target ({target}, {str(w['service'])[:60]}) does not resolve: one possible takeover that covers every name, unverified.")
+    elif w.get("state") == "unknown":
+        lines.append("Wildcard DNS could not be checked (the test lookups failed), so some guessed subdomains below may not be real hosts.")
+    for p in [p for p in (w.get("parents") or []) if isinstance(p, dict)][:5]:
+        lines.append(f"Wildcard DNS one level down: every name under {str(p.get('parent'))[:260]} resolves alike.")
+    return lines
 
 
 def recon_prompt(req: ReconAnalyzeRequest) -> str:
@@ -349,11 +383,13 @@ def recon_prompt(req: ReconAnalyzeRequest) -> str:
         if missing:
             prompt_parts.append(f"Security headers MISSING: {', '.join(missing)}")
 
+    prompt_parts.extend(wildcard_lines(req))
     if req.subdomains and req.subdomains.get("subdomains"):
         subs = req.subdomains["subdomains"]
         dns_subs = [s["subdomain"] for s in subs if s.get("source") in ("DNS", "DNS+CT")]
         ct_subs = [s["subdomain"] for s in subs if s.get("source") in ("CT", "DNS+CT")]
-        all_names = [s["subdomain"] for s in subs]
+        # A name kept in a wildcard zone because a certificate or a DNS record attests it says so.
+        all_names = [s["subdomain"] + (" (resolves only through the wildcard)" if s.get("via_wildcard") else "") for s in subs]
         prompt_parts.append(
             f"Subdomains found ({len(all_names)}): {', '.join(all_names[:20])}"
             + (f" (and {len(all_names)-20} more)" if len(all_names) > 20 else "")

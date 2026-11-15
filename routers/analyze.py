@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from core.ai_call import run_ai
 from core.ai_text import parse_json_object, summary_and_report
-from routers.recon_infra import extra_recon_lines
+from routers.recon_infra import extra_recon_lines, wildcard_lines
 
 router = APIRouter()
 
@@ -1142,9 +1142,10 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
         if missing:
             prompt_parts.append(f"Missing security headers: {', '.join(missing)}")
 
+    prompt_parts.extend(wildcard_lines(req))
     if req.subdomains and req.subdomains.get("subdomains"):
         subs = req.subdomains["subdomains"]
-        names = [s["subdomain"] for s in subs]
+        names = [s["subdomain"] + (" (resolves only through the wildcard)" if s.get("via_wildcard") else "") for s in subs]
         prompt_parts.append(f"Subdomains ({len(names)}): {', '.join(names[:20])}")
 
     if req.asn and req.asn.get("found"):

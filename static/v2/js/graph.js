@@ -1,6 +1,33 @@
 // Topology graph (D3). Ported from the classic UI; token names mapped to v2.
 // Exports renderGraph(container, collected, target). Requires window.d3.
+import { wildcardOf } from "./present.js";
+
 const MONO = "IBM Plex Mono, ui-monospace, Menlo, monospace";
+
+// The rows of the Subdomains section: { id, label, type, ips, cnames, values, note }.
+// values: what is drawn beside the row, each { label, type }: a CNAME target is a name
+// (type 'cname'), never an address, so selecting it does not offer an IP lookup.
+// A wildcard record is one row ("*.example.com") with its target and addresses, placed first.
+// It is never one row per guessed name: the subdomain check already left those out, and a case
+// saved before it did is drawn as it was saved.
+export const MAX_GRAPH_SUBDOMAINS = 25;
+export function topologySubdomains(collected, target) {
+  const d = collected || {};
+  const rows = [];
+  const wild = wildcardOf(d, target);
+  const vals = (cnames, ips) => [...cnames.map((label) => ({ label, type: 'cname' })), ...ips.map((label) => ({ label, type: 'ip' }))];
+  const star = (w, n) => ({ id: 'wild_' + w.name, label: w.name, type: 'wildcard', ips: w.ips, cnames: w.cnames, values: vals(w.cnames, w.ips), note: `Wildcard DNS: any name under ${w.name.slice(2)} resolves to ${w.target || 'the same answer'}${n ? `. ${n} guessed ${n === 1 ? 'name' : 'names'} left out` : ''}` });
+  if (wild.state === 'yes') rows.push(star(wild, wild.suppressed));
+  for (const p of wild.parents) rows.push(star(p, 0));
+  const subs = d.subdomains && !d.subdomains.error && Array.isArray(d.subdomains.subdomains) ? d.subdomains.subdomains : [];
+  for (const s of subs.filter((x) => x && typeof x.subdomain === 'string').slice(0, MAX_GRAPH_SUBDOMAINS)) {
+    const via = s.via_wildcard === true;
+    // A name that only resolves through the wildcard shows no addresses of its own: they are the wildcard's.
+    const ips = via ? [] : [].concat(s.ips || []).filter((x) => typeof x === 'string');
+    rows.push({ id: 'sub_' + s.subdomain, label: s.subdomain, type: 'subdomain', ips, cnames: [], values: vals([], ips), note: via ? 'resolves through the wildcard' : '' });
+  }
+  return rows;
+}
 function _css(prop) { return getComputedStyle(document.documentElement).getPropertyValue(prop).trim(); }
 
   function renderAsnGraph(container, data, target) {
@@ -203,7 +230,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
 
     // Neutral ink tones from the page's tokens: no purple (the primary action) and no amber (a flag).
     // Node kinds are told apart by their label and the legend, and a Cloudflare address carries a CF badge.
-    const colorMap = { domain: _css('--ink'), a: _css('--ink-2'), mx: _css('--ink-3'), ns: _css('--ink-3'), subdomain: _css('--ink-2'), ip: _css('--line-strong'), asn: _css('--ink-4'), cname: _css('--ink-3'), cf_ip: _css('--ink') };
+    const colorMap = { domain: _css('--ink'), a: _css('--ink-2'), mx: _css('--ink-3'), ns: _css('--ink-3'), subdomain: _css('--ink-2'), ip: _css('--line-strong'), asn: _css('--ink-4'), cname: _css('--ink-3'), cf_ip: _css('--ink'), wildcard: _css('--ink-2') };
     const asnInfo = d.asn || {};
 
     // Build hierarchical tree data
@@ -272,14 +299,8 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     }
 
     // Subdomains below main records
-    const subNodes = [];
-    if (d.subdomains && d.subdomains.subdomains) {
-      for (const s of d.subdomains.subdomains.slice(0, 25)) {
-        const sid = 'sub_' + s.subdomain;
-        subNodes.push({ id: sid, label: s.subdomain, type: 'subdomain', ips: s.ips || [] });
-        addL(target, sid, 'sub');
-      }
-    }
+    const subNodes = topologySubdomains(d, target);
+    for (const s of subNodes) addL(target, s.id, 'sub');
 
     if (treeNodes.length <= 1 && subNodes.length === 0) { emptyMsg('No graph data · run a recon scan first'); return; }
 
@@ -321,13 +342,14 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     const subStartY = startY + Math.max(lane1Order.length, lane2Order.length, lane3Order.length) * (boxH + gapY) + 40;
     let subRowIdx = 0;
     subNodes.forEach((s) => {
-      const ipCount = Math.max(s.ips.length, 1);
+      // A wildcard's values are its CNAME target, then its addresses, one per row.
+      const ipCount = Math.max(s.values.length, 1);
       positions[s.id] = { x: laneX[1], y: subStartY + subRowIdx * (subBoxH + subGapY) };
-      s.ips.forEach((ip, j) => {
+      s.values.forEach(({ label: ip, type: valueType }, j) => {
         const rowY = subStartY + (subRowIdx + j) * (subBoxH + subGapY);
         const ipId = 'subip_' + s.id + '_' + ip;
         positions[ipId] = { x: subIpX, y: rowY };
-        if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: 'ip', lane: 2, row: 0 }); }
+        if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: valueType, lane: 2, row: 0 }); }
         addL(s.id, ipId, 'sub');
         // ASN node for this subdomain IP
         const isCf = _isCfIp(ip);
@@ -347,7 +369,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     });
     // Add subdomain nodes to treeNodes
     for (const s of subNodes) {
-      if (!treeNodes.find(n => n.id === s.id)) treeNodes.push({ id: s.id, label: s.label, type: s.type, lane: 1, row: 0 });
+      if (!treeNodes.find(n => n.id === s.id)) treeNodes.push({ id: s.id, label: s.label, type: s.type, lane: 1, row: 0, note: s.note });
     }
 
     const totalH = Math.max(subStartY + subRowIdx * (subBoxH + subGapY) + 60, rect.height || 500);
@@ -366,6 +388,7 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     const legendItems = [
       { label: 'A Record', color: colorMap.a }, { label: 'MX', color: colorMap.mx },
       { label: 'NS', color: colorMap.ns }, { label: 'Subdomain', color: colorMap.subdomain },
+      ...(subNodes.some((s) => s.type === 'wildcard') ? [{ label: 'Wildcard', color: colorMap.wildcard }] : []),
       { label: 'IP', color: colorMap.ip }, { label: 'ASN', color: colorMap.asn },
       { label: 'CF Proxy', color: colorMap.cf_ip },
     ];
@@ -394,8 +417,8 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
       if (!sp || !tp) continue;
       const srcNode = treeNodes.find(n => n.id === link.source);
       const tgtNode = treeNodes.find(n => n.id === link.target);
-      const srcIsSub = srcNode?.type === 'subdomain';
-      const tgtIsSub = tgtNode?.type === 'subdomain';
+      const srcIsSub = srcNode?.type === 'subdomain' || srcNode?.type === 'wildcard';
+      const tgtIsSub = tgtNode?.type === 'subdomain' || tgtNode?.type === 'wildcard';
       const srcIsSubIp = srcNode && srcNode.id.startsWith('subip_');
       const tgtIsSubAsn = tgtNode && (tgtNode.type === 'cf_asn' || tgtNode.id.startsWith('subasn_'));
       const srcW = srcIsSub ? subBoxW : srcIsSubIp ? subIpBoxW : (boxWidths[srcNode?.lane] || 100);
@@ -416,7 +439,8 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     for (const n of treeNodes) {
       const pos = positions[n.id];
       if (!pos) continue;
-      const isSub = n.type === 'subdomain';
+      const isWild = n.type === 'wildcard';
+      const isSub = n.type === 'subdomain' || isWild;
       const isSubIp = n.id.startsWith('subip_');
       const isSubAsn = n.id.startsWith('subasn_');
       const isCfAsn = n.type === 'cf_asn';
@@ -435,7 +459,9 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
         .attr('width', bw).attr('height', bh).attr('rx', 3)
         .attr('fill', fillColor)
         .attr('stroke', col).attr('stroke-width', n.type === 'domain' ? 2 : 1)
-        .attr('stroke-opacity', n.type === 'domain' ? 0.8 : ((isCf || isCfAsn) ? 0.6 : 0.4));
+        // The wildcard is a rule, not a host: its box is dashed, and its label starts with "*.".
+        .attr('stroke-dasharray', isWild ? '4,3' : null)
+        .attr('stroke-opacity', n.type === 'domain' ? 0.8 : ((isCf || isCfAsn || isWild) ? 0.6 : 0.4));
 
       // CF badge on IP nodes
       if (isCf) {
@@ -465,7 +491,9 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
         .text(label);
 
       // Selecting a node offers to run it (one click, one run; nothing recurses on its own).
-      const pivotable = ['subdomain', 'ip', 'asn', 'cf_asn', 'domain'].includes(n.type) || isSub;
+      // A wildcard is not a host, so there is nothing to run recon on.
+      // A CNAME target beside a wildcard is a host name: it can be run or opened, as a host.
+      const pivotable = !isWild && (['subdomain', 'ip', 'asn', 'cf_asn', 'domain'].includes(n.type) || isSub || (isSubIp && n.type === 'cname'));
       if (pivotable) {
         const pick = () => container.dispatchEvent(new CustomEvent('crawlr:node', { bubbles: true, detail: { type: n.type, label: n.label } }));
         ng.attr('tabindex', 0).attr('role', 'button').attr('aria-label', `${n.type.replace('_', ' ')} ${n.label}. Press Enter for actions.`).style('cursor', 'pointer')
@@ -475,7 +503,9 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
       // Hover tooltip
       ng.on('mouseover', (e) => {
         let info = n.label;
-        if (isCf) {
+        if (n.note) {
+          info += ' · ' + n.note;
+        } else if (isCf) {
           info += ' · Cloudflare Proxy - real origin hidden';
         } else if (isCfAsn) {
           info += ' · Cloudflare edge server';

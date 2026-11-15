@@ -11,7 +11,7 @@ import { buildEvidence, isFinding } from "../../static/v2/js/evidence.js";
 import { buildFindings } from "../../static/v2/js/reconfindings.js";
 import { parseCaseFile, buildCaseFile } from "../../static/v2/js/casefile.js";
 import { renderTiers, evWhat, evSrc, verdictHtml, identityHead, skeletonRows, skeletonCards, pillOf, rowMark, EXPORT_STRIP } from "../../static/v2/js/workbench.js";
-import { mark, sourceTally } from "../../static/v2/js/core.js";
+import { mark, sourceTally, partialGaps } from "../../static/v2/js/core.js";
 
 const fx = (n) => JSON.parse(fs.readFileSync(new URL(`./fixtures/${n}.json`, import.meta.url), "utf8"));
 let pass = 0, fail = 0;
@@ -273,7 +273,7 @@ const THUMB = extra.avatarHash.results.find((r) => r.thumb).thumb;
   ok(reconTiles({ items: [], collected: {}, type: "domain", missingKeys: ["shodan", "subdomains", "ssl", "whois"] }).every((t) => t.value === "unknown"), "the same for a cancelled recon");
   // The torvalds fixture has partial sources: its counts carry the caveat.
   const names = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", enricher: "Profile enrichment", platformCheck: "Platform check", githubDeep: "GitHub details", avatarHash: "Avatar comparison" };
-  const rows = sourceTally(c, names).rows, partial = rows.filter((r) => r.state === "partial").map((r) => r.key);
+  const rows = sourceTally(c, names).rows, partial = partialGaps(rows).map((r) => r.key);
   const pt = investigateTiles({ items: ev.items, collected: c, type: "username", partialKeys: partial });
   ok(partial.length >= 1 && pt.filter((t) => t.atLeast).length >= 1 && pt.filter((t) => t.atLeast).every((t) => t.caveat && /^at least: (a source|\d+ sources) answered only in part$/.test(t.sub)), "a partial source makes the counts it feeds 'at least'");
   const pz = investigateTiles({ items: [], collected: { platformCheck: c.platformCheck }, type: "username", partialKeys: ["platformCheck"] });
@@ -287,6 +287,44 @@ const THUMB = extra.avatarHash.results.find((r) => r.thumb).thumb;
   // Email: Flags takes the third place only when there are flags besides breaches.
   const col = { ...em.collected, hibp: em.hibpV2 }, ee = buildEvidence(col, em.target, "email");
   ok(investigateTiles({ items: [...ee.items, { tier: "flag", key: "phone:voip" }], collected: col, type: "email" }).map((t) => `${t.label}=${t.value}`).slice(1, 3).join("|") === `Breaches=${ee.items.filter((i) => i.key.startsWith("breach:")).length}|Flags=1`, "an email case with other flags shows Linked, Breaches, Flags, Leads");
+}
+
+// ---- tiles and brief: sites that blocked the platform check are rows, not gaps -----------------------
+{
+  // The shape every username run has in production: GitHub found; Facebook, LinkedIn and Reddit
+  // block the server; Discord says the handle is taken; the rest were read.
+  const site = (platform, state, url) => ({ platform, url, state, found: state === "found" ? true : state === "not_found" ? false : null, evidence: "", display_name: "", public_url: true });
+  const pc = { username: "err0ric", total: 4, checked: 8, results: [site("Facebook", "blocked", "https://www.facebook.com/err0ric"), site("LinkedIn", "blocked", "https://www.linkedin.com/in/err0ric"), site("Reddit", "blocked", "https://www.reddit.com/user/err0ric"),
+    site("Discord", "taken", ""), site("Instagram", "found", "https://www.instagram.com/err0ric/"), site("X", "found", "https://x.com/err0ric"), site("Threads", "found", "https://www.threads.net/@err0ric"), site("TikTok", "found", "https://www.tiktok.com/@err0ric")] };
+  const e0 = fx("err0ric");
+  const names = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", enricher: "Profile enrichment", platformCheck: "Platform check", adultCheck: "Adult site check", githubDeep: "GitHub details", avatarHash: "Avatar comparison" };
+  const view = (c, missing = []) => {
+    const ev = buildEvidence(c, e0.target, "username"), rows = sourceTally(c, names).rows;
+    const failed = rows.filter((r) => r.state === "failed");
+    const tiles = investigateTiles({ items: ev.items, collected: c, type: "username", failedKeys: failed.map((r) => r.key), partialKeys: partialGaps(rows).map((r) => r.key), missingKeys: missing });
+    const brief = investigateBrief({ collected: c, items: ev.items, facts: ev.facts, identity: ev.identity, failed, incomplete: [...failed.map((r) => r.name), ...partialGaps(rows).map((r) => r.name), ...missing.map((k) => names[k])], type: "username", target: e0.target });
+    return { rows, tiles, text: brief.rows.map((r) => r.text).join("\n") };
+  };
+  const c = { ...e0.collected, platformCheck: pc };
+  const v = view(c);
+  ok(v.rows.find((r) => r.key === "platformCheck").state === "partial" && v.rows.find((r) => r.key === "platformCheck").listed === true && partialGaps(v.rows).length === 0, "some sites blocking the platform check is still partial in the tally, and is not a gap in any count");
+  ok(v.tiles.length === 4 && v.tiles.every((t) => !t.atLeast && t.state !== "unknown" && !/at least|not zero/.test(t.sub)), "production shape: every tile is a plain count, none says 'at least' or 'unknown'");
+  ok(!/At least/.test(v.text) && /linked account/.test(v.text), "and the brief's count line is not prefixed with 'At least'");
+  ok(/Facebook, LinkedIn, Reddit blocked the check, so those accounts are unknown, not absent\./.test(v.text) && /The handle is taken on Discord/.test(v.text), "the lines that name the blocked sites and the taken handle stay as they are");
+  // The adult site check is the same kind of source.
+  const adult = { adultCheck: { results: [{ site: "A", state: "blocked" }, { site: "B", state: "not_found" }] } };
+  ok(sourceTally(adult, names).rows[0].state === "partial" && partialGaps(sourceTally(adult, names).rows).length === 0, "the adult site check with a blocked site is not a gap either");
+  // What still counts as down.
+  const sher = view({ ...c, sherlock: { error: "timeout", error_code: "timeout" } });
+  ok(sher.tiles.find((t) => t.id === "unverified").atLeast && /^at least: a source failed$/.test(sher.tiles.find((t) => t.id === "unverified").sub) && /^At least .*Sherlock did not fully answer/m.test(sher.text), "Sherlock failing still makes the counts 'at least', in the tiles and the brief");
+  const allBlocked = view({ ...c, platformCheck: { ...pc, results: pc.results.slice(0, 3), checked: 3 } });
+  ok(allBlocked.rows.find((r) => r.key === "platformCheck").state === "failed" && allBlocked.tiles.find((t) => t.id === "unverified").atLeast && /At least/.test(allBlocked.text), "the platform check with every site blocked failed, and that still counts");
+  const reqFailed = view({ ...c, platformCheck: { error: "timeout", error_code: "timeout" } });
+  ok(reqFailed.tiles.some((t) => t.atLeast) && /Platform check/.test(reqFailed.text), "and so does its request failing");
+  const img = view({ ...c, avatarHash: { results: [{ id: "acct:github", hash: "00ff" }, { id: "acct:x", error: "timeout", error_code: "timeout" }] } });
+  ok(partialGaps(img.rows).map((r) => r.key).join() === "avatarHash" && img.tiles.find((t) => t.id === "linked").atLeast, "a partial that can hide rows (a picture that was not read) still marks the tile it feeds");
+  const cancelled = view({}, ["sherlock", "maigret", "github", "platformCheck"]);
+  ok(cancelled.tiles.every((t) => t.state === "unknown" && t.value === "unknown"), "a cancelled run still gives unknown");
 }
 
 // ---- a link-checked row ---------------------------------------------------------------------------

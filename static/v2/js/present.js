@@ -163,6 +163,9 @@ export function cardSnippet(row, profile, now = new Date()) {
 const ran = (c, k) => c && c[k] !== undefined && c[k] !== null && !(c[k] && c[k].skipped);
 // down: why a count cannot be trusted as a total. A feed that failed, answered only in part, or
 // was asked and never answered (a cancelled run) makes a zero "unknown" and a count "at least".
+// "In part" means rows may be missing. The callers pass `partialKeys` from partialGaps in core.js,
+// which leaves out a per-site check (Platform check, Adult site check) whose only gap is sites
+// that blocked it: each of those sites is a row in the ledger already, so no count is short.
 function tile(id, label, n, { tone = "", line = "solid", feeds = [], collected = {}, failed = new Set(), partial = new Set(), missing = new Set(), jump = null, sub = "" } = {}) {
   const fed = feeds.filter((k) => ran(collected, k) || missing.has(k));
   const f = fed.filter((k) => failed.has(k)).length, m = fed.filter((k) => missing.has(k) && !ran(collected, k)).length, pt = fed.filter((k) => partial.has(k) && !failed.has(k)).length;
@@ -247,6 +250,44 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
     unverified, leads];
 }
 
+// ---- wildcard DNS ----------------------------------------------------------------------------------
+// What the subdomain check said about a wildcard record, read defensively: a case saved before
+// the check existed has no `wildcard`, and a case file is outside data. Every page reads it here.
+//   state: "yes" | "no" | "unknown" | "" (not checked: an older case, or the source failed)
+//   target: the CNAME targets, or the addresses when there is no CNAME, as one string
+//   parents: wildcards one level down, each { name: "*.dev.example.com", target, cnames, ips }
+export function wildcardOf(collected, target = "") {
+  const sub = collected?.subdomains;
+  const w = sub && typeof sub === "object" && !sub.error && sub.wildcard && typeof sub.wildcard === "object" ? sub.wildcard : {};
+  const strs = (v, n) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 260)).slice(0, n) : []);
+  const host = (v) => String(v ?? "").trim().toLowerCase().replace(/\.$/, "").slice(0, 260);
+  const shape = (cnames, ips) => ({ cnames, ips, target: cnames.slice(0, 2).join(", ") || ips.slice(0, 4).join(", ") });
+  const state = ["yes", "no", "unknown"].includes(w.state) ? w.state : "";
+  const domain = host(sub?.domain || target);
+  const names = strs(w.suppressed_names, 500).map(host);
+  const n = Number(w.suppressed);
+  const provider = w.provider && typeof w.provider === "object" && typeof w.provider.name === "string" && w.provider.name ? { name: w.provider.name.slice(0, 60), kind: String(w.provider.kind || "service").slice(0, 60) } : null;
+  const parents = (Array.isArray(w.parents) ? w.parents : []).filter((p) => p && typeof p === "object" && host(p.parent)).slice(0, 5)
+    .map((p) => ({ parent: host(p.parent), name: `*.${host(p.parent)}`, ...shape(strs(p.cnames, 4).map(host), strs(p.ips, 8)) }));
+  return {
+    state, domain, name: domain ? `*.${domain}` : "*", ...shape(state === "yes" ? strs(w.cnames, 4).map(host) : [], state === "yes" ? strs(w.ips, 8) : []),
+    suppressed: state === "yes" ? (Number.isFinite(n) && n >= 0 ? Math.round(n) : names.length) : 0, suppressedNames: state === "yes" ? names : [],
+    provider: state === "yes" ? provider : null, parents,
+    // What could not be read, so a real name may be among those left out.
+    ctFailed: state === "yes" && w.ct_failed === true,
+    attestFailed: state === "yes" ? strs(w.attest_failed, 3).filter((x) => ["MX", "NS", "SRV"].includes(x)) : [],
+  };
+}
+// One sentence for the wildcard, the same on every page. "" when there is none.
+export function wildcardText(w) {
+  if (w?.state === "unknown") return "Wildcard DNS could not be checked: the test lookups failed, so a guessed name that resolves may not be a real host.";
+  if (w?.state !== "yes") return "";
+  const left = !w.suppressed ? "No guessed name was left out." : w.suppressed === 1 ? "1 guessed name was left out because it only matched the wildcard." : `${w.suppressed} guessed names were left out because they only matched the wildcard.`;
+  const gaps = (w.attestFailed?.length ? ` The ${w.attestFailed.join(" and ")} lookup failed, so a mail or name server may be among the names left out.` : "")
+    + (w.ctFailed ? " Certificate logs could not be read, so names a certificate attests may be among those left out." : "");
+  return `Wildcard DNS: any name under ${w.domain} resolves to ${w.target || "the same answer"}${w.provider ? ` (${w.provider.name}, a third-party ${w.provider.kind})` : ""}. So a name that resolves is not proof a host exists. ${left}${gaps}`;
+}
+
 // Recon. extra: { certDays: number | null }
 export function reconTiles({ items = [], collected = {}, type = "domain", failedKeys = [], partialKeys = [], missingKeys = [], running = false, extra = {} } = {}) {
   if (type === "asn" || running) return [];
@@ -259,7 +300,11 @@ export function reconTiles({ items = [], collected = {}, type = "domain", failed
     tile("flags", "Flags", n("flag"), { ...o, tone: "flag", feeds: every, jump: { tier: "flag" }, sub: "read these first" }),
     tile("services", "Open ports", key(/^port:/), { ...o, feeds: ["shodan", "portscan"], jump: { tier: items.some((i) => i.tier === "surface") ? "surface" : "flag" }, sub: "seen from outside" }),
   ];
-  if (type === "domain") out.push(tile("subdomains", "Subdomains", n("inventory"), { ...o, feeds: ["subdomains", "harvest"], jump: { tier: "inventory" }, sub: "from DNS and certificate logs" }));
+  // Real names only: the row that describes a wildcard record is not a subdomain.
+  const wild = wildcardOf(collected);
+  const names = items.filter((i) => i.tier === "inventory" && !/^wild:/.test(String(i.key || ""))).length;
+  const wildSub = wild.state === "yes" ? `wildcard DNS: ${wild.suppressed} ${wild.suppressed === 1 ? "guess" : "guesses"} left out` : wild.state === "unknown" ? "wildcard DNS not checked: guesses may not be hosts" : "from DNS and certificate logs";
+  if (type === "domain") out.push(tile("subdomains", "Subdomains", names, { ...o, feeds: ["subdomains", "harvest"], jump: { tier: "inventory" }, sub: wildSub }));
   const days = Number.isFinite(extra.certDays) ? extra.certDays : null;
   out.push(tile("expiring", "Expiring soon", key(/^(tls|whois):expiry$/), { ...o, tone: "flag", feeds: type === "domain" ? ["ssl", "whois"] : ["ssl"], jump: { tier: "flag" }, sub: days === null ? "certificate or domain" : `certificate has ${days} ${days === 1 ? "day" : "days"} left` }));
   return out;

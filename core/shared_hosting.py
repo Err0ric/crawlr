@@ -113,6 +113,28 @@ def shared_provider(ip=None, cnames=(), hostnames=(), asn_org="") -> dict | None
     return None
 
 
+# Registrar hosts that answer for parked or forwarded names. A record that points at one
+# lands on the registrar's page or redirect, not on a server of the domain's own.
+PARKING_HOSTS = {
+    "pixie.porkbun.com": "Porkbun",                # Porkbun parking page and URL forwarding
+    "parkingpage.namecheap.com": "Namecheap",      # Namecheap parking page
+}
+
+
+def wildcard_target(cnames=(), ips=()) -> dict | None:
+    """Who answers behind a wildcard record, when it is a third party that can be named:
+    {"name": "Porkbun", "kind": "parking or forwarding service", "basis": "cname"} or None."""
+    for name in cnames or ():
+        registrar = PARKING_HOSTS.get(_clean(name))
+        if registrar:
+            return {"name": registrar, "kind": "parking or forwarding service", "basis": "cname"}
+    for ip in list(ips or ())[:8] or [None]:
+        shared = shared_provider(ip=ip, cnames=cnames)
+        if shared:
+            return {"name": shared["provider"], "kind": "hosting platform", "basis": shared["basis"]}
+    return None
+
+
 def neighbors(target, hostnames, shared: dict | None = None) -> list[str]:
     """The hostnames on an address that are not the target and not part of its site.
 

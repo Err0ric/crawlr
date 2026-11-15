@@ -1,5 +1,5 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
-import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
+import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, partialGaps, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
 import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
 import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultForAi, adultSummary, adultCheckText, guardText, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
 import { session, MODE, normHandle, adultFor, startAdult, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
@@ -234,9 +234,9 @@ function paintSummary(ev) {
   const rows = tally().rows, keysOf = (st) => rows.filter((r) => r.state === st).map((r) => r.key);
   // Sources that were asked and had not answered when the run was cancelled: unknown, never zero.
   const missing = (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string");
-  renderVerdict($("#verdict"), !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: keysOf("failed"), partialKeys: keysOf("partial"), missingKeys: missing, extra: tileExtra() }));
+  renderVerdict($("#verdict"), !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: keysOf("failed"), partialKeys: partialGaps(rows).map((r) => r.key), missingKeys: missing, extra: tileExtra() }));
   // The written brief waits for the run to finish, so it never describes half a picture.
-  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed" || r.state === "partial").map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine }));
+  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed").map((r) => r.name), ...partialGaps(rows).map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine }));
 }
 bindLedger($("#ledger"), checkKey);
 // What the tiles of a hash, phone or name case show, from the same functions the cards use.

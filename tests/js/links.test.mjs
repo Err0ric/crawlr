@@ -7,7 +7,7 @@ import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document = { addEventListener() {} };   // ai.js and report.js register delegated listeners on import
 const J = "../../static/v2/js/";
-const { link, linkOf, sourceTally, sourceCoverage, statusForAi } = await import(J + "core.js");
+const { link, linkOf, sourceTally, sourceCoverage, statusForAi, partialGaps } = await import(J + "core.js");
 const L = await import(J + "links.js");
 const { buildEvidence, accountsFor, ledgerTiers } = await import(J + "evidence.js");
 const { buildFindings } = await import(J + "reconfindings.js");
@@ -226,6 +226,7 @@ ok(L.classifyLink({ url: "https://example.org/find?q=jdoe@example.org", want: "e
   const src = L.linkCheckSource({ linkChecks: checks });
   const t = sourceTally({ linkCheck: src }, { linkCheck: "Link check" });
   ok(src.link_check === true && src.results.length === 6 && sourceCoverage(src).answered === 4 && t.rows[0].state === "partial" && /4 of 6 links checked/.test(t.rows[0].text), "the link check is a source: blocked and unclear links make it partial");
+  ok(t.rows[0].listed === true && partialGaps(t.rows).length === 0, "blocked links are rows of their own, so a partial link check does not make the tiles read at least");
   const failed = L.linkCheckSource({ linkChecks: checks, linkCheck: { error: "Too many requests.", error_code: "rate_limited", error_detail: "429" } });
   const tf = sourceTally({ linkCheck: failed }, { linkCheck: "Link check" });
   ok(tf.failed === 1 && tf.rows[0].state === "failed" && /^failed: Too many requests/.test(statusForAi(tf.rows[0])), "a verifier failure is a failed source, through the same tally as every other source");
