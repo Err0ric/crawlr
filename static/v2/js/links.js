@@ -9,9 +9,10 @@
 //                         Maigret without a profile read, a platform check that was blocked)
 //   evidence              where the claim can be checked: a public lookup page for that exact
 //                         record, or the thing the row is about (a host, a link found on a profile)
-//   search                an outbound search the investigator chooses to open (a name case only,
-//                         see names.js). It carries the name on purpose, proves nothing, and is
-//                         never used for a finding, a fact or a lead.
+//   search                an outbound search the investigator chooses to open (a name case, see
+//                         names.js, and a phone case, see phone.js). It carries the name or the
+//                         number on purpose, proves nothing, and is never used for a finding, a
+//                         fact or a lead.
 //   none                  no usable public URL. Rendered as plain text, never as an anchor.
 //
 // An item's link: { url, link_kind, hint?, link_label?, more? }

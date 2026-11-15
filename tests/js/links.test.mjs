@@ -37,6 +37,8 @@ function casesOf(name, j) {
     if (v2.length) out.push({ name: `${name} (new shapes)`, target: j.target, type: j.type, collected: { ...j.collected, ...Object.fromEntries(v2.map((k) => [swap[k], j[k]])) } });
   }
   for (const [k, v] of Object.entries(j)) if (v && typeof v === "object" && typeof v.hash === "string" && v.verdict) out.push({ name: `${name}: ${k}`, target: v.hash, type: "hash", collected: { hash: v } });
+  // Phone answers, new shape and old: each is a phone case of its own.
+  for (const [k, v] of Object.entries(j)) if (v && typeof v === "object" && typeof v.input === "string" && ("normalized" in v)) out.push({ name: `${name}: ${k}`, target: v.input, type: "phone", collected: { phone: v } });
   if (j.githubDeep || j.avatarHash) { const t = fx("torvalds"); out.push({ name: `${name} on torvalds`, target: t.target, type: t.type, collected: { ...t.collected, githubDeep: j.githubDeep, avatarHash: j.avatarHash } }); }
   return out;
 }

@@ -12,6 +12,7 @@ import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
 import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards } from "./workbench.js";
 import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
+import { readPhone, phoneTileExtra, PHONE_SOURCE, PHONE_SOURCE_DESC, PHONE_NOT_USABLE } from "./phone.js";
 import { buildCaseFile } from "./casefile.js";
 
 // ---- sources ---------------------------------------------------------------
@@ -28,7 +29,7 @@ export const SOURCES = [
   { id: "hunter", how: "index",    name: "Hunter.io",       desc: "addresses on the email's domain",       types: ["email"],             on: false, pro: "hunter" },
   { id: "harvester", how: "index", name: "Domain harvest",  desc: "hosts and other addresses on this email's domain, from 8 public sources. Skipped for mail providers such as gmail.com", types: ["email"], on: true },
   { id: "hash", how: "index",      name: "Hash lookup",     desc: "MalwareBazaar, CIRCL, OTX, ThreatFox",  types: ["hash"],              on: true },
-  { id: "phone", how: "index",     name: "Phone lookup",    desc: "carrier and line type",                 types: ["phone"],             on: true, pro: "numlookup", proOptional: true },
+  { id: "phone", how: "index",     name: PHONE_SOURCE,      desc: PHONE_SOURCE_DESC,                        types: ["phone"],             on: true, pro: "numlookup", proOptional: true },
   { id: "namesearch", how: "index", name: NAME_SOURCE,      desc: NAME_SOURCE_DESC,                         types: ["name"],              on: true },
   // Not part of the run: it starts when a ledger group with unchecked profile URLs is on screen.
   { id: "linkcheck", how: "guess", name: "Link check",      desc: "checks that each reported profile URL really exists, when you open a group", types: ["username"], on: true },
@@ -78,7 +79,7 @@ export function renderSources(type) {
     <div class="source ${srcOn(s.id) ? "" : "off"}" data-src="${s.id}">
       <div>
         <div class="name" id="src-${s.id}">${s.name}${s.warn ? raw(' <span class="tag warn">caution</span>') : ""}${s.pro && !s.proOptional ? raw(' <span class="tag violet">your key</span>') : ""}</div>
-        <div class="desc" id="srcd-${s.id}">${raw(howTag(s.how))}${s.desc}${s.pro && s.proOptional && !getKey(s.pro) ? raw(' <span class="tag">links only without a key</span>') : ""}</div>
+        <div class="desc" id="srcd-${s.id}">${raw(howTag(s.how))}${s.desc}</div>
       </div>
       <label class="switch"><input type="checkbox" role="switch" data-toggle="${s.id}" ${srcOn(s.id) ? "checked" : ""} aria-label="${s.name}" aria-labelledby="src-${s.id}" aria-describedby="srcd-${s.id}"><span></span></label>
     </div>`).join("");
@@ -135,7 +136,7 @@ export const state = { nameInvalid: "", target: "", type: "", collected: {}, ai:
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
 
-const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: "Phone lookup", nameResult: NAME_SOURCE, enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison", adultCheck: ADULT_SOURCE, linkCheck: "Link check" };
+const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: PHONE_SOURCE, nameResult: NAME_SOURCE, enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison", adultCheck: ADULT_SOURCE, linkCheck: "Link check" };
 // Every count of sources on this page comes from this one tally. The link check is a source like
 // any other: its row is built from the stored results, or from the error if the verifier failed.
 // Counted over the adult-free view: Sherlock and Maigret are never "with results" for rows on
@@ -173,7 +174,7 @@ function renderLedger() {
   $("#notices").innerHTML = (isName ? nameNoticesHtml(nameNotices(state.collected, state.target)) : "") + failedNotice(failedShown) + adultNotice() + (diff ? diffNotice(diff, state.prev.ts) : "");
   const nothing = state.running
     ? `<div class="empty"><h3>Collecting</h3><p>Findings appear here as each source answers.</p></div>`
-    : state.nameInvalid ? h`<div class="empty"><h3>Not searched</h3><p>${state.nameInvalid} No directory was asked.</p></div>`
+    : state.nameInvalid ? h`<div class="empty"><h3>Not searched</h3><p>${state.nameInvalid} ${state.type === "phone" ? "Nothing was looked up." : "No directory was asked."}</p></div>`
     : failedSources().length
       ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean negative. See the notice above and try again.</p></div>`
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
@@ -214,7 +215,7 @@ bindLedger($("#ledger"), checkKey);
 function tileExtra() {
   const c = state.collected;
   if (state.type === "hash") { const v = hashView(c.hash); if (!v) return {}; const cov = hashCoverage(c.hash); return { hash: { verdict: v.verdict, detection: v.detection || null, answered: cov.answered, asked: cov.answered + cov.failed.length } }; }
-  if (state.type === "phone") return { phone: { lineType: String(c.phone?.line_type || ""), carrier: String(c.phone?.carrier || "") } };
+  if (state.type === "phone") return phoneTileExtra(c.phone);
   if (state.type === "name") { const cv = sourceCoverage(c.nameResult); return { name: cv ? { answered: cv.answered, asked: cv.total } : { answered: 0, asked: 0 } }; }
   return {};
 }
@@ -243,7 +244,7 @@ function summary() {
   // A name case counts candidates. They are not findings, and are never called that.
   const t = tally(), isName = state.type === "name";
   const found = isName ? plural(items.filter((i) => i.tier === "people").length, "candidate") : plural(items.filter(isFinding).length, "finding");
-  if (state.nameInvalid) return { items, t, log: "Not searched: that is not a usable name", head: `${TYPE_LABEL[state.type]} · not searched` };
+  if (state.nameInvalid) return { items, t, log: `Not searched: that is not a usable ${state.type === "phone" ? "phone number" : "name"}`, head: `${TYPE_LABEL[state.type]} · not searched` };
   return { items, t, log: `${state.cancelled ? "Cancelled · partial results · " : ""}${tallyText(t)} · ${found}`, head: `${TYPE_LABEL[state.type]} · ${found} · ${tallyText(t)}${state.cancelled ? " · cancelled, partial" : ""}` };
 }
 function linkCheckDone(text, status, detail = "") {
@@ -327,7 +328,7 @@ const AI_PITCH = {
   username: "Get a written report: who this most likely is, what links the accounts, and what to check next.",
   email: "Get a written report: who this most likely is, what links the accounts, and what to check next.",
   hash: "Get a written report: what this file is, how sure the sources are, and what to do with it.",
-  phone: "Get a written report: what the line type and carrier suggest and what to check next.",
+  phone: "Get a written report: what kind of number this is, what its flags mean and what to check next. It never guesses who uses the number.",
   name: "Get a search plan: how to narrow people-search results for this name and what to check first.",
   nameFound: "Get a written comparison of the people found with this name and what would tell them apart.",
 };
@@ -518,7 +519,7 @@ async function runSource(label, url, body, headers, key, opts = {}) {
   } catch (err) {
     pending.delete(row);
     if (err.code === "cancelled") { log.set(row, `${label} · cancelled`, "skip"); return null; }
-    if (opts.badInput && (err.status === 400 || err.status === 422)) { log.set(row, `${label} · not run: that is not a usable name`, "skip"); opts.badInput(err); return null; }
+    if (opts.badInput && (err.status === 400 || err.status === 422)) { log.set(row, `${label} · not run: that is not a usable ${opts.what || "name"}`, "skip"); opts.badInput(err); return null; }
     if (err.code === "minor_guard") { adultRefused(err.reason); log.set(row, `${label} · adult and dating sites not checked for this handle`, "skip"); renderLedger(); return GUARDED; }
     // Keep the failure with the results, so the screen and the AI both know this source is unknown.
     state.collected[key] = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
@@ -582,13 +583,15 @@ export async function run(targetRaw, typeOverride) {
     if (srcOn("hash")) await runSource("Hash lookup", "/api/hash/hash", { hash: target }, {}, "hash");
   } else if (type === "phone") {
     if (srcOn("phone")) {
+      // One request. The open numbering data needs no key; a NumLookup key only adds to it, and a
+      // rejected key is reported as that source failing while everything else stands.
       const k = getKey("numlookup");
-      const d = await runSource("Phone lookup", "/api/phone/lookup", { phone: target }, k ? { "X-Numlookup-Key": k } : {}, "phone");
-      if (!d && k && !state.cancelled) {
-        // Saved key was rejected: still give the user the lookup links, and say why carrier data is missing.
-        const d2 = await runSource("Phone lookup (links only)", "/api/phone/lookup", { phone: target }, {}, "phone");
-        if (d2) { d2.api_error = "Your NumLookup key was rejected. Update or clear it in Settings."; renderSourceCards(); }
-      }
+      await runSource(PHONE_SOURCE, "/api/phone/lookup", { phone: target }, k ? { "X-Numlookup-Key": k } : {}, "phone", { what: "phone number", badInput: (err) => {
+        state.nameInvalid = err.status === 400 && err.detail ? err.detail : PHONE_NOT_USABLE;
+        nameError(state.nameInvalid);
+      } });
+      // Kept in the checked, bounded shape, so History and exports hold nothing else.
+      if (c.phone && !c.phone.error && !c.phone.error_code) c.phone = readPhone(c.phone) || { error: "The answer could not be read.", error_code: "bad_response", error_detail: "" };
     }
   } else if (type === "name") {
     // One request to CrawlR, which asks the five directories. The qualifiers go with it only to

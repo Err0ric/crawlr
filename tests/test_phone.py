@@ -106,7 +106,7 @@ def test_us_geographic_number():
 def test_us_toll_free_belongs_to_no_country_or_place():
     o = pl.offline_facts("+1 800 356 9377")
     assert o["valid"] and o["number"]["line_type"] == "toll_free" and o["line_type"] == "Toll free"
-    assert o["country_code"] is None and "shared +1" in o["country"]
+    assert o["country_code"] is None and o["country"] == "North America (+1)"
     assert o["assignment"]["area"] is None and o["assignment"]["prefix"] is None and o["number"]["time_zones"] == []
     assert codes(o) == {"valid": "ok", "toll_free": "info"}
 

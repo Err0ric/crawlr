@@ -1,0 +1,1952 @@
+{
+ "us": {
+  "input": "+1 202 456 1111",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12024561111",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12024561111",
+   "international": "+1 202-456-1111",
+   "national": "(202) 456-1111",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "America/New_York"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": "202-456",
+   "rate_centre": "Washington Zone 1",
+   "region": "DC",
+   "company": "VERIZON WASHINGTON DC, INC.",
+   "ocn": "9211",
+   "block_assigned": true,
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456"
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "202-456",
+    "state": "ok",
+    "rate_centre": "Washington Zone 1",
+    "region": "DC",
+    "company": "VERIZON WASHINGTON DC, INC.",
+    "ocn": "9211",
+    "cached": false
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-456-1111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "us_numlookup": {
+  "input": "+1 202 456 1111",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12024561111",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12024561111",
+   "international": "+1 202-456-1111",
+   "national": "(202) 456-1111",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "America/New_York"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": "202-456",
+   "rate_centre": "Washington Zone 1",
+   "region": "DC",
+   "company": "VERIZON WASHINGTON DC, INC.",
+   "ocn": "9211",
+   "block_assigned": true,
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456"
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "202-456",
+    "state": "ok",
+    "rate_centre": "Washington Zone 1",
+    "region": "DC",
+    "company": "VERIZON WASHINGTON DC, INC.",
+    "ocn": "9211",
+    "cached": false
+   },
+   "numlookup": {
+    "name": "NumLookup",
+    "state": "ok",
+    "valid": true,
+    "carrier": "Verizon Communications",
+    "line_type": "landline"
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-456-1111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "us_numlookup_failed": {
+  "input": "+1 202 456 1111",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12024561111",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12024561111",
+   "international": "+1 202-456-1111",
+   "national": "(202) 456-1111",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "America/New_York"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": "202-456",
+   "rate_centre": "Washington Zone 1",
+   "region": "DC",
+   "company": "VERIZON WASHINGTON DC, INC.",
+   "ocn": "9211",
+   "block_assigned": true,
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456"
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "202-456",
+    "state": "ok",
+    "rate_centre": "Washington Zone 1",
+    "region": "DC",
+    "company": "VERIZON WASHINGTON DC, INC.",
+    "ocn": "9211",
+    "cached": false
+   },
+   "numlookup": {
+    "name": "NumLookup",
+    "state": "failed",
+    "error": "NumLookup rejected the key. Update or clear it in Settings.",
+    "error_code": "auth",
+    "error_detail": "HTTP 401"
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-456-1111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "us_block_failed": {
+  "input": "+1 202 456 1111",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12024561111",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12024561111",
+   "international": "+1 202-456-1111",
+   "national": "(202) 456-1111",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "America/New_York"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": "202-456",
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "202-456",
+    "state": "failed",
+    "error": "The source took too long to answer.",
+    "error_code": "timeout",
+    "error_detail": "ConnectTimeout"
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-456-1111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "canada": {
+  "input": "+1 604 687 1234",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+16046871234",
+  "valid": true,
+  "country": "Canada",
+  "country_code": "CA",
+  "location": "Vancouver, BC",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+16046871234",
+   "international": "+1 604-687-1234",
+   "national": "(604) 687-1234",
+   "extension": null,
+   "calling_code": 1,
+   "region": "CA",
+   "country": "Canada",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of Canada.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of Canada does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "America/Vancouver"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Vancouver, BC",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": "604-687",
+   "rate_centre": "Vancouver",
+   "region": "BC",
+   "company": "TELUS COMMUNICATIONS, INC. - BC",
+   "ocn": "8086",
+   "block_assigned": true,
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=604&nxx=687"
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for Canada",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "604-687",
+    "state": "ok",
+    "rate_centre": "Vancouver",
+    "region": "BC",
+    "company": "TELUS COMMUNICATIONS, INC. - BC",
+    "ocn": "8086",
+    "cached": false
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28604%29+687-1234%22+OR+%22604-687-1234%22+OR+%22%2B1+604-687-1234%22+OR+%22%2B16046871234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28604%29+687-1234%22+OR+%22604-687-1234%22+OR+%22%2B1+604-687-1234%22+OR+%22%2B16046871234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28604%29+687-1234%22+OR+%22604-687-1234%22+OR+%22%2B1+604-687-1234%22+OR+%22%2B16046871234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-604-687-1234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/6046871234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/6046871234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "fiction": {
+  "input": "+1 202 555 0143",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12025550143",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12025550143",
+   "international": "+1 202-555-0143",
+   "national": "(202) 555-0143",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "America/New_York"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": true
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": "202-555",
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": false,
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=555"
+  },
+  "findings": [
+   {
+    "level": "flag",
+    "code": "fiction",
+    "title": "Reserved for fiction",
+    "detail": "In North America 555-0100 to 555-0199 is set aside for films, television and examples. It is reserved for fiction and is not in use, so nobody can be reached on it."
+   },
+   {
+    "level": "info",
+    "code": "unassigned_block",
+    "title": "The 202-555 block is not assigned",
+    "detail": "Local Calling Guide lists no carrier for area code 202, exchange 555. A working number should not start with these six digits, though caller ID can be made to show any number."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "202-555",
+    "state": "none",
+    "cached": false
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+555-0143%22+OR+%22202-555-0143%22+OR+%22%2B1+202-555-0143%22+OR+%22%2B12025550143%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+555-0143%22+OR+%22202-555-0143%22+OR+%22%2B1+202-555-0143%22+OR+%22%2B12025550143%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+555-0143%22+OR+%22202-555-0143%22+OR+%22%2B1+202-555-0143%22+OR+%22%2B12025550143%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-555-0143",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/2025550143",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2025550143",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "unassigned": {
+  "input": "+1 202 555 1234",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12025551234",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12025551234",
+   "international": "+1 202-555-1234",
+   "national": "(202) 555-1234",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "America/New_York"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": "202-555",
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": false,
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=555"
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   },
+   {
+    "level": "flag",
+    "code": "unassigned_block",
+    "title": "The 202-555 block is not assigned",
+    "detail": "Local Calling Guide lists no carrier for area code 202, exchange 555. A working number should not start with these six digits, though caller ID can be made to show any number."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "202-555",
+    "state": "none",
+    "cached": false
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+555-1234%22+OR+%22202-555-1234%22+OR+%22%2B1+202-555-1234%22+OR+%22%2B12025551234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+555-1234%22+OR+%22202-555-1234%22+OR+%22%2B1+202-555-1234%22+OR+%22%2B12025551234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+555-1234%22+OR+%22202-555-1234%22+OR+%22%2B1+202-555-1234%22+OR+%22%2B12025551234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-555-1234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/2025551234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2025551234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "assumed": {
+  "input": "2024561111",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12024561111",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12024561111",
+   "international": "+1 202-456-1111",
+   "national": "(202) 456-1111",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": true,
+   "assumed_text": "No country code given, read as a United States number.",
+   "time_zones": [
+    "America/New_York"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": "202-456",
+   "rate_centre": "Washington Zone 1",
+   "region": "DC",
+   "company": "VERIZON WASHINGTON DC, INC.",
+   "ocn": "9211",
+   "block_assigned": true,
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456"
+  },
+  "findings": [
+   {
+    "level": "info",
+    "code": "assumed_country",
+    "title": "No country code given, read as a United States number",
+    "detail": "Add the country code with a + (for example +44) if the number belongs somewhere else."
+   },
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   },
+   "npa_nxx": {
+    "name": "Local Calling Guide",
+    "asked": "202-456",
+    "state": "ok",
+    "rate_centre": "Washington Zone 1",
+    "region": "DC",
+    "company": "VERIZON WASHINGTON DC, INC.",
+    "ocn": "9211",
+    "cached": false
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+456-1111%22+OR+%22202-456-1111%22+OR+%22%2B1+202-456-1111%22+OR+%22%2B12024561111%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-456-1111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "toll_free": {
+  "input": "1-800-FLOWERS",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+18003569377",
+  "valid": true,
+  "country": "North America (+1)",
+  "country_code": null,
+  "location": null,
+  "carrier": null,
+  "line_type": "Toll free",
+  "number": {
+   "e164": "+18003569377",
+   "international": "+1 800-356-9377",
+   "national": "(800) 356-9377",
+   "extension": null,
+   "calling_code": 1,
+   "region": null,
+   "country": "North America (+1)",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of North America (+1).",
+   "line_type": "toll_free",
+   "line_type_text": "Toll free",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [],
+   "time_zone_count": 42,
+   "vanity": true,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "info",
+    "code": "vanity",
+    "title": "Letters read as keypad digits",
+    "detail": "The letters were turned into the digits they share a key with: (800) 356-9377."
+   },
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for North America (+1)",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   },
+   {
+    "level": "info",
+    "code": "toll_free",
+    "title": "Toll-free number",
+    "detail": "Calls are paid for by whoever holds the number, usually an organisation. A toll-free number is not tied to a place."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28800%29+356-9377%22+OR+%22800-356-9377%22+OR+%22%2B1+800-356-9377%22+OR+%22%2B18003569377%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28800%29+356-9377%22+OR+%22800-356-9377%22+OR+%22%2B1+800-356-9377%22+OR+%22%2B18003569377%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28800%29+356-9377%22+OR+%22800-356-9377%22+OR+%22%2B1+800-356-9377%22+OR+%22%2B18003569377%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-800-356-9377",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/8003569377",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/8003569377",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "premium": {
+  "input": "+1 900 234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+19002345678",
+  "valid": true,
+  "country": "North America (+1)",
+  "country_code": null,
+  "location": null,
+  "carrier": null,
+  "line_type": "Premium rate",
+  "number": {
+   "e164": "+19002345678",
+   "international": "+1 900-234-5678",
+   "national": "(900) 234-5678",
+   "extension": null,
+   "calling_code": 1,
+   "region": null,
+   "country": "North America (+1)",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of North America (+1).",
+   "line_type": "premium_rate",
+   "line_type_text": "Premium rate",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [],
+   "time_zone_count": 42,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for North America (+1)",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   },
+   {
+    "level": "flag",
+    "code": "premium_rate",
+    "title": "Premium-rate number",
+    "detail": "Calls to this number are charged at a premium. Missed-call and call-back scams often use these ranges."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28900%29+234-5678%22+OR+%22900-234-5678%22+OR+%22%2B1+900-234-5678%22+OR+%22%2B19002345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28900%29+234-5678%22+OR+%22900-234-5678%22+OR+%22%2B1+900-234-5678%22+OR+%22%2B19002345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28900%29+234-5678%22+OR+%22900-234-5678%22+OR+%22%2B1+900-234-5678%22+OR+%22%2B19002345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-900-234-5678",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/9002345678",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/9002345678",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "uk_mobile": {
+  "input": "+44 7400 123456",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+447400123456",
+  "valid": true,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": null,
+  "carrier": "Three",
+  "line_type": "Mobile",
+  "number": {
+   "e164": "+447400123456",
+   "international": "+44 7400 123456",
+   "national": "07400 123456",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United Kingdom.",
+   "line_type": "mobile",
+   "line_type_text": "Mobile",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [],
+   "time_zone_count": 4,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": "Three",
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United Kingdom",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%2207400+123456%22+OR+%2207400-123456%22+OR+%22%2B44+7400+123456%22+OR+%22%2B447400123456%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%2207400+123456%22+OR+%2207400-123456%22+OR+%22%2B44+7400+123456%22+OR+%22%2B447400123456%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%2207400+123456%22+OR+%2207400-123456%22+OR+%22%2B44+7400+123456%22+OR+%22%2B447400123456%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "uk_landline": {
+  "input": "+44 121 234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+441212345678",
+  "valid": true,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": "Birmingham",
+  "carrier": null,
+  "line_type": "Fixed line",
+  "number": {
+   "e164": "+441212345678",
+   "international": "+44 121 234 5678",
+   "national": "0121 234 5678",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United Kingdom.",
+   "line_type": "fixed_line",
+   "line_type_text": "Fixed line",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "Europe/London"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Birmingham",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United Kingdom",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "uk_drama": {
+  "input": "+44 7700 900123",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+447700900123",
+  "valid": false,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": null,
+  "carrier": null,
+  "line_type": null,
+  "number": {
+   "e164": "+447700900123",
+   "international": "+44 7700 900123",
+   "national": "07700 900123",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": true,
+   "possible_reason": null,
+   "valid": false,
+   "validity_text": "Not valid: the length is right for the United Kingdom, but no number range in its plan starts with these digits.",
+   "line_type": "unknown",
+   "line_type_text": "Unknown",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [],
+   "time_zone_count": 0,
+   "vanity": false,
+   "fiction": true
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "flag",
+    "code": "fiction",
+    "title": "Reserved for fiction",
+    "detail": "Ofcom sets this range aside for television and radio drama (mobile). It is reserved for fiction and is not in use, so nobody can be reached on it."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%2207700+900123%22+OR+%2207700-900123%22+OR+%22%2B44+7700+900123%22+OR+%22%2B447700900123%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%2207700+900123%22+OR+%2207700-900123%22+OR+%22%2B44+7700+900123%22+OR+%22%2B447700900123%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%2207700+900123%22+OR+%2207700-900123%22+OR+%22%2B44+7700+900123%22+OR+%22%2B447700900123%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "voip": {
+  "input": "+44 5600 123456",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+445600123456",
+  "valid": true,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": null,
+  "carrier": null,
+  "line_type": "VoIP",
+  "number": {
+   "e164": "+445600123456",
+   "international": "+44 56 0012 3456",
+   "national": "056 0012 3456",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United Kingdom.",
+   "line_type": "voip",
+   "line_type_text": "VoIP",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [],
+   "time_zone_count": 4,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United Kingdom",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   },
+   {
+    "level": "flag",
+    "code": "voip",
+    "title": "VoIP number",
+    "detail": "VoIP numbers are easy to get and discard, and are not tied to a place or a SIM card."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22056+0012+3456%22+OR+%22056-0012-3456%22+OR+%22%2B44+56+0012+3456%22+OR+%22%2B445600123456%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22056+0012+3456%22+OR+%22056-0012-3456%22+OR+%22%2B44+56+0012+3456%22+OR+%22%2B445600123456%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22056+0012+3456%22+OR+%22056-0012-3456%22+OR+%22%2B44+56+0012+3456%22+OR+%22%2B445600123456%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "de_mobile": {
+  "input": "+49 1512 3456789",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+4915123456789",
+  "valid": true,
+  "country": "Germany",
+  "country_code": "DE",
+  "location": null,
+  "carrier": "T-Mobile",
+  "line_type": "Mobile",
+  "number": {
+   "e164": "+4915123456789",
+   "international": "+49 1512 3456789",
+   "national": "01512 3456789",
+   "extension": null,
+   "calling_code": 49,
+   "region": "DE",
+   "country": "Germany",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of Germany.",
+   "line_type": "mobile",
+   "line_type_text": "Mobile",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "Europe/Berlin"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": "T-Mobile",
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for Germany",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%2201512+3456789%22+OR+%2201512-3456789%22+OR+%22%2B49+1512+3456789%22+OR+%22%2B4915123456789%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%2201512+3456789%22+OR+%2201512-3456789%22+OR+%22%2B49+1512+3456789%22+OR+%22%2B4915123456789%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%2201512+3456789%22+OR+%2201512-3456789%22+OR+%22%2B49+1512+3456789%22+OR+%22%2B4915123456789%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "invalid": {
+  "input": "+1 555 555 1234",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+15555551234",
+  "valid": false,
+  "country": "North America (+1)",
+  "country_code": null,
+  "location": null,
+  "carrier": null,
+  "line_type": null,
+  "number": {
+   "e164": "+15555551234",
+   "international": "+1 555-555-1234",
+   "national": "(555) 555-1234",
+   "extension": null,
+   "calling_code": 1,
+   "region": null,
+   "country": "North America (+1)",
+   "possible": true,
+   "possible_reason": null,
+   "valid": false,
+   "validity_text": "Not valid: the length is right for North America (+1), but no number range in its plan starts with these digits.",
+   "line_type": "unknown",
+   "line_type_text": "Unknown",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [],
+   "time_zone_count": 0,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "flag",
+    "code": "invalid",
+    "title": "Not a valid number for North America (+1)",
+    "detail": "The length is right for North America (+1), but no number range in its plan starts with these digits."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28555%29+555-1234%22+OR+%22555-555-1234%22+OR+%22%2B1+555-555-1234%22+OR+%22%2B15555551234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28555%29+555-1234%22+OR+%22555-555-1234%22+OR+%22%2B1+555-555-1234%22+OR+%22%2B15555551234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28555%29+555-1234%22+OR+%22555-555-1234%22+OR+%22%2B1+555-555-1234%22+OR+%22%2B15555551234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-555-555-1234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "Should I Answer",
+    "url": "https://www.shouldianswer.com/phone-number/5555551234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/5555551234",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "too_short": {
+  "input": "+44 20 7946",
+  "parsed": true,
+  "kind": "number",
+  "normalized": null,
+  "valid": false,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": null,
+  "carrier": null,
+  "line_type": null,
+  "number": {
+   "e164": null,
+   "international": null,
+   "national": "207946",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": false,
+   "possible_reason": "it has no area code, so it can only be dialled from inside its own area",
+   "valid": false,
+   "validity_text": "Not valid: it has no area code, so it can only be dialled from inside its own area.",
+   "line_type": "unknown",
+   "line_type_text": "Unknown",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [],
+   "time_zone_count": 0,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "flag",
+    "code": "invalid",
+    "title": "Not a valid number for the United Kingdom",
+    "detail": "It has no area code, so it can only be dialled from inside its own area."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "emergency": {
+  "input": "911",
+  "parsed": true,
+  "kind": "emergency",
+  "normalized": null,
+  "valid": false,
+  "country": "United States",
+  "country_code": "US",
+  "location": null,
+  "carrier": null,
+  "line_type": "Emergency number",
+  "number": {
+   "short": "911",
+   "region": "US",
+   "country": "United States",
+   "possible": false,
+   "valid": false,
+   "validity_text": "Not a subscriber number.",
+   "region_assumed": true,
+   "assumed_text": "Read as a number dialled in the United States."
+  },
+  "assignment": null,
+  "findings": [
+   {
+    "level": "flag",
+    "code": "emergency",
+    "title": "Emergency number",
+    "detail": "911 is an emergency number in the United States. It is a service, not a subscriber number, so there is nothing to look up. Do not call it to test it."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "short_code": {
+  "input": "46645",
+  "parsed": true,
+  "kind": "short_code",
+  "normalized": null,
+  "valid": false,
+  "country": "United States",
+  "country_code": "US",
+  "location": null,
+  "carrier": null,
+  "line_type": "Short code",
+  "number": {
+   "short": "46645",
+   "region": "US",
+   "country": "United States",
+   "possible": false,
+   "valid": false,
+   "validity_text": "Not a subscriber number.",
+   "region_assumed": true,
+   "assumed_text": "Read as a number dialled in the United States."
+  },
+  "assignment": null,
+  "findings": [
+   {
+    "level": "info",
+    "code": "short_code",
+    "title": "Short code",
+    "detail": "46645 is a short code in the United States: a service number that only works inside that country's networks. It is not a subscriber number, so there is nothing to look up."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "old_keyed": {
+  "input": "+1 202 555 0143",
+  "normalized": "+12025550143",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington",
+  "carrier": "Example Mobile",
+  "line_type": "voip",
+  "lookup_links": {
+   "TrueCaller": "https://www.truecaller.com/search/12025550143",
+   "Spokeo": "https://www.spokeo.com/phone-lookup/12025550143",
+   "WhitePages": "https://www.whitepages.com/phone/12025550143",
+   "BeenVerified": "https://www.beenverified.com/phone/12025550143/"
+  }
+ },
+ "old_empty": {
+  "input": "+1 202-456-1111",
+  "normalized": "+12024561111",
+  "valid": null,
+  "country": null,
+  "country_code": null,
+  "location": null,
+  "carrier": null,
+  "line_type": null,
+  "lookup_links": {
+   "Spokeo": "https://www.spokeo.com/phone-lookup/12024561111"
+  }
+ },
+ "failed": {
+  "error": "Could not reach CrawlR. Check your connection and try again.",
+  "error_code": "network",
+  "error_detail": "TypeError: fetch failed"
+ }
+}

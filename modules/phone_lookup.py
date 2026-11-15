@@ -89,7 +89,7 @@ LINE_TYPES = {
 _NON_GEO = {T.TOLL_FREE, T.PREMIUM_RATE, T.SHARED_COST, T.VOIP, T.PERSONAL_NUMBER, T.PAGER, T.UAN, T.VOICEMAIL}
 # Number types a geographic block lookup makes sense for.
 _GEO_TYPES = {T.FIXED_LINE, T.MOBILE, T.FIXED_LINE_OR_MOBILE}
-NANP_NAME = "North America (shared +1 numbering plan)"
+NANP_NAME = "North America (+1)"
 
 # Ofcom's ranges for TV and radio drama, as the first seven digits of the national number
 # (the last three are free). Source: Ofcom, "Telephone numbers for use in TV and radio drama".

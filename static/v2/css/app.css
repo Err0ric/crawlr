@@ -1238,6 +1238,8 @@ details.more[open] > summary { margin-bottom: 6px; }
   .casesheet .case-bar { display: grid; gap: var(--s-3); }
   .verdict-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .verdict-strip.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* a case whose first tile is a word (a phone case): words need the width of two columns */
+  .verdict-strip.n4:has(.vt:first-child:is(.state-word, .state-unknown)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .vt { padding: 7px 6px 7px 7px; }
   .vt-n { font-size: var(--fs-4); }
   .vt-l { font-size: var(--fs-0); overflow-wrap: anywhere; }

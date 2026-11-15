@@ -5,8 +5,10 @@
 //   link_kind says what the URL is worth (see links.js): a profile a source read, a templated URL
 //   nothing checked, a page where the claim can be checked, or "none" (plain text, with a hint).
 //   tier:
-//     flag        something that changes the risk picture (breach, malware verdict, VOIP number)
-//     info        the answer to a lookup that is not about accounts (a hash verdict)
+//     flag        something that changes the risk picture (breach, malware verdict, a VoIP,
+//                 premium-rate, fiction or invalid number)
+//     info        the answer to a lookup that is not about accounts (a hash verdict, what the
+//                 numbering data says about a phone number)
 //     linked      tied to the primary identity by a strong signal (a cross-link, the same avatar,
 //                 a shared personal site), or the authoritative record for the target itself:
 //                 GitHub's API answer for the searched handle, a registration check for the
@@ -25,9 +27,10 @@
 //                 they are never linked, matched, clustered, turned into facts or leads, or counted.
 //     noise       sites known to answer yes to everything, collapsed by default
 //     notable, people, handles, websearch
-//                 a name case only (see names.js): the public figure with that name, the
-//                 candidates the directories returned, handles built from the name, and outbound
-//                 searches. None of them is a finding, a fact, a profile or a cluster member.
+//                 a name case (see names.js): the public figure with that name, the candidates
+//                 the directories returned, handles built from the name, and outbound searches.
+//                 A phone case has the outbound searches too (see phone.js). None of them is a
+//                 finding, a fact, a profile or a cluster member.
 //   The link check never moves a row to another tier: it changes what the link is worth.
 //   A source that FAILED contributes nothing here; failures are reported separately so an
 //   error is never read as "not found".
@@ -41,6 +44,7 @@ import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendabl
 import { TYPE_LABEL } from "./core.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
 import { NAME_TIERS, isNameTier, nameItems, nameForAi, nameMarkdownHead } from "./names.js";
+import { PHONE_TIERS, phoneView, phoneItems, phoneFacts, phoneForAi } from "./phone.js";
 import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultMarkdown, reportForExport, adultHost, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
@@ -490,13 +494,12 @@ export function buildEvidence(collected, target, typeArg) {
   }
 
   // --- phone --------------------------------------------------------------------------
-  const ph = c.phone;
-  if (ph && !failed(ph)) {
-    if (ph.carrier) fact("Carrier", ph.carrier, "NumLookup");
-    if (ph.line_type) fact("Line type", ph.line_type, "NumLookup");
-    if (ph.location || ph.country) fact("Location", [ph.location, ph.country].filter(Boolean).join(", "), "NumLookup");
-    if (norm(ph.line_type).includes("voip")) add({ tier: "flag", what: "VOIP number", url: "", meta: "often disposable or burner", source: "NumLookup", key: "phone:voip" });
-    if (ph.valid === false) add({ tier: "flag", what: "Number reported invalid", url: "", meta: "", source: "NumLookup", key: "phone:invalid" });
+  // What the number is, never who uses it (see phone.js). A failed lookup gives no view, so it
+  // contributes nothing here. An answer saved before open numbering data was read still renders.
+  const pv = phoneView(c.phone);
+  if (pv) {
+    for (const f of phoneFacts(pv)) fact(f.k, f.v, f.source, f.url);
+    for (const r of phoneItems(pv)) items.push(r);
   }
 
   // --- a name case: candidates, suggested handles and outbound searches -------------------
@@ -557,7 +560,7 @@ export const TIERS = [
   { id: "noise",      title: "Known noisy sites",         cls: "",          open: false, limit: 40, blurb: "Sites that answer yes to any username. Kept for completeness." },
 ];
 // The same tiers with the host group named after the email's domain. A name case has groups of its own and none of the others (see names.js).
-export const ledgerTiers = (target, type) => type === "name" ? NAME_TIERS.map((t) => ({ ...t })) : TIERS.map((t) => (t.id === "hosts" && type === "email" && emailParts(target).domain ? { ...t, title: `Hosts on ${emailParts(target).domain}` } : t));
+export const ledgerTiers = (target, type) => type === "name" ? NAME_TIERS.map((t) => ({ ...t })) : type === "phone" ? PHONE_TIERS.map((t) => ({ ...t })) : TIERS.map((t) => (t.id === "hosts" && type === "email" && emailParts(target).domain ? { ...t, title: `Hosts on ${emailParts(target).domain}` } : t));
 
 // The account rows the AI prompt and the report use, so they match the screen exactly.
 // status is the tier id: linked, matches, different or unverified.
@@ -575,7 +578,7 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
   return {
     target, target_type: type, accounts: accountsFor(items),
     source_status: adult ? source_status : Object.fromEntries(Object.entries(source_status).filter(([k]) => k !== ADULT_SOURCE)),
-    hash: c.hash || null, phone: c.phone || null, github_deep: c.githubDeep || null,
+    hash: c.hash || null, phone: phoneForAi(c.phone), github_deep: c.githubDeep || null,
     sherlock: c.sherlock || null, maigret: c.maigret || null, holehe: c.holehe || null, harvester: c.harvester || null, hibp: c.hibp || null,
     gravatar: c.gravatar || null, github: c.github || null, enricher: c.enricher || null, platform_check: c.platformCheck || null,
     hunter: c.hunter || null, name_search: c.nameSearch ? { name: c.nameSearch } : null, active_techniques: !!active,
