@@ -88,18 +88,24 @@ function closeRail({ refocus = false } = {}) {
   if (refocus && open.length) railBtn()?.focus();
 }
 // Sticky things below the case bar (result tabs, the summary column) need its height.
+// The mode strip under it is always sticky (the case bar itself scrolls away on a phone), so its
+// height counts at every width.
 function measureCasebar() {
-  const c = $(".bench:not([hidden]) .casebar");
-  const sticky = c && getComputedStyle(c).position === "sticky";
-  document.documentElement.style.setProperty("--casebar-h", `${sticky ? c.offsetHeight : 0}px`);
+  const c = $(".bench:not([hidden]) .casebar"), strip = $(".bench:not([hidden]) .modestrip");
+  const own = c && getComputedStyle(c).position === "sticky" ? c.offsetHeight : 0;
+  document.documentElement.style.setProperty("--casebar-own", `${own}px`);
+  document.documentElement.style.setProperty("--casebar-h", `${own + (strip ? strip.offsetHeight : 0)}px`);
 }
 const casebarWatch = new ResizeObserver(measureCasebar);
-$$(".casebar").forEach((c) => casebarWatch.observe(c));
+$$(".casebar, .modestrip").forEach((c) => casebarWatch.observe(c));
 window.addEventListener("resize", measureCasebar);
 const syncIdle = () => {};   // kept for callers; the layout no longer depends on whether a case is open
 $$(".sources-btn").forEach((b) => b.addEventListener("click", () => ($(".rail.open") ? closeRail({ refocus: true }) : openRail())));
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-close-rail]")) { closeRail({ refocus: true }); return; }
+  // A button of a dialog is already out of the page when this runs (the dialog closed first): a
+  // click on it is not a click outside the sheet.
+  if (!e.target.isConnected) return;
   if ($(".rail.open") && !e.target.closest(".rail, .sources-btn, #overlays")) closeRail();
 });
 // preventDefault matters: the target field is type=search, and browsers clear a search field on Escape.
@@ -125,7 +131,9 @@ const WILL_RUN = {
 $("#landingInput").addEventListener("input", (e) => { const t = detect(e.target.value); detectBox.innerHTML = t ? h`<span class="pill ${INVESTIGATE_TYPES.includes(t) || RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t]}</span><span>${WILL_RUN[t] || ""}</span>` : ""; });
 // type: set by a button that knows what its value is, so a suggested handle such as "maria.co"
 // is searched as a username and not opened as a domain.
-function startInvestigate(v, type = "") { $("#targetInput").value = v; typeOverride = INVESTIGATE_TYPES.includes(type) && detect(v) !== type ? type : ""; onTargetInput(); show("investigate", { focus: false }); run(v, typeOverride || undefined).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
+// opts: how the run was started (see run() in investigate.js). A pivot button passes it; a target
+// that was typed does not.
+function startInvestigate(v, type = "", opts = {}) { $("#targetInput").value = v; typeOverride = INVESTIGATE_TYPES.includes(type) && detect(v) !== type ? type : ""; onTargetInput(); show("investigate", { focus: false }); run(v, typeOverride || undefined, opts).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
 function startRecon(v) { show("recon", { focus: false }); recon.run(v).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
 $("#landingForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -139,7 +147,10 @@ $("#landingForm").addEventListener("submit", (e) => {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-pivot]"); if (!b) return;
   const v = b.dataset.value; if (!v) return;
-  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v, b.dataset.pivotType || ""); };
+  // Where the button was: a pivot from the Investigate case on screen carries that case's standing
+  // with the minor guard into the new case. A Recon run started here is a pivot, so it never scans.
+  const from = current === "investigate" ? "case" : "other";
+  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v, b.dataset.pivotType || "", { pivot: true, from }); };
   if (state.running || recon.state.running) {
     // A lead button asks before it ends a run in flight; other pivots just say why they wait.
     if (!b.dataset.confirmRun) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }

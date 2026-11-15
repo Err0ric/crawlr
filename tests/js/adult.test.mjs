@@ -353,8 +353,8 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   const before = writes.length;
   const M = await import(J + "modes.js");
   const yes = ({ accept }) => accept();
-  const s = M.makeSessionModes(), refusals = M.makeRefusals();
-  const view = (target, type) => M.adultCase(s.on("adult"), target, type, refusals);
+  const s = M.makeSessionModes(), suspended = M.makeSuspended();
+  const view = (target, type) => M.startAdult({ on: s.on("adult"), type, target, suspended }).view;
   const v0 = view(T, "username");
   ok(v0.on === false && v0.state === "off" && v0.applies === false && v0.reason === "", "off by default, whatever an old stored preference says");
   s.request("adult", true, yes);
@@ -368,11 +368,11 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(blocked.on && blocked.state === "suspended" && !blocked.applies && blocked.reason === "Adult and dating sites are not checked for this handle: it suggests a minor (the handle starts or ends with a number from 10 to 17).", "a handle that suggests a minor suspends the mode for that case and says why");
   ok(A.adultOn("username", "anna15", view("anna15", "username").applies) === false && A.adultOn("username", "anna15", true) === false && s.on("adult"), "and there is no override, while the session mode stays on");
   // the server's guard wins when the two disagree
-  refusals.add(T, "The handle contains a word that suggests a minor.");
+  suspended.add(T, { server: true, detail: "The handle contains a word that suggests a minor." });
   const refused = view(T, "username");
   ok(refused.state === "suspended" && !refused.applies && /it suggests a minor \(the handle contains a word that suggests a minor\)\.$/.test(refused.reason) && s.on("adult"), "a refusal from the server suspends the mode for that case, with its reason");
   ok(view("someone_else", "username").applies === true, "and only for that case");
-  refusals.add("other_one", ""); ok(view("other_one", "username").state === "suspended" && /it suggests a minor \(/.test(view("other_one", "username").reason), "a refusal with no reason still suspends it");
+  suspended.add("other_one", { server: true }); ok(view("other_one", "username").state === "suspended" && /it suggests a minor \(/.test(view("other_one", "username").reason), "a refusal with no reason still suspends it");
   ok(writes.length === before, "none of this wrote to storage");
 
   const strip = (f) => read(J + f).replace(/\/\/.*$/gm, "");
@@ -384,7 +384,7 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(!/data-toggle="?adult|data-extra|maigret\.\$\{|nsfwOn|source-extra|maigret\.nsfw/.test(inv) && M.LEGACY_PREFS.includes("maigret.nsfw") && M.LEGACY_PREFS.includes("active") && !("maigret.nsfw" in M.cleanPrefs({ "maigret.nsfw": true, sherlock: true }).prefs), "the old stored Maigret preference is gone: reading the preferences drops it");
   ok((inv.match(/store\.set\("crawlr_v2_sources", srcState\)/g) || []).length === 1 && /const setSrc = \(id, v\) => \{ if \(!mayStore\(id\)\) return;/.test(inv) && !M.mayStore("adult") && !M.mayStore("active"), "crawlr_v2_sources is written in one place, and never with a mode");
   const fn = (name) => { const a = inv.indexOf(`export function ${name}(`); return inv.slice(a, inv.indexOf("\n}\n", a)); };
-  ok(fn("loadHistory").length > 200 && fn("clearCase").length > 200 && !/session\.|refusals|adultSwitch/.test(fn("loadHistory").replace(/\/\/.*$/gm, "")) && !/session\.|refusals|adultSwitch/.test(fn("clearCase")), "opening a case from History and clearing the case leave the mode alone");
+  ok(fn("loadHistory").length > 200 && fn("clearCase").length > 200 && !/session\.request|\.request\(|adultSwitch/.test(fn("loadHistory").replace(/\/\/.*$/gm, "")) && !/session\.|suspended|adultSwitch/.test(fn("clearCase")), "opening a case from History and clearing the case leave the mode alone");
   ok(/usernameBody\(handle, state\.adultMode\)/.test(inv) && /plan\.has\("adult"\)\) jobs\.push\(runSource\(ADULT_SOURCE, "\/api\/recon\/adult-check", \{ username: handle \}/.test(inv) && (inv.match(/adult-check/g) || []).length === 1, "the run uses the tested plan and bodies, and adult-check is called from one place, behind the plan");
   ok(/role="switch" id="\$\{base\}" data-session-mode="\$\{id\}"/.test(read(J + "modes.js")) && /aria-labelledby="\$\{base\}-l" aria-describedby="\$\{base\}-d"/.test(read(J + "modes.js")), "the switch is a labelled role=switch, described by its one-line description");
 }

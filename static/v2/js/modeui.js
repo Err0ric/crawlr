@@ -5,10 +5,9 @@ import { openModal, closeModal } from "./ui.js";
 import { session, MODE, MODE_IDS, confirmHtml, syncSwitches, barSwitchHtml, statusHtml } from "./modes.js";
 
 // Draws a bench's switches once, then only updates them in place, so a switch keeps focus while
-// it is used. rows: [{ id, view, desc, prefix }]. The status line is redrawn only when it changes.
-const lastStatus = new WeakMap();
-export function paintBar(box, statusBox, rows) {
-  if (!box || !statusBox) return;
+// it is used. rows: [{ id, view, desc, prefix }].
+export function paintBar(box, rows) {
+  if (!box) return;
   if (!box.dataset.drawn) { box.innerHTML = rows.map((r) => barSwitchHtml(r.id, r.view, { prefix: r.prefix || "", desc: r.desc })).join(""); box.dataset.drawn = "1"; }
   for (const r of rows) {
     const el = box.querySelector(`[data-mode-box="${r.id}"]`); if (!el) continue;
@@ -17,9 +16,14 @@ export function paintBar(box, statusBox, rows) {
     const d = el.querySelector(".mode-desc"), text = r.view.note || r.desc;
     if (d.textContent !== text) d.textContent = text;
   }
-  const html = statusHtml(rows);
-  if (lastStatus.get(statusBox) !== html) { statusBox.innerHTML = html; lastStatus.set(statusBox, html); }
-  statusBox.hidden = !html;
+}
+// The status line, in every place it is shown for a bench (the strip that stays in view, and its
+// copy inside the Case details drawer). Each is redrawn only when it changes, and is empty, never
+// hidden, when no mode is on: the strip is a live region and must stay in the page.
+const lastStatus = new WeakMap();
+export function paintStatus(boxes, rows, opts) {
+  const html = statusHtml(rows, opts);
+  for (const box of boxes) if (box && lastStatus.get(box) !== html) { box.innerHTML = html; lastStatus.set(box, html); }
 }
 
 // Asked once per page session per mode. Escape, the close button and the backdrop all leave the
@@ -42,9 +46,11 @@ document.addEventListener("change", (e) => {
 document.addEventListener("click", (e) => {
   const b = e.target.closest?.("[data-mode-off]");
   if (!b) return;
-  const id = b.dataset.modeOff, bench = b.closest(".bench");
+  const id = b.dataset.modeOff, bench = b.closest(".bench"), sheet = b.closest("#sheet");
   session.request(id, false);
-  // The line this button sat on is gone: focus goes to the switch it stood for.
-  (bench?.querySelector(`.modes [data-session-mode="${id}"]`) || $(".bench:not([hidden]) .modes [data-session-mode]"))?.focus();
+  // The line this button sat on is gone. Focus goes to the switch it stood for; inside the Case
+  // details drawer the page behind is inert, so it goes to the drawer's own close button; for a
+  // mode of the other workbench, to the first switch of this one.
+  (sheet ? sheet.querySelector("[data-close]") : bench?.querySelector(`.modes [data-session-mode="${id}"]`) || $(".bench:not([hidden]) .modes [data-session-mode]"))?.focus();
 });
 session.subscribe(() => syncSwitches($$("[data-session-mode]")));

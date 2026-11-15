@@ -15,9 +15,15 @@
 //     a case opened from History leave it alone. Whether it applies to the case on screen is a
 //     separate question, answered per case by adultCase() and activeCase().
 //   - The minor guard has no override: for a handle that suggests a minor the adult mode stays on
-//     for the session and is suspended for that case, with the reason.
+//     for the session and is suspended for that case, with the reason. The suspension follows the
+//     person, not the string: a case opened by a pivot from a suspended case is suspended too, and
+//     so is every handle CrawlR itself offers as a variant of one that failed the guard.
+//   - What a run does about the modes is decided here, by startAdult(), portscanFor() and
+//     deepDiveFor(). The workbenches call them once when a run starts and keep the answer, so a
+//     switch moved mid-run applies from the next run.
 import { h, raw } from "./core.js";
 import { minorGuard, guardText, handleOf } from "./adult.js";
+import { handleVariants, similarBase } from "./similar.js";
 
 export const MODE_IDS = ["adult", "active", "portscan"];
 export const MODE = {
@@ -69,6 +75,15 @@ export const MODE_STAYS = "It stays on for every case until you switch it off or
 export const MODE_RULE = "Adult sites, Active techniques and the Port scan are off when the page loads, stay on until you switch them off or reload, and are never saved.";
 export const NOT_USED = "Not used for this kind of target.";
 export const MINOR_SHORT = "Not checked for this handle: it suggests a minor.";
+export const MINOR_TIED = "Not checked here: tied to a handle that suggests a minor.";
+const shown = (handle) => String(handle ?? "").slice(0, 64);
+// A case reached by a pivot (a lead, a similar handle, "Investigate this") from a suspended case.
+export const pivotText = (origin) => `Adult and dating sites are not checked here: this case was opened from ${shown(origin)}, which suggests a minor.`;
+// A handle typed by hand that CrawlR itself offers as a variant of one that failed the guard.
+export const variantText = (origin) => `Adult and dating sites are not checked here: this handle is a variant of ${shown(origin)}, which suggests a minor.`;
+export const PORTSCAN_PIVOT_NOTE = "Port scan not run: this case was opened from a link. Press Run recon to scan this host.";
+export const DEEP_DIVE_OFF = "Active techniques was switched off, so no profile page was fetched.";
+export const RUN_IN_PROGRESS = "A run is in progress: a change applies from the next run.";
 
 // ---- the session ------------------------------------------------------------------------------
 export function makeSessionModes() {
@@ -118,36 +133,85 @@ export function cleanPrefs(stored) {
 // A preference may be stored only for an ordinary source.
 export const mayStore = (id) => typeof id === "string" && !LEGACY_PREFS.includes(id) && !MODE_IDS.includes(id);
 
+// ---- the handles the adult mode is suspended for, this session -----------------------------------
+// Matching ignores case, a leading "@" and the separators . _ - so that "Emma_2012" and "emma2012"
+// are one handle here.
+export const normHandle = (t) => handleOf(t).toLowerCase().replace(/[._-]+/g, "");
+// The handle a case is about, as far as the guard is concerned: a username, or the part of an
+// email before the @.
+export const caseHandle = (type, target) => (type === "username" ? handleOf(target) : type === "email" ? similarBase(target, "email") || handleOf(String(target ?? "").split("@")[0]) : "");
+// In memory only, bounded. add(origin) records a handle that failed the guard (the client's copy or
+// the server's) together with every variant CrawlR generates for it, and any other handle given.
+export function makeSuspended(max = 5000) {
+  const m = new Map();
+  // The first thing known about a handle stands, except that the server's own refusal replaces it.
+  const put = (k, v) => { if (!k) return; const old = m.get(k); if (old && !(v.server && !old.server)) return; if (!old && m.size >= max) m.delete(m.keys().next().value); m.set(k, v); };
+  return {
+    add(origin, { server = false, detail = "", also = [] } = {}) {
+      const o = handleOf(origin), ok = normHandle(o);
+      if (!ok) return;
+      for (const v of [...handleVariants(o).map((x) => x.value), ...also]) { const k = normHandle(v); if (k && k !== ok) put(k, { origin: o, own: false, server: false, detail: "" }); }
+      put(ok, { origin: o, own: true, server: server === true, detail: String(detail || "").slice(0, 160) });
+    },
+    get: (target) => m.get(normHandle(target)) || null,
+    get size() { return m.size; },
+  };
+}
+
 // ---- does the mode apply to the case on screen? ------------------------------------------------
 // state: "off" (the mode is off), "idle" (on, no target yet), "applies", "unused" (on, but this
 // kind of target has nothing for it) or "suspended" (on, and the minor guard refuses this handle).
 // note: the sentence to show whether the mode is on or off; reason: the full sentence for "suspended".
 const view = (on, state, note = "", reason = "") => ({ on, applies: on && state === "applies", state: on ? state : "off", note, reason });
-// refused: handle (lowercase, no @) -> the reason the server's own guard gave, for this session.
-export function adultCase(on, target, type, refused = null) {
-  const isOn = on === true;
-  if (!type) return view(isOn, "idle");
-  if (type !== "username") return view(isOn, "unused", NOT_USED);
-  const key = handleOf(target).toLowerCase();
-  if (!key) return view(isOn, "idle");
-  const g = minorGuard(target);
-  if (g.blocked) return view(isOn, "suspended", MINOR_SHORT, guardText(g.reason));
-  if (refused && refused.has(key)) return view(isOn, "suspended", MINOR_SHORT, guardText(refused.get(key)));
-  return view(isOn, "applies");
+// Is this case one the adult mode must stay out of, whatever the switch says? null, or
+// { kind, origin, reason }: "guard" (the handle or the email's local part fails the guard), "pivot"
+// (opened from such a case: from is { minor } of the case the pivot button was on), "server" (the
+// server's guard refused this handle) or "variant" (a handle CrawlR offers as a variant of one
+// that failed). It does not depend on whether the mode is on.
+export function minorFor({ type, target, from = null, suspended = null } = {}) {
+  const hd = caseHandle(type, target);
+  if (hd) { const g = minorGuard(hd); if (g.blocked) return { kind: "guard", origin: hd, reason: guardText(g.reason) }; }
+  if (from && from.minor && from.minor.origin) return { kind: "pivot", origin: shown(from.minor.origin), reason: pivotText(from.minor.origin) };
+  const e = hd && suspended ? suspended.get(hd) : null;
+  if (e) return e.own && e.server ? { kind: "server", origin: e.origin, reason: guardText(e.detail) } : { kind: "variant", origin: e.origin, reason: e.own ? pivotText(e.origin) : variantText(e.origin) };
+  return null;
 }
+// What the adult mode does for one case. adult is true only when the mode is on, the target is a
+// username and nothing suspends it. There is no argument that overrides a suspension.
+export function adultFor({ on, type, target, from = null, suspended = null } = {}) {
+  const isOn = on === true, minor = minorFor({ type, target, from, suspended });
+  const v = !type ? view(isOn, "idle")
+    : type !== "username" ? view(isOn, "unused", NOT_USED)
+      : !normHandle(target) ? view(isOn, "idle")
+        : minor ? view(isOn, "suspended", minor.kind === "guard" || minor.kind === "server" ? MINOR_SHORT : MINOR_TIED, minor.reason)
+          : view(isOn, "applies");
+  return { adult: v.applies === true, minor, view: v };
+}
+// The same, when a case starts (a run, or a case opened from History): the decision, and the
+// handle is remembered when it is suspended, with its variants, so the next handle typed by hand
+// is judged with it. This is the function investigate.js calls; it keeps the answer for the run.
+export function startAdult({ on, type, target, from = null, suspended = null } = {}) {
+  const d = adultFor({ on, type, target, from, suspended });
+  if (d.minor && suspended) suspended.add(d.minor.origin, { also: [caseHandle(type, target)] });
+  return d;
+}
+// The view alone, for the switch (kept for callers that only draw).
+export const adultCase = (on, target, type, suspended = null, from = null) => adultFor({ on, type, target, from, suspended }).view;
 // Active techniques (Investigate): profile scraping for Deep Dive, which reads the profile pages
 // the username tools found. Port scan (Recon): a domain or an IP address.
 const typed = (on, type, types) => { const isOn = on === true; return !type ? view(isOn, "idle") : types.includes(type) ? view(isOn, "applies") : view(isOn, "unused", NOT_USED); };
 export const activeCase = (on, type) => typed(on, type, ["username"]);
 export const portscanCase = (on, type) => typed(on, type, ["domain", "ip"]);
-// The handles the server's guard refused in this session. In memory only, bounded.
-export function makeRefusals(max = 200) {
-  const m = new Map();
-  return {
-    add(target, reason) { const k = handleOf(target).toLowerCase(); if (!k) return; if (m.size >= max && !m.has(k)) m.delete(m.keys().next().value); m.set(k, String(reason || "").slice(0, 160)); },
-    has: (k) => m.has(k), get: (k) => m.get(k),
-  };
+// Does this Recon run scan ports? Only when the mode is on, the target is a domain or an IP
+// address, and the investigator started the run in Recon's own box (startedBy "run": the Run recon
+// button, or Enter). A run started any other way (a lead, a brief action, a topology node, the
+// landing form, another workbench) never scans, and says so. Anything but "run" is a pivot.
+export function portscanFor({ on, type, startedBy } = {}) {
+  if (on !== true || !["domain", "ip"].includes(type)) return { scan: false, note: "" };
+  return startedBy === "run" ? { scan: true, note: "" } : { scan: false, note: PORTSCAN_PIVOT_NOTE };
 }
+// May a Deep Dive fetch the target's profile pages now? Asked again at the moment it would fetch.
+export const deepDiveFor = ({ on } = {}) => (on === true ? { fetch: true, note: "" } : { fetch: false, note: DEEP_DIVE_OFF });
 
 // ---- markup --------------------------------------------------------------------------------------
 // Every control for a mode carries data-session-mode="<id>", in the case bar and in the Sources
@@ -160,14 +224,17 @@ const CAUTION = '<span class="tag warn">caution</span>';
 export function barSwitchHtml(id, v, { prefix = "", desc = MODE[id].desc } = {}) {
   const m = MODE[id], base = `${prefix}mode-${id}`;
   return h`<div class="mode ${v.on ? "" : "off"}" data-mode-box="${id}">
-      <label class="switch"><input type="checkbox" role="switch" id="${base}" data-session-mode="${id}" ${v.on ? "checked" : ""} aria-labelledby="${base}-l" aria-describedby="${base}-d"><span></span></label>
+      <label class="switch"><input type="checkbox" role="switch" id="${base}" data-session-mode="${id}" ${v.on ? "checked" : ""} aria-label="${m.label}" aria-labelledby="${base}-l" aria-describedby="${base}-d"><span></span></label>
       <div class="mode-text"><label class="mode-label" for="${base}" id="${base}-l">${m.label}${CAUTIONED.includes(id) ? raw(` ${CAUTION}`) : ""}</label><span class="mode-desc" id="${base}-d">${v.note || desc}</span></div>
     </div>`;
 }
-// The quiet line under the switches while a mode is on: what is on, what that means for this case,
-// and one click to switch it off.
-export function statusHtml(rows) {
-  return rows.filter((r) => r.view.on).map((r) => h`<p class="mode-line" data-mode-line="${r.id}"><span>${MODE[r.id].status}${r.view.state === "suspended" ? ` ${r.view.reason}` : r.view.state === "unused" ? ` ${NOT_USED}` : ""}</span> <button type="button" class="linklike" data-mode-off="${r.id}" aria-label="${MODE[r.id].off}">Turn off</button></p>`).join("");
+// The quiet line that stays in view while a mode is on: what is on, what that means for this case,
+// and one click to switch it off. A row with `foreign` is a mode of the other workbench: it is on
+// for the session, so it is said here too ("Port scan on (Recon)."). While a run is in flight the
+// line says that a change applies from the next run.
+export function statusHtml(rows, { running = false } = {}) {
+  const lines = rows.filter((r) => r.view.on).map((r) => h`<p class="mode-line" data-mode-line="${r.id}"><span>${r.foreign ? `${MODE[r.id].label} on (${r.foreign}).` : MODE[r.id].status}${r.foreign ? "" : r.view.state === "suspended" ? ` ${r.view.reason}` : r.view.state === "unused" ? ` ${NOT_USED}` : ""}</span> <button type="button" class="linklike" data-mode-off="${r.id}" aria-label="${MODE[r.id].off}">Turn off</button></p>`);
+  return lines.join("") + (lines.length && running ? h`<p class="mode-line mode-wait">${RUN_IN_PROGRESS}</p>` : "");
 }
 // The same control as a row of the Sources sheet.
 export function sheetRowHtml(id, v, { prefix = "", name = MODE[id].label, desc = MODE[id].sheet, tag = CAUTIONED.includes(id) ? "caution" : "" } = {}) {
@@ -178,7 +245,7 @@ export function sheetRowHtml(id, v, { prefix = "", name = MODE[id].label, desc =
         <div class="desc" id="${base}-d">${desc} ${MODE_STAYS}</div>
         ${v.note ? raw(h`<p class="adult-note" id="${base}-n">${v.reason || v.note}</p>`) : ""}
       </div>
-      <label class="switch"><input type="checkbox" role="switch" data-session-mode="${id}" ${v.on ? "checked" : ""} aria-labelledby="${base}-l" aria-describedby="${base}-d${v.note ? ` ${base}-n` : ""}"><span></span></label>
+      <label class="switch"><input type="checkbox" role="switch" data-session-mode="${id}" ${v.on ? "checked" : ""} aria-label="${name}" aria-labelledby="${base}-l" aria-describedby="${base}-d${v.note ? ` ${base}-n` : ""}"><span></span></label>
     </div>`;
 }
 // The body of the first-use confirmation.

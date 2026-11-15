@@ -10,8 +10,8 @@ import { buildCaseFile } from "./casefile.js";
 import { harvestCard, errorCard } from "./renderers.js";
 import { buildFindings, takeoverForAi, TIERS, RISKY, flat, day, lc } from "./reconfindings.js";
 import { findingsWithEvidence, evidenceUrl, exposureEvidence, isDomain, mdLink, mdNote } from "./links.js";
-import { session, MODE, portscanCase, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
-import { paintBar } from "./modeui.js";
+import { session, MODE, portscanCase, portscanFor, adultCase, activeCase, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
+import { paintBar, paintStatus } from "./modeui.js";
 
 // ---- sources -----------------------------------------------------------------
 export const SOURCES = [
@@ -47,7 +47,11 @@ let sourcesType = "";   // the target type the panel was last drawn for
 const scanView = () => portscanCase(session.on("portscan"), sourcesType);
 function paintModes() {
   const v = scanView();
-  paintBar($("#rModes"), $("#rModeStatus"), [{ id: "portscan", view: v, desc: MODE.portscan.desc, prefix: "r" }]);
+  paintBar($("#rModes"), [{ id: "portscan", view: v, desc: MODE.portscan.desc, prefix: "r" }]);
+  // Investigate's modes are named here too while they are on: they are on for the session.
+  // When this case was opened by a pivot the scan did not run: the line that says the mode is on says that too.
+  const line = v.on && state.scanNote ? { ...v, state: "suspended", reason: state.scanNote } : v;
+  paintStatus([$("#rModeStatus"), $("#rModeEcho")], [{ id: "portscan", view: line }, { id: "adult", view: adultCase(session.on("adult"), "", ""), foreign: "Investigate" }, { id: "active", view: activeCase(session.on("active"), ""), foreign: "Investigate" }], { running: state.running });
   $('#rSources [data-mode-row="portscan"]')?.classList.toggle("off", !v.on);
 }
 session.subscribe(() => { paintModes(); paintCount(); });
@@ -79,7 +83,7 @@ $("#rSources").addEventListener("change", (e) => {
 });
 
 // ---- state ---------------------------------------------------------------------
-export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings", ran: 0 };
+export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings", ran: 0, scanNote: "" };
 const SRC_NAME = { email_posture: "Email security", dns_depth: "DNS hardening", takeover: "Takeover candidates", lookalikes: "Lookalike domains", wellknown: "Published files", dns: "DNS records", whois: "WHOIS", ssl: "TLS certificate", headers: "HTTP headers", subdomains: "Subdomains", harvest: "Passive discovery", asn: "Network owner", shodan: "Exposure", portscan: "Port scan", redirects: "Redirect chain", techfp: "Tech fingerprint", wayback: "Wayback Machine", asn_detail: "ASN detail" };
 // A source that failed is unknown. "No certificate" or "not indexed" are answers; a timeout is not.
 const isFailed = (d) => !!(d && typeof d === "object" && (d.error_code || d.error) && d.error_code !== "not_found");
@@ -287,7 +291,7 @@ function renderAll() {
   if (diff) { const added = new Set(diff.added.map((i) => i.key)); for (const it of items) it.isNew = added.has(it.key); }
   const failed = failedSources();
   $("#rEmpty").hidden = true;
-  $("#rNotices").innerHTML = failedNotice(failed) + (diff ? diffNotice(diff, state.prev.ts) : "");
+  $("#rNotices").innerHTML = (state.scanNote ? h`<div class="notice" role="note" id="rScanNote">${state.scanNote}</div>` : "") + failedNotice(failed) + (diff ? diffNotice(diff, state.prev.ts) : "");
   const nothing = state.running ? `<div class="empty"><h3>Collecting</h3><p>Findings appear here as each source answers.</p></div>`
     : failed.length ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean bill of health. See the notice above.</p></div>`
     : `<div class="empty"><h3>No findings</h3><p>Nothing risky or exposed was found. Details from each source are below.</p></div>`;
@@ -472,6 +476,7 @@ function setRunning(on) {
   b.classList.toggle("btn-primary", !on); b.classList.toggle("btn-cancel", on);
   if (!on) pending.clear();
   $("#rMain").setAttribute("aria-busy", on);
+  paintModes();
 }
 export function cancel() {
   if (!state.running) return;
@@ -479,21 +484,29 @@ export function cancel() {
   state.controller?.abort();
 }
 
-export async function run(raw0) {
+// opts.startedBy: "run" only when the investigator pressed Run recon (or Enter) in Recon's own box.
+// Every other way in (a lead, a brief action, a topology node, the landing form, the other
+// workbench) is a pivot, and a pivot never scans ports.
+export async function run(raw0, opts = {}) {
   const target = String(raw0 || "").trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
   if (!target || state.running) return;
   const type = detect(target);
   if (!RECON_TYPES.includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Investigate.`); return; }
   const last = store.get(HISTORY_KEY, []).find((e) => e.type === "RECON" && e.v2 && e.target.toLowerCase() === target.toLowerCase());
   const prev = last ? { keys: buildFindings(last.results || {}, last.target, type).items.map((i) => i.key), ts: last.timestamp } : null;
-  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now() });
+  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), scanNote: "" });
+  // Decided once, when the run starts, and kept: switching Port scan on mid-run changes the next run.
+  const scan = portscanFor({ on: session.on("portscan"), type, startedBy: opts.startedBy === "run" ? "run" : "pivot" });
+  state.scanNote = scan.note;
   store.del(checkKey()); asked.clear();
   $("#rTargetInput").value = target; renderSources(type);
   setRunning(true);
   $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rEmpty").hidden = true; $("#rBySource").hidden = true; $("#rBySourceEmpty").hidden = false;
   $("#rTabs").hidden = false; setTab("findings"); hidePivot();
   $("#rNotes").value = ""; $("#rPurpose").value = ""; notesMeta();
-  head(); log.start(); renderAll(); renderAi();
+  head(); log.start();
+  if (scan.note) log.add(scan.note, "skip");
+  renderAll(); renderAi();
 
   const on = srcOn;
   const T = { domain: target };
@@ -520,7 +533,7 @@ export async function run(raw0) {
     const hosts = [...new Set([...(state.collected.subdomains?.subdomains || []).map((x) => x.subdomain), ...(state.collected.harvest?.hosts || [])])].slice(0, 200);
     const late = [];
     if (type === "domain" && on("takeover") && hosts.length && !state.cancelled) late.push(source("Takeover candidates", "/api/infra/takeover", { domain: target, hosts }, "takeover"));
-    if (on("portscan") && !state.cancelled) late.push(source("Port scan", "/api/infra/portscan", T, "portscan"));
+    if (scan.scan && !state.cancelled) late.push(source("Port scan", "/api/infra/portscan", T, "portscan"));
     // A few hundred DNS queries: kept out of the first wave so it does not slow the core checks.
     if (type === "domain" && on("lookalikes") && !state.cancelled) late.push(source("Lookalike domains", "/api/infra/lookalikes", T, "lookalikes"));
     await Promise.all(late);
@@ -560,7 +573,7 @@ function saveHistory() {
   writeHistory(list, entry.id, (l) => store.set(HISTORY_KEY, l));
 }
 export function loadHistory(e) {
-  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp });
+  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, scanNote: "" });
   $("#rTargetInput").value = e.target; renderSources(state.type); $("#rRunlog").hidden = true; $("#rTabs").hidden = false; setTab("findings"); hidePivot();
   head(`${TYPE_LABEL[state.type]} · ${e.imported ? "opened from a case file · collected" : "from history ·"} ${new Date(e.timestamp).toLocaleString()}`);
   $("#rNotes").value = e.notes || ""; $("#rPurpose").value = e.purpose || ""; notesMeta();
@@ -568,7 +581,7 @@ export function loadHistory(e) {
 }
 export function clearCase() {
   cancel();
-  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, prev: null, aiBusy: false });
+  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, prev: null, aiBusy: false, scanNote: "" });
   $("#rTargetInput").value = ""; $("#rMainHead").hidden = true; $("#rRunlog").hidden = true; $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rBySource").hidden = true;
   $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#rNotes").value = ""; $("#rPurpose").value = ""; notesMeta();
   renderSources(""); renderAi(); setTab("findings"); hidePivot();
@@ -617,7 +630,7 @@ export function exportCase() {
 // ---- rail wiring -----------------------------------------------------------------------------------------
 $("#rTargetInput").addEventListener("input", () => { const t = detect($("#rTargetInput").value); renderSources(RECON_TYPES.includes(t) ? t : ""); $("#rTargetDetected").innerHTML = $("#rTargetInput").value.trim() ? h`<span>Detected</span> <span class="pill ${RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t] || ""}</span>${RECON_TYPES.includes(t) ? "" : raw(' <span>runs in <a href="#investigate" data-goto="investigate">Investigate</a></span>')}` : ""; });
 $("#rTargetInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !state.running) $("#rRunBtn").click(); });
-$("#rRunBtn").addEventListener("click", () => { if (state.running) { cancel(); return; } document.dispatchEvent(new CustomEvent("crawlr:close-rail")); run($("#rTargetInput").value); });
+$("#rRunBtn").addEventListener("click", () => { if (state.running) { cancel(); return; } document.dispatchEvent(new CustomEvent("crawlr:close-rail")); run($("#rTargetInput").value, { startedBy: "run" }); });
 $("#rClearBtn").addEventListener("click", clearCase);
 $("#rExportBtn").addEventListener("click", exportCase);
 renderSources("");

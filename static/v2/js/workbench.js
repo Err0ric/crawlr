@@ -435,7 +435,7 @@ export function itemCollector() {
 
 // What the HTML export removes from the page's markup. No image with a remote address survives:
 // site icons go, and so would any other image that is not an embedded thumbnail.
-export const EXPORT_STRIP = '[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs, .sk-wrap, .sk-card, .who-switch, .case-details, .mark img.mark-fav, img:not([src^="data:image/"])';
+export const EXPORT_STRIP = '[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs, .sk-wrap, .sk-card, .who-switch, .case-details, .mode-echo, .mark img.mark-fav, img:not([src^="data:image/"])';
 
 // ---- print / standalone HTML export --------------------------------------------------
 // The same markup as the screen, with every collapsed section opened, wrapped in a page

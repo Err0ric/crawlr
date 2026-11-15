@@ -2,8 +2,8 @@
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
 import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls } from "./evidence.js";
 import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultForAi, adultSummary, adultCheckText, guardText, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
-import { session, MODE, adultCase, activeCase, makeRefusals, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
-import { paintBar } from "./modeui.js";
+import { session, MODE, normHandle, adultFor, startAdult, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
+import { paintBar, paintStatus } from "./modeui.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
 import { investigateBrief } from "./brief.js";
@@ -52,14 +52,21 @@ const setSrc = (id, v) => { if (!mayStore(id)) return; srcState[id] = v; saveSrc
 // Both live in modes.js, in memory only: off when the page loads, and on until the investigator
 // switches them off or reloads. Nothing in this file switches one off for a new handle, a new
 // case, Clear or a case opened from History, and nothing a case holds can switch one on.
-// The handles the server's own minor guard refused in this session: suspended for that handle only.
-const refusals = makeRefusals();
-const adultView = (type, target = $("#targetInput").value) => adultCase(session.on("adult"), target, type, refusals);
+// The handles the adult mode is suspended for in this session: one that failed the minor guard
+// (the client's copy or the server's), every variant CrawlR offers for it, and every case opened
+// by a pivot from such a case. In memory only.
+const suspended = makeSuspended();
+const adultView = (type, target = $("#targetInput").value) => adultFor({ on: session.on("adult"), type, target, suspended }).view;
 const activeView = (type) => activeCase(session.on("active"), type);
 // The two switches in the case bar, the status line under them, and the same two rows in the sheet.
 function paintModes() {
-  const rows = [{ id: "adult", view: adultView(sourcesType), desc: MODE.adult.desc }, { id: "active", view: activeView(sourcesType), desc: MODE.active.desc }];
-  paintBar($("#modes"), $("#modeStatus"), rows);
+  // For the case on screen the reason is the one its run was given (it may have been opened by a pivot).
+  const av = adultView(sourcesType), mine = av.state === "suspended" && state.minor && normHandle($("#targetInput").value) === normHandle(state.target);
+  const rows = [{ id: "adult", view: mine ? { ...av, reason: state.minor.reason } : av, desc: MODE.adult.desc }, { id: "active", view: activeView(sourcesType), desc: MODE.active.desc }];
+  paintBar($("#modes"), rows);
+  // The line stays in view at every width, is repeated in the Case details drawer, and also names
+  // Recon's mode while that is on: it is on for the session wherever the investigator is.
+  paintStatus([$("#modeStatus"), $("#modeEcho")], [...rows, { id: "portscan", view: portscanCase(session.on("portscan"), ""), foreign: "Recon" }], { running: state.running });
   for (const r of rows) $(`#sources [data-mode-row="${r.id}"]`)?.classList.toggle("off", !r.view.on);
 }
 
@@ -142,7 +149,7 @@ const tabs = makeTabs($("#tabs"));
 const pending = new Map();
 // asked: the keys of every source this run started, so a cancelled run knows which never answered.
 const asked = new Set();
-export const state = { nameInvalid: "", target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "", live: false, imported: false, adultMode: false, adultBlocked: "" };
+export const state = { nameInvalid: "", target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, ran: 0, view: "", live: false, imported: false, adultMode: false, adultBlocked: "", minor: null };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
 
@@ -466,6 +473,9 @@ function confirmDeepDive() {
 }
 
 async function runDeepDive(urls) {
+  // Asked again at the moment it would fetch: the mode may have been switched off since the button was drawn.
+  const may = deepDiveFor({ on: session.on("active") });
+  if (!may.fetch) { toast(may.note, 5000); renderAiPanel(); return; }
   const row = log.add(`Scraping ${plural(urls.length, "profile")}`);
   log.open();
   try {
@@ -522,7 +532,8 @@ function adultRefused(reason) {
   const why = reason || "";
   if (!state.adultBlocked) toast(guardText(why), 6000);
   state.adultMode = false; state.adultBlocked = guardText(why);
-  refusals.add(state.target, why);
+  suspended.add(state.target, { server: true, detail: why });
+  state.minor = { kind: "server", origin: state.target.replace(/^@/, ""), reason: guardText(why) };
   const clean = withoutAdult(state.collected);
   for (const k of Object.keys(state.collected)) delete state.collected[k];
   Object.assign(state.collected, clean);
@@ -575,6 +586,7 @@ function setRunning(on) {
   b.classList.toggle("btn-primary", !on); b.classList.toggle("btn-cancel", on);
   if (!on) pending.clear();
   $("#main").setAttribute("aria-busy", on);
+  paintModes();
 }
 export function cancel() {
   if (!state.running) return;
@@ -582,7 +594,9 @@ export function cancel() {
   state.controller?.abort();
 }
 
-export async function run(targetRaw, typeOverride) {
+// opts.pivot: the run was started by a button on a case (a lead, a similar handle, "Investigate
+// this"), not typed. opts.from: "case" when that button was on the Investigate case on screen.
+export async function run(targetRaw, typeOverride, opts = {}) {
   const target = String(targetRaw || "").trim();
   if (!target || state.running) return;
   const type = typeOverride || detect(target);
@@ -595,14 +609,18 @@ export async function run(targetRaw, typeOverride) {
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: aiSignature(scrubNames(last.results || {}, last.target), last.target, last.kind) }; }
 
   checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear();
-  // The session mode as it applies to this target: a username, and only if the handle passes the
-  // minor guard. A pivot, a similar handle or a re-run reads the same session state, with no click.
-  const av = adultView(type, target);
-  const adult = adultOn(type, target, av.applies);
+  // The session mode as it applies to this target, decided once and kept for the whole run
+  // (startAdult in modes.js): a username, and only if nothing suspends it. A pivot, a similar
+  // handle or a re-run reads the same session state, with no click. A case opened by a pivot from
+  // a case that is suspended for a minor inherits the suspension, and so on down the chain.
+  const from = opts.pivot === true && opts.from === "case" && state.minor ? { minor: state.minor } : null;
+  const mode = startAdult({ on: session.on("adult"), type, target, from, suspended });
+  const av = mode.view;
+  const adult = adultOn(type, target, mode.adult);
   // The similar handles checked in the last run of this target are the investigator's work: they
   // are carried into the new run, and every line-up is evaluated again against what it finds.
   const carried = last && last.kind === type ? readSimilar(last.results?.similar, similarBase(target, type)) : {};
-  Object.assign(state, { target, type, collected: { ...(adult ? { adultMode: true } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}) }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: av.state === "suspended" ? av.reason : "" });
+  Object.assign(state, { target, type, collected: { ...(adult ? { adultMode: true } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}) }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: av.state === "suspended" ? av.reason : "", minor: mode.minor });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -836,7 +854,7 @@ export function loadHistory(idOrEntry) {
   // rows only if it recorded that the mode was on for that run; otherwise any such row is dropped
   // here. That record never switches the mode on.
   const kind = e.kind || detect(e.target);
-  Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", nameInvalid: "", collected: scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target), ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
+  Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", minor: startAdult({ on: session.on("adult"), type: kind, target: e.target, suspended }).minor, nameInvalid: "", collected: scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target), ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
   $("#targetInput").value = e.target;
   // Opening a saved name case puts its qualifiers back and fetches nothing.
   nameError(""); setQualifiers(state.collected.nameQualifiers);
@@ -851,7 +869,7 @@ export function loadHistory(idOrEntry) {
 }
 export function clearCase() {
   cancel(); checker.reset(); linkRow = null; nameError(""); setQualifiers(null);
-  Object.assign(state, { nameInvalid: "", live: false, imported: false, adultMode: false, adultBlocked: "", target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
+  Object.assign(state, { nameInvalid: "", live: false, imported: false, adultMode: false, adultBlocked: "", minor: null, target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;

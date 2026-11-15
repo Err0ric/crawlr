@@ -798,7 +798,7 @@ input[type=search]::-webkit-search-cancel-button, input[type=search]::-webkit-se
     color-scheme: light;
   }
   body { padding: 0 !important; font-size: 11pt; }
-  .topbar, .tabbar, .casebar, .pivotbar, .toast, #overlays, .skip, .runlog, .tabs, .btn, .ev-check, .notes, .purpose, .jump, .lg-detail, .ai-pitch, .ai-cost, #landing, .tool { display: none !important; }
+  .topbar, .tabbar, .casebar, .modestrip, .mode-echo, .pivotbar, .toast, #overlays, .skip, .runlog, .tabs, .btn, .ev-check, .notes, .purpose, .jump, .lg-detail, .ai-pitch, .ai-cost, #landing, .tool { display: none !important; }
   .bench { display: block; min-height: 0; }
   .bench .main { display: flex !important; padding: 0; }
   .brief-actions { display: none; }
@@ -981,8 +981,15 @@ details.more[open] > summary { margin-bottom: 6px; }
 .mode-label .tag { margin-left: 4px; }
 .mode-desc { font-size: var(--fs-0); color: var(--ink-3); }
 .mode.off .mode-label { color: var(--ink-2); }
-.mode-status { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
-.mode-status[hidden] { display: none; }
+/* The on-state stays in view at every width: a slim strip stuck under the top bar (and under the
+   case bar where that is sticky too), empty and so not drawn while no mode is on. Its copy in the
+   summary column shows only inside the Case details drawer. */
+.mode-status { display: flex; flex-wrap: wrap; gap: 0 var(--s-5); }
+.mode-status:empty { display: none; }
+.modestrip { position: sticky; top: calc(var(--topbar-h) + var(--casebar-own, 0px)); z-index: 39; background: var(--bg); border-bottom: 1px solid var(--line); padding-block: 4px; }
+.mode-echo { display: none; }
+#sheet .mode-echo:not(:empty) { display: flex; flex-direction: column; padding-bottom: var(--s-2); border-bottom: 1px solid var(--line); }
+.mode-wait { color: var(--ink-3); }
 .mode-line { margin: 0; padding: 1px 0 1px 10px; border-left: 3px solid var(--line-strong); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
 .mode-line .linklike { margin-left: 6px; font-size: var(--fs-0); cursor: pointer; }
 .mode-line .linklike:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
@@ -1011,7 +1018,7 @@ details.more[open] > summary { margin-bottom: 6px; }
 
 /* ---------- 9.1 one grid ---------------------------------------------------- */
 /* Every page sits in the same container: --page-w wide, --gutter at the edges. */
-.topbar, .casebar, .workspace, .landing, .tool { --edge: max(var(--gutter), calc((100% - var(--page-w)) / 2)); padding-inline: var(--edge); }
+.topbar, .casebar, .modestrip, .workspace, .landing, .tool { --edge: max(var(--gutter), calc((100% - var(--page-w)) / 2)); padding-inline: var(--edge); }
 .landing { max-width: none; margin: 0; padding-block: clamp(32px, 7vh, 72px) var(--s-7); }
 .tool { max-width: none; margin: 0; padding-block: var(--s-6) var(--s-7); }
 .casebar { padding-block: var(--s-3) var(--s-2); }

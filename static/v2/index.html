@@ -129,7 +129,6 @@
       <div class="detected" id="targetDetected" aria-live="polite"></div>
       <div class="modes" id="modes" role="group" aria-label="Session modes"></div>
     </div>
-    <div class="mode-status" id="modeStatus" aria-live="polite" hidden></div>
     <div class="qualifiers" id="nameQualifiers" role="group" aria-label="Details about the person" hidden>
       <div class="field"><label for="qLocation">Location</label><input class="input" id="qLocation" name="q-place" maxlength="80" aria-describedby="qualHint" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
       <div class="field"><label for="qEmployer">Employer or school</label><input class="input" id="qEmployer" name="q-org" maxlength="80" aria-describedby="qualHint" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
@@ -149,6 +148,8 @@
       <div id="sources" role="group" aria-labelledby="sourcesH"></div>
     </div>
   </div>
+
+  <div class="modestrip mode-status" id="modeStatus" aria-live="polite"></div>
 
   <div class="workspace">
   <main class="main" id="main" aria-busy="false">
@@ -212,6 +213,7 @@
   </main>
 
   <aside class="aside" id="aside" aria-label="Case summary">
+    <div class="mode-status mode-echo" id="modeEcho"></div>
     <section aria-labelledby="factsH">
       <h2 id="factsH">What we know</h2>
       <div class="facts" id="facts"><p class="empty flat">Nothing yet.</p></div>
@@ -247,7 +249,6 @@
       <div class="detected" id="rTargetDetected" aria-live="polite"></div>
       <div class="modes" id="rModes" role="group" aria-label="Session modes"></div>
     </div>
-    <div class="mode-status" id="rModeStatus" aria-live="polite" hidden></div>
     <div class="rail" id="rRail" hidden>
       <div class="rail-head"><h2 id="rSourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
       <p class="rail-note">Sources that apply to this target type. Your choices are remembered, except the port scan: it is off when the page loads, stays on until you switch it off or reload, and is never saved.</p>
@@ -255,6 +256,8 @@
       <div id="rSources" role="group" aria-labelledby="rSourcesH"></div>
     </div>
   </div>
+
+  <div class="modestrip mode-status" id="rModeStatus" aria-live="polite"></div>
 
   <div class="workspace">
   <main class="main" id="rMain" aria-busy="false">
@@ -317,6 +320,7 @@
   </main>
 
   <aside class="aside" id="rAside" aria-label="Case summary">
+    <div class="mode-status mode-echo" id="rModeEcho"></div>
     <section aria-labelledby="rFactsH">
       <h2 id="rFactsH">What we know</h2>
       <div class="facts" id="rFacts"><p class="empty flat">Nothing yet.</p></div>

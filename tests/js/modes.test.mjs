@@ -36,13 +36,20 @@ const T = fx.target, C = fx.collected;
 const yes = ({ accept }) => accept(), no = ({ cancel }) => cancel();
 const never = () => { throw new Error("asked when it must not be"); };
 
-// What a run would ask for, built from the same functions investigate.js calls: the session, the
-// per-case view, the plan and the Sherlock and Maigret bodies.
-function runWould(s, target, type, refusals) {
-  const av = M.adultCase(s.on("adult"), target, type, refusals);
-  const adult = A.adultOn(type, target, av.applies);
-  const plan = sourcePlan(type, target, { adult });
-  return { adult, nsfw: type === "username" ? A.usernameBody(A.handleOf(target), adult).nsfw : undefined, adultCheck: plan.includes("adult"), view: av };
+// One case after another, the way investigate.js starts them. run() calls M.startAdult() once when
+// a run starts and keeps the answer; a pivot button passes the standing of the case it was on as
+// `from`. Everything asserted about a run below is what that real function returned. nsfw and
+// adultCheck are the request body and the plan built from its answer by the functions run() uses.
+function makeBench(s) {
+  const suspended = M.makeSuspended();
+  let minor = null;
+  const start = (target, type, { pivot = false } = {}) => {
+    const d = M.startAdult({ on: s.on("adult"), type, target, from: pivot && minor ? { minor } : null, suspended });
+    minor = d.minor;
+    const adult = A.adultOn(type, target, d.adult);
+    return { ...d, nsfw: type === "username" ? A.usernameBody(A.handleOf(target), adult).nsfw : undefined, adultCheck: sourcePlan(type, target, { adult }).includes("adult") };
+  };
+  return { start, suspended, open: (target, type) => start(target, type), refuse: (target, why) => { suspended.add(target, { server: true, detail: why }); minor = M.minorFor({ type: "username", target, suspended }); } };
 }
 
 // ---- 1. off on load, in memory only ------------------------------------------------------------
@@ -51,7 +58,8 @@ function runWould(s, target, type, refusals) {
   ok(!M.session.on("adult") && !M.session.on("active"), "both are off when the module loads");
   const fresh = M.makeSessionModes();
   ok(!fresh.on("adult") && !fresh.on("active") && !fresh.accepted("adult") && !fresh.accepted("active") && !fresh.on("nope") && !fresh.on(undefined), "a new session starts with both off and nothing accepted");
-  ok(runWould(fresh, T, "username").nsfw === false && !runWould(fresh, T, "username").adultCheck, "off: a run sends nsfw false and plans no adult site check");
+  const cold = makeBench(fresh).start(T, "username");
+  ok(cold.adult === false && cold.nsfw === false && !cold.adultCheck && cold.minor === null, "off: a run sends nsfw false and plans no adult site check");
   // the stored leftovers turn nothing on
   ok(JSON.parse(mem.crawlr_v2_sources).active === true && !M.session.on("active") && !M.session.on("adult"), "a stored legacy preference turns nothing on");
 }
@@ -92,64 +100,154 @@ function runWould(s, target, type, refusals) {
 
 // ---- 3. the mode survives every change of case ---------------------------------------------------
 {
-  const s = M.makeSessionModes(), refusals = M.makeRefusals();
+  const s = M.makeSessionModes(), b = makeBench(s);
   s.request("adult", true, yes); s.request("active", true, yes);
-  const first = runWould(s, T, "username", refusals);
-  ok(first.adult && first.nsfw === true && first.adultCheck, "on: the run sends nsfw true and plans the adult site check");
-  // another handle, a similar handle's "Investigate this", a lead pivot: each is run(target) again
-  for (const [what, handle] of [["a different handle", "someone_else"], ["a similar handle", "jdoe_examp1e"], ["a lead pivot", "@other.person"], ["a name candidate's handle", "jordan-doe"], ["a re-run", T]]) {
-    const r = runWould(s, handle, "username", refusals);
-    ok(r.adult && r.nsfw === true && r.adultCheck && s.on("adult") && s.on("active"), `${what} runs with the mode on, with no extra click`);
+  const first = b.start(T, "username");
+  ok(first.adult === true && first.nsfw === true && first.adultCheck, "on: the run sends nsfw true and plans the adult site check");
+  // another handle typed, and the pivots: a similar handle's "Investigate this", a lead, a name candidate
+  for (const [what, handle, pivot] of [["a different handle", "someone_else", false], ["a similar handle", "jdoe_examp1e", true], ["a lead pivot", "@other.person", true], ["a name candidate's handle", "jordan-doe", true], ["a re-run", T, false]]) {
+    const r = b.start(handle, "username", { pivot });
+    ok(r.adult === true && r.nsfw === true && r.adultCheck && s.on("adult") && s.on("active"), `${what} runs with the mode on, with no extra click`);
   }
   // The session has no way to be switched off except request(id, false): there is nothing a new
   // case, Clear or a case opened from History could call.
   ok(Object.keys(s).sort().join() === "accepted,on,request,subscribe", "the session has no reset: only a request can change it");
   const inv = code("investigate.js"), rec = code("recon.js"), app = code("app.js");
   const fn = (src, name) => { const a = src.indexOf(`export function ${name}(`); return src.slice(a, src.indexOf("\n}\n", a)); };
-  for (const [name, body] of [["Investigate clearCase", fn(inv, "clearCase")], ["Investigate loadHistory", fn(inv, "loadHistory")], ["Recon clearCase", fn(rec, "clearCase")], ["Recon loadHistory", fn(rec, "loadHistory")]]) ok(body.length > 100 && !/session\.|refusals|\.request\(|adultSwitch|\.reset\(\)(?<!checker\.reset\(\))/.test(body), `${name} does not touch a session mode`);
+  for (const [name, body] of [["Investigate clearCase", fn(inv, "clearCase")], ["Investigate loadHistory", fn(inv, "loadHistory")], ["Recon clearCase", fn(rec, "clearCase")], ["Recon loadHistory", fn(rec, "loadHistory")]]) ok(body.length > 100 && !/session\.request|\.request\(|adultSwitch|suspended\.(?!add)/.test(body.replace(/startAdult\(\{[^}]*\}\)/, "")), `${name} does not change a session mode`);
   ok(!/session\.request|\.request\(/.test(inv) && !/session\.request|\.request\(/.test(rec) && !/session\.request|\.request\(/.test(app), "no workbench code switches a mode: Investigate, Recon and the entry point never call request");
   const ui = code("modeui.js");
   ok((ui.match(/session\.request\(/g) || []).length === 2 && /session\.request\(id, e\.target\.checked === true, ask\(id\)\)/.test(ui) && /session\.request\(id, false\)/.test(ui), "a mode changes in two places only: the switch's own change event, and Turn off");
-  ok(/const av = adultView\(type, target\);\s*\n\s*const adult = adultOn\(type, target, av\.applies\);/.test(read(J + "investigate.js")) && /adultMode: adult, adultBlocked: av\.state === "suspended" \? av\.reason : ""/.test(inv), "every run reads the session through the per-case view");
-  ok(/const adultView = \(type, target = \$\("#targetInput"\)\.value\) => adultCase\(session\.on\("adult"\), target, type, refusals\);/.test(inv), "and that view is the tested one");
-  ok(/function startInvestigate\(v, type = ""\) \{[^\n]*run\(v, typeOverride \|\| undefined\)/.test(app) && !/startInvestigate[\s\S]{0,300}session/.test(app.slice(app.indexOf("function startInvestigate"), app.indexOf("function startRecon"))), "a pivot, a lead and a similar handle start a run through the same run(): nothing about the modes is passed or reset");
+  // Backstop: run() really calls the tested functions, once, and keeps what they said.
+  ok(/const from = opts\.pivot === true && opts\.from === "case" && state\.minor \? \{ minor: state\.minor \} : null;\s*\n\s*const mode = startAdult\(\{ on: session\.on\("adult"\), type, target, from, suspended \}\);\s*\n\s*const av = mode\.view;\s*\n\s*const adult = adultOn\(type, target, mode\.adult\);/.test(inv), "run() asks startAdult once, with the pivot's origin, and takes its answer");
+  ok(/adultMode: adult, adultBlocked: av\.state === "suspended" \? av\.reason : "", minor: mode\.minor \}\);/.test(inv) && (inv.match(/startAdult\(/g) || []).length === 2 && /usernameBody\(handle, state\.adultMode\)/.test(inv) && /const plan = new Set\(sourcePlan\(type, target, \{ adult \}\)\);/.test(inv), "the answer is kept in the case for the whole run: the bodies and the plan read it, not the switch");
+  ok(/const adultView = \(type, target = \$\("#targetInput"\)\.value\) => adultFor\(\{ on: session\.on\("adult"\), type, target, suspended \}\)\.view;/.test(inv), "the switch's own view is drawn by the same function");
+  ok(/const from = current === "investigate" \? "case" : "other";/.test(app) && /startInvestigate\(v, b\.dataset\.pivotType \|\| "", \{ pivot: true, from \}\)/.test(app) && /run\(v, typeOverride \|\| undefined, opts\)/.test(app) && (app.match(/pivot: true/g) || []).length === 1, "every pivot button starts its run as a pivot, through one handler; a typed target does not");
 }
 
 // ---- 4. applicability stays honest per case ------------------------------------------------------
 {
-  const s = M.makeSessionModes(), refusals = M.makeRefusals();
+  const s = M.makeSessionModes(), b = makeBench(s);
   s.request("adult", true, yes);
   for (const [type, target] of [["email", "jdoe_example@example.org"], ["hash", "44d88612fea8a8f36de82e1278abb02f"], ["phone", "+1 202 555 0100"], ["name", "Jordan Doe"]]) {
-    const r = runWould(s, target, type, refusals);
-    ok(s.on("adult") && r.view.on && r.view.state === "unused" && r.view.note === "Not used for this kind of target." && !r.view.applies && !r.adult && !r.adultCheck && !sourcePlan(type, target, { adult: r.adult }).includes("adult"), `a ${type} case: the mode stays on, says it is not used, and nothing adult is requested`);
+    const r = b.start(target, type);
+    ok(s.on("adult") && r.view.on && r.view.state === "unused" && r.view.note === "Not used for this kind of target." && !r.view.applies && r.adult === false && !r.adultCheck, `a ${type} case: the mode stays on, says it is not used, and nothing adult is requested`);
   }
-  ok(runWould(s, T, "username", refusals).nsfw === true, "and it applies again on the next username");
+  ok(b.start(T, "username").nsfw === true, "and it applies again on the next username");
   // the minor guard suspends, with the reason, and has no override
-  const young = runWould(s, "anna15", "username", refusals);
-  ok(s.on("adult") && young.view.on && young.view.state === "suspended" && !young.view.applies && young.nsfw === false && !young.adultCheck, "a handle that suggests a minor: the mode stays on for the session and is suspended for that case");
+  const young = b.start("anna15", "username");
+  ok(s.on("adult") && young.view.on && young.view.state === "suspended" && !young.view.applies && young.adult === false && young.nsfw === false && !young.adultCheck && young.minor.kind === "guard", "a handle that suggests a minor: the mode stays on for the session and is suspended for that case");
   ok(young.view.reason === "Adult and dating sites are not checked for this handle: it suggests a minor (the handle starts or ends with a number from 10 to 17)." && young.view.note === M.MINOR_SHORT, "with the reason shown");
   ok(!A.adultOn("username", "anna15", true) && !sourcePlan("username", "anna15", { adult: true }).includes("adult") && A.usernameBody("anna15", A.adultOn("username", "anna15", true)).nsfw === false, "and there is no override: even a literal true asks for nothing adult");
-  const next = runWould(s, "someone_else", "username", refusals);
-  ok(s.on("adult") && next.view.state === "applies" && next.nsfw === true && next.adultCheck, "the next handle that passes runs with it on");
+  for (const extra of [{ force: true }, { override: true }, { adult: true }, { minor: null }, { from: { minor: null } }]) ok(M.startAdult({ on: true, type: "username", target: "anna15", suspended: M.makeSuspended(), ...extra }).adult === false, `no argument overrides the guard (${Object.keys(extra)[0]})`);
+  const next = b.start("someone_else", "username");
+  ok(s.on("adult") && next.view.state === "applies" && next.adult === true && next.nsfw === true && next.adultCheck, "the next handle that passes runs with it on");
   // the server's own guard refused a handle the client's copy passed
-  refusals.add("@Odd_Handle", "The handle contains a word that suggests a minor.");
-  const refused = runWould(s, "odd_handle", "username", refusals);
-  ok(s.on("adult") && refused.view.state === "suspended" && refused.nsfw === false && !refused.adultCheck && /it suggests a minor \(the handle contains a word that suggests a minor\)\.$/.test(refused.view.reason), "a refusal from the server suspends the mode for that handle, with its reason, and leaves the session on");
-  ok(runWould(s, T, "username", refusals).nsfw === true, "and only for that handle");
-  refusals.add("blank", "");
-  ok(/it suggests a minor \(/.test(runWould(s, "blank", "username", refusals).view.reason), "a refusal with no reason still suspends it");
-  const cap = M.makeRefusals(3); for (const h of ["a1x", "b2x", "c3x", "d4x"]) cap.add(h, "r");
-  ok(!cap.has("a1x") && cap.has("d4x"), "the refusal list is bounded");
+  b.refuse("@Odd_Handle", "The handle contains a word that suggests a minor.");
+  const refused = b.start("odd_handle", "username");
+  ok(s.on("adult") && refused.view.state === "suspended" && refused.adult === false && refused.nsfw === false && !refused.adultCheck && refused.minor.kind === "server" && /it suggests a minor \(the handle contains a word that suggests a minor\)\.$/.test(refused.view.reason), "a refusal from the server suspends the mode for that handle, with its reason, and leaves the session on");
+  ok(b.start(T, "username").nsfw === true, "and not for an unrelated handle");
+  b.refuse("blank", "");
+  ok(/it suggests a minor \(/.test(b.start("blank", "username").view.reason), "a refusal with no reason still suspends it");
+  const cap = M.makeSuspended(3); for (const h of ["qqa", "qqb", "qqc", "qqd"]) cap.add(h, { server: true });
+  ok(cap.size === 3 && !cap.get("qqa") && cap.get("qqd") && cap.get("qqd").server === true, "the suspended list is bounded, and the newest handle is the one kept");
   const inv = read(J + "investigate.js");
-  ok(/err\.code === "minor_guard"\) \{ adultRefused\(err\.reason\)/.test(inv) && /refusals\.add\(state\.target, why\);/.test(inv) && /d === GUARDED \? runSource\(label, url, usernameBody\(handle, false\)/.test(inv), "the run handles the server's refusal as before: the tool is asked again without the adult part");
+  ok(/err\.code === "minor_guard"\) \{ adultRefused\(err\.reason\)/.test(inv) && /suspended\.add\(state\.target, \{ server: true, detail: why \}\);/.test(inv) && /d === GUARDED \? runSource\(label, url, usernameBody\(handle, false\)/.test(inv), "the run handles the server's refusal as before: the tool is asked again without the adult part");
   // off, the views say the same things about the case without claiming the mode is on
   const off = M.adultCase(false, "anna15", "username");
   ok(off.state === "off" && !off.on && !off.applies && off.note === M.MINOR_SHORT && M.adultCase(false, T, "email").note === M.NOT_USED && M.adultCase(false, T, "username").note === "" && M.adultCase(true, "", "").state === "idle" && M.adultCase("true", T, "username").on === false, "off is off whatever the case, and only the literal true is on");
-  // Active techniques
+  // Active techniques and the port scan
   ok(M.activeCase(true, "username").applies && M.portscanCase(true, "domain").applies && M.portscanCase(true, "ip").applies, "Active techniques applies to a username case in Investigate, and the port scan to a domain or an IP address in Recon");
   for (const t of ["email", "hash", "phone", "name", "domain"]) ok(M.activeCase(true, t).state === "unused" && M.activeCase(true, t).on && M.activeCase(true, t).note === M.NOT_USED, `Active techniques says it is not used for ${t}`);
   for (const t of ["asn", "username"]) ok(M.portscanCase(true, t).state === "unused" && M.portscanCase(true, t).on && M.portscanCase(true, t).note === M.NOT_USED, `the port scan says it is not used for ${t}`);
   ok(M.portscanCase(true, "").state === "idle" && M.portscanCase(false, "domain").state === "off" && !M.portscanCase(1, "domain").on && M.activeCase(true, "").state === "idle", "with no target they are idle, and off is off");
+}
+
+// ---- 4b. the suspension follows the person, not the string ------------------------------------------
+{
+  const PIVOT = "Adult and dating sites are not checked here: this case was opened from emma2012, which suggests a minor.";
+  // the reviewer's repro: Adult sites on, run emma2012, then "Investigate this" on the similar handle emma
+  {
+    const s = M.makeSessionModes(), b = makeBench(s);
+    s.request("adult", true, yes);
+    const a = b.start("emma2012", "username");
+    ok(a.adult === false && a.nsfw === false && !a.adultCheck && a.minor.kind === "guard" && a.minor.origin === "emma2012", "emma2012 is suspended by the guard");
+    const { handleVariants } = await import(J + "similar.js");
+    ok(handleVariants("emma2012").some((v) => v.value === "emma"), "(CrawlR itself offers emma as a similar handle of emma2012)");
+    const e = b.start("emma", "username", { pivot: true });
+    ok(e.adult === false && e.nsfw === false && !e.adultCheck && e.view.state === "suspended" && e.minor.kind === "pivot" && e.view.reason === PIVOT && s.on("adult"), "\"Investigate this\" on emma from emma2012: nsfw false, no adult-check, and the reason says where the case was opened from");
+    // it chains: a pivot from the suspended emma case is suspended too, whatever the handle
+    const c = b.start("emma_w", "username", { pivot: true });
+    ok(c.adult === false && c.nsfw === false && !c.adultCheck && c.minor.kind === "pivot" && c.minor.origin === "emma2012" && c.view.reason === PIVOT, "the suspension chains: a pivot from that case is suspended, with the same origin");
+    const c2 = b.start("unrelated_name", "username", { pivot: true });
+    ok(c2.adult === false && c2.minor.kind === "pivot", "and so is the next pivot down the chain");
+    // typed by hand afterwards: the handles reached by pivots stay suspended for the session
+    for (const h of ["emma", "Emma", "@emma", "e.m.m.a", "emma_w", "unrelated_name"]) { const r = b.start(h, "username"); ok(r.adult === false && r.nsfw === false && !r.adultCheck && r.view.state === "suspended", `typing ${h} by hand afterwards is still suspended`); }
+    ok(b.start("someone_else", "username").adult === true, "a handle that was never tied to it runs with the mode on");
+  }
+  // typed by hand right after, with no pivot at all: every variant CrawlR generates is in the set
+  {
+    const s = M.makeSessionModes(), b = makeBench(s);
+    s.request("adult", true, yes);
+    b.start("emma2012", "username");
+    const { handleVariants } = await import(J + "similar.js");
+    const variants = handleVariants("emma2012").map((v) => v.value);
+    ok(variants.length >= 3, "(emma2012 has several generated variants)");
+    for (const v of variants) { const r = b.start(v, "username"); ok(r.adult === false && r.nsfw === false && !r.adultCheck && r.view.state === "suspended", `the generated variant ${v}, typed by hand, is suspended`); }
+    const typed = b.start("emma", "username");
+    ok(typed.minor.kind === "variant" && typed.view.reason === "Adult and dating sites are not checked here: this handle is a variant of emma2012, which suggests a minor." && typed.view.note === M.MINOR_TIED, "and says which handle it is a variant of");
+    ok(M.adultFor({ on: true, type: "username", target: "EMMA", suspended: b.suspended }).view.state === "suspended" && M.adultFor({ on: true, type: "username", target: "em-ma", suspended: b.suspended }).adult === false, "matching ignores case and separators, and the switch's own view says the same before any run");
+    ok(M.adultFor({ on: true, type: "username", target: "emmanuel", suspended: b.suspended }).adult === true, "a different handle that only starts the same way is not caught");
+  }
+  // the same from an email case whose local part fails the guard
+  {
+    const s = M.makeSessionModes(), b = makeBench(s);
+    s.request("adult", true, yes);
+    const m = b.start("emma2012@example.org", "email");
+    ok(m.adult === false && m.view.state === "unused" && m.minor && m.minor.kind === "guard" && m.minor.origin === "emma2012", "an email case whose local part suggests a minor is marked, though the mode is not used for an email");
+    const lead = b.start("emma", "username", { pivot: true });
+    ok(lead.adult === false && lead.nsfw === false && !lead.adultCheck && lead.minor.kind === "pivot" && lead.view.reason === PIVOT, "\"Investigate this\" on emma from emma2012@example.org is suspended");
+    const s2 = M.makeSessionModes(), b2 = makeBench(s2);
+    s2.request("adult", true, yes);
+    b2.start("emma2012+shop@example.org", "email");
+    ok(b2.start("emma", "username").adult === false && b2.start("emma2012", "username").adult === false, "and typing the local part or its variant by hand afterwards is suspended too");
+  }
+  // a refusal from the server spreads the same way
+  {
+    const s = M.makeSessionModes(), b = makeBench(s);
+    s.request("adult", true, yes);
+    b.start("odd_handle9", "username");
+    b.refuse("odd_handle9", "The handle contains a word that suggests a minor.");
+    const p = b.start("odd_handle", "username", { pivot: true });
+    ok(p.adult === false && p.minor.kind === "pivot" && /opened from odd_handle9, which suggests a minor/.test(p.view.reason), "a pivot from a handle the server refused is suspended");
+    ok(b.start("oddhandle9", "username").adult === false && b.start("odd_handle9", "username").minor.kind === "server", "and the refused handle stays refused, however it is written");
+  }
+  // a case opened from History is a case too: it is judged, and remembered, without a run
+  {
+    const s = M.makeSessionModes(), b = makeBench(s);
+    s.request("adult", true, yes);
+    b.open("emma2012", "username");
+    ok(b.start("emma", "username", { pivot: true }).adult === false && b.start("emma", "username").adult === false, "a pivot from, or a variant of, a case opened from History is suspended");
+  }
+  // the mode being off changes nothing about who is remembered
+  {
+    const s = M.makeSessionModes(), b = makeBench(s);
+    b.start("emma2012", "username"); b.start("emma", "username", { pivot: true });
+    s.request("adult", true, yes);
+    ok(b.start("emma", "username").adult === false && b.start("emma_2012", "username").adult === false, "handles seen while the mode was off are suspended once it is switched on");
+  }
+  // not a pivot: a case that only follows a suspended one in time inherits nothing
+  {
+    const s = M.makeSessionModes(), b = makeBench(s);
+    s.request("adult", true, yes);
+    b.start("emma2012", "username");
+    ok(b.start("torvalds", "username").adult === true, "a new handle typed after a suspended case runs with the mode on");
+    ok(M.minorFor({ type: "username", target: "torvalds", from: { minor: null } }) === null && M.minorFor({ type: "name", target: "Jordan Doe", from: { minor: { origin: "emma2012" } } }).kind === "pivot", "inheritance needs a suspended origin, and then covers any kind of case");
+  }
+  ok(M.normHandle("@Em.Ma_20-12") === "emma2012" && M.caseHandle("email", "emma2012+x@example.org") === "emma2012" && M.caseHandle("username", "@emma") === "emma" && M.caseHandle("hash", "abc") === "", "handles are compared without case, a leading @ or separators");
+  ok(!/<|>/.test(M.pivotText('<img src=x onerror=1>')) === false && M.statusHtml([{ id: "adult", view: M.adultFor({ on: true, type: "username", target: "x", from: { minor: { origin: '<img src=x onerror=1>' } } }).view }]).indexOf("<img") === -1 && M.pivotText("a".repeat(200)).length < 200, "the origin handle is clipped, and escaped where it is shown");
+  const inv = code("investigate.js");
+  ok(/const suspended = makeSuspended\(\);/.test(inv) && !/localStorage|sessionStorage/.test(code("modes.js")) && /minor: startAdult\(\{ on: session\.on\("adult"\), type: kind, target: e\.target, suspended \}\)\.minor,/.test(inv) && /adultBlocked: "", minor: null, target: ""/.test(inv), "the list lives in memory, a case opened from History is judged by the same function, and Clear forgets the case, not the list");
 }
 
 // ---- 5. a case cannot turn a mode on --------------------------------------------------------------
@@ -180,7 +278,9 @@ function runWould(s, target, type, refusals) {
   const s = M.session;
   const mark = writes().length;
   s.request("adult", true, yes); s.request("active", true, yes);
-  for (const h of [T, "someone_else", "anna15", "jdoe_example@example.org"]) runWould(s, h, h.includes("@") ? "email" : "username", M.makeRefusals());
+  const bq = makeBench(s);
+  for (const h of [T, "someone_else", "anna15", "emma2012", "emma", "jdoe_example@example.org"]) bq.start(h, h.includes("@") ? "email" : "username", { pivot: h === "emma" });
+  M.portscanFor({ on: s.on("portscan"), type: "domain", startedBy: "run" }); M.deepDiveFor({ on: s.on("active") });
   M.barSwitchHtml("adult", M.adultCase(true, T, "username")); M.sheetRowHtml("active", M.activeCase(true, "username")); M.statusHtml([{ id: "adult", view: M.adultCase(true, T, "username") }]);
   s.request("adult", false); s.request("active", false);
   ok(writes().length === mark && mark === 0 && calls.session.length === 0, "switching on, running, changing case, drawing and switching off wrote nothing to localStorage or sessionStorage");
@@ -202,14 +302,14 @@ function runWould(s, target, type, refusals) {
   ok(/const \{ prefs: srcState, dirty: srcDirty \} = cleanPrefs\(store\.get\("crawlr_v2_sources", \{\}\)\);\s*\nconst saveSrc = \(\) => store\.set\("crawlr_v2_sources", srcState\);\s*\nif \(srcDirty\) saveSrc\(\);/.test(invSrc) && (invSrc.match(/crawlr_v2_sources/g) || []).length === 2, "Investigate reads its preferences through that cleanup and writes them in one place");
   ok(/const setSrc = \(id, v\) => \{ if \(!mayStore\(id\)\) return; srcState\[id\] = v; saveSrc\(\); \};/.test(invSrc), "and refuses to store a mode");
   ok(/const \{ prefs: srcState, dirty: srcDirty \} = cleanPrefs\(store\.get\("crawlr_v2_recon_sources", \{\}\)\);\s*\nconst saveSrc = \(\) => store\.set\("crawlr_v2_recon_sources", srcState\);\s*\nif \(srcDirty\) saveSrc\(\);/.test(recSrc) && /if \(!t \|\| !mayStore\(t\)\) return;\s*\n\s*srcState\[t\] = e\.target\.checked; saveSrc\(\);/.test(recSrc) && (recSrc.match(/crawlr_v2_recon_sources/g) || []).length === 2, "Recon does the same");
-  ok(!/\{ id: "active", how:/.test(invSrc) && !/srcOn\("active"\)/.test(invSrc) && (invSrc.match(/session\.on\("active"\)/g) || []).length === 4, "Active techniques is no longer a stored source in Investigate: Deep Dive and the AI payload read the session");
+  ok(!/\{ id: "active", how:/.test(invSrc) && !/srcOn\("active"\)/.test(invSrc) && (invSrc.match(/session\.on\("active"\)/g) || []).length === 5, "Active techniques is no longer a stored source in Investigate: Deep Dive and the AI payload read the session");
   const core = code("core.js");
   ok(!/sessionStorage/.test(["investigate.js", "recon.js", "app.js", "core.js", "ui.js"].map(code).join("")) && /localStorage/.test(core), "nothing in the workbenches uses sessionStorage at all");
 }
 
 // ---- 7. Recon's port scan is its own mode, apart from Investigate's Active techniques -----------------
 {
-  const rec = code("recon.js"), inv = code("investigate.js");
+  const rec = code("recon.js"), inv = code("investigate.js"), app0 = code("app.js");
   // What each workbench would do, read the way its code reads the session.
   const deepDive = (s) => s.on("active");            // investigate.js: canDeep = session.on("active") && ...
   const portScan = (s) => s.on("portscan");          // recon.js: srcOn("portscan") = session.on(modeOf("portscan"))
@@ -230,11 +330,26 @@ function runWould(s, target, type, refusals) {
   // the wiring: each workbench reads only its own mode
   ok(/id: "portscan"[^\n]*on: false, warn: "caution", mode: "portscan" \}/.test(rec), "the port scan source is marked with its own mode, and off by default");
   ok(/const modeOf = \(id\) => SOURCES\.find\(\(s\) => s\.id === id\)\?\.mode \|\| "";\s*\nexport const srcOn = \(id\) => \(modeOf\(id\) \? session\.on\(modeOf\(id\)\) : id in srcState/.test(rec), "a source with a mode is on exactly when that session mode is: its stored preference is never read");
-  ok(/if \(on\("portscan"\) && !state\.cancelled\) late\.push\(source\("Port scan", "\/api\/infra\/portscan", T, "portscan"\)\);/.test(rec) && (rec.match(/\/api\/infra\/portscan/g) || []).length === 1 && /const on = srcOn;/.test(rec), "the run asks for a port scan in one place, behind that switch");
-  ok(!/"active"|"adult"|activeCase|adultCase/.test(rec) && (rec.match(/session\.on\(/g) || []).length === 2 && /session\.on\("portscan"\)/.test(rec), "recon.js never reads Investigate's modes");
-  ok(!/portscan|portscanCase/.test(inv) && !/session\.on\((?!"adult"\)|"active"\))/.test(inv), "investigate.js never reads Recon's mode");
+  ok(/if \(scan\.scan && !state\.cancelled\) late\.push\(source\("Port scan", "\/api\/infra\/portscan", T, "portscan"\)\);/.test(rec) && (rec.match(/\/api\/infra\/portscan/g) || []).length === 1 && !/[^.]on\("portscan"\)/.test(rec), "the run asks for a port scan in one place, behind the decision made when it started");
+
+  // Who started the run decides. portscanFor() is the function recon.js calls, once, at the start.
+  const P = (startedBy, on = true, type = "domain") => M.portscanFor({ on, type, startedBy });
+  ok(P("run").scan === true && P("run").note === "" && P("run", true, "ip").scan === true, "Port scan on, Run recon pressed in Recon's own box: the scan runs");
+  for (const how of ["pivot", "lead", "brief", "node", "landing", "history", "investigate", undefined, null, "", "RUN", true, 1]) ok(P(how).scan === false && P(how).note === "Port scan not run: this case was opened from a link. Press Run recon to scan this host.", `started by ${JSON.stringify(how)}: no scan, and the note says how to run one`);
+  ok(P("run", false).scan === false && P("run", false).note === "" && P("pivot", false).note === "" && P("run", true, "asn").scan === false && P("pivot", true, "asn").note === "" && P("run", "true").scan === false && P("run", 1).scan === false, "with the mode off, or for an ASN, nothing is scanned and there is nothing to say");
+  ok(Object.keys(P("run")).join() === "scan,note" && M.portscanFor().scan === false, "the decision is those two values and nothing else");
+  ok(/const scan = portscanFor\(\{ on: session\.on\("portscan"\), type, startedBy: opts\.startedBy === "run" \? "run" : "pivot" \}\);\s*\n\s*state\.scanNote = scan\.note;/.test(rec) && (rec.match(/portscanFor\(/g) || []).length === 1, "run() asks it once when the run starts and keeps the answer: a switch moved mid-run changes the next run");
+  ok(/export async function run\(raw0, opts = \{\}\)/.test(rec) && (rec.match(/startedBy: "run"/g) || []).length === 1 && /\$\("#rRunBtn"\)\.addEventListener\("click", \(\) => \{[^\n]*run\(\$\("#rTargetInput"\)\.value, \{ startedBy: "run" \}\); \}\);/.test(rec) && /if \(e\.key === "Enter" && !state\.running\) \$\("#rRunBtn"\)\.click\(\);/.test(rec), "only the Run recon button (and Enter in Recon's box, which presses it) starts a run as \"run\"");
+  ok(/run\(b\.dataset\.runNode\);/.test(rec) && /function startRecon\(v\) \{ show\("recon", \{ focus: false \}\); recon\.run\(v\)\.then/.test(app0) && !/startedBy/.test(app0), "a topology node, a lead, a brief action, the landing form and the other workbench all start it with no claim to be a run");
+  ok(/if \(scan\.note\) log\.add\(scan\.note, "skip"\);/.test(rec) && /state\.scanNote \? h`<div class="notice" role="note" id="rScanNote">\$\{state\.scanNote\}<\/div>` : ""/.test(rec) && (rec.match(/scanNote: ""/g) || []).length === 4, "the note goes in the run log and above the findings, and is cleared with the case");
+  // Deep Dive asks again at the moment it would fetch
+  ok(M.deepDiveFor({ on: true }).fetch === true && M.deepDiveFor({ on: false }).fetch === false && M.deepDiveFor({ on: "true" }).fetch === false && M.deepDiveFor().fetch === false && M.deepDiveFor({ on: false }).note === "Active techniques was switched off, so no profile page was fetched.", "a Deep Dive may fetch only while Active techniques is on");
+  ok(/async function runDeepDive\(urls\) \{\s*\n[^\n]*\n\s*const may = deepDiveFor\(\{ on: session\.on\("active"\) \}\);\s*\n\s*if \(!may\.fetch\) \{ toast\(may\.note, 5000\); renderAiPanel\(\); return; \}/.test(read(J + "investigate.js")) && code("investigate.js").indexOf("const may = deepDiveFor") < code("investigate.js").indexOf('post("/api/recon/scrape-profiles"'), "runDeepDive checks it before the request that fetches the pages");
+  const noStatus = (src) => src.replace(/paintStatus\([^\n]*\n/g, "").replace(/^import [^\n]*$/gm, "");
+  ok(!/"active"|"adult"|activeCase|adultCase/.test(noStatus(rec)) && (noStatus(rec).match(/session\.on\(/g) || []).length === 3 && /session\.on\("portscan"\)/.test(rec), "recon.js reads Investigate's modes only to name them in the status line");
+  ok(!/portscan|portscanCase/.test(noStatus(inv)) && !/session\.on\((?!"adult"\)|"active"\))/.test(noStatus(inv)), "investigate.js reads Recon's mode only to name it in the status line");
   ok(/s\.mode \? sheetRowHtml\(s\.mode, scanView\(\), \{ prefix: "r" \}\)/.test(rec) && !/data-toggle="portscan"/.test(rec), "its row in Recon's sheet is the mirrored mode switch, not a stored toggle");
-  ok(/paintBar\(\$\("#rModes"\), \$\("#rModeStatus"\), \[\{ id: "portscan", view: v, desc: MODE\.portscan\.desc, prefix: "r" \}\]\);/.test(rec) && M.MODE.portscan.desc === "Connects to 20 common ports. May notify the target." && M.MODE.portscan.label === "Port scan", "Recon's case bar carries the Port scan switch and nothing else");
+  ok(/paintBar\(\$\("#rModes"\), \[\{ id: "portscan", view: v, desc: MODE\.portscan\.desc, prefix: "r" \}\]\);/.test(rec) && M.MODE.portscan.desc === "Connects to 20 common ports. May notify the target." && M.MODE.portscan.label === "Port scan", "Recon's case bar carries the Port scan switch and nothing else");
   const st = M.statusHtml([{ id: "portscan", view: M.portscanCase(true, "domain") }]);
   ok(/<span>Port scan on for this session\. May notify the target\.<\/span> <button type="button" class="linklike" data-mode-off="portscan" aria-label="Turn off the port scan">Turn off<\/button>/.test(st) && !/Active techniques/.test(st), "Recon's status line is the port scan's own");
   const app = read(J + "app.js");
@@ -263,8 +378,8 @@ function runWould(s, target, type, refusals) {
   // markup: the same attribute on both, a real switch, labelled and described
   const on = M.adultCase(true, T, "username"), offV = M.adultCase(false, T, "username");
   const b = M.barSwitchHtml("adult", on), sh = M.sheetRowHtml("adult", on);
-  ok(/<input type="checkbox" role="switch" id="mode-adult" data-session-mode="adult" checked aria-labelledby="mode-adult-l" aria-describedby="mode-adult-d">/.test(b) && /<label class="mode-label" for="mode-adult" id="mode-adult-l">Adult sites<\/label>/.test(b) && /<span class="mode-desc" id="mode-adult-d">Existence checks on adult and dating sites\.<\/span>/.test(b), "the bar switch is a labelled role=switch with its one-line description as visible text");
-  ok(/<input type="checkbox" role="switch" data-session-mode="adult" checked aria-labelledby="sheet-adult-l" aria-describedby="sheet-adult-d">/.test(sh) && /It stays on for every case until you switch it off or reload the page\./.test(sh), "the sheet's row is the same control, and says how long it lasts");
+  ok(/<input type="checkbox" role="switch" id="mode-adult" data-session-mode="adult" checked aria-label="Adult sites" aria-labelledby="mode-adult-l" aria-describedby="mode-adult-d">/.test(b) && /<label class="mode-label" for="mode-adult" id="mode-adult-l">Adult sites<\/label>/.test(b) && /<span class="mode-desc" id="mode-adult-d">Existence checks on adult and dating sites\.<\/span>/.test(b), "the bar switch is a labelled role=switch with its one-line description as visible text");
+  ok(/<input type="checkbox" role="switch" data-session-mode="adult" checked aria-label="Adult sites" aria-labelledby="sheet-adult-l" aria-describedby="sheet-adult-d">/.test(sh) && /aria-label="Port scan" aria-labelledby="rsheet-portscan-l"/.test(M.sheetRowHtml("portscan", M.portscanCase(true, "domain"), { prefix: "r" })) && /It stays on for every case until you switch it off or reload the page\./.test(sh), "the sheet's row is the same control, and says how long it lasts");
   ok(!/ checked/.test(M.barSwitchHtml("adult", offV)) && !/ checked/.test(M.sheetRowHtml("adult", offV)) && /class="mode off"/.test(M.barSwitchHtml("adult", offV)), "both are drawn off from the same view");
   const act = M.barSwitchHtml("active", M.activeCase(true, "username"));
   ok(/Active techniques <span class="tag warn">caution<\/span>/.test(act) && /<span class="tag warn">caution<\/span>/.test(M.sheetRowHtml("active", M.activeCase(true, "username"))) && !/tag warn/.test(b), "the caution tag stays on Active techniques, in both places");
@@ -289,11 +404,30 @@ function runWould(s, target, type, refusals) {
   ok(/Adult sites on for this session\. Not used for this kind of target\./.test(M.statusHtml(rows(M.adultCase(true, "a@b.org", "email"), M.activeCase(false, "email")))) && !/Active techniques/.test(M.statusHtml(rows(M.adultCase(true, "a@b.org", "email"), M.activeCase(false, "email")))), "on a case it is not used for, the line says so and the mode stays on");
   ok(/Adult sites on for this session\. Adult and dating sites are not checked for this handle: it suggests a minor \(the handle starts or ends with a number from 10 to 17\)\./.test(M.statusHtml(rows(M.adultCase(true, "anna15", "username"), M.activeCase(false, "username")))), "for a handle that suggests a minor the line gives the reason");
   ok(!/<img|<a\b|style=|onclick/i.test(both) && M.statusHtml(rows(M.adultCase(true, '<img src=x onerror=1>"', "username"), M.activeCase(false, ""))).indexOf("<img") === -1, "the line is text and one button, and holds no part of the target");
+  // the other workbench's mode is named too, and a run in flight says when a change applies
+  const foreign = M.statusHtml([{ id: "adult", view: M.adultCase(false, "", "") }, { id: "portscan", view: M.portscanCase(true, ""), foreign: "Recon" }]);
+  ok(/<span>Port scan on \(Recon\)\.<\/span> <button type="button" class="linklike" data-mode-off="portscan" aria-label="Turn off the port scan">Turn off<\/button>/.test(foreign) && !/Not used|May notify/.test(foreign), "Investigate says \"Port scan on (Recon).\" while Recon's mode is on, with its Turn off");
+  const back = M.statusHtml([{ id: "portscan", view: M.portscanCase(false, "") }, { id: "adult", view: M.adultCase(true, "", ""), foreign: "Investigate" }, { id: "active", view: M.activeCase(true, ""), foreign: "Investigate" }]);
+  ok(/Adult sites on \(Investigate\)\./.test(back) && /Active techniques on \(Investigate\)\./.test(back) && (back.match(/data-mode-off=/g) || []).length === 2, "and Recon names Investigate's modes the same way");
+  ok(/Port scan on for this session\. May notify the target\. Port scan not run: this case was opened from a link\. Press Run recon to scan this host\./.test(M.statusHtml([{ id: "portscan", view: { ...M.portscanCase(true, "domain"), state: "suspended", reason: M.PORTSCAN_PIVOT_NOTE } }])) && /const line = v\.on && state\.scanNote \? \{ \.\.\.v, state: "suspended", reason: state\.scanNote \} : v;/.test(code("recon.js")), "a Recon case opened by a pivot says in the status line that the scan did not run");
+  const busy = M.statusHtml(rows(M.adultCase(true, T, "username"), M.activeCase(false, "username")), { running: true });
+  ok(/<p class="mode-line mode-wait">A run is in progress: a change applies from the next run\.<\/p>$/.test(busy) && M.statusHtml(rows(M.adultCase(false, T, "username"), M.activeCase(false, "username")), { running: true }) === "" && !/mode-wait/.test(both), "while a run is in flight the line says a change applies from the next run, and only then");
   const html = read("../../static/v2/index.html");
-  ok(/<div class="casebar-sub">\s*<div class="detected" id="targetDetected" aria-live="polite"><\/div>\s*<div class="modes" id="modes" role="group" aria-label="Session modes"><\/div>\s*<\/div>\s*<div class="mode-status" id="modeStatus" aria-live="polite" hidden><\/div>/.test(html), "Investigate's case bar: the switches sit beside the detected-type chips, the status line under them");
-  ok(/<div class="detected" id="rTargetDetected" aria-live="polite"><\/div>\s*<div class="modes" id="rModes" role="group" aria-label="Session modes"><\/div>\s*<\/div>\s*<div class="mode-status" id="rModeStatus" aria-live="polite" hidden><\/div>/.test(html), "Recon's case bar has the same row");
+  ok(/<div class="casebar-sub">\s*<div class="detected" id="targetDetected" aria-live="polite"><\/div>\s*<div class="modes" id="modes" role="group" aria-label="Session modes"><\/div>\s*<\/div>/.test(html) && /<div class="detected" id="rTargetDetected" aria-live="polite"><\/div>\s*<div class="modes" id="rModes" role="group" aria-label="Session modes"><\/div>\s*<\/div>/.test(html), "the switches sit beside the detected-type chips in both case bars");
   ok(html.indexOf('id="modes"') < html.indexOf('id="rail"') && html.indexOf('id="rModes"') < html.indexOf('id="rRail"'), "both are outside the Sources sheet");
-  const inv = code("investigate.js");
+  // the on-state stays in view at every width: a sticky strip outside the case bar, never [hidden]
+  ok(/<div class="modestrip mode-status" id="modeStatus" aria-live="polite"><\/div>\s*<div class="workspace">/.test(html) && /<div class="modestrip mode-status" id="rModeStatus" aria-live="polite"><\/div>\s*<div class="workspace">/.test(html) && !/id="r?[mM]odeStatus"[^>]*hidden/.test(html), "the status line is a strip between the case bar and the results in both workbenches, rendered always");
+  ok(/<aside class="aside" id="aside" aria-label="Case summary">\s*<div class="mode-status mode-echo" id="modeEcho"><\/div>/.test(html) && /<aside class="aside" id="rAside" aria-label="Case summary">\s*<div class="mode-status mode-echo" id="rModeEcho"><\/div>/.test(html) && !/id="r?[mM]odeEcho"[^>]*aria-live/.test(html), "and it is repeated at the top of the summary column, which is what the Case details drawer shows");
+  const css = read("../../static/v2/css/app.css");
+  ok(/\.modestrip \{ position: sticky; top: calc\(var\(--topbar-h\) \+ var\(--casebar-own, 0px\)\);/.test(css) && /\.mode-status:empty \{ display: none; \}/.test(css) && !/\.mode-status\[hidden\]/.test(css) && /\.mode-echo \{ display: none; \}\s*\n#sheet \.mode-echo:not\(:empty\) \{ display: flex;/.test(css), "the strip is sticky under the top bar at every width, is hidden only by being empty, and its copy shows only in the drawer");
+  const inv = code("investigate.js"), rec = code("recon.js"), ui = code("modeui.js"), app = code("app.js");
+  ok(/paintStatus\(\[\$\("#modeStatus"\), \$\("#modeEcho"\)\], \[\.\.\.rows, \{ id: "portscan", view: portscanCase\(session\.on\("portscan"\), ""\), foreign: "Recon" \}\], \{ running: state\.running \}\);/.test(inv) && /paintStatus\(\[\$\("#rModeStatus"\), \$\("#rModeEcho"\)\], \[\{ id: "portscan", view: line \}, \{ id: "adult", [^\n]*foreign: "Investigate" \}, \{ id: "active", [^\n]*foreign: "Investigate" \}\], \{ running: state\.running \}\);/.test(rec), "each workbench draws its own modes and names the other's, in the strip and in the drawer");
+  ok(!/\.hidden\s*=/.test(ui) && /box\.innerHTML = html;/.test(ui), "the strip is emptied, never hidden, so it stays a live region");
+  ok(/\$\("#main"\)\.setAttribute\("aria-busy", on\);\s*\n\s*paintModes\(\);/.test(inv) && /\$\("#rMain"\)\.setAttribute\("aria-busy", on\);\s*\n\s*paintModes\(\);/.test(rec), "the line is redrawn when a run starts and when it ends");
+  ok(/const own = c && getComputedStyle\(c\)\.position === "sticky" \? c\.offsetHeight : 0;/.test(app) && /"--casebar-h", `\$\{own \+ \(strip \? strip\.offsetHeight : 0\)\}px`/.test(app) && /\$\$\("\.casebar, \.modestrip"\)\.forEach\(\(c\) => casebarWatch\.observe\(c\)\);/.test(app), "what is sticky below it (the result tabs, the summary column) is offset by the strip's height");
+  ok(/sheet \? sheet\.querySelector\("\[data-close\]"\) :/.test(ui), "Turn off inside the drawer keeps focus in the drawer");
+  // a dialog button is already detached when the click reaches the document
+  ok(/if \(!e\.target\.isConnected\) return;\s*\n\s*if \(\$\("\.rail\.open"\) && !e\.target\.closest\("\.rail, \.sources-btn, #overlays"\)\) closeRail\(\);/.test(app), "confirming or cancelling a dialog opened from the Sources sheet does not close the sheet");
   ok(/box\.insertAdjacentHTML\("beforeend", sheetRowHtml\("adult", adultView\(sourcesType\)\) \+ sheetRowHtml\("active", activeView\(sourcesType\)\)\);/.test(inv), "and the sheet still lists both, as the same control");
 }
 
