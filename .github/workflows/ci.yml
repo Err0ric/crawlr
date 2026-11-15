@@ -39,3 +39,4 @@ jobs:
           node tests/js/design.test.mjs
           node tests/js/phone.test.mjs
           node tests/js/similar.test.mjs
+          node tests/js/wildcard.test.mjs

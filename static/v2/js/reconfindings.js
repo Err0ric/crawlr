@@ -3,6 +3,7 @@
 import { fmtNum, plural } from "./core.js";
 import { factCollector, itemCollector } from "./workbench.js";
 import { resolvedHosts, mailState, noMailOpen } from "./brief.js";
+import { wildcardOf, wildcardText } from "./present.js";
 import { sealLink, sealFact, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, dnsFindingEvidence, isDomain } from "./links.js";
 
 // ---- findings -------------------------------------------------------------------
@@ -20,6 +21,8 @@ export const TIERS = [
   { id: "neighbor",  title: "Unrelated neighbours on the shared address", cls: "", open: false, limit: 200, blurb: "Other sites that answer on the same shared hosting address. They belong to other customers of the provider and say nothing about this target." },
 ];
 export const lc = (s) => String(s ?? "").trim().toLowerCase().replace(/\.$/, "");
+// Said on every name that is listed although its DNS answer is only the wildcard's.
+export const VIA_WILDCARD = "resolves through the wildcard, so DNS alone does not show the host exists";
 
 // type: "domain" | "ip" | "asn". Pure: the same code ranks a live run, a saved one and a case file.
 export function buildFindings(c, target, type = "domain") {
@@ -77,6 +80,10 @@ export function buildFindings(c, target, type = "domain") {
     else if (x.status === "unknown") add({ tier: "surface", what: x.host, url: `https://${x.host}`, meta: `takeover check could not be completed${x.cname ? `: the lookup of ${x.cname}${x.service ? ` (${x.service})` : ""} failed` : ""}. Unknown, not safe.`, source: "Takeover candidates", key: `tko:${x.host}` });
     else add({ tier: "surface", what: x.host, url: `https://${x.host}`, meta: `hosted on ${x.service} (${x.cname})`, source: "Takeover candidates", key: `tko:${x.host}` });
   }
+  // The subdomain check returns its own findings. Only a real problem is a flag: the wildcard
+  // itself is a configuration fact and sits with the subdomains.
+  const sd = c.subdomains;
+  if (sd && !sd.error) for (const f of Array.isArray(sd.findings) ? sd.findings : []) if (f?.level === "flag") add({ tier: "flag", what: String(f.title || ""), url: "", meta: String(f.detail || ""), source: "Subdomains", key: `subx:${f.title}` });
   const wkn = c.wellknown;
   if (wkn && !wkn.error) for (const pth of (wkn.robots?.interesting || []).slice(0, 12)) add({ tier: "surface", what: `${target}${pth}`, url: "", meta: "path listed in robots.txt", source: "Published files", key: `robots:${pth}` });
   const la = c.lookalikes;
@@ -93,12 +100,21 @@ export function buildFindings(c, target, type = "domain") {
   for (const hn of neighbors.slice(0, 200)) add({ tier: "neighbor", what: hn, url: "", meta: `unrelated site on the same ${shared.provider || "shared"} address`, source: expSrc, key: `nbr:${hn}`, ev: expEv });
 
   // inventory
-  for (const s of c.subdomains?.subdomains || []) add({ tier: "inventory", what: s.subdomain, url: `https://${s.subdomain}`, meta: [flat(s.ips).join(", "), s.source].filter(Boolean).join(" · "), source: "Subdomains", key: `sub:${s.subdomain}` });
+  // A wildcard record is one row at the head of the list, never a row per guessed name. The
+  // names under it are the ones another source attests; each says it resolves through the wildcard.
+  const wild = wildcardOf(c, target);
+  if (wild.state === "yes" || wild.state === "unknown") add({ tier: "inventory", what: wild.name, url: "", meta: wildcardText(wild) + (wild.state === "yes" && wild.ips.length && wild.cnames.length ? ` Addresses: ${wild.ips.join(", ")}.` : ""), source: "Subdomains", key: `wild:${wild.name}` });
+  for (const p of wild.parents) add({ tier: "inventory", what: p.name, url: "", meta: `Wildcard DNS: any name under ${p.parent} resolves to ${p.target || "the same answer"}. So a name under it that resolves is not proof a host exists.`, source: "Subdomains", key: `wild:${p.name}` });
+  const attest = (s) => (Array.isArray(s.attested) && s.attested.length ? `named in the domain's ${s.attested.filter((x) => typeof x === "string").slice(0, 3).join(" and ")} record` : "");
+  for (const s of c.subdomains?.subdomains || []) add({ tier: "inventory", what: s.subdomain, url: `https://${s.subdomain}`, meta: [flat(s.ips).join(", "), s.source, s.via_wildcard === true ? VIA_WILDCARD : "", s.via_wildcard === true ? attest(s) : ""].filter(Boolean).join(" · "), source: "Subdomains", key: `sub:${s.subdomain}` });
 
   const hv = c.harvest;
   if (hv && !hv.error && !hv.skipped) {
     for (const e of hv.emails || []) add({ tier: "surface", what: e, url: "", meta: "address on this domain", source: "Passive discovery", key: `email:${e}` });
-    for (const hn of hv.hosts || []) add({ tier: "inventory", what: hn, url: `https://${hn}`, meta: (hv.host_sources?.[hn] || []).join(", "), source: "Passive discovery", key: `sub:${hn}` });
+    // A host a passive source lists stays listed. When the wordlist also guessed it and its answer
+    // was only the wildcard's, the row says so.
+    const guessed = new Set(wild.suppressedNames);
+    for (const hn of hv.hosts || []) add({ tier: "inventory", what: hn, url: `https://${hn}`, meta: [(hv.host_sources?.[hn] || []).join(", "), guessed.has(lc(hn)) ? VIA_WILDCARD : ""].filter(Boolean).join(" · "), source: "Passive discovery", key: `sub:${hn}` });
   }
 
   // facts
@@ -134,6 +150,7 @@ export function buildFindings(c, target, type = "domain") {
   if (ep && !ep.error && noMail) fact("Email security", noMailOpen(ep) ? "No mail: no MX records, not graded" : "No mail, and locked against spoofing", "Email security", evidenceUrl.dns(domain, "MX"));
   else if (ep && !ep.error && ep.grade && ep.grade !== "N/A") fact("Email security", `Grade ${ep.grade} · ${ep.spoofable === "yes" ? "can be spoofed" : ep.spoofable === "no" ? "spoofing rejected" : "mostly protected"}`, "Email security", evidenceUrl.dns(domain ? `_dmarc.${domain}` : "", "TXT"));
   if (dd && !dd.error) fact("DNSSEC", dd.dnssec?.signed && dd.dnssec?.ds ? "Enabled" : "Not enabled", "DNS hardening", evidenceUrl.dns(domain, "DNSKEY"));
+  if (wild.state === "yes") fact("Wildcard DNS", `${wild.name} resolves to ${wild.target || "the same answer"}${wild.provider ? ` (${wild.provider.name})` : ""}`, "Subdomains");
   const cs = c.subdomains?.ct_summary;
   if (cs) fact("Certificates", `${fmtNum(cs.total)} logged since ${cs.first_issued || "?"} · ${fmtNum(cs.active)} still valid`, "Certificate logs", certEv?.url);
   if (wkn?.favicon) fact("Favicon hash", String(wkn.favicon.hash), "Published files", `https://www.shodan.io/search?query=${encodeURIComponent(wkn.favicon.shodan_query)}`);
@@ -155,4 +172,18 @@ export function takeoverForAi(c, target) {
   const live = resolvedHosts(c, target);
   const candidates = tk.candidates.filter((x) => !(x.status === "dangling" && live.has(lc(x.host))));
   return { ...tk, candidates, dangling: candidates.filter((x) => x.status === "dangling").length, withheld_resolved_in_this_run: tk.candidates.length - candidates.length };
+}
+
+// What the takeover check is asked about: the names that exist on their own. A name that only
+// resolves through a wildcard record is left out (the wildcard is one finding, reported by the
+// subdomain check), and the wildcard's CNAME targets go along so the server can skip any host
+// that merely repeats them.
+export function takeoverInput(c, target, limit = 200) {
+  const wild = wildcardOf(c, target);
+  const skip = new Set(wild.suppressedNames);
+  const rows = (c?.subdomains?.subdomains || []).filter((x) => x && typeof x.subdomain === "string");
+  for (const x of rows) if (x.via_wildcard === true) skip.add(lc(x.subdomain));
+  const passive = (c?.harvest?.hosts || []).filter((x) => typeof x === "string");
+  const hosts = [...new Set([...rows.map((x) => x.subdomain), ...passive].filter((x) => !skip.has(lc(x))))].slice(0, limit);
+  return { hosts, wildcard_cnames: [...new Set([...wild.cnames, ...wild.parents.flatMap((p) => p.cnames)])].slice(0, 8) };
 }

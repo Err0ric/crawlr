@@ -12,6 +12,7 @@ import { breachList, hashView, hashCoverage, TEST_FILE_TEXT, isFreeMail, emailPa
 import { adultBriefText } from "./adult.js";
 import { nameBrief } from "./names.js";
 import { phoneBrief } from "./phone.js";
+import { wildcardOf, wildcardText } from "./present.js";
 import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -162,6 +163,10 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
     else if (!failed.length) add("ok", "No flags: nothing risky or misconfigured showed up in the checks that ran.");
 
     if (c.dns?.cloudflare_proxied) add("info", "Behind Cloudflare. Open ports, the TLS certificate and HTTP headers describe Cloudflare's edge, not the origin server.", dnsEvidence(domain, "A"));
+    // A wildcard record changes how every subdomain below is read, so it is said early and once.
+    const wild = wildcardOf(c, target);
+    if (wild.state === "yes" || wild.state === "unknown") add("info", wildcardText(wild));
+    for (const p of wild.parents) add("info", `Wildcard DNS one level down: any name under ${p.parent} resolves to ${p.target || "the same answer"}, so a name there that resolves is not proof a host exists.`);
     const ep = c.email_posture;
     const mail = mailState(ep);
     if (ok(ep) && mail === "none" && noMailOpen(ep)) add("info", `This domain has no MX records, so it does not receive mail, and it is not graded for spoofing. It publishes no policy that stops others using it in a From line: ${nullRecords(ep).slice(0, 2).join(" and ")} would close that.`, dnsEvidence(domain, "MX"));
@@ -205,7 +210,7 @@ export function reconBrief({ collected: c, items, failed, type, target, today })
     if (sslDays != null && sslDays >= 30) add("ok", `TLS certificate is valid for another ${sslDays} days.`, certEvidence(domain));
     if (!c.portscan && c.shodan?.found && (c.shodan.ports || []).length) add("info", "Open ports come from a passive index, not a live scan. Turn on the port scan under Sources for a live check of hosts you are authorized to test.", exposureEvidence(c.shodan));
     if (wk?.favicon) actions.push({ label: "Find this favicon in Shodan", href: `https://www.shodan.io/search?query=${encodeURIComponent(wk.favicon.shodan_query)}` });
-    if (subs.length) actions.push({ label: "Open the topology", tab: "topology" });
+    if (subs.length || wild.state === "yes") actions.push({ label: "Open the topology", tab: "topology" });
     if (reconTimeline(c, target, today).events.length > 2) actions.push({ label: "Open the timeline", tab: "timeline" });
   }
   if (failed.length) add("flag", `${plural(failed.length, "check")} failed (${list(failed.map((f) => f.name))}), so this is not a complete picture. Re-run to fill the gaps.`);
