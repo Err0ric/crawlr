@@ -49,10 +49,24 @@ const after = { subdomains: { domain: T, total: 0, checked: 92, ct_found: 0, ct_
   ok(TIERS.find((t) => t.id === "inventory").title === "Subdomains", "the row sits in the Subdomains group");
 }
 
+// ---- what could not be read is said wherever the wildcard is described ----------------------
+{
+  const CT = "Certificate logs could not be read, so names a certificate attests may be among those left out.";
+  const MX = "The MX lookup failed, so a mail or name server may be among the names left out.";
+  const c = { subdomains: { ...after.subdomains, wildcard: { ...wildcard, ct_failed: true, attest_failed: ["MX", "<b>"] } } };
+  const r = run(c);
+  ok(inv(r)[0].meta.includes(`${MX} ${CT}`) && r.brief.includes(`${MX} ${CT}`), "a failed certificate log or MX lookup is said in the ledger row and the brief, not only in the card");
+  ok(!run(after).brief.includes("could not be read") && !inv(run(after))[0].meta.includes("lookup failed"), "and not when both were read");
+  ok(wildcardOf({ subdomains: { wildcard: { state: "no", ct_failed: true, attest_failed: ["MX"] } } }).ctFailed === false && wildcardOf(c).attestFailed.join() === "MX", "the caveats are read defensively");
+  const src = readFileSync(new URL("../../static/v2/js/recon.js", import.meta.url), "utf8");
+  ok(/nothing this run could read names it/.test(src) && !/no certificate or DNS record names it/.test(src), "the card does not claim that no certificate names a left-out name");
+}
+
 // ---- topology: one node for the wildcard --------------------------------------------------
 {
   const g = topologySubdomains(after, T);
   ok(g.length === 1 && g[0].type === "wildcard" && g[0].label === `*.${T}` && g[0].id === `wild_*.${T}`, "the graph has one wildcard node");
+  ok(JSON.stringify(g[0].values) === JSON.stringify([{ label: PIXIE, type: "cname" }, { label: IPS[0], type: "ip" }, { label: IPS[1], type: "ip" }]), "the wildcard's CNAME target is drawn as a name, never as an IP address");
   ok(g[0].cnames.join() === PIXIE && g[0].ips.join() === IPS.join() && /resolves to pixie\.porkbun\.com\. 92 guessed names left out/.test(g[0].note), "with its target, its addresses and the count");
   const real = { subdomains: { ...after.subdomains, subdomains: [{ subdomain: `api.${T}`, ips: ["198.51.100.7"], source: "DNS" }, { subdomain: `www.${T}`, ips: IPS, source: "CT", via_wildcard: true }] } };
   const g2 = topologySubdomains(real, T);
@@ -151,6 +165,8 @@ const after = { subdomains: { domain: T, total: 0, checked: 92, ct_found: 0, ct_
   ok(/Guessed names left out/.test(src) && /wildcardOf\(\{ subdomains: d \}/.test(src), "the By source card shows the wildcard state and the names left out");
   const g = readFileSync(new URL("../../static/v2/js/graph.js", import.meta.url), "utf8");
   ok(/const subNodes = topologySubdomains\(d, target\)/.test(g), "the graph draws the rows topologySubdomains returns");
+  ok(/type: valueType, lane: 2/.test(g) && !/label: ip, type: 'ip', lane: 2/.test(g), "and gives each value node the type its row says");
+  ok(/type === "ip" \? `https:\/\/www\.shodan\.io\/host\//.test(src), "only an ip node gets the Shodan link");
 }
 
 console.log(bad ? `${bad} of ${n} wildcard checks FAILED` : `${n}/${n} wildcard checks passed`);

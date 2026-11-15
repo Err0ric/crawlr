@@ -93,7 +93,7 @@ def scan(monkeypatch, zone, domain="example.com", ct=(), states=None):
         return fn(*args)
 
     async def fake_ct(d):
-        return sorted(ct), []
+        return sorted(ct), [], False
 
     monkeypatch.setattr(se, "dns_thread", inline)
     monkeypatch.setattr(se, "_make_resolver", lambda: zone)
@@ -195,6 +195,39 @@ def test_a_failed_mx_lookup_is_said_not_hidden(monkeypatch):
     out = scan(monkeypatch, zone, "crawlr.lol")
     assert out["wildcard"]["attest_failed"] == ["MX"]
     assert "The MX lookup failed, so a mail or name server may be among the names left out." in out["findings"][0]["detail"]
+
+
+def scan_with_crtsh(monkeypatch, zone, domain, crtsh):
+    """Like scan, but with the real certificate log reader on top of a fake crt.sh."""
+    async def inline(fn, *args):
+        return fn(*args)
+
+    monkeypatch.setattr(se, "dns_thread", inline)
+    monkeypatch.setattr(se, "_make_resolver", lambda: zone)
+    monkeypatch.setattr(se, "fetch_crtsh", crtsh)
+    return asyncio.run(se.run_subdomains(domain))
+
+
+def test_certificate_logs_that_cannot_be_read_are_said_not_read_as_empty(monkeypatch):
+    async def down(domain):
+        raise RuntimeError("rate limited")
+
+    async def up(domain):
+        return [{"name_value": "www.crawlr.lol", "common_name": "www.crawlr.lol", "serial_number": "1", "issuer_name": "CN=R3", "not_before": "2026-10-01", "not_after": "2026-12-30", "id": 1}]
+
+    caveat = "Certificate logs could not be read, so names a certificate attests may be among those left out."
+    out = scan_with_crtsh(monkeypatch, crawlr_zone(), "crawlr.lol", down)
+    # www is certified in fact, but without the logs it cannot be told from a guess: it is left out, and the answer says so
+    assert out["wildcard"]["ct_failed"] is True and "www.crawlr.lol" in out["wildcard"]["suppressed_names"]
+    assert out["findings"][0]["detail"].endswith(caveat) and out["wildcard"]["note"].endswith(caveat)
+    assert [f["level"] for f in out["findings"]] == ["info"]
+    # the logs answered: the certified name is kept, and there is no caveat
+    ok = scan_with_crtsh(monkeypatch, crawlr_zone(), "crawlr.lol", up)
+    assert "ct_failed" not in ok["wildcard"] and caveat not in ok["findings"][0]["detail"]
+    assert [(r["subdomain"], r["source"], r.get("via_wildcard")) for r in ok["subdomains"]] == [("www.crawlr.lol", "DNS+CT", True)]
+    # no wildcard: nothing was left out, so there is nothing to caveat
+    plain = scan_with_crtsh(monkeypatch, Zone({"www.example.com": {"A": ["192.0.2.1"]}}), "example.com", down)
+    assert "ct_failed" not in plain["wildcard"] and plain["findings"] == [] and names(plain) == ["www.example.com"]
 
 
 # ---- no wildcard: nothing changes --------------------------------------------------------
@@ -383,7 +416,7 @@ def test_subdomains_route_returns_the_wildcard_and_only_real_names(monkeypatch):
         return fn(*args)
 
     async def no_ct(d):
-        return [], []
+        return [], [], False
 
     monkeypatch.setattr(se, "dns_thread", inline)
     monkeypatch.setattr(se, "_make_resolver", lambda: crawlr_zone({"api.crawlr.lol": {"A": ["198.51.100.7"]}}))

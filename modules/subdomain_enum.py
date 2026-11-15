@@ -32,15 +32,16 @@ COMMON_SUBDOMAINS = [
 ]
 
 
-async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
+async def _query_crtsh(domain: str) -> tuple[list[str], list[dict], bool]:
     """Certificate transparency names and certificates for a domain.
-    Returns (unique_subdomains, certificates). The crt.sh request is shared with the
-    passive harvester through modules.crtsh, so a recon run asks crt.sh once."""
+    Returns (unique_subdomains, certificates, failed). `failed` is True when crt.sh could
+    not be read: that is unknown, not "no certificate names anything". The crt.sh request
+    is shared with the passive harvester through modules.crtsh, so a recon run asks crt.sh once."""
     raw_entries = []
     try:
         entries = await fetch_crtsh(domain)
     except Exception:
-        return [], []
+        return [], [], True
 
     subs = set()
     seen_certs = set()
@@ -89,7 +90,7 @@ async def _query_crtsh(domain: str) -> tuple[list[str], list[dict]]:
     subs.discard(domain_lower)
     # Sort raw entries by date descending
     raw_entries.sort(key=lambda x: x["date"], reverse=True)
-    return sorted(subs), raw_entries
+    return sorted(subs), raw_entries, False
 
 
 # ---- wildcard DNS -------------------------------------------------------------------
@@ -287,6 +288,8 @@ def wildcard_findings(domain: str, wildcard: dict) -> list[dict]:
             detail += f" Whether the {service} target still exists could not be checked: unknown, not safe."
         if wildcard.get("attest_failed"):
             detail += f" The {' and '.join(wildcard['attest_failed'])} lookup failed, so a mail or name server may be among the names left out."
+        if wildcard.get("ct_failed"):
+            detail += " Certificate logs could not be read, so names a certificate attests may be among those left out."
         add("info", f"Wildcard DNS: any name under {domain} resolves to {target}", detail)
         if service and t_state == "absent":
             add("flag", f"Wildcard DNS points at {wildcard['cnames'][0]} ({service}), which no longer resolves",
@@ -313,7 +316,7 @@ async def run_subdomains(domain: str) -> dict:
         return wildcard, await asyncio.gather(*(lookup(n) for n in names))
 
     # The DNS pass and the CT query run at the same time.
-    (wildcard, wordlist), (ct_subs, ct_entries) = await asyncio.gather(dns_pass(), _query_crtsh(domain))
+    (wildcard, wordlist), (ct_subs, ct_entries, ct_failed) = await asyncio.gather(dns_pass(), _query_crtsh(domain))
     in_ct = set(ct_subs)
     attested, attest_failed = await zone_attested(resolver, domain) if wildcard["state"] == "yes" else ({}, [])
 
@@ -383,6 +386,9 @@ async def run_subdomains(domain: str) -> dict:
         wildcard["service"] = next((s for s in map(takeover.match_service, wildcard["cnames"]) if s), "")
         wildcard["target_state"] = await _target_state(wildcard)
         wildcard["attest_failed"] = attest_failed
+        if ct_failed:
+            # Without the logs, a certified name could not be told from a guess.
+            wildcard["ct_failed"] = True
     findings = wildcard_findings(domain, wildcard)
     wildcard["note"] = next((f"{f['title']}. {f['detail']}" for f in findings if f["level"] == "info"), "")
 

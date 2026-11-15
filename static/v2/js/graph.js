@@ -4,7 +4,9 @@ import { wildcardOf } from "./present.js";
 
 const MONO = "IBM Plex Mono, ui-monospace, Menlo, monospace";
 
-// The rows of the Subdomains section: { id, label, type, ips, cnames, note }.
+// The rows of the Subdomains section: { id, label, type, ips, cnames, values, note }.
+// values: what is drawn beside the row, each { label, type }: a CNAME target is a name
+// (type 'cname'), never an address, so selecting it does not offer an IP lookup.
 // A wildcard record is one row ("*.example.com") with its target and addresses, placed first.
 // It is never one row per guessed name: the subdomain check already left those out, and a case
 // saved before it did is drawn as it was saved.
@@ -13,14 +15,16 @@ export function topologySubdomains(collected, target) {
   const d = collected || {};
   const rows = [];
   const wild = wildcardOf(d, target);
-  const star = (w, n) => ({ id: 'wild_' + w.name, label: w.name, type: 'wildcard', ips: w.ips, cnames: w.cnames, note: `Wildcard DNS: any name under ${w.name.slice(2)} resolves to ${w.target || 'the same answer'}${n ? `. ${n} guessed ${n === 1 ? 'name' : 'names'} left out` : ''}` });
+  const vals = (cnames, ips) => [...cnames.map((label) => ({ label, type: 'cname' })), ...ips.map((label) => ({ label, type: 'ip' }))];
+  const star = (w, n) => ({ id: 'wild_' + w.name, label: w.name, type: 'wildcard', ips: w.ips, cnames: w.cnames, values: vals(w.cnames, w.ips), note: `Wildcard DNS: any name under ${w.name.slice(2)} resolves to ${w.target || 'the same answer'}${n ? `. ${n} guessed ${n === 1 ? 'name' : 'names'} left out` : ''}` });
   if (wild.state === 'yes') rows.push(star(wild, wild.suppressed));
   for (const p of wild.parents) rows.push(star(p, 0));
   const subs = d.subdomains && !d.subdomains.error && Array.isArray(d.subdomains.subdomains) ? d.subdomains.subdomains : [];
   for (const s of subs.filter((x) => x && typeof x.subdomain === 'string').slice(0, MAX_GRAPH_SUBDOMAINS)) {
     const via = s.via_wildcard === true;
     // A name that only resolves through the wildcard shows no addresses of its own: they are the wildcard's.
-    rows.push({ id: 'sub_' + s.subdomain, label: s.subdomain, type: 'subdomain', ips: via ? [] : [].concat(s.ips || []).filter((x) => typeof x === 'string'), cnames: [], note: via ? 'resolves through the wildcard' : '' });
+    const ips = via ? [] : [].concat(s.ips || []).filter((x) => typeof x === 'string');
+    rows.push({ id: 'sub_' + s.subdomain, label: s.subdomain, type: 'subdomain', ips, cnames: [], values: vals([], ips), note: via ? 'resolves through the wildcard' : '' });
   }
   return rows;
 }
@@ -339,14 +343,13 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
     let subRowIdx = 0;
     subNodes.forEach((s) => {
       // A wildcard's values are its CNAME target, then its addresses, one per row.
-      const values = [...(s.cnames || []), ...s.ips];
-      const ipCount = Math.max(values.length, 1);
+      const ipCount = Math.max(s.values.length, 1);
       positions[s.id] = { x: laneX[1], y: subStartY + subRowIdx * (subBoxH + subGapY) };
-      values.forEach((ip, j) => {
+      s.values.forEach(({ label: ip, type: valueType }, j) => {
         const rowY = subStartY + (subRowIdx + j) * (subBoxH + subGapY);
         const ipId = 'subip_' + s.id + '_' + ip;
         positions[ipId] = { x: subIpX, y: rowY };
-        if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: 'ip', lane: 2, row: 0 }); }
+        if (!idSet[ipId]) { idSet[ipId] = true; treeNodes.push({ id: ipId, label: ip, type: valueType, lane: 2, row: 0 }); }
         addL(s.id, ipId, 'sub');
         // ASN node for this subdomain IP
         const isCf = _isCfIp(ip);
@@ -489,7 +492,8 @@ function _css(prop) { return getComputedStyle(document.documentElement).getPrope
 
       // Selecting a node offers to run it (one click, one run; nothing recurses on its own).
       // A wildcard is not a host, so there is nothing to run recon on.
-      const pivotable = !isWild && (['subdomain', 'ip', 'asn', 'cf_asn', 'domain'].includes(n.type) || isSub);
+      // A CNAME target beside a wildcard is a host name: it can be run or opened, as a host.
+      const pivotable = !isWild && (['subdomain', 'ip', 'asn', 'cf_asn', 'domain'].includes(n.type) || isSub || (isSubIp && n.type === 'cname'));
       if (pivotable) {
         const pick = () => container.dispatchEvent(new CustomEvent('crawlr:node', { bubbles: true, detail: { type: n.type, label: n.label } }));
         ng.attr('tabindex', 0).attr('role', 'button').attr('aria-label', `${n.type.replace('_', ' ')} ${n.label}. Press Enter for actions.`).style('cursor', 'pointer')
