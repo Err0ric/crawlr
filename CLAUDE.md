@@ -69,6 +69,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - Tests never use the network. Recorded responses live in `tests/fixtures/` and `tests/js/fixtures/`; use invented names for private people.
 - Do not log target values (usernames, emails, domains) on the server.
 - Bulk DNS work (more than a handful of queries) goes through `core.dnspool.dns_thread`, not `asyncio.to_thread`.
+- `phonenumbers` is imported only by `modules/phone_plan.py`, which runs in the short-lived worker (`python -m modules.phone_worker`). Never import it, or `phone_plan`, in the web process: its tables take about 115 MB.
 - A phone lookup says what a number is (valid, country, line type, range assignment), never who uses it. No data brokers or paid people-search links. Only the area code and exchange go to the block source; the full number leaves the server only for NumLookup, with the visitor's own key.
 - Recon checks return their own `findings` list (`level`: `flag`, `ok` or `info`). Only `flag` rows become ledger flags.
 - Prompts are built by `investigation_prompt()` and `recon_prompt()` so the one-click and copy-prompt paths stay identical.
