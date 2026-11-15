@@ -35,6 +35,7 @@ node tests/js/adult.test.mjs
 node tests/js/names.test.mjs
 node tests/js/design.test.mjs
 node tests/js/similar.test.mjs
+node tests/js/modes.test.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally to match `runtime.txt`.
@@ -64,7 +65,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - A failed source is not a negative result. Keep "failed", "not found" and "found" as three separate states end to end. A site that blocks a check is "blocked", and a DNS lookup that errors is "unknown"; neither is "not found".
 - An account that exists is not an account that belongs to the target. Profiles are grouped by person in `static/v2/js/identity.js`; facts and AI input come from the primary identity only.
 - Leads are followed one hop at a time and only on a click.
-- Adult and dating sites are opt-in per case and never remembered. With the mode off no path may query one: ask `core/adult_sites.py`. Results stay in their own group, text only, with no image of any kind. `core/adult_guard.py` runs before any such request and has no override. Sherlock and Maigret run on the site lists that ship with the installed packages, so the queried set is known; regenerate `static/v2/js/adult-sites.js` when either package is upgraded.
+- Adult and dating sites are opt-in. The mode is off on every page load, held in memory only and never stored (not in localStorage, sessionStorage, a cookie, the URL, History or a case file). Once switched on it stays on for the page session, across cases, until it is switched off or the page is reloaded (`static/v2/js/modes.js`). A case records that a run had the mode on; that record never switches the mode on. With the mode off no path may query one: ask `core/adult_sites.py`. Results stay in their own group, text only, with no image of any kind. `core/adult_guard.py` runs before any such request and has no override. Sherlock and Maigret run on the site lists that ship with the installed packages, so the queried set is known; regenerate `static/v2/js/adult-sites.js` when either package is upgraded.
 - Every link gets a kind from `static/v2/js/links.js`. No finding links to a bare homepage, and no third-party URL carries a username or email in its query. `node tests/js/links.test.mjs` enforces both. The one exception is the "Search the web" group of a name case: link kind `search`, opened by the investigator, never evidence.
 - A name case holds candidates, not findings (`static/v2/js/names.js`). A candidate never becomes a fact, a cluster member or an avatar to compare, carries no picture, and nothing about it is fetched without a click. `node tests/js/names.test.mjs` enforces this.
 - Tests never use the network. Recorded responses live in `tests/fixtures/` and `tests/js/fixtures/`; use invented names for private people.
@@ -79,7 +80,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - A profile picture is shown only from the thumbnail the avatar comparison returns (`safeThumb` in `static/v2/js/present.js`). Never hotlink one, and never request a favicon or any image for an adult or dating row or a name candidate.
 - New modules: add the module in `modules/`, the endpoint in a router (with a `RATE_LIMITS` entry if it is expensive), a test in `tests/`, and a row in the README module table.
 - New colors or text styles: add them as tokens for both themes and keep `node tests/js/contrast.test.mjs` passing.
-- Keep the responsible-use consent gate. Active techniques (anything that may notify the target) stay off by default and labeled.
+- Keep the responsible-use consent gate. Active techniques (anything that may notify the target) stay off by default and labeled. They are session modes like the adult one: never stored, off on every page load, each with its own switch and first-use confirmation ("Active techniques" in Investigate, "Port scan" in Recon), and one never switches on the other.
 - Ask Eric before adding a paid service, a new third-party data source, or a heavy dependency.
 
 ## Open work
