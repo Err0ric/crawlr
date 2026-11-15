@@ -256,9 +256,9 @@ export function sourceTally(collected, names) {
       if (cv.total > 0 && cv.answered === 0) { state = "failed"; text = cv.failedText; }
       else if (cv.answered < cv.total) { state = "partial"; text = coverageText(cv); }
     }
-    // listed: the parts that did not answer are sites, and each site is a row of its own in the
+    // listed: the parts that did not answer are sites (or, for the link check, links), and each is a row of its own in the
     // ledger ("Blocked by site", "Could not tell"). Nothing is missing from any count.
-    rows.push({ key, name, state, hasResults: state !== "failed" && state !== "skipped" && has, text, detail: o.detail || "", code: o.code || "", ...(state === "partial" && cv.unit === "sites" ? { listed: true } : {}) });
+    rows.push({ key, name, state, hasResults: state !== "failed" && state !== "skipped" && has, text, detail: o.detail || "", code: o.code || "", ...(state === "partial" && (cv.unit === "sites" || cv.unit === "links") ? { listed: true } : {}) });
   }
   const n = (s) => rows.filter((r) => r.state === s).length;
   const failed = n("failed"), skipped = n("skipped"), partial = n("partial");
