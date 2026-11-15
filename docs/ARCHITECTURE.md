@@ -123,7 +123,7 @@ Three ways to get a written report, none automatic:
 
 ## API keys
 
-- AI, Hunter, Shodan and Numlookup keys are entered in Settings and kept in the browser's `localStorage`. The per-source switches are kept there too; the two session modes (adult sites, active techniques) never are.
+- AI, Hunter, Shodan and Numlookup keys are entered in Settings and kept in the browser's `localStorage`. The per-source switches are kept there too; the session modes (adult sites, active techniques, port scan) never are.
 - They are sent with each request to the CrawlR server, which passes them to the matching provider. The server does not store them.
 - The house Gemini key lives only in the server environment (`GEMINI_API_KEY`).
 - `ABUSECH_AUTH_KEY` (optional, server-side, free from abuse.ch) lets the hash lookup ask MalwareBazaar and ThreatFox, which refuse anonymous requests. Without it they are reported as failed, not as "not found".
@@ -142,7 +142,7 @@ Three ways to get a written report, none automatic:
 | `graph.js` | D3 topology graph. Nodes are focusable and emit `crawlr:node` when selected, which Recon turns into a pivot bar |
 | `evidence.js` | Turns module responses into ranked evidence (`flag`, `linked`, `matches`, `different`, `unverified`, `noise`, plus `lead` and `hosts`), facts per identity, and the source plan for each target type. Pure functions, no DOM |
 | `adult.js` | The opt-in adult and dating mode: the minor guard, the separate group, and the scrub that removes adult rows from a case that did not have the mode on. Pure functions, no storage |
-| `modes.js` | The two session modes, "Adult sites" and "Active techniques": off on every page load, held in this module's memory only, on until switched off or the page is reloaded, and confirmed once per page session. Also whether a mode applies to the case on screen (`adultCase`, `activeCase`: not used for the wrong kind of target, suspended by the minor guard), the cleanup that drops old stored `active`, `maigret.nsfw` and `portscan` preferences, and the markup of the switches and the status line. No DOM, no storage |
+| `modes.js` | The three session modes, "Adult sites" and "Active techniques" in Investigate and "Port scan" in Recon, each with its own state so that none switches another on: off on every page load, held in this module's memory only, on until switched off or the page is reloaded, and confirmed once per page session. Also whether a mode applies to the case on screen (`adultCase`, `activeCase`, `portscanCase`: not used for the wrong kind of target, suspended by the minor guard), the cleanup that drops old stored `active`, `maigret.nsfw` and `portscan` preferences, and the markup of the switches and the status line. No DOM, no storage |
 | `modeui.js` | The session mode switches on the page: the first-use confirmation, "Turn off", and keeping the case bar's copy and the Sources sheet's copy of a switch in step |
 | `adult-sites.js` | Generated copy of the server's adult and dating site list, so the page can filter without asking |
 | `names.js` | Name cases: reads the name search answer defensively (rows re-checked, text clipped, links rebuilt from checked IDs), merges a GitHub profile loaded on a click and re-matches its name with the server's rule, and builds the four name groups (public figure, people, handles to try, search the web), the notices, "What we know", the brief lines and the AI field. Pure functions, no DOM |

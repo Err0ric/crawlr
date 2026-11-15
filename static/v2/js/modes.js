@@ -1,7 +1,9 @@
-// Session modes: "Adult sites" and "Active techniques". Two opt-ins that are off whenever the page
+// Session modes: "Adult sites" and "Active techniques" in Investigate, "Port scan" in Recon. Three
+// separate opt-ins, each with its own state, switch, confirmation and status line: switching one
+// on never switches another on. They are off whenever the page
 // loads and, once switched on, stay on for every case of that page session until the investigator
 // switches them off or reloads. No DOM, no network, no storage: the state is two booleans in this
-// module's memory, so a fresh load of the module is a fresh session with both off.
+// module's memory, so a fresh load of the module is a fresh session with all of them off.
 //
 // The rules this module holds, so they can be tested in one place:
 //   - Off on load. Nothing here reads or writes localStorage, sessionStorage, a cookie, the URL,
@@ -17,7 +19,7 @@
 import { h, raw } from "./core.js";
 import { minorGuard, guardText, handleOf } from "./adult.js";
 
-export const MODE_IDS = ["adult", "active"];
+export const MODE_IDS = ["adult", "active", "portscan"];
 export const MODE = {
   adult: {
     label: "Adult sites",
@@ -36,27 +38,41 @@ export const MODE = {
   active: {
     label: "Active techniques",
     desc: "Profile scraping for Deep Dive. May notify the target.",
-    reconDesc: "Port scan of the target host. May notify the target.",
-    sheet: "Profile scraping for Deep Dive. May notify the target. In Recon this is the port scan.",
+    sheet: "Profile scraping for Deep Dive. May notify the target.",
     status: "Active techniques on for this session. May notify the target.",
     off: "Turn off active techniques",
     confirmTitle: "Switch on active techniques?",
     confirmYes: "Switch on active techniques",
     confirm: [
-      "CrawlR will fetch the target's own profile pages when you run a Deep Dive in Investigate, and scan 20 common ports on the target host on every run in Recon.",
-      "Both connect to the target's own systems, which the target's services may log. Only scan hosts you own or are authorized to test.",
+      "CrawlR will fetch the target's own profile pages when you run a Deep Dive.",
+      "That connects to the target's own services, which may log the visit. Each Deep Dive still asks before it runs.",
+    ],
+  },
+  portscan: {
+    label: "Port scan",
+    desc: "Connects to 20 common ports. May notify the target.",
+    sheet: "Connects to 20 common ports on the target. May notify the target. Only scan hosts you own or are authorized to test.",
+    status: "Port scan on for this session. May notify the target.",
+    off: "Turn off the port scan",
+    confirmTitle: "Switch on the port scan?",
+    confirmYes: "Switch on the port scan",
+    confirm: [
+      "CrawlR will scan 20 common ports on the target host on every Recon run of a domain or an IP address.",
+      "That connects to the target's own systems, which the target's services may log. Only scan hosts you own or are authorized to test.",
     ],
   },
 };
+// The modes that connect to the target's own systems carry the amber "caution" tag.
+export const CAUTIONED = ["active", "portscan"];
 // Said in both first-use confirmations, the Sources sheets and the docs.
 export const MODE_STAYS = "It stays on for every case until you switch it off or reload the page.";
-export const MODE_RULE = "Adult sites and Active techniques are off when the page loads, stay on until you switch them off or reload, and are never saved.";
+export const MODE_RULE = "Adult sites, Active techniques and the Port scan are off when the page loads, stay on until you switch them off or reload, and are never saved.";
 export const NOT_USED = "Not used for this kind of target.";
 export const MINOR_SHORT = "Not checked for this handle: it suggests a minor.";
 
 // ---- the session ------------------------------------------------------------------------------
 export function makeSessionModes() {
-  const on = { adult: false, active: false }, accepted = { adult: false, active: false };
+  const on = { adult: false, active: false, portscan: false }, accepted = { adult: false, active: false, portscan: false };
   const subs = new Set();
   const known = (id) => MODE_IDS.includes(id);
   const tell = (id) => { for (const f of [...subs]) f(id); };
@@ -84,7 +100,7 @@ export function makeSessionModes() {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
   };
 }
-// One session per page load, shared by Investigate and Recon.
+// One session per page load. Investigate reads "adult" and "active"; Recon reads "portscan" only.
 export const session = makeSessionModes();
 
 // ---- stored source preferences -----------------------------------------------------------------
@@ -119,14 +135,11 @@ export function adultCase(on, target, type, refused = null) {
   if (refused && refused.has(key)) return view(isOn, "suspended", MINOR_SHORT, guardText(refused.get(key)));
   return view(isOn, "applies");
 }
-// bench: "investigate" (profile scraping for Deep Dive, which reads the profile pages the username
-// tools found) or "recon" (the port scan: a domain or an IP address).
-const ACTIVE_TYPES = { investigate: ["username"], recon: ["domain", "ip"] };
-export function activeCase(on, type, bench = "investigate") {
-  const isOn = on === true;
-  if (!type) return view(isOn, "idle");
-  return (ACTIVE_TYPES[bench] || []).includes(type) ? view(isOn, "applies") : view(isOn, "unused", NOT_USED);
-}
+// Active techniques (Investigate): profile scraping for Deep Dive, which reads the profile pages
+// the username tools found. Port scan (Recon): a domain or an IP address.
+const typed = (on, type, types) => { const isOn = on === true; return !type ? view(isOn, "idle") : types.includes(type) ? view(isOn, "applies") : view(isOn, "unused", NOT_USED); };
+export const activeCase = (on, type) => typed(on, type, ["username"]);
+export const portscanCase = (on, type) => typed(on, type, ["domain", "ip"]);
 // The handles the server's guard refused in this session. In memory only, bounded.
 export function makeRefusals(max = 200) {
   const m = new Map();
@@ -148,7 +161,7 @@ export function barSwitchHtml(id, v, { prefix = "", desc = MODE[id].desc } = {})
   const m = MODE[id], base = `${prefix}mode-${id}`;
   return h`<div class="mode ${v.on ? "" : "off"}" data-mode-box="${id}">
       <label class="switch"><input type="checkbox" role="switch" id="${base}" data-session-mode="${id}" ${v.on ? "checked" : ""} aria-labelledby="${base}-l" aria-describedby="${base}-d"><span></span></label>
-      <div class="mode-text"><label class="mode-label" for="${base}" id="${base}-l">${m.label}${id === "active" ? raw(` ${CAUTION}`) : ""}</label><span class="mode-desc" id="${base}-d">${v.note || desc}</span></div>
+      <div class="mode-text"><label class="mode-label" for="${base}" id="${base}-l">${m.label}${CAUTIONED.includes(id) ? raw(` ${CAUTION}`) : ""}</label><span class="mode-desc" id="${base}-d">${v.note || desc}</span></div>
     </div>`;
 }
 // The quiet line under the switches while a mode is on: what is on, what that means for this case,
@@ -157,7 +170,7 @@ export function statusHtml(rows) {
   return rows.filter((r) => r.view.on).map((r) => h`<p class="mode-line" data-mode-line="${r.id}"><span>${MODE[r.id].status}${r.view.state === "suspended" ? ` ${r.view.reason}` : r.view.state === "unused" ? ` ${NOT_USED}` : ""}</span> <button type="button" class="linklike" data-mode-off="${r.id}" aria-label="${MODE[r.id].off}">Turn off</button></p>`).join("");
 }
 // The same control as a row of the Sources sheet.
-export function sheetRowHtml(id, v, { prefix = "", name = MODE[id].label, desc = MODE[id].sheet, tag = id === "active" ? "caution" : "" } = {}) {
+export function sheetRowHtml(id, v, { prefix = "", name = MODE[id].label, desc = MODE[id].sheet, tag = CAUTIONED.includes(id) ? "caution" : "" } = {}) {
   const base = `${prefix}sheet-${id}`;
   return h`<div class="source mode-row ${v.on ? "" : "off"}" data-mode-row="${id}">
       <div>

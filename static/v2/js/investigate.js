@@ -55,7 +55,7 @@ const setSrc = (id, v) => { if (!mayStore(id)) return; srcState[id] = v; saveSrc
 // The handles the server's own minor guard refused in this session: suspended for that handle only.
 const refusals = makeRefusals();
 const adultView = (type, target = $("#targetInput").value) => adultCase(session.on("adult"), target, type, refusals);
-const activeView = (type) => activeCase(session.on("active"), type, "investigate");
+const activeView = (type) => activeCase(session.on("active"), type);
 // The two switches in the case bar, the status line under them, and the same two rows in the sheet.
 function paintModes() {
   const rows = [{ id: "adult", view: adultView(sourcesType), desc: MODE.adult.desc }, { id: "active", view: activeView(sourcesType), desc: MODE.active.desc }];
@@ -353,7 +353,19 @@ const AI_PITCH = {
   name: "Get a search plan: how to narrow people-search results for this name and what to check first.",
   nameFound: "Get a written comparison of the people found with this name and what would tell them apart.",
 };
-function renderAiPanel() {
+// The panel is redrawn whole. If focus was inside it (the button that was just pressed is gone),
+// focus goes to the first control of the new content, or to the panel itself while it only says
+// that it is working. Otherwise focus would drop to the page, and on a phone out of the drawer.
+function keepPanelFocus(box, draw) {
+  const had = box.contains(document.activeElement);
+  draw();
+  if (!had || (box.contains(document.activeElement) && document.activeElement !== box)) return;
+  const next = box.querySelector("button:not([disabled]), a[href], textarea");
+  if (!next) box.tabIndex = -1;
+  (next || box).focus({ preventScroll: true });
+}
+function renderAiPanel() { keepPanelFocus($("#aiPanel"), drawAiPanel); }
+function drawAiPanel() {
   const box = $("#aiPanel");
   const note = (t) => `<p class="empty flat">${esc(t)}</p>`;
   if (!state.ai) {

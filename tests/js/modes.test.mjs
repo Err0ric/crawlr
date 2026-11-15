@@ -1,4 +1,5 @@
-// Session modes: "Adult sites" and "Active techniques" (static/v2/js/modes.js).
+// Session modes: "Adult sites" and "Active techniques" in Investigate, "Port scan" in Recon
+// (static/v2/js/modes.js). Three separate modes: none switches another on.
 // Off on every page load, on for the page session once switched on, never stored, asked about
 // once, and honest per case: not used for the wrong kind of target, suspended for a handle that
 // suggests a minor. No browser, no network.
@@ -46,7 +47,7 @@ function runWould(s, target, type, refusals) {
 
 // ---- 1. off on load, in memory only ------------------------------------------------------------
 {
-  ok(M.MODE_IDS.join() === "adult,active", "there are two session modes");
+  ok(M.MODE_IDS.join() === "adult,active,portscan" && !M.session.on("portscan"), "there are three session modes, and the port scan is off on load too");
   ok(!M.session.on("adult") && !M.session.on("active"), "both are off when the module loads");
   const fresh = M.makeSessionModes();
   ok(!fresh.on("adult") && !fresh.on("active") && !fresh.accepted("adult") && !fresh.accepted("active") && !fresh.on("nope") && !fresh.on(undefined), "a new session starts with both off and nothing accepted");
@@ -83,7 +84,9 @@ function runWould(s, target, type, refusals) {
   handle.cancel(); handle.accept();
   ok(!t.on("active") && !t.accepted("active"), "a dialog that was cancelled cannot be accepted afterwards");
   ok(M.MODE.adult.confirm.join(" ").match(/existence checks only/i) && /text/i.test(M.MODE.adult.confirm.join(" ")) && /never run for a handle that suggests a minor/.test(M.MODE.adult.confirm.join(" ")) && /lawful purposes/.test(M.MODE.adult.confirm.join(" ")), "the adult confirmation says: existence checks only, text only, never for a minor, lawful purposes");
-  ok(/fetch the target's own profile pages/.test(M.MODE.active.confirm.join(" ")) && /scan 20 common ports on the target host/.test(M.MODE.active.confirm.join(" ")) && /the target's services may log/.test(M.MODE.active.confirm.join(" ")), "the active confirmation says what is fetched or scanned, and that the target may log it");
+  ok(/fetch the target's own profile pages/.test(M.MODE.active.confirm.join(" ")) && /may log the visit/.test(M.MODE.active.confirm.join(" ")) && !/port|scan|Recon/i.test(M.MODE.active.confirm.join(" ") + M.MODE.active.desc + M.MODE.active.sheet + M.MODE.active.status), "the active confirmation says what is fetched and that it may be logged, and says nothing about Recon or a port scan");
+  ok(/scan 20 common ports on the target host on every Recon run/.test(M.MODE.portscan.confirm.join(" ")) && /the target's services may log/.test(M.MODE.portscan.confirm.join(" ")) && /own or are authorized to test/.test(M.MODE.portscan.confirm.join(" ")) && !/Deep Dive|profile|Investigate/i.test(M.MODE.portscan.confirm.join(" ") + M.MODE.portscan.desc + M.MODE.portscan.sheet + M.MODE.portscan.status), "the port scan confirmation says what is scanned and that it may be logged, and says nothing about Investigate or Deep Dive");
+  ok(/May notify the target\./.test(M.MODE.active.desc) && /May notify the target\./.test(M.MODE.portscan.desc) && /May notify the target\./.test(M.MODE.active.status) && /May notify the target\./.test(M.MODE.portscan.status) && M.CAUTIONED.join() === "active,portscan", "both keep the warning and the caution tag");
   for (const id of M.MODE_IDS) ok(M.confirmHtml(id).includes("It stays on for every case until you switch it off or reload the page.") && /never saved/.test(M.confirmHtml(id)) && !/<(?!\/?p\b)/.test(M.confirmHtml(id).replace(/<p class="modal-p">/g, "<p>")), `the ${id} confirmation says how long it lasts, as plain paragraphs`);
 }
 
@@ -143,9 +146,10 @@ function runWould(s, target, type, refusals) {
   const off = M.adultCase(false, "anna15", "username");
   ok(off.state === "off" && !off.on && !off.applies && off.note === M.MINOR_SHORT && M.adultCase(false, T, "email").note === M.NOT_USED && M.adultCase(false, T, "username").note === "" && M.adultCase(true, "", "").state === "idle" && M.adultCase("true", T, "username").on === false, "off is off whatever the case, and only the literal true is on");
   // Active techniques
-  ok(M.activeCase(true, "username").applies && M.activeCase(true, "domain", "recon").applies && M.activeCase(true, "ip", "recon").applies, "Active techniques applies to a username case in Investigate, and to a domain or an IP address in Recon");
-  for (const [t, b] of [["email", "investigate"], ["hash", "investigate"], ["phone", "investigate"], ["name", "investigate"], ["asn", "recon"]]) ok(M.activeCase(true, t, b).state === "unused" && M.activeCase(true, t, b).on && M.activeCase(true, t, b).note === M.NOT_USED, `and says it is not used for ${t} in ${b}`);
-  ok(M.activeCase(true, "", "recon").state === "idle" && M.activeCase(false, "domain", "recon").state === "off" && !M.activeCase(1, "domain", "recon").on, "with no target it is idle, and off is off");
+  ok(M.activeCase(true, "username").applies && M.portscanCase(true, "domain").applies && M.portscanCase(true, "ip").applies, "Active techniques applies to a username case in Investigate, and the port scan to a domain or an IP address in Recon");
+  for (const t of ["email", "hash", "phone", "name", "domain"]) ok(M.activeCase(true, t).state === "unused" && M.activeCase(true, t).on && M.activeCase(true, t).note === M.NOT_USED, `Active techniques says it is not used for ${t}`);
+  for (const t of ["asn", "username"]) ok(M.portscanCase(true, t).state === "unused" && M.portscanCase(true, t).on && M.portscanCase(true, t).note === M.NOT_USED, `the port scan says it is not used for ${t}`);
+  ok(M.portscanCase(true, "").state === "idle" && M.portscanCase(false, "domain").state === "off" && !M.portscanCase(1, "domain").on && M.activeCase(true, "").state === "idle", "with no target they are idle, and off is off");
 }
 
 // ---- 5. a case cannot turn a mode on --------------------------------------------------------------
@@ -203,15 +207,38 @@ function runWould(s, target, type, refusals) {
   ok(!/sessionStorage/.test(["investigate.js", "recon.js", "app.js", "core.js", "ui.js"].map(code).join("")) && /localStorage/.test(core), "nothing in the workbenches uses sessionStorage at all");
 }
 
-// ---- 7. Recon's port scan follows the Active mode -------------------------------------------------
+// ---- 7. Recon's port scan is its own mode, apart from Investigate's Active techniques -----------------
 {
-  const rec = code("recon.js");
-  ok(/id: "portscan"[^\n]*on: false, warn: "active", mode: "active" \}/.test(rec), "the port scan is marked as the Active techniques mode, and off by default");
-  ok(/const modeOf = \(id\) => SOURCES\.find\(\(s\) => s\.id === id\)\?\.mode \|\| "";\s*\nexport const srcOn = \(id\) => \(modeOf\(id\) \? session\.on\(modeOf\(id\)\) : id in srcState/.test(rec), "a source with a mode is on exactly when the session mode is: its stored preference is never read");
+  const rec = code("recon.js"), inv = code("investigate.js");
+  // What each workbench would do, read the way its code reads the session.
+  const deepDive = (s) => s.on("active");            // investigate.js: canDeep = session.on("active") && ...
+  const portScan = (s) => s.on("portscan");          // recon.js: srcOn("portscan") = session.on(modeOf("portscan"))
+  const a = M.makeSessionModes();
+  let asked = [];
+  const yesTo = (id) => (x) => { asked.push(id); x.accept(); };
+  a.request("active", true, yesTo("active"));
+  ok(deepDive(a) && !portScan(a) && !a.on("portscan") && !a.accepted("portscan") && asked.join() === "active", "switching Active techniques on in Investigate leaves Recon's port scan off: a Recon run would make no /api/infra/portscan call");
+  a.request("portscan", true, yesTo("portscan"));
+  ok(asked.join() === "active,portscan" && portScan(a), "the port scan has its own first-use confirmation, even after Active techniques was accepted");
+  a.request("active", false);
+  ok(!deepDive(a) && portScan(a), "switching Active techniques off leaves the port scan on");
+  const b2 = M.makeSessionModes();
+  b2.request("portscan", true, yes);
+  ok(portScan(b2) && !deepDive(b2) && !b2.on("active") && !b2.accepted("active") && !b2.on("adult"), "and the reverse: switching the port scan on in Recon leaves Active techniques off, so Deep Dive is not offered and no profile page is fetched");
+  b2.request("portscan", false); b2.request("portscan", true, never);
+  ok(portScan(b2) && !deepDive(b2), "it survives being switched off and on in its own workbench, without asking again");
+  // the wiring: each workbench reads only its own mode
+  ok(/id: "portscan"[^\n]*on: false, warn: "caution", mode: "portscan" \}/.test(rec), "the port scan source is marked with its own mode, and off by default");
+  ok(/const modeOf = \(id\) => SOURCES\.find\(\(s\) => s\.id === id\)\?\.mode \|\| "";\s*\nexport const srcOn = \(id\) => \(modeOf\(id\) \? session\.on\(modeOf\(id\)\) : id in srcState/.test(rec), "a source with a mode is on exactly when that session mode is: its stored preference is never read");
   ok(/if \(on\("portscan"\) && !state\.cancelled\) late\.push\(source\("Port scan", "\/api\/infra\/portscan", T, "portscan"\)\);/.test(rec) && (rec.match(/\/api\/infra\/portscan/g) || []).length === 1 && /const on = srcOn;/.test(rec), "the run asks for a port scan in one place, behind that switch");
-  ok(/s\.mode \? sheetRowHtml\(s\.mode, activeView\(\), \{ prefix: "r", name: s\.name, desc: PORTSCAN_DESC, tag: s\.warn \}\)/.test(rec) && !/data-toggle="portscan"/.test(rec), "its row in Recon's sheet is the mirrored mode switch, not a stored toggle");
-  ok(/paintBar\(\$\("#rModes"\), \$\("#rModeStatus"\), \[\{ id: "active", view: v, desc: MODE\.active\.reconDesc, prefix: "r" \}\]\);/.test(rec) && M.MODE.active.reconDesc === "Port scan of the target host. May notify the target.", "Recon's case bar carries the Active techniques switch, worded for Recon");
-  ok(/In Recon this is the port scan/.test(M.MODE.active.sheet) && /Deep Dive/.test(M.MODE.active.sheet) && /Deep Dive/.test(M.MODE.active.desc), "the one mode says what it covers in each workbench");
+  ok(!/"active"|"adult"|activeCase|adultCase/.test(rec) && (rec.match(/session\.on\(/g) || []).length === 2 && /session\.on\("portscan"\)/.test(rec), "recon.js never reads Investigate's modes");
+  ok(!/portscan|portscanCase/.test(inv) && !/session\.on\((?!"adult"\)|"active"\))/.test(inv), "investigate.js never reads Recon's mode");
+  ok(/s\.mode \? sheetRowHtml\(s\.mode, scanView\(\), \{ prefix: "r" \}\)/.test(rec) && !/data-toggle="portscan"/.test(rec), "its row in Recon's sheet is the mirrored mode switch, not a stored toggle");
+  ok(/paintBar\(\$\("#rModes"\), \$\("#rModeStatus"\), \[\{ id: "portscan", view: v, desc: MODE\.portscan\.desc, prefix: "r" \}\]\);/.test(rec) && M.MODE.portscan.desc === "Connects to 20 common ports. May notify the target." && M.MODE.portscan.label === "Port scan", "Recon's case bar carries the Port scan switch and nothing else");
+  const st = M.statusHtml([{ id: "portscan", view: M.portscanCase(true, "domain") }]);
+  ok(/<span>Port scan on for this session\. May notify the target\.<\/span> <button type="button" class="linklike" data-mode-off="portscan" aria-label="Turn off the port scan">Turn off<\/button>/.test(st) && !/Active techniques/.test(st), "Recon's status line is the port scan's own");
+  const app = read(J + "app.js");
+  ok(/domain: "Runs in Recon: DNS, WHOIS, TLS, headers, subdomains and exposure\. A port scan runs only if you switch Port scan on\."/.test(app) && /ip: "Runs in Recon: TLS, headers, network owner and exposure\. A port scan runs only if you switch Port scan on\."/.test(app) && !/exposure and a port scan/.test(app), "the landing page no longer says a port scan runs by default");
 }
 
 // ---- 8. the controls: one state, two places --------------------------------------------------------
@@ -241,12 +268,13 @@ function runWould(s, target, type, refusals) {
   ok(!/ checked/.test(M.barSwitchHtml("adult", offV)) && !/ checked/.test(M.sheetRowHtml("adult", offV)) && /class="mode off"/.test(M.barSwitchHtml("adult", offV)), "both are drawn off from the same view");
   const act = M.barSwitchHtml("active", M.activeCase(true, "username"));
   ok(/Active techniques <span class="tag warn">caution<\/span>/.test(act) && /<span class="tag warn">caution<\/span>/.test(M.sheetRowHtml("active", M.activeCase(true, "username"))) && !/tag warn/.test(b), "the caution tag stays on Active techniques, in both places");
-  ok(/id="rmode-active"/.test(M.barSwitchHtml("active", M.activeCase(true, "domain", "recon"), { prefix: "r", desc: M.MODE.active.reconDesc })) && /Port scan of the target host/.test(M.barSwitchHtml("active", M.activeCase(true, "domain", "recon"), { prefix: "r", desc: M.MODE.active.reconDesc })), "Recon's copy has its own ids and wording");
+  const scan = M.barSwitchHtml("portscan", M.portscanCase(true, "domain"), { prefix: "r" });
+  ok(/id="rmode-portscan" data-session-mode="portscan" checked/.test(scan) && /Port scan <span class="tag warn">caution<\/span>/.test(scan) && /Connects to 20 common ports\. May notify the target\./.test(scan) && /Port scan <span class="tag warn">caution<\/span>/.test(M.sheetRowHtml("portscan", M.portscanCase(true, "domain"), { prefix: "r" })), "Recon's switch has its own ids, wording and caution tag, in both places");
   // per-case notes replace the description
   ok(/id="mode-adult-d">Not used for this kind of target\.</.test(M.barSwitchHtml("adult", M.adultCase(true, "a@b.org", "email"))) && /id="mode-adult-d">Not checked for this handle: it suggests a minor\.</.test(M.barSwitchHtml("adult", M.adultCase(true, "anna15", "username"))), "under the switch the description gives way to what is true for this case");
   ok(/sheet-adult-n">Adult and dating sites are not checked for this handle: it suggests a minor \(/.test(M.sheetRowHtml("adult", M.adultCase(true, "anna15", "username"))) && /aria-describedby="sheet-adult-d sheet-adult-n"/.test(M.sheetRowHtml("adult", M.adultCase(true, "anna15", "username"))), "and the sheet's row gives the full reason, as part of the switch's description");
   // no control looks like a login to a password manager
-  const every = [b, sh, act, M.sheetRowHtml("active", M.activeCase(true, "username")), M.barSwitchHtml("active", M.activeCase(true, "ip", "recon"), { prefix: "r" }), M.statusHtml([{ id: "adult", view: on }, { id: "active", view: M.activeCase(true, "username") }])].join("");
+  const every = [b, sh, act, M.sheetRowHtml("active", M.activeCase(true, "username")), scan, M.sheetRowHtml("portscan", M.portscanCase(true, "ip"), { prefix: "r" }), M.statusHtml([{ id: "adult", view: on }, { id: "active", view: M.activeCase(true, "username") }])].join("");
   const attrs = [...every.matchAll(/\b(?:id|name|for|placeholder|aria-label)="([^"]*)"/g)].map((m) => m[1]).concat(Object.values(M.MODE).flatMap((m) => [m.label, m.off]));
   ok(attrs.length > 12 && !attrs.some((v) => /user|e-?mail|login|account|passw/i.test(v)), "no switch carries user, email, login or account in its label, id or name");
 }

@@ -111,8 +111,8 @@ $$("[data-how-legend]").forEach((el) => { el.innerHTML = HOW_LEGEND; });
 // ---- landing -------------------------------------------------------------------
 const detectBox = $("#landingDetect");
 const WILL_RUN = {
-  domain: "Runs in Recon: DNS, WHOIS, TLS, headers, subdomains, exposure and a port scan.",
-  ip: "Runs in Recon: TLS, headers, network owner, exposure and a port scan.",
+  domain: "Runs in Recon: DNS, WHOIS, TLS, headers, subdomains and exposure. A port scan runs only if you switch Port scan on.",
+  ip: "Runs in Recon: TLS, headers, network owner and exposure. A port scan runs only if you switch Port scan on.",
   asn: "Runs in Recon: registry, prefix and peering lookups.",
   username: "Runs in Investigate: Sherlock, Maigret, GitHub and platform checks.",
   email: "Runs in Investigate: Holehe, breaches, Gravatar and the email's domain.",
@@ -380,7 +380,7 @@ async function importCase(file) {
 const USE_HTML = `<div class="terms">
   <p><b>CrawlR is for</b> security work on systems you own or are authorized to test, checking your own exposure, research, journalism, incident response and training exercises such as CTFs.</p>
   <p><b>Do not use it to</b> harass, stalk, dox or locate a private individual, to scan or probe systems without permission, or to try credentials found in breaches. CrawlR never logs in to anything, never triggers a password reset and never contacts a person.</p>
-  <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and are off whenever the page loads. Once you switch Active techniques on it stays on for every case until you switch it off or reload, and it is never saved.</p>
+  <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and are off whenever the page loads. Each has its own switch: Port scan in Recon, Active techniques in Investigate. Once you switch one on it stays on for every case until you switch it off or reload, it is never saved, and it does not switch the other on.</p>
   <p><b>Adult and dating sites are opt-in.</b> They are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload. It is never saved, and no picture or post from those sites is ever loaded.</p>
   <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Linked" means a strong signal ties an account to the primary identity. "Exists" means a profile was read, which shows the handle is taken there, not who owns it. "Unverified" means a tool reported it and nothing was read. A source that failed says nothing either way.</p>
   <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
@@ -406,7 +406,7 @@ function termsIfNeeded() {
     body: `<div class="terms">
       <p>CrawlR queries public sources about the target you enter. Use it only for lawful purposes: your own accounts, authorized assessments, research, or investigations you're entitled to run.</p>
       <p>Results come from third parties and can be wrong. "Unverified" findings are leads to check, not facts, and a profile that exists shows that a handle is taken, not who owns it.</p>
-      <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled and are off when the page loads; once you switch them on they stay on for every case until you switch them off or reload. Only scan hosts you own or are authorized to test.</p>
+      <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled, each has its own switch, and both are off when the page loads; once you switch one on it stays on for every case until you switch it off or reload. Only scan hosts you own or are authorized to test.</p>
       <p>Adult and dating sites are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload.</p>
       <p>A name search asks public directories (Wikidata, GitHub, ORCID, OpenAlex and Bluesky) who shares a name and lists them as candidates. It does not tell you which of them is the person you mean.</p>
       <p>Your cases and notes stay in this browser. Don't collect more about a person than your purpose needs.</p>

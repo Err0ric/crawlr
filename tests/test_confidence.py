@@ -124,7 +124,7 @@ def test_adult_sites_default_is_off_in_the_ui():
     assert "maigret.nsfw" not in src
     assert 'cleanPrefs(store.get("crawlr_v2_sources", {}))' in src
     assert 'export const LEGACY_PREFS = ["active", "maigret.nsfw", "adult", "portscan"];' in modes
-    assert "const on = { adult: false, active: false }" in modes
+    assert "const on = { adult: false, active: false, portscan: false }" in modes
     code = "\n".join(line.split("//")[0] for line in modes.splitlines())
     assert "localStorage" not in code and "sessionStorage" not in code and "store." not in code
     assert "nsfw: adult === true" in open("static/v2/js/adult.js").read()
