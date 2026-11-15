@@ -56,6 +56,7 @@ export function meaningfulName(name, handles = []) {
 const DESCRIPTIVE = new Set(("official real the a an of and for by at in on fan fans club team group inc llc ltd gmbh co corp company studio studios labs lab media music gaming games tv radio news blog page channel account bot dev developer developers engineer kernel linux code coder hacker security research photography photo art design shop store support help info admin user member guest anonymous unknown test demo project org foundation community").split(" "));
 const LATIN = /^[a-z0-9]+$/;
 const script = (tokens) => (tokens.every((t) => LATIN.test(t)) ? "latin" : "other");
+export const personalName = (tokens) => personal(tokens);
 const personal = (tokens) => tokens.length >= 2 && tokens.every((t) => !/\d/.test(t) && !DESCRIPTIVE.has(t)) && tokens.some((t) => t.length > 1);
 // One word matches another when they are equal, or one is an initial of the other.
 const tokenMatch = (x, y) => x === y || (x.length === 1 && y.startsWith(x)) || (y.length === 1 && x.startsWith(y));
@@ -152,7 +153,7 @@ export const AVATAR_MAX_DISTANCE = 6;
 // A hash that is nearly all zeros or all ones is a flat image: a logo, a blank, a solid colour.
 // It carries too little to compare, so it is treated like a default picture and never links.
 export const lowInformation = (hex) => { const n = popcount(hex); return n === null || n < 8 || n > 56; };
-const usableAvatar = (p) => !p.avatarDefault && !!p.avatarHash && !lowInformation(p.avatarHash);
+export const usableAvatar = (p) => !p.avatarDefault && !!p.avatarHash && !lowInformation(p.avatarHash);
 const sameAvatar = (a, b) => { if (!usableAvatar(a) || !usableAvatar(b)) return false; const d = hamming(a.avatarHash, b.avatarHash); return d !== null && d <= AVATAR_MAX_DISTANCE; };
 
 const foldLoc = (s) => fold(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();

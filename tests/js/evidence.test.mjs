@@ -15,7 +15,7 @@ const tier = (ev, t) => ev.items.filter((i) => i.tier === t);
 const text = (b) => b.rows.map((r) => `${r.level}: ${r.text}`).join("\n");
 
 // ---- B. tiers ---------------------------------------------------------------------
-ok(TIERS.map((t) => t.id).join() === "flag,info,linked,matches,different,unverified,adult,lead,hosts,noise", "tier order");
+ok(TIERS.map((t) => t.id).join() === "flag,info,linked,matches,different,unverified,adult,lead,similar,hosts,noise", "tier order");
 ok(TIERS.filter((t) => ["linked", "matches", "different", "unverified", "noise"].includes(t.id)).map((t) => t.title).join("|") === "Linked|Exists (matches)|Exists (different person)|Unverified|Known noisy sites", "tier titles");
 ok(TIERS.find((t) => t.id === "different").open === false, "different people are collapsed by default");
 const tv = fx("torvalds"), er = fx("err0ric"), em = fx("email"), hs = fx("hash"), rc = fx("recon"), extra = fx("identity-extras");
@@ -111,7 +111,7 @@ ok(sourcePlan("username", "jdoe").join() === "sherlock,maigret,github,platform" 
   ok(!buildEvidence({}, "someone@gmail.com", "email").items.some((i) => i.key === "lead:domain:gmail.com"), "a mail provider is not offered for recon");
   ok(tier(ev, "hosts").length === 8 && tier(ev, "hosts")[0].source === "Domain harvest" && /CertSpotter/.test(tier(ev, "hosts")[0].meta), "harvested hosts get their own group, each with its sources");
   ok(ledgerTiers(em.target, "email").find((t) => t.id === "hosts").title === "Hosts on linux-foundation.org" && ledgerTiers(em.target, "email").find((t) => t.id === "hosts").open === false, "the host group is named after the domain and collapsed");
-  ok(ev.items.filter(isFinding).length === ev.items.length - 8 - tier(ev, "lead").length, "hosts and leads are not counted as findings");
+  ok(ev.items.filter(isFinding).length === ev.items.length - 8 - tier(ev, "lead").length - tier(ev, "similar").length && tier(ev, "similar").length > 0, "hosts, leads and similar handles are not counted as findings");
   ok(row(ev, "acct:spotify").tier === "linked" && /registered with this email/.test(row(ev, "acct:spotify").meta) && row(ev, "acct:gravatar").tier === "linked", "registrations for the searched email are linked");
   ok(!ev.items.some((i) => i.source === "Sherlock" || i.source === "Maigret"), "no username rows in an email case");
   // H. breaches, old shape

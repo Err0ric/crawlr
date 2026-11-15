@@ -39,7 +39,8 @@ RATE_LIMITS = {
     # fan-out lookups: up to 8 GitHub API calls, or up to 30 image downloads, per request
     "/api/recon/github-deep": (10, 60),
     "/api/recon/avatar-hash": (10, 60),
-    "/api/recon/platform-check": (10, 60),   # up to 6 page fetches plus canaries per call
+    "/api/recon/platform-check": (10, 60),   # up to 6 page fetches plus canaries, and one request each to Reddit and Discord
+    "/api/recon/handle-probe": (10, 60),     # one similar handle per click: about 9 requests plus canaries and up to 3 pictures, cached for a day
     "/api/recon/adult-check": (10, 60),      # opt-in: up to 7 fetches plus a canary per call, 300 KB each, cached for a day
     "/api/recon/verify-links": (12, 60),     # up to 25 page fetches per call, 300 KB each, cached for a day
     "/api/recon/name-search": (6, 60),       # 6 requests to 5 public APIs per call; GitHub search allows 10 a minute

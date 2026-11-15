@@ -22,10 +22,12 @@ const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 // nothing about names, so it can never merge people on its own.
 // incomplete: names of sources that failed, answered only in part, or never answered. While there
 // are any, a count is a lower bound: the brief says "at least" and never calls a zero good.
-export function investigateBrief({ collected: c, items, facts, identity, failed, incomplete = [], type, target }) {
+// similarLine: one sentence on the similar handles that were checked ("" when none was).
+export function investigateBrief({ collected: c, items, facts, identity, failed, incomplete = [], type, target, similarLine = "" }) {
   const rows = [], actions = [];
   const add = (level, text, ev) => rows.push(sealLink({ level, text, ev }, { subjects: [target] }));
-  const accounts = items.filter((i) => i.key?.startsWith("acct:"));
+  // A profile added from a similar handle has its own line (similarLine) and is in none of these counts.
+  const accounts = items.filter((i) => i.key?.startsWith("acct:") && !i.similar);
   const tier = (t) => accounts.filter((i) => i.tier === t);
   const linked = tier("linked"), matches = tier("matches"), different = tier("different"), unverified = tier("unverified");
 
@@ -75,6 +77,9 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     else if (main && !main.named && others.length) add("info", `The ${main.sites[0]} record carries no name. ${others.length === 1 ? `One name appears on other profiles (${who(others[0])})` : `${others.length} unrelated names appear on other profiles (${list(others.map(who), 4)})`}, and nothing ties ${others.length === 1 ? "it" : "any of them"} to that record yet.`);
     const blocked = unverified.filter((i) => /^Blocked by site/.test(i.meta || ""));
     if (blocked.length) add("info", `${list(blocked.map((i) => i.what))} blocked the check, so ${blocked.length === 1 ? "that account is" : "those accounts are"} unknown, not absent.`);
+    // A sign-up check that says "taken" read nothing: the handle is in use, by nobody we can name.
+    const taken = unverified.filter((i) => i.taken);
+    if (taken.length) add("info", `The handle is taken on ${list(taken.map((i) => i.what))} according to the site's sign-up check. Nothing was read there, so who holds it is unknown.`);
 
     // Adult and dating sites get one neutral line. They are in none of the counts above.
     const adult = items.filter((i) => i.tier === "adult");
@@ -86,7 +91,8 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     const holehe = c.holehe && !c.holehe.error ? c.holehe.results || [] : [];
     if (holehe.length) add("info", `Registered on ${plural(holehe.length, "service")} according to Holehe (${list(holehe.map((r) => r.site || r.domain), 6)}).`);
     if (c.sherlock || c.maigret) {
-      const two = unverified.filter((i) => (i.sources || []).length > 1).length;
+      // The platform check asking Reddit or Discord itself is not a second tool reporting the handle.
+      const two = unverified.filter((i) => !i.taken && (i.tools ?? (i.sources || []).length) > 1).length;
       if (two) add("info", `${plural(two, "unverified account")} ${two === 1 ? "was" : "were"} reported by two tools. That is worth more than one, but still not verification.`);
     }
     if (!accounts.length && !breaches.length && !holehe.length && !failed.length && (c.sherlock || c.maigret || c.holehe)) add("info", "No source found anything for this target. Check the spelling, or try a variant of the handle.");
@@ -105,6 +111,8 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     }
     const leads = items.filter((i) => i.tier === "lead").length;
     if (leads && type !== "email") add("info", `${plural(leads, "lead")} from profiles (handles, addresses, domains, links) ${leads === 1 ? "is" : "are"} listed under the findings. Nothing is followed until you click.`);
+    // Similar handles: one line, and only once the investigator has checked one.
+    if (similarLine) add("info", similarLine);
     if (unverified.length || read > linked.length) add("info", "Next: open the accounts that matter and tick them off as you check them. The review boxes are saved with the case.");
   }
   // A run that was cancelled before its sources answered: nothing is known, and that is said.

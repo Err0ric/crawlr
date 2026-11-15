@@ -42,7 +42,8 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | GitHub | Profile, repos, linked email. A details lookup adds organisations, top repositories and languages, linked social accounts, README links, key fingerprints and public commit emails. Rate limits are reported as rate limits | None (optional server `GITHUB_TOKEN`) |
 | Gravatar | Profile and avatar for an email | None |
 | Name search | Type a name, with an optional location, employer or keyword that only ranks the answer. CrawlR lists the people with that name on Wikidata (with the Wikipedia link), GitHub, ORCID, OpenAlex and Bluesky as candidates, says how each name fits and which details it matches, and suggests handles such a person might use. Nothing is followed on its own: "Show profile" loads one GitHub profile, "Investigate this" starts a username case for one handle, and the people-search and search engine links only open in a new tab. A directory that could not be asked is shown as unknown. Text only, no pictures | None (optional server `GITHUB_TOKEN`) |
-| Platform check | Instagram, X, Threads, TikTok, Facebook and LinkedIn, decided from what the page says, not from the status code. A site that walls the request is shown as "Blocked by site" | None |
+| Platform check | Instagram, X, Threads, TikTok, Facebook and LinkedIn, decided from what the page says, not from the status code. A site that walls the request is shown as "Blocked by site". Reddit and Discord are asked directly and are always listed: Reddit refuses servers, so without the optional credentials its row says "Blocked by site" and links the profile to open by hand; Discord has no profile page, so its sign-up check can only say "Handle taken", with the owner unknown | None (optional server `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`) |
+| Similar handles | A username or email case lists up to 16 handles close to the searched one (a digit read as a letter, a separator or a number taken off, a decoration removed, handles built from the name on the primary profile). Nothing is requested until you click "Check" on one, and one click checks one handle: GitHub, the platform check and Bluesky, never Sherlock or Maigret. Each profile that was read says whether its picture, a link or its name lines up with the case, by the same rules that group the case's own profiles. One that lines up can be added to the case with a click, and removed again | None |
 | Link check | Opens each reported profile URL once to see whether the page really exists, when you open a group. Marks links as checked, not found, blocked by the site or unclear. Can be switched off under Sources | None |
 | Avatar comparison | Fingerprints public profile pictures so two accounts with the same picture can be linked. Placeholder pictures are ignored | None |
 | Profile scraper | Bios, display names and links from found profiles (active technique, off by default) | None |
@@ -121,6 +122,7 @@ node tests/js/adult.test.mjs
 node tests/js/names.test.mjs
 node tests/js/design.test.mjs
 node tests/js/phone.test.mjs
+node tests/js/similar.test.mjs
 ```
 
 ## How it is built

@@ -324,6 +324,10 @@ def _breach_names(hibp: Optional[dict], limit: int = 20) -> list[str]:
     return out
 
 
+_HANDLE_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+TAKEN_NOTE = "handle taken, owner unknown"
+
+
 def _account_lines(req) -> list[str]:
     """Account evidence, worded by how strong it is. The groups are the ledger's tiers."""
     lines: list[str] = []
@@ -340,7 +344,11 @@ def _account_lines(req) -> list[str]:
             if a.link_kind == "templated_unverified" and a.link_check != "verified":
                 return f"{a.site} ({a.url}, unverified URL)"
             return f"{a.site} ({a.url})"
-        noted = lambda a: f"{fmt(a)}{' [' + a.note + ']' if a.note else ''}"
+        # An account the investigator added from a similar-handle check sits under another handle.
+        other = lambda a: a.handle if a.handle and _HANDLE_RE.fullmatch(a.handle) else ""
+        noted = lambda a: f"{fmt(a)}{' [' + '; '.join(x for x in (('under the different handle ' + other(a)) if other(a) else '', a.note) if x) + ']' if a.note or other(a) else ''}"
+        # A sign-up check said the handle is in use. Nothing was read, so nobody is named.
+        unread = lambda a: fmt(a) + (" [handle taken, owner unknown]" if a.note == TAKEN_NOTE else "")
         if by["linked"]:
             lines.append(
                 f"LINKED accounts ({len(by['linked'])}), tied to the primary identity by a strong signal "
@@ -365,8 +373,16 @@ def _account_lines(req) -> list[str]:
         if by["unverified"]:
             lines.append(
                 f"UNVERIFIED accounts ({len(by['unverified'])}), a tool reported the handle exists but nothing was read "
-                f"(many sites answer yes for any name, and some block the check): {', '.join(fmt(a) for a in by['unverified'][:40])}"
+                f"(many sites answer yes for any name, and some block the check): {', '.join(unread(a) for a in by['unverified'][:40])}"
                 + (f" (and {len(by['unverified']) - 40} more)" if len(by["unverified"]) > 40 else "")
+            )
+        if any(other(x) for x in req.accounts):
+            lines.append(
+                "An account marked \"under the different handle\" is not under the target's handle. The investigator "
+                "checked a similar handle and added that profile to the case after CrawlR compared it with the primary "
+                "identity; its note says what lined up. The same picture or a link between the profiles is a strong "
+                "signal. The same name alone is supporting, not proof: say so, and never treat the two handles as one "
+                "person on a name alone."
             )
         if any(x.link_kind == "templated_unverified" or x.link_check for x in req.accounts):
             lines.append(
@@ -468,6 +484,8 @@ class AccountEvidence(BaseModel):
     note: str = Field(default="", max_length=200)
     link_kind: str = Field(default="", max_length=24)    # "verified_profile" | "templated_unverified" | "none"
     link_check: str = Field(default="", max_length=16)   # "verified" | "not_found" | "blocked" | "unknown" | "no_public_url"
+    # Only for a profile added from a similar-handle check: the handle it is under, which is not the target's.
+    handle: str = Field(default="", max_length=64)
 
 
 class AnalyzeRequest(BaseModel):
@@ -591,6 +609,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
             read = [r for r in rows if r.get("state") == "found"]
             blocked = [r for r in rows if r.get("state") in ("blocked", "unknown")]
             absent = [r.get("platform", "") for r in rows if r.get("state") == "not_found"]
+            taken = [str(r.get("platform", ""))[:40] for r in rows if r.get("state") == "taken"]
             if read:
                 prompt_parts.append(
                     "Platform check read a profile page (a marker on the page matched) on: "
@@ -600,6 +619,11 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
                 prompt_parts.append(
                     "Platform check was blocked or could not tell on (unknown, not absent): "
                     + ", ".join(f"{r.get('platform', '')}" + (f" [{str(r['evidence'])[:80]}]" if r.get("evidence") else "") for r in blocked)
+                )
+            if taken:
+                prompt_parts.append(
+                    "Platform check: the site's sign-up check says the handle is taken on (taken, owner unknown: no profile "
+                    "was read and the site has no public profile page, so do not attribute it to anyone): " + ", ".join(taken)
                 )
             if absent:
                 prompt_parts.append(f"Platform check found no profile on: {', '.join(absent)}")

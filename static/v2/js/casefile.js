@@ -6,6 +6,7 @@ import { detect, INVESTIGATE_TYPES, RECON_TYPES } from "./core.js";
 import { scrubNames } from "./names.js";
 import { boundAvatarHash } from "./present.js";
 import { readPhone, readRegion } from "./phone.js";
+import { importSimilar } from "./evidence.js";
 
 export const CASE_VERSION = 1;
 export const MAX_CASE_BYTES = 3 * 1024 * 1024;   // browser storage holds about 5 MB for the whole history
@@ -76,6 +77,14 @@ export function parseCaseFile(text) {
   // The country a number without a country code was read as: a known two-letter region, or nothing.
   if ("phoneRegion" in results) { const r = readRegion(results.phoneRegion); if (r) results.phoneRegion = r; else delete results.phoneRegion; }
   if ("phone" in results) { const ph = readPhone(results.phone); if (ph) results.phone = ph; else delete results.phone; }
+  // Similar handles that were checked: every handle is held to the username pattern, every
+  // address is rebuilt from the site and the handle, text is clipped, a thumbnail must pass the
+  // same check as any other and a state must be a known one. "Added" is kept only for a profile
+  // the file itself holds, and it still has to line up with the case when the case is drawn.
+  // Whoever made the file chose what is in it. So only a handle this case would offer itself is
+  // kept, no profile stays "added" (it can be checked and added again here), and what is kept
+  // is marked as coming from the file until it is checked in this browser.
+  if ("similar" in results) { const sm = importSimilar(results, target, kind); if (Object.keys(sm).length) results.similar = sm; else delete results.similar; }
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
   if (!Object.keys(results).filter((k) => k !== "adultMode" && k !== "phoneRegion").length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();

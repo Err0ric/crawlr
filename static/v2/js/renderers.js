@@ -71,15 +71,16 @@ const CARDS = {
     const all = (d?.results || []).filter((r) => !isAdultRow(r));
     // Only "found" read the page. A blocked or unclear check leaves a templated URL; a page the
     // site says does not exist is not linked at all.
-    const WANT = { found: "verified_profile", not_found: "", blocked: "templated_unverified", unknown: "templated_unverified" };
+    // A handle a sign-up check called taken has no page to link.
+    const WANT = { found: "verified_profile", not_found: "", taken: "", blocked: "templated_unverified", unknown: "templated_unverified" };
     const pl = (r, want) => (want ? profileLink(r.platform, r.url, want, d?.username, checks) : esc(r.platform));
     // New shape: each result carries a state and the reason for it.
     if (all.some((r) => r.state)) {
-      const WORD = { found: ["profile read", "ok"], not_found: ["not found", ""], blocked: ["Blocked by site", "warn"], unknown: ["could not tell", ""] };
+      const WORD = { found: ["profile read", "ok"], taken: ["handle taken", ""], not_found: ["not found", ""], blocked: ["Blocked by site", "warn"], unknown: ["could not tell", ""] };
       const n = (st) => all.filter((r) => r.state === st).length;
       const rows = all.map((r) => li(h`${raw(pl(r, WANT[r.state] ?? "templated_unverified"))} <span class="tag ${(WORD[r.state] || ["", ""])[1]}">${(WORD[r.state] || [r.state])[0]}</span>${r.display_name ? ` ${r.display_name}` : ""}${r.evidence ? raw(h`<div class="dim small">${r.evidence}</div>`) : ""}`));
-      return card("Platform check", tag(`${fmtNum(n("found"))} read`, n("found") ? "ok" : "") + (n("blocked") ? " " + tag(`${fmtNum(n("blocked"))} blocked`, "warn") : ""),
-        (rows.length ? list(rows) : none("No platforms were checked.")) + h`<p class="muted small">"Profile read" means a marker on the page matched, never a bare response. "Blocked by site" means the site refused or walled the check, so it is unknown, not absent.</p>`);
+      return card("Platform check", tag(`${fmtNum(n("found"))} read`, n("found") ? "ok" : "") + (n("taken") ? " " + tag(`${fmtNum(n("taken"))} handle taken`) : "") + (n("blocked") ? " " + tag(`${fmtNum(n("blocked"))} blocked`, "warn") : ""),
+        (rows.length ? list(rows) : none("No platforms were checked.")) + h`<p class="muted small">"Profile read" means a marker on the page matched or the site's own record was returned, never a bare response. "Handle taken" means the site's sign-up check says the handle is in use: nothing was read, so who holds it is unknown. "Blocked by site" means the site refused or walled the check, so it is unknown, not absent.</p>`);
     }
     const found = all.filter((r) => r.found);
     const rows = found.map((r) => li(pl(r, "templated_unverified")));

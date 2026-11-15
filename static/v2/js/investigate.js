@@ -10,10 +10,11 @@ import { openModal, closeModal } from "./ui.js";
 import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText } from "./links.js";
 import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
-import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards } from "./workbench.js";
+import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards, addedFactsHtml } from "./workbench.js";
 import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
 import { readPhone, phoneTileExtra, readRegion, needsCountry, defaultRegion, PHONE_REGIONS, PHONE_SOURCE, PHONE_SOURCE_DESC, PHONE_NOT_USABLE } from "./phone.js";
 import { buildCaseFile } from "./casefile.js";
+import { readSimilar, readProbe, similarBase, probeStatus, similarBlurb } from "./similar.js";
 
 // ---- sources ---------------------------------------------------------------
 // AI analysis is not in this list on purpose: it never runs on its own. The investigator
@@ -22,7 +23,7 @@ export const SOURCES = [
   { id: "sherlock", how: "guess",  name: "Sherlock",        desc: "username across 400+ sites",            types: ["username"],          on: true },
   { id: "maigret", how: "guess",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username"], on: true },
   { id: "github", how: "record",    name: "GitHub",          desc: "profile, organisations, repos, linked accounts and commit emails", types: ["username"], on: true },
-  { id: "platform", how: "guess",  name: "Platform check",  desc: "reads the profile page on major platforms, and says when a site blocks the check", types: ["username"], on: true },
+  { id: "platform", how: "guess",  name: "Platform check",  desc: "reads the profile page on major platforms, asks Reddit and Discord directly, and says when a site blocks the check", types: ["username"], on: true },
   { id: "holehe", how: "guess",    name: "Holehe",          desc: "accounts registered to this email",     types: ["email"],             on: true },
   { id: "hibp", how: "index",      name: "Breaches",        desc: "known credential exposures",            types: ["email"],             on: true },
   { id: "gravatar", how: "record",  name: "Gravatar",        desc: "avatar profile for this email",         types: ["email"],             on: true },
@@ -166,16 +167,25 @@ function adultNotice() {
 }
 
 // ---- ledger + facts -------------------------------------------------------------
+// Similar handles whose check is in flight (see simCheck).
+const simBusy = new Set();
 function evidence() {
   const ev = buildEvidence(state.collected, state.target, state.type);
   // Leads and host inventory are not findings, so they are not part of "what changed".
   // A name case has candidates and no findings, so there is nothing for "what changed" to compare.
   const diff = !state.running && state.prev && state.type !== "name" ? diffRuns(state.prev.keys, ev.items.filter(isFinding)) : null;
   if (diff) { const added = new Set(diff.added.map((i) => i.key)); for (const it of ev.items) it.isNew = added.has(it.key); }
-  return { ...ev, diff };
+  // Similar handles are offered once the run is in: they are built from the handle and from the
+  // name on the primary profile, which is not known until the sources have answered.
+  // A handle whose check is in flight says so in every redraw, not only on the button that was pressed.
+  for (const it of ev.items) if (it.sim && simBusy.has(it.sim.variant)) it.sim.busy = true;
+  return { ...ev, items: state.running ? ev.items.filter((i) => i.tier !== "similar") : ev.items, diff };
 }
-function renderLedger() {
+// opts.keep: a redraw after the investigator changed one row (added or removed a profile from a
+// similar handle). Every group stays open or closed as it was.
+function renderLedger(opts = {}) {
   const ev = evidence();
+  const open = opts.keep ? new Map($$("#ledger .tier").map((t) => [t.dataset.tier, !t.classList.contains("collapsed")])) : null;
   const { items, facts, diff } = ev;
   $("#emptyState").hidden = true;
   // A name case opens with its caveat, always, then says how the search went.
@@ -190,8 +200,8 @@ function renderLedger() {
       ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean negative. See the notice above and try again.</p></div>`
       : `<div class="empty"><h3>Nothing found</h3><p>Every source answered and none had a result for this target.</p></div>`;
   // The adult group says what its count is made of, under its heading.
-  const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? { ...t, note: adultSummary(adultItems(items)) } : t)), items);
-  renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [], imported: state.imported, handle: state.type === "username" ? state.target.replace(/^@/, "") : "" });
+  const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? { ...t, note: adultSummary(adultItems(items)) } : t.id === "similar" ? { ...t, blurb: similarBlurb(items) } : t)), items);
+  renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [], imported: state.imported, handle: state.type === "username" ? state.target.replace(/^@/, "") : "", open });
   paintSummary(ev);
   checker.watch();
 }
@@ -207,6 +217,8 @@ function paintSummary(ev) {
   if (isName && !state.running) renderNameKnown($("#facts"), nameKnown(state.collected, state.target));
   else if (ev.identity.views.length) renderIdentityFacts($("#facts"), ev.identity, (id) => factsFor(ev, id), state.view, emptyFacts);
   else renderFacts($("#facts"), facts, emptyFacts);
+  // Facts of profiles added from a similar handle: apart from every identity, at the end.
+  if (!isName && ev.added?.length) $("#facts").insertAdjacentHTML("beforeend", addedFactsHtml(ev.added));
   if (state.type === "name") setTabCount($("#tabFindings"), "Candidates", items.filter((i) => i.tier === "people").length);
   else setTabCount($("#tabFindings"), "Findings", items.filter(isFinding).length);
   // The identity header: whose profiles these are. Username and email cases only.
@@ -219,7 +231,7 @@ function paintSummary(ev) {
   const missing = (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string");
   renderVerdict($("#verdict"), !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: keysOf("failed"), partialKeys: keysOf("partial"), missingKeys: missing, extra: tileExtra() }));
   // The written brief waits for the run to finish, so it never describes half a picture.
-  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed" || r.state === "partial").map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target }));
+  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed" || r.state === "partial").map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine }));
 }
 bindLedger($("#ledger"), checkKey);
 // What the tiles of a hash, phone or name case show, from the same functions the cards use.
@@ -332,7 +344,7 @@ function renderHead(meta) {
 // ---- AI panel ---------------------------------------------------------------------
 // Never an adult or dating site: Deep Dive reads the pages it is given (see deepDiveUrls).
 const profileUrls = () => deepDiveUrls(state.collected);
-const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "nameQualifiers", "nameProfiles", "notAnswered", "phoneRegion"].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
+const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "nameQualifiers", "nameProfiles", "notAnswered", "phoneRegion", "similar"].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
 
 // What the report will cover, said for the kind of target on screen.
 const AI_PITCH = {
@@ -483,7 +495,11 @@ function resultText(key, data) {
   if (key === "nameResult") return directoryText(data);
   if (key === "avatarHash") { const r = data?.results || [], n = r.filter((x) => x.hash && !x.error).length; return n === r.length ? `${plural(n, "image")} compared` : ""; }
   if (key === "adultCheck") return adultCheckText(data);
-  if (key === "platformCheck" && (data?.results || []).some((r) => r.state)) { const r = data.results, n = (st) => r.filter((x) => x.state === st).length; return [n("found") && `${n("found")} read`, n("blocked") && `${n("blocked")} blocked by site`, n("unknown") && `${n("unknown")} unclear`].filter(Boolean).join(", "); }
+  if (key === "platformCheck" && (data?.results || []).some((r) => r.state)) { const r = data.results, n = (st) => r.filter((x) => x.state === st).length; 
+    // Reddit and Discord are always asked, and are named with their state: neither can be read off a count.
+    const WORD = { found: "read", taken: "handle taken", not_found: "not found", blocked: "blocked by site", unknown: "unclear" };
+    const named = r.filter((x) => (x.platform === "Reddit" || x.platform === "Discord") && WORD[x.state]).map((x) => `${x.platform} ${WORD[x.state]}`).join(", ");
+    return [n("found") && `${n("found")} read`, n("taken") && `${n("taken")} handle taken`, n("blocked") && `${n("blocked")} blocked by site`, n("unknown") && `${n("unknown")} unclear`].filter(Boolean).join(", ") + (named ? ` (${named})` : ""); }
   if (key === "harvester") return [data?.hosts?.length && plural(data.hosts.length, "host"), data?.emails?.length && plural(data.emails.length, "address", "addresses")].filter(Boolean).join(", ");
   const n = data?.total ?? data?.breaches?.length ?? data?.results?.filter?.((r) => r.found === true).length ?? (data?.found ? 1 : 0);
   return n ? `${fmtNum(n)} result${n === 1 ? "" : "s"}` : "";
@@ -570,7 +586,10 @@ export async function run(targetRaw, typeOverride) {
   checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear();
   // The switch as it stands for this handle, and only if the handle passes the minor guard.
   const adult = adultOn(type, target, adultSwitch.view(target, type).on);
-  Object.assign(state, { target, type, collected: adult ? { adultMode: true } : {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
+  // The similar handles checked in the last run of this target are the investigator's work: they
+  // are carried into the new run, and every line-up is evaluated again against what it finds.
+  const carried = last && last.kind === type ? readSimilar(last.results?.similar, similarBase(target, type)) : {};
+  Object.assign(state, { target, type, collected: { ...(adult ? { adultMode: true } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}) }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -715,6 +734,69 @@ $("#ledger").addEventListener("click", async (e) => {
   else renderLedger();
   paintSummary(ev);
   profileLive.textContent = profileStatus(login, "done", p);
+});
+
+// ---- similar handles: one handle, on a click ------------------------------------------------
+// "Check" asks CrawlR about one handle close to this one (POST /api/recon/handle-probe: GitHub, the
+// platform check and Bluesky, never Sherlock or Maigret). There is no "check all": one click is
+// one handle. The answer is kept with the case, so opening the case again asks nothing. Whether a
+// profile that was read lines up with this case is decided by the identity rules (similar.js),
+// and adding one to the case is the investigator's click, per profile, and can be undone.
+// Loading and the outcome are said through the polite live region, only that row is redrawn while
+// a handle is checked, and focus stays where the investigator is.
+const simRow = (variant) => evidence().items.find((i) => i.tier === "similar" && i.sim.variant === variant);
+const simOk = () => (state.type === "username" || state.type === "email") && !state.running && !!similarBase(state.target, state.type);
+async function simCheck(b) {
+  const variant = b.dataset.simCheck, target = state.target;
+  const it = simOk() ? simRow(variant) : null;
+  // Only a handle this case offers, and only one that has not been checked.
+  if (!it || it.sim.state === "checked" || simBusy.has(variant)) return;
+  simBusy.add(variant);
+  // aria-disabled, not disabled: the button keeps focus while it loads.
+  b.setAttribute("aria-disabled", "true"); b.innerHTML = h`Checking…<span class="sr-only">: ${variant}</span>`;
+  b.closest(".ev")?.setAttribute("aria-busy", "true");
+  profileLive.textContent = probeStatus(variant, "loading");
+  const entry = { variant, checked_at: Date.now(), added: [] };
+  try {
+    const probe = readProbe(await post("/api/recon/handle-probe", { username: variant }), variant);
+    if (probe) entry.probe = probe; else entry.error = { error: "The answer could not be read.", error_code: "bad_response" };
+  } catch (err) { entry.error = { error: err.detail || err.message, error_code: err.status === 429 || err.code === "rate_limited" ? "rate_limited" : "request_failed" }; }
+  simBusy.delete(variant);
+  if (state.target !== target || !simOk()) return;
+  state.collected.similar = { ...readSimilar(state.collected.similar, similarBase(state.target, state.type)), [variant]: entry };
+  saveHistory();
+  const ev = evidence(), now = ev.items.find((i) => i.key === it.key);
+  const row = $$("#ledger .ev[data-row]").find((r) => r.dataset.row === it.key);
+  if (now && row && patchRow($("#ledger"), now, document, { actions: true })) row.setAttribute("aria-busy", "false");
+  else renderLedger({ keep: true });
+  paintSummary(ev);
+  profileLive.textContent = now ? `Checked the handle ${variant}. ${now.sim.summary}` : probeStatus(variant, "done");
+}
+// Adds one read profile to the case, or takes it out again. The rules are asked again here: a
+// profile that does not line up cannot be added, whatever the page shows.
+function simToggle(b, on) {
+  const id = on ? b.dataset.simAdd : b.dataset.simRemove, variant = b.dataset.variant;
+  if (!simOk()) return;
+  const all = readSimilar(state.collected.similar, similarBase(state.target, state.type)), e = all[variant];
+  const p = simRow(variant)?.sim.profiles.find((x) => x.id === id);
+  if (!e?.probe || !p || (on && !p.lineup.canAdd)) return;
+  const added = new Set(e.added); if (on) added.add(id); else added.delete(id);
+  state.collected.similar = { ...all, [variant]: { ...e, added: [...added] } };
+  saveHistory();
+  // Where the button was on screen, so the page does not jump under the reader when rows are added above it.
+  const top = b.getBoundingClientRect().top;
+  renderLedger({ keep: true });
+  if (state.live) { const s = summary(); log.resummarize(s.log, s.t.failed); renderHead(s.head); }
+  const sec = $$("#ledger .tier").find((t) => t.dataset.tier === "similar");
+  if (sec?.classList.contains("collapsed")) sec.querySelector(".tier-head").click();
+  const next = $$(`[data-sim-${on ? "remove" : "add"}]`, sec || $("#ledger")).find((x) => (on ? x.dataset.simRemove : x.dataset.simAdd) === id) || sec?.querySelector(".tier-head");
+  if (next) { next.focus({ preventScroll: true }); window.scrollBy(0, next.getBoundingClientRect().top - top); }
+  profileLive.textContent = `${p.site} ${variant}: ${probeStatus(variant, on ? "added" : "removed")}`;
+}
+$("#ledger").addEventListener("click", (e) => {
+  const check = e.target.closest("[data-sim-check]"), add = e.target.closest("[data-sim-add]"), rm = e.target.closest("[data-sim-remove]");
+  if (check) simCheck(check);
+  else if (add || rm) simToggle(add || rm, !!add);
 });
 
 // ---- history ------------------------------------------------------------------------

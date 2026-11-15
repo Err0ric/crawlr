@@ -171,6 +171,7 @@ export function sourceHasResults(d) {
   if (d.found === true) return true;
   // A source that answers per site (platform check, adult site check): only a page that was read
   // is a result. Its own "total" may count the sites asked, not the pages found.
+  // A sign-up check that says "taken" read nothing, so it is not a result: it counts nowhere but the Unverified tile.
   if (!d.link_check && Array.isArray(d.results) && d.results.some((r) => r && typeof r.state === "string")) return d.results.some((r) => r && r.state === "found");
   if (typeof d.total === "number") return d.total > 0;
   for (const k of ["results", "breaches", "emails", "hosts", "profiles", "subdomains", "candidates", "ports", "findings", "hops"]) {
@@ -194,7 +195,7 @@ export function sourceCoverage(d) {
   if (rows.some((r) => typeof r.state === "string")) {
     // A site with no public page was never asked, like one left for a check by hand.
     const asked = rows.filter((r) => r.state !== "manual" && r.state !== "no_public_url");
-    const answered = asked.filter((r) => r.state === "found" || r.state === "not_found").length;
+    const answered = asked.filter((r) => r.state === "found" || r.state === "not_found" || r.state === "taken").length;
     // `checked` is the number of sites a request went to. A site that is never requested (it
     // cannot be told apart automatically) is not a site that failed to answer.
     const total = Number.isInteger(d.checked) && d.checked >= answered && d.checked <= asked.length ? d.checked : asked.length;

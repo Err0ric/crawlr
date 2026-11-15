@@ -52,9 +52,11 @@ function accountTiles(accounts, footprintMd) {
   const keyed = (a) => why.get(normSite(a.what)) || why.get(normSite(a.key.slice(5)));
   const sorted = [...accounts].sort((a, b) => (!!keyed(b) - !!keyed(a)) || RANK[a.tier] - RANK[b.tier]);
   const tiles = sorted.map((a) => {
-    const w = keyed(a);
-    // A tile for another person's account says whose name is on it, whatever the model wrote.
-    const sub = a.tier === "different" ? `different person: ${a.person || "another name"}` : w || (a.sources || [a.source]).join(", ");
+    // A profile added from a similar handle is not the row the model's table is about.
+    const w = a.similar ? "" : keyed(a);
+    // A tile for another person's account says whose name is on it, whatever the model wrote. One
+    // under another handle says which, and a taken handle says that nothing was read.
+    const sub = a.tier === "different" ? `different person: ${a.person || "another name"}` : a.similar ? `under the handle ${a.similar.variant}` : a.taken ? "handle taken, owner unknown" : w || (a.sources || [a.source]).join(", ");
     // A tile is a link only when the row has a usable URL. An unchecked URL says so on the tile.
     const href = a.link_kind === "none" ? "" : su(a.url);
     const unv = a.link_kind === "templated_unverified";
@@ -112,11 +114,13 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   const exp = profile.exposure;
   const lvl = { Low: 1, Medium: 2, High: 3 }[exp] || 0;
   // Only accounts tied to the primary identity, or consistent with it, sit beside its name.
-  const confirmed = accounts.filter((a) => a.tier === "linked" || a.tier === "matches");
+  // A profile added from a similar handle is a row of the case, never part of the identity shown here.
+  const confirmed = accounts.filter((a) => (a.tier === "linked" || a.tier === "matches") && !a.similar);
   // Linked and matching accounts were read, so their URLs came from the source. One with no public page is not a link.
   const chips = confirmed.slice(0, 14).map((a) => (a.link_kind !== "none" && su(a.url) ? `<a class="chip" href="${esc(su(a.url))}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(a.what)}">${icon(a)}<span class="sr-only">${esc(a.what)} (opens in a new tab)</span></a>` : `<span class="chip" title="${esc(a.what)}">${icon(a, "")}<span class="sr-only">${esc(a.what)}</span></span>`)).join("");
   // The picture is the server-made thumbnail of a linked account, or initials. Never a remote image.
-  const thumb = accounts.find((a) => a.tier === "linked" && a.thumb)?.thumb || "";
+  // Never the picture of a profile added from a similar handle: that one is under another handle.
+  const thumb = accounts.find((a) => a.tier === "linked" && a.thumb && !a.similar)?.thumb || "";
   return `<div class="dossier">
     ${mark(name || target, { thumb, cls: "avatar" })}
     <div class="who">
