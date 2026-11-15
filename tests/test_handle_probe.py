@@ -107,8 +107,9 @@ def test_every_source_keeps_its_own_state(monkeypatch):
     assert g == {"site": "GitHub", "url": "https://github.com/samexample", "state": "found", "name": "Sam Example", "bio": "Maps and bread",
                  "location": "Lisbon", "created": "2015-01-01T00:00:00Z", "followers": 12, "note": "",
                  "links": ["https://sam.example.org", "https://x.com/sam_example"],
-                 "avatar_hash": "0f1e2d3c4b5a6978", "avatar_default": False, "thumb": THUMB}
+                 "avatar_hash": "0f1e2d3c4b5a6978", "avatar_default": False, "thumb": THUMB, "avatar_state": "ok"}
     assert i["name"] == "Sam Example" and i["avatar_hash"] == "" and i["thumb"] == "" and i["followers"] is None
+    assert i["avatar_state"] == "none"       # the page gives no picture address: none, which is not "failed"
     assert b["url"] == "https://bsky.app/profile/samexample.bsky.social" and b["name"] == "Sam Example" and b["followers"] == 10
     assert b["bio"] == "Invented person for a test fixture. Maps and bread." and b["created"].startswith("2024-08-30")
 
@@ -122,7 +123,7 @@ def test_pictures_are_hashed_on_the_server_and_no_picture_address_is_returned(mo
     text = json.dumps(out)
     assert "avatar_url" not in text and "_avatar" not in text and "avatars.githubusercontent.com" not in text and "cdn.bsky.app" not in text
     for p in out["profiles"]:
-        assert set(p) == {"site", "url", "state", "name", "bio", "location", "created", "followers", "note", "links", "avatar_hash", "avatar_default", "thumb"}
+        assert set(p) == {"site", "url", "state", "name", "bio", "location", "created", "followers", "note", "links", "avatar_hash", "avatar_default", "thumb", "avatar_state"}
 
 
 def test_a_placeholder_picture_is_flagged_and_gets_no_thumbnail(monkeypatch):
@@ -130,7 +131,31 @@ def test_a_placeholder_picture_is_flagged_and_gets_no_thumbnail(monkeypatch):
     pages["api.github.com/users/samexample"] = j(200, {**GH_USER, "avatar_url": "https://example.org/default-avatar.png"})
     world(monkeypatch, pages, [], [])
     g = probe()["profiles"][0]
-    assert g["avatar_default"] is True and g["thumb"] == "" and g["avatar_hash"]
+    assert g["avatar_default"] is True and g["thumb"] == "" and g["avatar_hash"] and g["avatar_state"] == "default"
+
+
+def settled_pages():
+    blocked = httpx.Response(403, text="")
+    return {"api.github.com": j(200, GH_USER), "public.api.bsky.app": j(400, fx("probe", "bluesky_not_found.json")),
+            "discord.com": j(200, fx("platform", "discord_free.json")), "reddit.com": blocked, "instagram.com": blocked, "x.com": blocked,
+            "threads.com": blocked, "tiktok.com": blocked, "facebook.com": blocked}
+
+
+@pytest.mark.parametrize("how", ["raises", "image_error"])
+def test_a_picture_that_could_not_be_read_is_failed_not_missing_and_is_not_kept_for_a_day(monkeypatch, how):
+    world(monkeypatch, settled_pages(), [], [])
+
+    async def broken(images):
+        if how == "raises":
+            raise RuntimeError("decoder blew up")
+        return {"results": [{"id": i["id"], "error": "The image could not be read.", "error_code": "bad_response"} for i in images]}
+    monkeypatch.setattr(hp, "run_avatar_hash", broken)
+    out = probe()
+    g = out["profiles"][0]
+    assert g["site"] == "GitHub" and g["avatar_hash"] == "" and g["thumb"] == "" and g["avatar_state"] == "failed"
+    # every source settled, but the picture did not: asked again soon, never cached for the day
+    assert set(out["sources"].values()) <= {"found", "not_found", "blocked"}
+    assert 0 < hp._cache["samexample"][0] - __import__("time").time() <= hp.CACHE_TTL_PARTIAL
 
 
 def test_only_the_fixed_sources_are_asked_and_never_an_adult_site(monkeypatch):

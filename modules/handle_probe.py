@@ -14,7 +14,8 @@ sources that return profile data, concurrently:
 
 It never runs Sherlock or Maigret and never touches an adult or dating site. Pictures of the
 profiles that were read go through modules/avatar_hash.py in the same request, so the answer
-carries a hash, the placeholder flag and the small grayscale thumbnail, and never a picture
+carries a hash, the placeholder flag, the small grayscale thumbnail and `avatar_state` ("ok",
+"default", "none" or "failed": there is a picture and it could not be read), and never a picture
 URL: the investigator's browser does not contact a picture host.
 
 Per uncached probe: 1 GitHub request, 5 page fetches plus up to 3 canaries (shared, kept for
@@ -184,16 +185,22 @@ async def run_handle_probe(username: str) -> dict:
             hashed = {r["id"]: r for r in (await run_avatar_hash(images)).get("results", [])}
         except Exception as e:  # noqa: BLE001
             log.warning("handle probe pictures failed", extra={"error_code": classify(e)})
+    asked = {i["id"] for i in images}
     for p in profiles:
         h = hashed.get(p["site"]) or {}
         p.pop("_avatar")
         p["avatar_hash"] = h.get("hash", "") if not h.get("error") else ""
         p["avatar_default"] = bool(h.get("default")) if p["avatar_hash"] else False
         p["thumb"] = h.get("thumb", "") if p["avatar_hash"] and not p["avatar_default"] else ""
+        # "failed": the profile has a picture and it could not be fetched or read. That is not
+        # the same as having none, and the page says "could not be compared".
+        p["avatar_state"] = ("default" if p["avatar_default"] else "ok") if p["avatar_hash"] else "failed" if p["site"] in asked else "none"
+    pictures_ok = all(p["avatar_state"] != "failed" for p in profiles)
 
     result = {"username": username, "profiles": profiles, "sources": sources, "cached": False}
     # "blocked" is how a site treats every server (Reddit, Threads), so it is kept for the day.
     # A source that failed, timed out or was rate limited is asked again sooner.
-    settled = all(s in ("found", "taken", "not_found", "not_asked", "blocked") for s in sources.values())
+    # A picture that could not be read is retried sooner too: the comparison depends on it.
+    settled = pictures_ok and all(s in ("found", "taken", "not_found", "not_asked", "blocked") for s in sources.values())
     _cache_put(key, result, CACHE_TTL_OK if settled else CACHE_TTL_PARTIAL)
     return result
