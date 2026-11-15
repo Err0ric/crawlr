@@ -21,8 +21,10 @@ const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
 // identity: the clusters from buildEvidence ({ views, primary }). Without it the brief says
 // nothing about names, so it can never merge people on its own.
-// incomplete: names of sources that failed, answered only in part, or never answered. While there
-// are any, a count is a lower bound: the brief says "at least" and never calls a zero good.
+// incomplete: names of sources that failed, never answered, or answered in part in a way that can
+// hide rows (partialGaps in core.js). While there are any, a count is a lower bound: the brief says
+// "at least" and never calls a zero good. A per-site check that some sites blocked is not in it:
+// those sites are rows, and the "blocked the check" line below names them.
 // similarLine: one sentence on the similar handles that were checked ("" when none was).
 export function investigateBrief({ collected: c, items, facts, identity, failed, incomplete = [], type, target, similarLine = "" }) {
   const rows = [], actions = [];

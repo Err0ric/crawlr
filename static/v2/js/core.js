@@ -256,13 +256,22 @@ export function sourceTally(collected, names) {
       if (cv.total > 0 && cv.answered === 0) { state = "failed"; text = cv.failedText; }
       else if (cv.answered < cv.total) { state = "partial"; text = coverageText(cv); }
     }
-    rows.push({ key, name, state, hasResults: state !== "failed" && state !== "skipped" && has, text, detail: o.detail || "", code: o.code || "" });
+    // listed: the parts that did not answer are sites, and each site is a row of its own in the
+    // ledger ("Blocked by site", "Could not tell"). Nothing is missing from any count.
+    rows.push({ key, name, state, hasResults: state !== "failed" && state !== "skipped" && has, text, detail: o.detail || "", code: o.code || "", ...(state === "partial" && cv.unit === "sites" ? { listed: true } : {}) });
   }
   const n = (s) => rows.filter((r) => r.state === s).length;
   const failed = n("failed"), skipped = n("skipped"), partial = n("partial");
   const ran = rows.length - skipped;
   return { ran, answered: ran - failed, withResults: rows.filter((r) => r.hasResults).length, partial, failed, skipped, rows };
 }
+// The partial sources that make a count a lower bound: the ones whose missing parts could hide
+// rows (an image that was not read, a GitHub section, a link that was not checked). A per-site
+// check (Platform check, Adult site check: sourceCoverage unit "sites") that some sites blocked
+// is not one of them, because every site it asked is listed as a row whatever it answered. It
+// stays "partial" in the run log and By source. When every site blocked it, sourceTally calls
+// it failed, and a failed source always counts. The tiles and the brief's count line read this.
+export const partialGaps = (rows) => (rows || []).filter((r) => r.state === "partial" && !r.listed);
 export const tallyText = (t) => [`${plural(t.ran, "source")} ran`, t.ran ? `${fmtNum(t.withResults)} with results` : "", t.partial ? `${fmtNum(t.partial)} partial` : "", t.failed ? `${fmtNum(t.failed)} failed` : "", t.skipped ? `${fmtNum(t.skipped)} skipped` : ""].filter(Boolean).join(" · ");
 // What the AI is told about one source: never "not found" for a source that did not answer.
 export const statusForAi = (r) => (r.state === "failed" ? (/^blocked/.test(r.text) ? `blocked: ${r.text}` : `failed: ${r.text}`) : r.state === "partial" ? r.text : r.state === "none" ? "not found" : "ok");

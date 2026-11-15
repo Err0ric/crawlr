@@ -163,6 +163,9 @@ export function cardSnippet(row, profile, now = new Date()) {
 const ran = (c, k) => c && c[k] !== undefined && c[k] !== null && !(c[k] && c[k].skipped);
 // down: why a count cannot be trusted as a total. A feed that failed, answered only in part, or
 // was asked and never answered (a cancelled run) makes a zero "unknown" and a count "at least".
+// "In part" means rows may be missing. The callers pass `partialKeys` from partialGaps in core.js,
+// which leaves out a per-site check (Platform check, Adult site check) whose only gap is sites
+// that blocked it: each of those sites is a row in the ledger already, so no count is short.
 function tile(id, label, n, { tone = "", line = "solid", feeds = [], collected = {}, failed = new Set(), partial = new Set(), missing = new Set(), jump = null, sub = "" } = {}) {
   const fed = feeds.filter((k) => ran(collected, k) || missing.has(k));
   const f = fed.filter((k) => failed.has(k)).length, m = fed.filter((k) => missing.has(k) && !ran(collected, k)).length, pt = fed.filter((k) => partial.has(k) && !failed.has(k)).length;
@@ -270,6 +273,9 @@ export function wildcardOf(collected, target = "") {
     state, domain, name: domain ? `*.${domain}` : "*", ...shape(state === "yes" ? strs(w.cnames, 4).map(host) : [], state === "yes" ? strs(w.ips, 8) : []),
     suppressed: state === "yes" ? (Number.isFinite(n) && n >= 0 ? Math.round(n) : names.length) : 0, suppressedNames: state === "yes" ? names : [],
     provider: state === "yes" ? provider : null, parents,
+    // What could not be read, so a real name may be among those left out.
+    ctFailed: state === "yes" && w.ct_failed === true,
+    attestFailed: state === "yes" ? strs(w.attest_failed, 3).filter((x) => ["MX", "NS", "SRV"].includes(x)) : [],
   };
 }
 // One sentence for the wildcard, the same on every page. "" when there is none.
@@ -277,7 +283,9 @@ export function wildcardText(w) {
   if (w?.state === "unknown") return "Wildcard DNS could not be checked: the test lookups failed, so a guessed name that resolves may not be a real host.";
   if (w?.state !== "yes") return "";
   const left = !w.suppressed ? "No guessed name was left out." : w.suppressed === 1 ? "1 guessed name was left out because it only matched the wildcard." : `${w.suppressed} guessed names were left out because they only matched the wildcard.`;
-  return `Wildcard DNS: any name under ${w.domain} resolves to ${w.target || "the same answer"}${w.provider ? ` (${w.provider.name}, a third-party ${w.provider.kind})` : ""}. So a name that resolves is not proof a host exists. ${left}`;
+  const gaps = (w.attestFailed?.length ? ` The ${w.attestFailed.join(" and ")} lookup failed, so a mail or name server may be among the names left out.` : "")
+    + (w.ctFailed ? " Certificate logs could not be read, so names a certificate attests may be among those left out." : "");
+  return `Wildcard DNS: any name under ${w.domain} resolves to ${w.target || "the same answer"}${w.provider ? ` (${w.provider.name}, a third-party ${w.provider.kind})` : ""}. So a name that resolves is not proof a host exists. ${left}${gaps}`;
 }
 
 // Recon. extra: { certDays: number | null }
