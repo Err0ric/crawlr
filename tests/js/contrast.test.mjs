@@ -29,6 +29,8 @@ for (const [theme, t] of [["dark", dark], ["light", light], ["light(auto)", ligh
   // tinted chips: the state color on its own translucent background, over raised and hover surfaces
   for (const [fg, tint] of [["ok", "ok-bg"], ["warn", "warn-bg"], ["bad", "bad-bg"], ["violet", "violet-bg"], ["ink", "violet-bg"]])
     for (const s of ["bg-raised", "bg-hover", "bg"]) check(theme, `--${fg} on --${tint} over --${s}`, solid(fg), over(t[tint], t[s]), 4.5);
+  // the "Added" tag of a profile card under a similar handle, which sits on an inset
+  check(theme, "--ok on --ok-bg over --bg-sunken", solid("ok"), over(t["ok-bg"], t["bg-sunken"]), 4.5);
   check(theme, "--on-violet on --violet-2 (primary button)", solid("on-violet"), solid("violet-2"), 4.5);
   check(theme, "--on-violet on --violet-3 (primary hover)", solid("on-violet"), solid("violet-3"), 4.5);
   // certainty pills: the tier color on its own tint, over every surface a card or tile sits on

@@ -101,7 +101,35 @@ const PREVIEW = 15;
 // The name is the link when the row has a URL of its own. An evidence link is a labelled anchor
 // after the text. A row with link_kind "none" is plain text, with a hint on how to check by hand.
 const CHECK_CLS = { verified: "ok", not_found: "", blocked: "warn", unknown: "", no_public_url: "" };
+// A similar handle: the handle and why it was built, then, once it was checked, what the check
+// found. Every profile that was read is a small evidence card (mark, site, facts, how it lines up
+// with the case), and every source that did not read one is named with its state, so a site that
+// blocked the check is never read as absent. A thumbnail is the server-made one or nothing: these
+// cards never ask for a site icon.
+export function simWhat(it) {
+  const s = it.sim;
+  const head = h`<span class="ev-title"><span class="ev-name sim-handle">${it.what}</span><span class="meta">${s.reason}</span>${s.state === "new" ? raw('<span class="lk-state">not checked</span>') : ""}</span>`;
+  if (s.state === "new") return head;
+  const cards = s.profiles.map((p) => {
+    const pill = p.pill || { word: "", tone: "" };
+    const who = `${p.site} ${s.variant}`;
+    return h`<li class="sim-card ${pill.tone ? `tone-${pill.tone}` : ""}">
+      ${raw(mark(p.site, { thumb: p.thumb, favicon: false }))}
+      <div class="sim-main">
+        <span class="ev-title">${raw(link(p.url, p.site, "", { kind: "verified_profile" }))}<span class="ev-handle">${s.variant}</span></span>
+        ${p.facts?.length ? raw(`<span class="ev-line">${p.facts.map((f) => h`<span class="ev-fact">${f}</span>`).join("")}</span>`) : ""}
+        ${p.bio ? raw(h`<span class="ev-bio">${p.bio}</span>`) : ""}
+        <span class="ev-why"><span>${p.lineup.text}${/[.!?]$/.test(p.lineup.text) ? "" : "."}${p.lineup.outcome === "name" ? " A name alone is supporting, not proof." : ""}${p.note === "suspended" ? " The site marks this account as suspended." : ""}</span></span>
+      </div>
+      <div class="sim-side">${pill.word ? raw(h`<span class="cp ${pill.tone ? `tone-${pill.tone}` : ""}">${pill.word}</span>`) : ""}${p.added ? raw(h`<span class="tag ok">Added</span><button type="button" class="btn btn-sm" data-sim-remove="${p.id}" data-variant="${s.variant}">Remove from this case<span class="sr-only">: ${who}</span></button>`)
+        : p.lineup.canAdd ? raw(h`<button type="button" class="btn btn-sm" data-sim-add="${p.id}" data-variant="${s.variant}">Add to this case<span class="sr-only">: ${who}</span></button>`) : ""}</div>
+    </li>`;
+  }).join("");
+  const states = s.sources.map((g) => h`<span class="sim-state"><b>${g.word}</b> ${g.sites.join(", ")}</span>`).join("");
+  return head + h`<div class="sim-res"><p class="sim-sum">${s.summary}</p>${cards ? raw(h`<ul class="sim-cards" aria-label="Profiles read for the handle ${s.variant}">${raw(cards)}</ul>`) : ""}${states ? raw(`<p class="sim-states">${states}</p>`) : ""}</div>`;
+}
 export function evWhat(it) {
+  if (it.sim) return simWhat(it);
   // An adult or dating site row carries the site's initials as its mark. Never an image.
   const name = (it.glyph ? h`<span class="site-glyph" aria-hidden="true">${it.glyph}</span>` : "") + (it.link_label ? esc(it.what) : linkOf(it));
   const labelled = it.link_label ? ` ${link(it.url, it.link_label, "ev-link", { kind: it.link_kind })}` : "";
@@ -124,7 +152,11 @@ export function evWhat(it) {
 }
 // The right side of a row: its buttons, then its sources as chips. The profile button's name is
 // its visible text plus the login for screen readers, so the text can change to "Loading…" and be heard.
-export const evSrc = (it) => (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
+// A similar handle has "Check" until it was checked ("Try again" after a failed check). A profile
+// that was added from one has "Remove from this case" on its row in the ledger.
+const simAct = (it) => (it.sim && it.sim.state !== "checked" ? h`<button type="button" class="btn btn-sm ev-act" data-sim-check="${it.sim.variant}">${it.sim.state === "failed" ? "Try again" : "Check"}<span class="sr-only">: ${it.sim.variant}</span></button>` : "")
+  + (it.similar ? h`<button type="button" class="btn btn-sm ev-act" data-sim-remove="${it.key}" data-variant="${it.similar.variant}">Remove from this case<span class="sr-only">: ${it.what} ${it.similar.variant}</span></button>` : "");
+export const evSrc = (it) => simAct(it) + (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
   + (it.action ? h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${it.action.type ? raw(h`data-pivot-type="${it.action.type}"`) : ""} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>` : "")
   + String(it.source ?? "").split(", ").filter(Boolean).map((x) => h`<span class="chip">${x}</span>`).join("");
 // The square mark of an evidence card: the server-made thumbnail, else the site's favicon, else
@@ -180,10 +212,14 @@ export function patchRow(el, it, doc = globalThis.document, opts = {}) {
 export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
   const byTier = Object.fromEntries(tiers.map((t) => [t.id, items.filter((i) => i.tier === t.id)]));
   const shown = tiers.filter((t) => byTier[t.id].length);
-  el.innerHTML = shown.length ? shown.map((t) => {
+  // A group marked `aside` (similar handles) is offered beside the findings: when it is the only
+  // one with rows, the page still says that nothing was found.
+  const lead = shown.some((t) => !t.aside) ? "" : emptyHtml;
+  el.innerHTML = shown.length ? lead + shown.map((t) => {
     const rows = byTier[t.id];
     const limit = t.limit ?? 200;
-    const open = t.collapseOver ? rows.length <= t.collapseOver : t.open;
+    // opts.open: which groups were open before a redraw that must not move the reader (Map of id to boolean).
+    const open = opts.open?.has(t.id) ? opts.open.get(t.id) : t.collapseOver ? rows.length <= t.collapseOver : t.open;
     // Long tiers (a heavily breached email can have 200+ rows) show the first PREVIEW rows.
     const clip = Math.min(rows.length, limit) > PREVIEW + 5;
     const bodyId = `tier-${el.id}-${t.id}`;

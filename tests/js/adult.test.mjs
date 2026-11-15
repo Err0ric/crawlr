@@ -507,7 +507,7 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   const scrubbed = A.scrubResponse("sherlock", leak, false);
   ok(scrubbed.results.map((r) => r.site).join() === "GitHub" && scrubbed.total === 1 && scrubbed.possible === 1, "mode off: an unmarked row for a listed site is dropped from an answer, by name or by host");
   const oldCase = buildEvidence({ sherlock: leak }, T, "username");
-  ok(oldCase.items.map((i) => i.key).join() === "acct:github" && !/royalcams|dating\.ru|fansly/i.test(JSON.stringify(oldCase) + JSON.stringify(aiPayloadFor({ sherlock: leak }, T, "username")) + sourceCards.sherlock(leak, {})), "an old saved case shows no such row anywhere");
+  ok(oldCase.items.filter((i) => i.tier !== "similar").map((i) => i.key).join() === "acct:github" && !/royalcams|dating\.ru|fansly/i.test(JSON.stringify(oldCase) + JSON.stringify(aiPayloadFor({ sherlock: leak }, T, "username")) + sourceCards.sherlock(leak, {})), "an old saved case shows no such row anywhere");
   ok(adultOf(buildEvidence({ adultMode: true, sherlock: leak }, T, "username")).map((i) => i.key).join() === "adult:datingru,adult:renamed,adult:royalcams", "and with the mode on they are rows of the adult group");
 }
 

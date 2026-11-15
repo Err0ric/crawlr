@@ -23,6 +23,10 @@
 //     adult       an adult or dating site, only in a case that had that mode on (see adult.js).
 //                 Existence and text only. These rows are built apart from every other account:
 //                 they are never linked, matched, clustered, turned into facts or leads, or counted.
+//     similar     a handle close to the searched one (see similar.js). Nothing is checked until
+//                 the investigator clicks "Check" on one. Never a finding, a lead or a count.
+//                 A profile read for a similar handle becomes an account row of the case only
+//                 when the investigator adds it AND the identity rules say it lines up.
 //     noise       sites known to answer yes to everything, collapsed by default
 //     notable, people, handles, websearch
 //                 a name case only (see names.js): the public figure with that name, the
@@ -37,7 +41,8 @@
 // Facts belong to an identity cluster, so one person's name is never shown beside another's.
 
 import { cardSnippet, safeThumb } from "./present.js";
-import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT, mdLink, mdNote } from "./links.js";
+import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT, REDDIT_HINT, TAKEN_TEXT, TAKEN_GENERIC, TAKEN_NOTE, mdLink, mdNote } from "./links.js";
+import { evaluateSimilar, addedProfiles, similarItems, similarBrief, similarBase, SIMILAR_GROUP, SIMILAR_BLURB, SIMILAR_SOURCE } from "./similar.js";
 import { TYPE_LABEL } from "./core.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
 import { NAME_TIERS, isNameTier, nameItems, nameForAi, nameMarkdownHead } from "./names.js";
@@ -58,13 +63,16 @@ export const canonSite = (s) => { const n = norm(s).replace(/\s*\((?!twitter).*\
 const failed = (d) => !!(d && (d.error || d.error_code));
 const fmtNum = (n) => Number(n ?? 0).toLocaleString("en-US");
 
-export const TIER_ORDER = ["flag", "info", "notable", "people", "handles", "websearch", "linked", "matches", "different", "unverified", "adult", "lead", "hosts", "noise"];
+export const TIER_ORDER = ["flag", "info", "notable", "people", "handles", "websearch", "linked", "matches", "different", "unverified", "adult", "lead", "similar", "hosts", "noise"];
 const TIER_RANK = Object.fromEntries(TIER_ORDER.map((t, i) => [t, i]));
 // Leads and host inventory are not findings about the target, so no count includes them. Adult
 // and dating site rows are existence checks kept apart from the findings, with their own count.
 // A name case has candidates, suggestions and outbound searches, and none of them is a finding.
-export const isFinding = (it) => it.tier !== "lead" && it.tier !== "hosts" && it.tier !== "adult" && !isNameTier(it.tier);
+// Similar handles are suggestions: unchecked, or checked and not part of the case.
+export const isFinding = (it) => it.tier !== "lead" && it.tier !== "similar" && it.tier !== "hosts" && it.tier !== "adult" && !isNameTier(it.tier);
 const ACCOUNT_TIERS = ["linked", "matches", "different", "unverified"];
+// Sites the platform check asks directly, where its answer stands in for a username tool's.
+const PC_OWN = new Set(["reddit", "discord"]);
 
 // ---- email ---------------------------------------------------------------------------
 // A mail provider's own hosts say nothing about one of its users, so the domain harvest is
@@ -146,7 +154,9 @@ export const detectionText = (v) => (v.detection ? `${fmtNum(v.detection.positiv
 // ---- profiles ------------------------------------------------------------------------
 // Every profile a source actually read, one per site, with the facts and leads found on it.
 // Rows from adult and dating sites are removed first: they are never profiles.
-export function collectProfiles(collected, target, type = inferType(collected, target)) {
+// opts.similar: false leaves out the profiles added from a similar handle (the case's own
+// profiles only, which is what a similar handle is compared against).
+export function collectProfiles(collected, target, type = inferType(collected, target), opts = {}) {
   const c = withoutAdult(collected);
   const searched = type === "email" ? "" : String(target ?? "").trim().replace(/^@/, "");
   const map = new Map();
@@ -154,11 +164,11 @@ export function collectProfiles(collected, target, type = inferType(collected, t
     const id = `acct:${canonSite(site)}`;
     if (id === "acct:") return null;
     let cur = map.get(id);
-    if (!cur) { cur = { id, site: SITE_DISPLAY[canonSite(site)] || String(site), url: "", handle: searched, name: "", location: "", bio: "", image: "", links: [], websites: [], anchor: "", sources: [], facts: [], leads: [], evidence: "", created: "", repos: null, followers: null, thumb: "" }; map.set(id, cur); }
+    if (!cur) { cur = { id, site: SITE_DISPLAY[canonSite(site)] || String(site), url: "", handle: searched, name: "", location: "", bio: "", image: "", links: [], websites: [], anchor: "", sources: [], facts: [], leads: [], evidence: "", created: "", note: "", repos: null, followers: null, karma: null, thumb: "" }; map.set(id, cur); }
     if (!cur.sources.includes(source)) cur.sources.push(source);
-    for (const k of ["url", "location", "bio", "image", "anchor", "evidence", "created"]) if (!cur[k] && p[k]) cur[k] = String(p[k]);
+    for (const k of ["url", "location", "bio", "image", "anchor", "evidence", "created", "note"]) if (!cur[k] && p[k]) cur[k] = String(p[k]);
     // Counts a source returned for this profile. Shown on the card as they came, never estimated.
-    for (const k of ["repos", "followers"]) if (cur[k] === null && Number.isFinite(p[k]) && p[k] >= 0) cur[k] = p[k];
+    for (const k of ["repos", "followers", "karma"]) if (cur[k] === null && Number.isFinite(p[k]) && p[k] >= 0) cur[k] = p[k];
     if (p.handle) cur.handle = String(p.handle);
     // Keep the first name that says something; a handle echoed back is not a name.
     if (p.name && (!cur.name || (!meaningfulName(cur.name, [cur.handle, searched]) && meaningfulName(p.name, [cur.handle, searched])))) cur.name = String(p.name).trim();
@@ -251,14 +261,34 @@ export function collectProfiles(collected, target, type = inferType(collected, t
   // Platform check, new shape: "found" means a marker on the page matched, so a profile was read.
   for (const r of c.platformCheck && !failed(c.platformCheck) ? c.platformCheck.results || [] : []) {
     if (r.state !== "found") continue;
-    const p = put(r.platform, "Platform check", { url: r.url, name: r.display_name, evidence: r.evidence });
+    // Reddit's record carries more than a name: a bio, the day the account was made, karma and a picture.
+    const bio = cleanBio(r.bio, false);
+    const p = put(r.platform, "Platform check", { url: r.url, name: r.display_name, evidence: r.evidence, bio, created: r.created, karma: r.karma, image: r.avatar_url, note: r.note === "suspended" ? "suspended" : "" });
     nameFact(p, "Name", r.display_name, r.platform, r.url);
+    fact(p, "Bio", bio.slice(0, 160), r.platform, r.url);
+    fact(p, "Active since", /^\d{4}-\d{2}-\d{2}/.test(String(r.created || "")) ? String(r.created).slice(0, 10) : "", r.platform, r.url);
+    for (const u of urlsIn(bio)) lead(p, "url", u, `${r.platform} bio`);
   }
 
   // Avatar hashes, when the comparison ran.
   const av = c.avatarHash;
   if (av && !failed(av)) for (const r of av.results || []) { const p = map.get(r.id); if (p && r.hash && !r.error) { p.avatarHash = String(r.hash); p.avatarDefault = !!r.default; if (!r.default) p.thumb = safeThumb(r.thumb); } }
-  return [...map.values()];
+  const own = [...map.values()];
+  if (opts.similar === false || (type !== "username" && type !== "email")) return own;
+  // Profiles the investigator added from a similar handle, and only while they still line up with
+  // the case's own profiles. Each carries its facts with the handle named in the source.
+  return [...own, ...withSimilarFacts(addedProfiles(evaluateSimilar(c.similar, own, { handle: searched, own: similarBase(target, type) })), searched, secrets)];
+}
+// The facts of a profile added from a similar handle. The source names the handle it is under.
+function withSimilarFacts(added, searched, secrets) {
+  for (const p of added) {
+    const src = `${p.site} (${p.handle})`;
+    const fact = (k, v) => { if (v && String(v).trim()) p.facts.push(sealFact({ k, v: String(v), source: src, url: p.url }, { subjects: [searched, p.handle], secrets })); };
+    if (meaningfulName(p.name, [p.handle, searched])) fact("Name", p.name);
+    fact("Location", p.location);
+    fact("Bio", looksBoilerplate(p.bio) ? "" : String(p.bio || "").slice(0, 160));
+  }
+  return added;
 }
 
 // Images to compare, one per read profile. Sent once to /api/recon/avatar-hash.
@@ -348,11 +378,19 @@ export function buildEvidence(collected, target, typeArg) {
     if (meta && !row.notes.some((n) => n.kind === kind && n.meta === meta)) row.notes.push({ kind, meta });
   };
 
+  // Reddit and Discord: the platform check asks each site directly, so its state replaces a
+  // username tool's unread report of the same site, and the tool's homepage URL is dropped.
+  // The tool is still named on the row, unless the platform check found the handle is not there.
+  const pcRows = c.platformCheck && !failed(c.platformCheck) ? (c.platformCheck.results || []).filter((r) => r && typeof r.state === "string") : [];
+  const pcOwn = new Map(pcRows.filter((r) => PC_OWN.has(canonSite(r.platform))).map((r) => [canonSite(r.platform), r.state]));
+  const cited = [];
   // --- username enumeration: sherlock + maigret ---------------------------------------
   for (const [src, d] of [["Sherlock", c.sherlock], ["Maigret", c.maigret]]) {
     if (!d || failed(d)) continue;
     for (const r of d.results || []) {
       const noisy = r.confidence === "false_positive";
+      const cs0 = canonSite(r.site || r.name || "");
+      if (pcOwn.has(cs0) && !r.verified) { if (pcOwn.get(cs0) !== "not_found") cited.push([cs0, src]); continue; }
       addAccount(r.site || r.name || "", { source: src, url: r.url, kind: noisy ? "noise" : r.verified ? "read" : "reported", meta: noisy || r.verified ? "" : r.category || "" });
     }
   }
@@ -362,13 +400,18 @@ export function buildEvidence(collected, target, typeArg) {
   }
   // --- platform check: only "found" read a profile -------------------------------------
   for (const r of c.platformCheck && !failed(c.platformCheck) ? c.platformCheck.results || [] : []) {
+    const why = r.evidence ? ` (${String(r.evidence).replace(/\.$/, "")})` : "";
     if (r.state === "found") addAccount(r.platform, { source: "Platform check", url: r.url, kind: "read" });
-    else if (r.state === "blocked") addAccount(r.platform, { source: "Platform check", url: r.url, kind: "reported", meta: `Blocked by site${r.evidence ? ` (${r.evidence})` : ""}` });
-    else if (r.state === "unknown") addAccount(r.platform, { source: "Platform check", url: r.url, kind: "reported", meta: `Could not tell${r.evidence ? ` (${r.evidence})` : ""}` });
+    // A sign-up check said the handle is in use. Nothing was read and there is no page to open.
+    else if (r.state === "taken") addAccount(r.platform, { source: "Platform check", url: "", kind: "taken" });
+    else if (r.state === "blocked") addAccount(r.platform, { source: "Platform check", url: r.url, kind: "reported", meta: `Blocked by site${why}` });
+    else if (r.state === "unknown") addAccount(r.platform, { source: "Platform check", url: r.url, kind: "reported", meta: `Could not tell${why}` });
     // Old shape: a bare 200 on the profile URL, which these sites often give for any name.
     else if (r.state === undefined && r.found === true) addAccount(r.platform, { source: "Platform check", url: r.url, kind: "reported", meta: "profile URL answered, check by hand" });
     // not_found adds nothing.
   }
+  for (const [cs, src] of cited) { const row = accounts.get(cs); if (row) { row.pcOwn = pcOwn.get(cs); if (!row.sources.includes(src)) row.sources.push(src); } }
+  for (const [cs, st] of pcOwn) { const row = accounts.get(cs); if (row) row.pcOwn = st; }
   const gh = c.github;
   if (gh?.found && !failed(gh)) addAccount("GitHub", { source: "GitHub", url: gh.profile_url, kind: "read" });
   const gr = c.gravatar;
@@ -376,8 +419,18 @@ export function buildEvidence(collected, target, typeArg) {
   for (const p of c.enricher && !failed(c.enricher) ? c.enricher.profiles || [] : []) if (p.platform && (p.display_name || p.bio || p.bio_boilerplate)) addAccount(p.platform, { source: "Profile enrichment", url: p.url, kind: "read" });
 
   // --- identity: cluster the read profiles, then rank each account against the primary --
-  const profiles = person ? collectProfiles(c, target, type).filter((p) => !(accounts.get(p.id.slice(5))?.kinds.has("noise") && !accounts.get(p.id.slice(5)).kinds.has("read"))) : [];
   const searched = type === "email" ? "" : String(target ?? "").replace(/^@/, "");
+  const ownProfiles = person ? collectProfiles(c, target, type, { similar: false }).filter((p) => !(accounts.get(p.id.slice(5))?.kinds.has("noise") && !accounts.get(p.id.slice(5)).kinds.has("read"))) : [];
+  // --- similar handles: what was checked, and the profiles the investigator added ----------
+  // A profile is part of the case only when it was added and still lines up with the case's own
+  // profiles, evaluated here from the data: "added" in a stored case is never taken on trust.
+  const simBase = similarBase(target, type);
+  const evaluated = person && simBase ? evaluateSimilar(c.similar, ownProfiles, { handle: searched, own: simBase }) : {};
+  const profiles = [...ownProfiles, ...withSimilarFacts(addedProfiles(evaluated), searched, secrets)];
+  for (const p of profiles) if (p.similar) {
+    const row = { what: p.site, url: p.url, key: p.id, sources: [SIMILAR_SOURCE], kinds: new Set(["read"]), notes: [], readUrl: p.url, similar: p.similar };
+    accounts.set(p.id.slice(5), row); items.push(row);
+  }
   const result = clusterIdentities(profiles, { handle: searched });
   const primary = result.clusters.find((x) => x.primary) || null;
   const byId = new Map(profiles.map((p) => [p.id, p]));
@@ -398,8 +451,12 @@ export function buildEvidence(collected, target, typeArg) {
       const cl = clusterOf(p.id);
       if (p.anchor === "github") row.meta = ["GitHub's own record for this handle", named ? `name on profile: ${p.name}` : "", `${fmtNum(gh.public_repos)} repos`, `${fmtNum(gh.followers)} followers`].filter(Boolean).join(" · ");
       else if (p.anchor === "gravatar") row.meta = ["Gravatar's record for this email", named ? `name on profile: ${p.name}` : "", p.location].filter(Boolean).join(" · ");
-      else row.meta = ["profile read", named ? `name on profile: ${p.name}` : r.tier === "matches" ? "no name on profile" : "", p.location, r.tier !== "different" && r.why && r.why !== "no name on the profile" ? r.why : "", p.evidence].filter(Boolean).join(" · ");
+      else row.meta = [row.similar ? `under the handle ${row.similar.variant}, added from a similar handle check (${row.similar.reason})` : "", "profile read", named ? `name on profile: ${p.name}` : r.tier === "matches" ? "no name on profile" : "", p.location, r.tier !== "different" && r.why && r.why !== "no name on the profile" ? r.why : "", p.evidence].filter(Boolean).join(" · ");
       if (r.tier === "different") row.person = cl?.label || p.name;
+    } else if (row.kinds.has("taken")) {
+      // In use according to the site's sign-up check. Unverified: nothing was read, nobody is named.
+      row.tier = "unverified"; row.taken = true;
+      row.meta = TAKEN_TEXT[row.key.slice(5)] || TAKEN_GENERIC;
     } else if (row.kinds.has("read") || row.kinds.has("reported")) {
       // "read" with no profile left means the only reader was a noisy site's extractor.
       row.tier = "unverified";
@@ -415,6 +472,8 @@ export function buildEvidence(collected, target, typeArg) {
         : classifyLink({ url: row.url, want: "templated_unverified", site: row.what, subjects: [searchedHandle] });
     row.url = lk.url; row.link_kind = lk.link_kind;
     if (lk.hint) row.hint = lk.hint;
+    // Reddit refuses servers, so its unread row says how to check by hand, beside the link.
+    if (row.key === "acct:reddit" && row.tier === "unverified" && (row.pcOwn === "blocked" || row.pcOwn === "unknown") && !row.hint) row.hint = REDDIT_HINT;
     // The link check's answer for this row, when it has one (see links.js).
     applyCheck(row, checks[row.key], { subjects: [searchedHandle] });
     // What the evidence card shows: the handle, the facts a source read on this profile, and why
@@ -431,10 +490,23 @@ export function buildEvidence(collected, target, typeArg) {
       const said = read ? [] : [...new Set(reported)].filter(Boolean);
       const note = [...said.filter((x) => /^(Blocked by site|Could not tell|profile URL answered)/.test(x)), ...said.filter((x) => !/^(Blocked by site|Could not tell|profile URL answered)/.test(x)).map((x) => `Listed under ${x}.`)].join(" ");
       row.card = { handle: String(p?.handle || searchedHandle || ""), ...snip, why: snip.basis && why === "no name on the profile" ? "" : why, note };
+      // The platform check asked the site itself and read nothing: it did not "report" the handle.
+      if (!read && row.pcOwn && row.card.basis) { const tools = row.sources.filter((x) => x !== "Platform check"); row.card.basis = tools.length ? `Reported by ${tools.join(", ")}. Nothing was read.` : "Nothing was read."; }
+      // A taken handle: the card says what the sign-up check said, and nothing about a profile.
+      if (row.taken) row.card = { handle: String(searchedHandle || ""), facts: [], bio: "", basis: row.meta, why: "", note: "" };
+      if (read && p.note === "suspended") row.card.note = "The site marks this account as suspended.";
+      if (read && row.similar) row.card.note = [`Added from the similar handle ${row.similar.variant}: ${row.similar.reason}.`, row.card.note].filter(Boolean).join(" ");
       if (p?.thumb) row.thumb = p.thumb;
     }
     markUnsendable(row);
     delete row.kinds; delete row.notes; delete row.readUrl;
+  }
+
+  // --- similar handles: one row per variant, after the leads ------------------------------
+  if (person && simBase) {
+    const basePrimary = clusterIdentities(ownProfiles, { handle: searched }).clusters.find((x) => x.primary);
+    const snippet = (sp) => { const sn = cardSnippet({ sources: [SIMILAR_SOURCE], kinds: ["read"] }, { ...sp, shownName: meaningfulName(sp.name, [sp.profile.handle, searched]) ? sp.name : "", repos: null }); return { facts: sn.facts, bio: sn.bio }; };
+    for (const r of similarItems({ handle: simBase, name: basePrimary?.named ? basePrimary.label : "", evaluated, snippet })) items.push(r);
   }
 
   // --- breaches -----------------------------------------------------------------------
@@ -516,18 +588,22 @@ export function buildEvidence(collected, target, typeArg) {
   for (const it of items) if (it.sources) {
     it.source = it.sources.join(", ");
     // Two tools agreeing is worth saying, but it is still not verification.
-    if (it.tier === "unverified" && it.sources.length > 1 && it.key?.startsWith("acct:")) it.meta = [it.meta, `reported by ${it.sources.length} tools`].filter(Boolean).join(" · ");
+    // Not for a row the platform check asked itself: it did not "report" the handle.
+    if (it.tier === "unverified" && it.sources.length > 1 && it.key?.startsWith("acct:") && !it.pcOwn) it.meta = [it.meta, `reported by ${it.sources.length} tools`].filter(Boolean).join(" · ");
+    delete it.pcOwn;
   }
   for (const it of items) { delete it.srcUrl; sealLink(it, { subjects: [searchedHandle], secrets }); }
   // A row whose page was not found stays in its group, at the end.
   items.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier] || (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || (!a.key?.startsWith("acct:") || !b.key?.startsWith("acct:") ? 0 : (b.sources?.length || 1) - (a.sources?.length || 1) || a.what.localeCompare(b.what)));
 
   // --- identity views: whose facts "What we know" can show ------------------------------
-  const sitesOf = (ids) => ids.map((id) => byId.get(id)?.site).filter(Boolean);
+  // A profile added from a similar handle is named with that handle, so it is never read as the target's.
+  const siteName = (p) => (p?.similar ? `${p.site} (${p.handle})` : p?.site);
+  const sitesOf = (ids) => ids.map((id) => siteName(byId.get(id))).filter(Boolean);
   const views = result.clusters.map((cl) => ({
     // different: at least one of its profiles carries a name that conflicts with the primary identity.
     id: cl.id, label: cl.label, named: cl.named, primary: cl.primary, different: cl.members.some((id) => rel.get(id)?.tier === "different"), why: cl.why || "", sites: sitesOf(cl.members), names: cl.names, locations: cl.locations, thumb: cl.members.map((id) => byId.get(id)?.thumb).find(Boolean) || "",
-    signals: cl.links.flatMap((l) => l.signals.map((s) => ({ ...s, a: byId.get(l.a)?.site, b: byId.get(l.b)?.site }))),
+    signals: cl.links.flatMap((l) => l.signals.map((s) => ({ ...s, a: siteName(byId.get(l.a)), b: siteName(byId.get(l.b)) }))),
     facts: dedupeFacts(cl.members.flatMap((id) => byId.get(id)?.facts || [])),
   }));
   if (result.unassigned.length) views.push({ id: "unassigned", label: "Profiles with no name", named: false, primary: false, why: "", sites: sitesOf(result.unassigned), names: [], locations: [], thumb: "", signals: [], facts: dedupeFacts(result.unassigned.flatMap((id) => byId.get(id)?.facts || [])) });
@@ -535,7 +611,7 @@ export function buildEvidence(collected, target, typeArg) {
   const identity = { views, primary: primary ? primary.id : null, people: views.filter((v) => v.named).length, noPrimary: !primary && views.length > 0 };
   // Without a primary identity no person's facts are shown as the target's.
   const facts = dedupeFacts([...(views.find((v) => v.primary)?.facts || []), ...general]);
-  return { items, facts, general: dedupeFacts(general), identity, type };
+  return { items, facts, general: dedupeFacts(general), identity, type, similarLine: similarBrief(evaluated) };
 }
 
 // Facts for one identity view, plus the facts that belong to the target and to no person.
@@ -553,6 +629,8 @@ export const TIERS = [
   { id: "unverified", title: "Unverified",                cls: "",          open: true,  blurb: "A tool reported the handle and nothing was read, or the site blocked the check. Many sites answer yes to any name. Open and check before relying on one." },
   { id: "adult",      title: ADULT_GROUP,                 cls: "",          open: false, blurb: `${ADULT_NOTICE} Each row says how it is known. Nothing here is tied to the target, and no picture or post is ever loaded.` },
   { id: "lead",       title: "Leads from profiles",       cls: "",          open: true,  blurb: "Handles, addresses, domains and links found on the profiles above. Each says where it came from. They are places to look next, not findings about this target, and nothing is followed until you click." },
+  // aside: a group that is offered beside the findings. It does not stand in for "nothing found".
+  { id: "similar",    title: SIMILAR_GROUP,               cls: "",          open: false, aside: true, blurb: SIMILAR_BLURB },
   { id: "hosts",      title: "Hosts on this domain",      cls: "",          open: false, limit: 300, blurb: "Hostnames on the email's domain, from public sources. This is the organisation's inventory. It says nothing about the person." },
   { id: "noise",      title: "Known noisy sites",         cls: "",          open: false, limit: 40, blurb: "Sites that answer yes to any username. Kept for completeness." },
 ];
@@ -562,7 +640,11 @@ export const ledgerTiers = (target, type) => type === "name" ? NAME_TIERS.map((t
 // The account rows the AI prompt and the report use, so they match the screen exactly.
 // status is the tier id: linked, matches, different or unverified.
 export const accountsFor = (items) => items.filter((i) => i.key?.startsWith("acct:") && ACCOUNT_TIERS.includes(i.tier))
-  .map((i) => ({ site: String(i.what).slice(0, 120), url: i.link_kind === "none" ? "" : String(i.url || "").slice(0, 600), link_kind: i.link_kind || "none", ...(i.check ? { link_check: i.check } : {}), status: i.tier, sources: (i.sources || [i.source]).slice(0, 8).map(String), note: i.tier === "unverified" ? "" : String(i.meta || "").slice(0, 200) }));
+  .map((i) => ({ site: String(i.what).slice(0, 120), url: i.link_kind === "none" ? "" : String(i.url || "").slice(0, 600), link_kind: i.link_kind || "none", ...(i.check ? { link_check: i.check } : {}), status: i.tier, sources: (i.sources || [i.source]).slice(0, 8).map(String),
+    // A taken handle is told as that: no profile was read and the owner is unknown.
+    note: i.taken ? TAKEN_NOTE : i.tier === "unverified" ? "" : String(i.meta || "").slice(0, 200),
+    // A profile added from a similar handle is under another handle than the target's.
+    ...(i.similar ? { handle: String(i.similar.variant).slice(0, 64) } : {}) }));
 export const tierCounts = (items) => Object.fromEntries(ACCOUNT_TIERS.map((t) => [t, items.filter((i) => i.key?.startsWith("acct:") && i.tier === t).length]));
 
 // Everything the model is told about a case. Sources are sent without their adult and dating

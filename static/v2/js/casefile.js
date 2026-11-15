@@ -5,6 +5,7 @@
 import { detect, INVESTIGATE_TYPES, RECON_TYPES } from "./core.js";
 import { scrubNames } from "./names.js";
 import { boundAvatarHash } from "./present.js";
+import { readSimilar, similarBase } from "./similar.js";
 
 export const CASE_VERSION = 1;
 export const MAX_CASE_BYTES = 3 * 1024 * 1024;   // browser storage holds about 5 MB for the whole history
@@ -70,6 +71,11 @@ export function parseCaseFile(text) {
   // A thumbnail in the avatar comparison may only be a small PNG or WebP data URI. Anything
   // else in that field is dropped, so a file cannot make the page load or show something else.
   if (results.avatarHash) results.avatarHash = boundAvatarHash(results.avatarHash);
+  // Similar handles that were checked: every handle is held to the username pattern, every
+  // address is rebuilt from the site and the handle, text is clipped, a thumbnail must pass the
+  // same check as any other and a state must be a known one. "Added" is kept only for a profile
+  // the file itself holds, and it still has to line up with the case when the case is drawn.
+  if ("similar" in results) { const base = similarBase(target, kind), sm = base ? readSimilar(results.similar, base) : {}; if (Object.keys(sm).length) results.similar = sm; else delete results.similar; }
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
   if (!Object.keys(results).filter((k) => k !== "adultMode").length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();

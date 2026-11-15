@@ -61,6 +61,13 @@ const NO_PUBLIC = {
   skype: "Skype has no public profile page. Search the name in the Skype or Teams directory while signed in.",
   cashapp: "Cash App shows a page only at cash.app/$cashtag. Look the cashtag up inside the app to see the name on it.",
 };
+// Reddit refuses requests from servers, so its row is usually "Blocked by site" with a link to open by hand.
+export const REDDIT_HINT = "Open the link in a browser. A missing account shows 'nobody on Reddit goes by that name'.";
+// A sign-up check said the handle is in use and nothing was read. CrawlR's own sentence per site:
+// the text is never taken from a stored case or a case file.
+export const TAKEN_TEXT = { discord: "Discord's sign-up check says this handle is taken. Discord has no public profile page, so who holds it is unknown." };
+export const TAKEN_GENERIC = "The site's sign-up check says this handle is taken. Nothing was read, so who holds it is unknown.";
+export const TAKEN_NOTE = "handle taken, owner unknown";
 export const GENERIC_HINT = "This link is the site's homepage. Search the handle on the site itself.";
 export const REGISTERED_HINT = "Found through the site's sign-up or reset form. There is no public page for an email address.";
 export const BREACH_HINT = "No reference page for this breach. Search the address at xposedornot.com to check it.";
@@ -229,7 +236,7 @@ const EVIDENCE_OK = new Set(KNOWN_EVIDENCE);
 // "Not checked this time" is not a result: the row stays open for a later check and is not stored.
 export const THROTTLED_EVIDENCE = "CrawlR has checked this site many times in the last minute, so this link was not checked this time.";
 export const isTransient = (r) => !!r && r.state === "unknown" && r.evidence === THROTTLED_EVIDENCE;
-const KNOWN_HINTS = new Set([...Object.values(NO_PUBLIC), GENERIC_HINT, NO_PAGE_HINT]);
+const KNOWN_HINTS = new Set([...Object.values(NO_PUBLIC), GENERIC_HINT, NO_PAGE_HINT, REDDIT_HINT]);
 // Results that came from the verifier in this session. Membership cannot be saved or imported,
 // so anything read back from History or a case file is treated as stored.
 const FRESH = new WeakSet();

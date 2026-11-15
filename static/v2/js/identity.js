@@ -152,7 +152,7 @@ export const AVATAR_MAX_DISTANCE = 6;
 // A hash that is nearly all zeros or all ones is a flat image: a logo, a blank, a solid colour.
 // It carries too little to compare, so it is treated like a default picture and never links.
 export const lowInformation = (hex) => { const n = popcount(hex); return n === null || n < 8 || n > 56; };
-const usableAvatar = (p) => !p.avatarDefault && !!p.avatarHash && !lowInformation(p.avatarHash);
+export const usableAvatar = (p) => !p.avatarDefault && !!p.avatarHash && !lowInformation(p.avatarHash);
 const sameAvatar = (a, b) => { if (!usableAvatar(a) || !usableAvatar(b)) return false; const d = hamming(a.avatarHash, b.avatarHash); return d !== null && d <= AVATAR_MAX_DISTANCE; };
 
 const foldLoc = (s) => fold(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
