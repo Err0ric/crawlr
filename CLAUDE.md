@@ -32,6 +32,7 @@ node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
 node tests/js/adult.test.mjs
 node tests/js/names.test.mjs
+node tests/js/design.test.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally to match `runtime.txt`.
@@ -70,6 +71,8 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - Recon checks return their own `findings` list (`level`: `flag`, `ok` or `info`). Only `flag` rows become ledger flags.
 - Prompts are built by `investigation_prompt()` and `recon_prompt()` so the one-click and copy-prompt paths stay identical.
 - Follow `static/v2/DESIGN.md` tokens and copy rules. Update it when a design decision changes.
+- Line style carries certainty everywhere: solid means a source read or checked it, dashed means reported and unchecked. Purple is for the primary action, the brand, the active mode and focus rings only.
+- A profile picture is shown only from the thumbnail the avatar comparison returns (`safeThumb` in `static/v2/js/present.js`). Never hotlink one, and never request a favicon or any image for an adult or dating row or a name candidate.
 - New modules: add the module in `modules/`, the endpoint in a router (with a `RATE_LIMITS` entry if it is expensive), a test in `tests/`, and a row in the README module table.
 - New colors or text styles: add them as tokens for both themes and keep `node tests/js/contrast.test.mjs` passing.
 - Keep the responsible-use consent gate. Active techniques (anything that may notify the target) stay off by default and labeled.

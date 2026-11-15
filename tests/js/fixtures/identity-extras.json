@@ -1,5 +1,5 @@
 {
- "_note": "Written to the PR 1 contract shapes. Addresses are example.org, hashes are invented.",
+ "_note": "Written to the PR 1 contract shapes. Addresses are example.org, hashes are invented. The thumbnails are a drawn placeholder face made by modules/avatar_hash.make_thumb, not anyone's picture.",
  "githubDeep": {
   "username": "torvalds",
   "found": true,
@@ -58,12 +58,14 @@
    {
     "id": "acct:github",
     "hash": "c3c3e7e7ffff0f0f",
-    "default": false
+    "default": false,
+    "thumb": "data:image/webp;base64,UklGRrwAAABXRUJQVlA4ILAAAACwBgCdASowADAAPrVWok8nJCKiI4kA4BaJaQABBskdVkmiNriGkVKsEVlW8TBO1gAt7+oClHx7bqQ26zAFwAD+7uG/z6HBj+hbFFP/3w+3nunW/4DnBoY5Zu19uUOldIfgmzksN4LaE8vfHwYYM9Yzb9CVe62s+oP85DjnYvV1UenX6qXEqQfpEGSMVOPxouF1LvD00ktfINbH9WD11Ywem/jKiyJwIm0FLgK+4gAAAA=="
    },
    {
     "id": "acct:keybase",
     "hash": "c3c3e7e7ffff0f0d",
-    "default": false
+    "default": false,
+    "thumb": "data:image/webp;base64,UklGRrwAAABXRUJQVlA4ILAAAACwBgCdASowADAAPrVWok8nJCKiI4kA4BaJaQABBskdVkmiNriGkVKsEVlW8TBO1gAt7+oClHx7bqQ26zAFwAD+7uG/z6HBj+hbFFP/3w+3nunW/4DnBoY5Zu19uUOldIfgmzksN4LaE8vfHwYYM9Yzb9CVe62s+oP85DjnYvV1UenX6qXEqQfpEGSMVOPxouF1LvD00ktfINbH9WD11Ywem/jKiyJwIm0FLgK+4gAAAA=="
    },
    {
     "id": "acct:x",

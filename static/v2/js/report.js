@@ -1,10 +1,11 @@
 // Investigation report: dossier card on top, then one scrolling report.
 // Everything the model says is escaped through markdown()/inline(); account tiles and
 // avatars come from collected data, never from the model.
-import { h, raw, esc, safeUrl, link } from "./core.js";
+import { h, raw, esc, safeUrl, link, mark } from "./core.js";
 import { UNVERIFIED_TEXT, checkText } from "./links.js";
 import { markdown, splitSections, inline } from "./ai.js";
-import { adultListHtml, splitAdultProse, ADULT_SECTION } from "./adult.js";
+import { adultListHtml, splitAdultProse, ADULT_SECTION, adultHost } from "./adult.js";
+import { rowCertainty, certaintyOf, mayFavicon } from "./present.js";
 import { NAME_NOTICE } from "./names.js";
 import { evWhat } from "./workbench.js";
 
@@ -20,12 +21,10 @@ const short = (u) => String(u).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/
 const initials = (s) => (String(s).replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2) || "?").toUpperCase();
 const normSite = (s) => String(s).toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z0-9]/g, "");
 
-// Favicon with a letter fallback (the <img> is removed on error by the delegated handler below).
-const icon = (name, url) => {
-  const d = host(url);
-  return `<span class="fav" aria-hidden="true"><span class="fav-l">${esc(initials(name))}</span>${d ? `<img src="https://icons.duckduckgo.com/ip3/${esc(d)}.ico" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}</span>`;
-};
-document.addEventListener("error", (e) => { if (e.target?.matches?.(".fav img, .dossier .avatar img")) e.target.remove(); }, true);
+// Favicon with a letter fallback: the one site mark helper in core.js.
+// Asked for by registrable domain only, never for a case opened from a case file (see present.js).
+let iconOpts = { imported: false, handle: "" };
+const icon = (a, url = a?.url) => mark(a.what, { url: a.link_kind === "none" ? "" : url, handle: iconOpts.handle, favicon: mayFavicon(a, iconOpts) && !adultHost(url), cls: "fav" });
 
 // "| a | b |" markdown table -> rows of cells (header first), or null.
 function parseTable(md) {
@@ -59,13 +58,16 @@ function accountTiles(accounts, footprintMd) {
     // A tile is a link only when the row has a usable URL. An unchecked URL says so on the tile.
     const href = a.link_kind === "none" ? "" : su(a.url);
     const unv = a.link_kind === "templated_unverified";
-    const cls = `tile ${a.tier === "linked" ? "c" : "l"}${w && a.tier !== "different" ? " key" : ""}${unv ? " unv" : ""}${a.gone ? " gone" : ""}`;
-    const inner = h`${raw(icon(a.what, a.url || a.checked_url))}<span class="n">${a.what}</span><span class="s">${sub}</span>${unv ? raw(`<span class="s lk-flag">(${UNVERIFIED_TEXT})</span>`) : ""}${checkText(a) ? raw(h`<span class="s">${checkText(a)}</span>`) : ""}`;
+    // The same grammar as the ledger: tier color on the edge, dashed when nothing read or checked it.
+    const cert = rowCertainty(a);
+    const cls = `tile${cert.tone ? ` tone-${cert.tone}` : ""}${cert.line === "dashed" ? " line-dashed" : ""}${w && a.tier !== "different" ? " key" : ""}${a.gone ? " gone" : ""}`;
+    const inner = h`${raw(icon(a, a.url || a.checked_url))}<span class="n">${a.what}</span><span class="s">${sub}</span>${unv ? raw(`<span class="s lk-flag">(${UNVERIFIED_TEXT})</span>`) : ""}${checkText(a) ? raw(h`<span class="s">${checkText(a)}</span>`) : ""}`;
     if (!href) return h`<div class="${cls}" title="${TIER_WORD[a.tier]} · no public page · ${(a.sources || [a.source]).join(", ")}">${raw(inner)}</div>`;
     return h`<a class="${cls}" href="${href}" target="_blank" rel="noopener noreferrer nofollow" data-link-kind="${a.link_kind || ""}" title="${TIER_WORD[a.tier]} · ${short(a.url)} · ${(a.sources || [a.source]).join(", ")}">${raw(inner)}<span class="sr-only"> (opens in a new tab)</span></a>`;
   }).join("");
   const n = (t) => accounts.filter((a) => a.tier === t).length;
-  return `<div class="grid-legend"><span class="c">Linked ${n("linked")}</span><span class="l">Exists (matches) ${n("matches")} · different person ${n("different")} · unverified ${n("unverified")}</span>${why.size ? `<span class="k">Key accounts first</span>` : ""}</div><div class="tiles">${tiles}</div>`
+  const legend = ["linked", "matches", "different", "unverified"].filter((t) => n(t)).map((t) => { const c = certaintyOf(t); return `<span class="cp tone-${c.tone}${c.line === "dashed" ? " line-dashed" : ""}">${esc(c.word)} ${n(t)}</span>`; }).join("");
+  return `<div class="grid-legend">${legend}${why.size ? `<span class="lg-note">Key accounts first</span>` : ""}</div><div class="tiles">${tiles}</div>`
     + (footprintMd ? markdown(notTable(footprintMd)) : "");
 }
 
@@ -104,7 +106,6 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   const name = profile.name || fact("Name");
   const loc = profile.location || fact("Location");
   const gh = collected.github?.found && !collected.github.error ? collected.github : null;
-  const avatar = su(gh?.avatar_url || (collected.gravatar?.found && collected.gravatar.avatar_url) || "");
   const since = gh?.created_at ? String(gh.created_at).slice(0, 10) : "";
   const line = [name ? `likely <b>${esc(name)}</b>` : "", loc ? esc(loc) : "", since ? `on GitHub since ${esc(since)}` : ""].filter(Boolean).join(" · ");
   const tags = profile.interests || [];
@@ -113,9 +114,11 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   // Only accounts tied to the primary identity, or consistent with it, sit beside its name.
   const confirmed = accounts.filter((a) => a.tier === "linked" || a.tier === "matches");
   // Linked and matching accounts were read, so their URLs came from the source. One with no public page is not a link.
-  const chips = confirmed.slice(0, 14).map((a) => (a.link_kind !== "none" && su(a.url) ? `<a class="chip" href="${esc(su(a.url))}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(a.what)}">${icon(a.what, a.url)}<span class="sr-only">${esc(a.what)} (opens in a new tab)</span></a>` : `<span class="chip" title="${esc(a.what)}">${icon(a.what, "")}<span class="sr-only">${esc(a.what)}</span></span>`)).join("");
+  const chips = confirmed.slice(0, 14).map((a) => (a.link_kind !== "none" && su(a.url) ? `<a class="chip" href="${esc(su(a.url))}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(a.what)}">${icon(a)}<span class="sr-only">${esc(a.what)} (opens in a new tab)</span></a>` : `<span class="chip" title="${esc(a.what)}">${icon(a, "")}<span class="sr-only">${esc(a.what)}</span></span>`)).join("");
+  // The picture is the server-made thumbnail of a linked account, or initials. Never a remote image.
+  const thumb = accounts.find((a) => a.tier === "linked" && a.thumb)?.thumb || "";
   return `<div class="dossier">
-    <div class="avatar">${avatar ? `<img src="${esc(avatar)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(initials(name || target))}</span></div>
+    ${mark(name || target, { thumb, cls: "avatar" })}
     <div class="who">
       <div class="handle">${esc(target)}</div>
       ${line ? `<div class="line">${line}</div>` : `<div class="line muted">No name or location in the collected data</div>`}
@@ -142,7 +145,8 @@ function nameReport({ ai, items }) {
     + `<div class="report-scroll">${markdown(splitAdultProse(ai.summary).rest)}${sec("notable", "Public figure", rows("notable"))}${sec("people", "People with this name", rows("people"))}</div>`;
 }
 
-export function reportHtml({ ai, target, items, facts, collected, type = "" }) {
+export function reportHtml({ ai, target, items, facts, collected, type = "", imported = false }) {
+  iconOpts = { imported: !!imported, handle: type === "username" ? String(target || "").replace(/^@/, "") : "" };
   if (type === "name" || items.some((i) => i.tier === "people" || i.tier === "websearch")) return nameReport({ ai, items });
   // Every account row, with or without a URL: a row with no public page is a tile, not a link.
   const accounts = items.filter((i) => i.key?.startsWith("acct:") && i.tier in RANK);

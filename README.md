@@ -119,6 +119,7 @@ node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
 node tests/js/adult.test.mjs
 node tests/js/names.test.mjs
+node tests/js/design.test.mjs
 ```
 
 ## How it is built

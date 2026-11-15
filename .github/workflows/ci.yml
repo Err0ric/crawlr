@@ -35,3 +35,4 @@ jobs:
           node tests/js/links.test.mjs
           node tests/js/adult.test.mjs
           node tests/js/names.test.mjs
+          node tests/js/design.test.mjs

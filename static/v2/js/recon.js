@@ -4,7 +4,8 @@ import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseRepl
 import { reconBrief, resolvedHosts, mailState, nullRecords, noMailOpen } from "./brief.js";
 import { reconTimeline } from "./timeline.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint } from "./workbench.js";
+import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, skeletonCards } from "./workbench.js";
+import { reconTiles, writeHistory } from "./present.js";
 import { buildCaseFile } from "./casefile.js";
 import { harvestCard, errorCard } from "./renderers.js";
 import { buildFindings, takeoverForAi, TIERS, RISKY, flat, day, lc } from "./reconfindings.js";
@@ -68,6 +69,9 @@ const failedSources = () => tally().rows.filter((r) => r.state === "failed");
 const checkKey = () => `crawlr_checked_${state.target}`;
 const log = makeLog($("#rRunlog"));
 bindLedger($("#rLedger"), checkKey);
+// Sources of the run in flight that have not answered yet, for the placeholders.
+const pending = new Map();
+const asked = new Set();
 
 // ---- findings: see reconfindings.js -----------------------------------------------
 
@@ -231,10 +235,12 @@ function renderCards() {
     const d = cardData(k);
     try { return k !== "certs" && isFailed(d) && !(k === "ssl" && d.error_code === "tls") ? errorCard(SRC_NAME[k] || k, d) : k === "certs" && isFailed(d) ? "" : CARDS[k](d); } catch (e) { return card(SRC_NAME[k] || k, tag("render error", "warn"), muted(e.message)); }
   }).join("");
-  $("#rBySource").hidden = !html; $("#rBySourceEmpty").hidden = !!html;
+  // A source that has not answered yet holds its place with a placeholder card.
+  const waiting = state.running ? skeletonCards([...pending.values()]) : "";
+  $("#rBySource").hidden = !html && !waiting; $("#rBySourceEmpty").hidden = !!html || !!waiting;
   // The count is sources that ran, from the shared tally. A source can show more than one card.
   setTabCount($("#rTabSources"), "By source", tally().ran);
-  $("#rSourceCards").innerHTML = html;
+  $("#rSourceCards").innerHTML = html + waiting;
 }
 
 // ---- timeline ------------------------------------------------------------------------
@@ -265,7 +271,11 @@ function renderAll() {
   const nothing = state.running ? `<div class="empty"><h3>Collecting</h3><p>Findings appear here as each source answers.</p></div>`
     : failed.length ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean bill of health. See the notice above.</p></div>`
     : `<div class="empty"><h3>No findings</h3><p>Nothing risky or exposed was found. Details from each source are below.</p></div>`;
-  renderTiers($("#rLedger"), items, TIERS, new Set(store.get(checkKey(), [])), nothing);
+  renderTiers($("#rLedger"), items, TIERS, new Set(store.get(checkKey(), [])), nothing, { pending: state.running ? [...pending.values()] : [] });
+  // The verdict tiles wait for the run to finish, like the brief.
+  $("#rCaseBar").hidden = !state.target;
+  const trows = tally().rows;
+  renderVerdict($("#rVerdict"), !state.target ? [] : reconTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: failed.map((f) => f.key), partialKeys: trows.filter((r) => r.state === "partial").map((r) => r.key), missingKeys: (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string"), extra: { certDays: state.collected.ssl?.found && Number.isFinite(state.collected.ssl.days_left) ? state.collected.ssl.days_left : null } }));
   renderFacts($("#rFacts"), facts, state.running ? "Collecting…" : "No facts extracted yet.");
   setTabCount($("#rTabFindings"), "Findings", items.filter((i) => i.tier !== "neighbor").length);
   renderBrief($("#rBrief"), $("#rBriefBody"), state.running || !state.target ? { rows: [], actions: [] } : reconBrief({ collected: state.collected, items, failed, type: state.type, target: state.target }));
@@ -279,6 +289,7 @@ function renderAll() {
 // Findings, By source and Topology are a real tablist (see makeTabs in workbench.js).
 const tabs = makeTabs($("#rTabs"), (tab) => { state.tab = tab; if (tab === "topology") drawGraph(); });
 function setTab(tab) { tabs.set(tab); }
+bindVerdict($("#rVerdict"), { ledger: $("#rLedger"), setTab, tabEl: (t) => $(`#rTabs [data-tab="${t}"]`) });
 
 // ---- graph pivots --------------------------------------------------------------------
 // Selecting a node offers to run it. One click is one run: nothing expands on its own,
@@ -401,8 +412,10 @@ function confirmDeep() {
 // ---- run ---------------------------------------------------------------------------------------
 async function source(label, url, body, key, headers = {}) {
   const row = log.add(label);
+  pending.set(row, label); asked.add(key); renderAll();
   try {
     const d = await post(url, body, headers, state.controller?.signal);
+    pending.delete(row);
     state.collected[key] = d;
     if (isFailed(d)) { const o = sourceOutcome(d); log.set(row, `${label}: ${o.text}`, "err", o.detail); }
     else if (d?.skipped) log.set(row, `${label} · skipped`, "skip");
@@ -411,6 +424,7 @@ async function source(label, url, body, key, headers = {}) {
     renderAll();
     return d;
   } catch (err) {
+    pending.delete(row);
     if (err.code === "cancelled") { log.set(row, `${label} · cancelled`, "skip"); return null; }
     state.collected[key] = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
     log.set(row, `${label}: ${err.detail || err.message}`, "err", err.raw);
@@ -423,7 +437,8 @@ function setRunning(on) {
   state.running = on;
   const b = $("#rRunBtn");
   b.textContent = on ? "Cancel run" : "Run recon";
-  b.classList.toggle("btn-primary", !on); b.classList.toggle("btn-danger", on);
+  b.classList.toggle("btn-primary", !on); b.classList.toggle("btn-cancel", on);
+  if (!on) pending.clear();
   $("#rMain").setAttribute("aria-busy", on);
 }
 export function cancel() {
@@ -440,7 +455,7 @@ export async function run(raw0) {
   const last = store.get(HISTORY_KEY, []).find((e) => e.type === "RECON" && e.v2 && e.target.toLowerCase() === target.toLowerCase());
   const prev = last ? { keys: buildFindings(last.results || {}, last.target, type).items.map((i) => i.key), ts: last.timestamp } : null;
   Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now() });
-  store.del(checkKey());
+  store.del(checkKey()); asked.clear();
   $("#rTargetInput").value = target; renderSources(type);
   setRunning(true);
   $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rEmpty").hidden = true; $("#rBySource").hidden = true; $("#rBySourceEmpty").hidden = false;
@@ -483,6 +498,8 @@ export async function run(raw0) {
     if (ips.length && !state.cancelled) { try { c.ipAsn = (await post("/api/infra/ip-asn", { ips }, {}, state.controller.signal)).results || {}; } catch { /* graph falls back to the main ASN */ } }
   }
 
+  const silent = state.cancelled ? [...asked].filter((k) => !(k in state.collected)) : [];
+  if (silent.length) state.collected.notAnswered = { keys: silent };
   setRunning(false);
   const items = renderAll();
   renderAi();
@@ -508,7 +525,7 @@ function saveHistory() {
   const i = list.findIndex((e) => e.id === entry.id);
   if (i >= 0) { entry.timestamp = list[i].timestamp; if (list[i].imported) entry.imported = list[i].imported; list[i] = entry; } else list.unshift(entry);
   while (list.length > 50) list.pop();
-  if (!store.set(HISTORY_KEY, list)) { list.splice(Math.floor(list.length / 2)); store.set(HISTORY_KEY, list); }
+  writeHistory(list, entry.id, (l) => store.set(HISTORY_KEY, l));
 }
 export function loadHistory(e) {
   Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp });
@@ -523,6 +540,7 @@ export function clearCase() {
   $("#rTargetInput").value = ""; $("#rMainHead").hidden = true; $("#rRunlog").hidden = true; $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rBySource").hidden = true;
   $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#rNotes").value = ""; $("#rPurpose").value = ""; notesMeta();
   renderSources(""); renderAi(); setTab("findings"); hidePivot();
+  $("#rCaseBar").hidden = true; $("#rVerdict").innerHTML = "";
   $("#rBrief").hidden = true; $("#rTabs").hidden = true; $("#rBySourceEmpty").hidden = false; $("#rTimelineBody").innerHTML = ""; setTabCount($("#rTabTimeline"), "Timeline", 0);
 }
 

@@ -1,10 +1,15 @@
 // Entry point: navigation, landing, settings, history drawer, AI pill, theme, terms.
-import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
-import { openModal, closeModal, openDrawer, closeDrawer } from "./ui.js";
+import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, plural, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
+import { openModal, closeModal, openDrawer, closeDrawer, openSheet, closeSheet } from "./ui.js";
 import { run, cancel, renderSources, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
 import { parseCaseFile, MAX_CASE_BYTES } from "./casefile.js";
+import { groupHistory, lastRunDiff, diffText } from "./present.js";
+import { buildEvidence, isFinding } from "./evidence.js";
+import { buildFindings } from "./reconfindings.js";
+import { scrubCollected } from "./adult.js";
+import { scrubNames } from "./names.js";
 
 // ---- theme ---------------------------------------------------------------------
 // The stylesheet follows the system setting on its own. This only applies an explicit choice.
@@ -154,8 +159,24 @@ document.addEventListener("click", (e) => {
   e.preventDefault();
   show("headers"); tools.prefillHeaders(text); toast("Those look like email headers. Analyzing them here.");
 }));
-// An example fills the box and runs the open sources. It never spends an AI credit.
-$$(".ex").forEach((b) => b.addEventListener("click", () => { $("#landingInput").value = b.dataset.example; $("#landingForm").requestSubmit(); }));
+// An example never runs anything. On the landing page it opens the workbench its target belongs
+// to (a domain opens Recon) with the box filled; in an empty workbench it fills the box in place.
+function fillBox(sel, value) { const box = $(sel); box.value = value; box.dispatchEvent(new Event("input", { bubbles: true })); box.focus(); }
+document.addEventListener("click", (e) => {
+  const ex = e.target.closest("[data-example]");
+  if (ex) { const mode = ex.dataset.exampleMode === "recon" ? "recon" : "investigate"; show(mode, { focus: false }); fillBox(mode === "recon" ? "#rTargetInput" : "#targetInput", ex.dataset.example); return; }
+  const fill = e.target.closest("[data-fill]");
+  if (fill) fillBox(fill.dataset.fill, fill.dataset.value);
+});
+
+// ---- case details on a phone -------------------------------------------------------------
+// Under 760px the summary column (What we know, AI, Purpose, Notes) is a drawer opened from the
+// case header. Widening the window puts it back in the page.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-case-details]"); if (!b) return;
+  const el = document.getElementById(b.dataset.caseDetails); if (el) openSheet({ title: "Case details", el });
+});
+window.matchMedia("(min-width: 761px)").addEventListener("change", (m) => { if (m.matches) closeSheet({ restore: false }); });
 
 // ---- rail (target + sources + run) ----------------------------------------------
 let typeOverride = "";
@@ -264,18 +285,38 @@ function openSettings() {
 
 // ---- history drawer ---------------------------------------------------------------------
 $("#historyBtn").addEventListener("click", openHistory);
-const KIND = { INVESTIGATE: "investigate", RECON: "recon", email_headers: "email headers" };
+const KIND = { INVESTIGATE: "Investigate", RECON: "Recon", email_headers: "Email headers" };
+// The finding keys of one saved run, built by the code that draws the case, for "what changed".
+function runKeys(e) {
+  if (e.type === "RECON") return buildFindings(e.results || {}, e.target, detect(e.target)).items.map((i) => i.key);
+  if (e.type !== "INVESTIGATE") return null;
+  const kind = e.kind || detect(e.target);
+  if (kind === "name") return null;       // candidates, not findings: nothing to compare
+  return buildEvidence(scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target), e.target, kind).items.filter(isFinding).map((i) => i.key);
+}
+const when = (ts) => new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+// One entry per target, with how many times it was run and what changed between the last two
+// runs. Grouping is how History is shown: every saved run is still there, under its target.
 function openHistory() {
   const list = getHistory();
+  const groups = groupHistory(list);
+  const marks = (e) => (e.imported ? h`<span>from a case file</span>` : "") + (e.v2 ? "" : h`<span>saved by the old interface</span>`);
+  const drop = (e, what) => h`<button class="btn btn-ghost btn-icon" type="button" data-del="${e.id}" aria-label="Delete ${what}">✕</button>`;
   const el = openDrawer({
     title: "History",
     body: IMPORT_HTML + (list.length ? h`
-      <p class="set-p">Kept in this browser only, newest first. Up to 50 cases.</p>
-      <ul class="hist">${raw(list.map((e) => h`
-        <li class="hist-row">
-          <button type="button" class="hist-open" data-id="${e.id}"><span class="t">${e.target}</span><span class="m">${KIND[e.type] || String(e.type || "").toLowerCase()} · ${new Date(e.timestamp).toLocaleString()}${e.imported ? " · from a case file" : ""}${e.v2 ? "" : " · saved by the old interface"}</span></button>
-          <button class="btn btn-ghost btn-icon" type="button" data-del="${e.id}" aria-label="Delete case ${e.target}">✕</button>
-        </li>`).join(""))}</ul>
+      <p class="set-p">Kept in this browser only. One entry per target, newest first. Up to 50 runs.</p>
+      <ul class="hist">${raw(groups.map((g) => {
+        const diff = diffText(lastRunDiff(g, runKeys));
+        return h`
+        <li class="hist-group">
+          <div class="hist-row">
+            <button type="button" class="hist-open" data-id="${g.last.id}"><span class="t">${g.target}</span><span class="m"><span>${KIND[g.type] || String(g.type || "")}</span><span>${plural(g.count, "run")}</span><span>last ${when(g.last.timestamp)}</span>${raw(marks(g.count === 1 ? g.last : { imported: g.imported, v2: true }))}</span>${diff ? raw(h`<span class="d">${diff}</span>`) : ""}</button>
+            ${g.count === 1 ? raw(drop(g.last, `case ${g.target}`)) : ""}
+          </div>
+          ${g.count > 1 ? raw(h`<details class="hist-runs"><summary>Show the ${g.count} runs</summary><button class="btn btn-sm hist-all" type="button" data-del-group="${g.key}">Delete all ${g.count} runs</button><ul>${raw(g.runs.map((e, i) => h`
+            <li class="hist-row"><button type="button" class="hist-open" data-id="${e.id}"><span class="t">${when(e.timestamp)}</span><span class="m"><span>${i === 0 ? "latest run" : `run ${g.count - i} of ${g.count}`}</span>${raw(marks(e))}</span></button>${raw(drop(e, `the run of ${g.target} from ${when(e.timestamp)}`))}</li>`).join(""))}</ul></details>`) : ""}
+        </li>`; }).join(""))}</ul>
       <button class="btn btn-sm hist-clear" type="button" id="histClear">Clear all history</button>`
       : `<p class="empty flat">No cases yet. History is kept in this browser only.</p>`),
   });
@@ -284,6 +325,14 @@ function openHistory() {
     if (e.target.id === "histImport") { el.querySelector("#histFile").click(); return; }
     const d = e.target.closest("[data-del]");
     if (d) { store.set("crawlr_history", getHistory().filter((x) => x.id !== d.dataset.del)); closeDrawer({ restore: false }); openHistory(); return; }
+    const dg = e.target.closest("[data-del-group]");
+    if (dg) {
+      const g = groupHistory(getHistory()).find((x) => x.key === dg.dataset.delGroup); if (!g) return;
+      const ids = new Set(g.runs.map((r) => r.id));
+      openModal({ title: `Delete all ${g.count} runs?`, body: h`<p class="modal-p">Removes every saved run of <span class="mono">${g.target}</span> and its notes from this browser. This can't be undone.</p>`,
+        actions: [{ label: "Keep", onClick: closeModal }, { label: `Delete ${g.count} runs`, primary: true, onClick: () => { store.set("crawlr_history", getHistory().filter((x) => !ids.has(x.id))); closeModal({ restore: false }); openHistory(); toast("Runs deleted"); } }] });
+      return;
+    }
     if (e.target.id === "histClear") { openModal({ title: "Clear all history?", body: `<p class="modal-p">Removes every saved case and its notes from this browser. This can't be undone.</p>`, actions: [{ label: "Keep", onClick: closeModal }, { label: "Clear all", primary: true, onClick: () => { store.del("crawlr_history"); closeModal({ restore: false }); toast("History cleared"); } }] }); return; }
     const r = e.target.closest(".hist-open");
     if (r) {

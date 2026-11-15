@@ -4,6 +4,7 @@
 // size; every value in it still reaches the page only through h, esc and link.
 import { detect, INVESTIGATE_TYPES, RECON_TYPES } from "./core.js";
 import { scrubNames } from "./names.js";
+import { boundAvatarHash } from "./present.js";
 
 export const CASE_VERSION = 1;
 export const MAX_CASE_BYTES = 3 * 1024 * 1024;   // browser storage holds about 5 MB for the whole history
@@ -66,6 +67,9 @@ export function parseCaseFile(text) {
   for (const k of ["nameResult", "nameProfiles", "nameQualifiers"]) delete results[k];
   // A result for another name than the file's target is dropped with them.
   Object.assign(results, scrubNames(Object.fromEntries(["nameResult", "nameProfiles", "nameQualifiers"].filter((k) => Object.hasOwn(j.collected, k)).map((k) => [k, j.collected[k]])), target));
+  // A thumbnail in the avatar comparison may only be a small PNG or WebP data URI. Anything
+  // else in that field is dropped, so a file cannot make the page load or show something else.
+  if (results.avatarHash) results.avatarHash = boundAvatarHash(results.avatarHash);
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
   if (!Object.keys(results).filter((k) => k !== "adultMode").length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();

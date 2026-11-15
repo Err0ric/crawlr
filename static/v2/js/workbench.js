@@ -1,7 +1,8 @@
 // Pieces shared by every workbench mode: run log, tiered ledger, facts panel, run diff.
-import { $$, h, raw, esc, link, linkOf, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
+import { $$, h, raw, esc, link, linkOf, mark, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
+import { rowCertainty, mayFavicon } from "./present.js";
 import { checkText } from "./links.js";
-import { ADULT_SECTION } from "./adult.js";
+import { ADULT_SECTION, adultHost } from "./adult.js";
 
 // ---- run log ------------------------------------------------------------------
 // One row per source. While a run is in flight the strip shows "3 of 7 sources" with a
@@ -106,16 +107,39 @@ export function evWhat(it) {
   const labelled = it.link_label ? ` ${link(it.url, it.link_label, "ev-link", { kind: it.link_kind })}` : "";
   const more = it.more?.url ? ` ${link(it.more.url, it.more.label, "ev-link", { kind: "evidence" })}` : "";
   const state = checkText(it);
-  return name + (it.isNew ? '<span class="tag violet">new</span>' : "") + labelled + more
-    + (state ? h`<span class="lk-state ${CHECK_CLS[it.check] || ""}">${state}</span>` : "")
-    + (it.meta ? h`<span class="meta">${it.meta}</span>` : "")
-    + (it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "");
+  const head = name + (it.card?.handle ? h`<span class="ev-handle">${it.card.handle}</span>` : "") + (it.isNew ? '<span class="tag violet">new</span>' : "") + labelled + more
+    + (state ? h`<span class="lk-state ${CHECK_CLS[it.check] || ""}">${state}</span>` : "");
+  const hint = it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "";
+  // An evidence card: the title line, then only what a source read (facts, a bio excerpt), or a
+  // plain statement of what kind of check found the row, then why it sits in this group.
+  if (it.card) {
+    const c = it.card;
+    return `<span class="ev-title">${head}</span>`
+      + (c.facts?.length ? `<span class="ev-line">${c.facts.map((f) => h`<span class="ev-fact">${f}</span>`).join("")}</span>` : "")
+      + (c.bio ? h`<span class="ev-bio">${c.bio}</span>` : "")
+      + (c.basis || c.note || c.why ? `<span class="ev-why">${c.why ? h`<span><b>Why here</b>${c.why}</span>` : ""}${c.basis ? h`<span>${c.basis}</span>` : ""}${c.note ? h`<span>${c.note}</span>` : ""}</span>` : "")
+      + hint;
+  }
+  return `<span class="ev-title">${head}${it.meta ? h`<span class="meta">${it.meta}</span>` : ""}</span>` + hint;
 }
-// The right side of a row: its buttons, then its source. The profile button's name is its visible
-// text plus the login for screen readers, so the text can change to "Loading…" and be heard.
+// The right side of a row: its buttons, then its sources as chips. The profile button's name is
+// its visible text plus the login for screen readers, so the text can change to "Loading…" and be heard.
 export const evSrc = (it) => (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
   + (it.action ? h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${it.action.type ? raw(h`data-pivot-type="${it.action.type}"`) : ""} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>` : "")
-  + esc(it.source);
+  + String(it.source ?? "").split(", ").filter(Boolean).map((x) => h`<span class="chip">${x}</span>`).join("");
+// The square mark of an evidence card: the server-made thumbnail, else the site's favicon, else
+// initials. A row on an adult or dating host never asks for an image of any kind.
+// opts.imported: the case came from a case file and has not been run here, so no icon is asked for.
+// opts.handle: the searched handle, so a domain that carries it is never sent to the icon service.
+export const rowMark = (it, opts = {}) => mark(it.what, { url: it.link_kind === "none" ? "" : it.url, thumb: it.thumb, handle: opts.handle || it.card?.handle || "", favicon: mayFavicon(it, opts) && !adultHost(it.url) });
+const ROW_STATE = ["tone-flag", "tone-linked", "tone-match", "tone-different", "tone-unverified", "line-dashed", "is-checked", "is-gone"];
+const rowState = (it) => { const c = rowCertainty(it); return [c.tone ? `tone-${c.tone}` : "", c.line === "dashed" ? "line-dashed" : "", c.checked ? "is-checked" : "", c.gone ? "is-gone" : ""].filter(Boolean); };
+const rowClass = (it) => `${it.card ? "rich" : ""} ${rowState(it).join(" ")}`;
+export const pillOf = (it) => { const c = rowCertainty(it); return c.word ? h`<span class="cp ${c.tone ? `tone-${c.tone}` : ""} ${c.line === "dashed" ? "line-dashed" : ""} ${c.checked ? "is-checked" : ""} ${c.gone ? "is-gone" : ""}">${c.word}</span>` : ""; };
+// Placeholders for sources that are still out. They carry no result styling, and screen readers
+// get the run log's live region instead.
+export const skeletonRows = (pending) => (pending?.length ? h`<div class="sk-wrap"><p class="sk-cap">Waiting for ${pending.length === 1 ? pending[0] : `${pending.length} sources`}${pending.length > 1 ? `: ${pending.slice(0, 6).join(", ")}${pending.length > 6 ? " and more" : ""}` : ""}. Rows appear as each one answers.</p>${raw(['w60', 'w80', 'w40'].map((w) => `<div class="sk-row" aria-hidden="true"><span class="sk sq"></span><span class="sk-lines"><span class="sk ${w}"></span><span class="sk w40"></span></span><span class="sk"></span></div>`).join(""))}</div>` : "");
+export const skeletonCards = (pending) => (pending || []).map((name) => h`<div class="sk-card"><span class="sk-name">${name}: waiting for an answer</span><span class="sk-lines" aria-hidden="true"><span class="sk w80"></span><span class="sk w60"></span><span class="sk w40"></span></span></div>`).join("");
 // Replaces one row's text in place after its link was checked, and moves a row whose page was
 // not found to the end of its group. Nothing else on the page moves.
 // Focus stays with the keyboard user: if it was on this row's link it goes to the new link, or to
@@ -131,6 +155,11 @@ export function patchRow(el, it, doc = globalThis.document, opts = {}) {
   const active = doc?.activeElement;
   const was = active && active === box ? "box" : active && what.contains(active) ? "link" : active && src && src.contains(active) ? "act" : "";
   what.innerHTML = evWhat(it);
+  // The link check changes how the row is drawn: its edge and its pill follow (see rowCertainty).
+  if (row.classList?.remove && row.querySelector) {
+    row.classList.remove(...ROW_STATE); const st = rowState(it); if (st.length) row.classList.add(...st);
+    const pill = row.querySelector(".ev-side > .cp"); if (pill) pill.outerHTML = pillOf(it);
+  }
   if (src) {
     src.innerHTML = evSrc(it);
     const name = row.querySelector(".ev-check .sr-only");
@@ -167,16 +196,17 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
           <div class="tier-blurb">${t.blurb}</div>
           ${t.note ? raw(h`<div class="tier-blurb">${t.note}</div>`) : ""}
           ${raw(rows.slice(0, limit).map((it, i) => h`
-            <div class="ev ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}">
+            <div class="ev ${raw(rowClass(it))} ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}">
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
+              ${it.card ? raw(rowMark(it, opts)) : ""}
               <div class="what">${raw(evWhat(it))}</div>
-              <span class="src">${raw(evSrc(it))}</span>
+              <div class="ev-side">${raw(pillOf(it))}<span class="src">${raw(evSrc(it))}</span></div>
             </div>`).join(""))}
           ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
           ${rows.length > limit ? raw(h`<div class="ev-more">${fmtNum(rows.length - limit)} more not shown. Export for the full list.</div>`) : ""}
         </div>
       </section>`;
-  }).join("") : emptyHtml;
+  }).join("") + skeletonRows(opts.pending) : emptyHtml + skeletonRows(opts.pending);
 }
 
 // Wire collapse + review checkboxes once per ledger element.
@@ -248,28 +278,78 @@ export function renderFacts(el, facts, emptyText = "No facts extracted yet.") {
     : h`<p class="empty flat">${emptyText}</p>`;
 }
 
+// Why an identity view stands where it does, in one or two sentences. Shared by "What we know"
+// and the identity header, so the two can never disagree.
+const noPrimaryText = (views) => { const named = views.filter((v) => v.named).length; return `${named > 1 ? `${named} different names appear under this handle, and none is tied to the target.` : "Profiles were read, and nothing ties them to the target."} There is no record for the target itself and no strong signal between profiles, so no primary identity is chosen.`; };
+const viewWhy = (view, noPrimary) => (view.primary ? `Primary identity because ${view.why}.` : view.id === "unassigned" ? "Profiles that were read but carry no name, so nothing ties them to anyone." : noPrimary ? "One of the names under this handle. Nothing ties these profiles to the target." : "Not the primary identity: the name on these profiles conflicts with it, or nothing ties them to it.")
+  + (view.signals.length ? ` Joined by: ${[...new Set(view.signals.map((s) => `${s.a} and ${s.b} (${s.detail})`))].slice(0, 4).join("; ")}.` : "");
+const pickView = ({ views, primary, noPrimary }, pick) => views.find((v) => v.id === pick) || views.find((v) => v.id === primary) || (noPrimary ? null : views[0]) || null;
+
 // "What we know" for a person case: the facts of one identity cluster at a time, primary first.
 // A labelled select switches to another cluster's facts. `pick` is the view id to show.
 export function renderIdentityFacts(el, { views, primary, noPrimary }, factsOf, pick, emptyText) {
-  const picked = views.find((v) => v.id === pick);
-  const view = picked || views.find((v) => v.id === primary) || (noPrimary ? null : views[0]);
+  const view = pickView({ views, primary, noPrimary }, pick);
   const label = (v) => `${v.label}${v.primary ? " (primary)" : ""} · ${v.sites.slice(0, 3).join(", ")}${v.sites.length > 3 ? ` +${v.sites.length - 3}` : ""}`;
   const box = document.createElement("div");
   const select = (first) => h`<div class="who-pick"><label for="${el.id}Pick">Showing</label><select class="input" id="${el.id}Pick" data-cluster-pick>${raw(first)}${raw(views.map((v) => h`<option value="${v.id}" ${view && v.id === view.id ? "selected" : ""}>${label(v)}</option>`).join(""))}</select></div>`;
   // No anchor record and no strong signal: nobody is picked, and no one's facts are shown as the target's.
-  const named = views.filter((v) => v.named).length;
-  const none = noPrimary ? h`<p class="who-why">${named > 1 ? `${named} different names appear under this handle, and none is tied to the target.` : "Profiles were read, and nothing ties them to the target."} There is no record for the target itself and no strong signal between profiles, so no primary identity is chosen.</p>` : "";
+  const none = noPrimary ? h`<p class="who-why">${noPrimaryText(views)}</p>` : "";
   if (!view) {
     renderFacts(box, factsOf(null), "Pick a name above to see what its profiles say.");
     el.innerHTML = select(h`<option value="" selected>No primary identity</option>`) + none + box.innerHTML;
     return null;
   }
   renderFacts(box, factsOf(view.id), view.id === "unassigned" ? "These profiles carry no facts." : "No facts on these profiles.");
-  const why = view.primary ? `Primary identity because ${view.why}.` : view.id === "unassigned" ? "Profiles that were read but carry no name, so nothing ties them to anyone." : noPrimary ? "One of the names under this handle. Nothing ties these profiles to the target." : "Not the primary identity: the name on these profiles conflicts with it, or nothing ties them to it.";
-  const joined = view.signals.length ? ` Joined by: ${[...new Set(view.signals.map((s) => `${s.a} and ${s.b} (${s.detail})`))].slice(0, 4).join("; ")}.` : "";
   el.innerHTML = (views.length > 1 || noPrimary ? select(noPrimary ? h`<option value="">No primary identity</option>` : "") : h`<p class="who-one">${label(view)}</p>`)
-    + none + h`<p class="who-why">${why}${joined}</p>` + box.innerHTML;
+    + none + h`<p class="who-why">${viewWhy(view, noPrimary)}</p>` + box.innerHTML;
   return view.id;
+}
+
+// The identity cluster header of a username or email case: whose profiles these are, why that
+// identity is primary (or that there is none), its member accounts, and one button per person
+// who shares the handle. A button and the select in "What we know" set the same view.
+export function identityHead({ views, primary, noPrimary }, pick) {
+  if (!views.length) return "";
+  const view = pickView({ views, primary, noPrimary }, pick);
+  const pill = !view ? '<span class="cp tone-unverified line-dashed">No primary identity</span>'
+    : view.primary ? '<span class="cp tone-linked">Primary identity</span>'
+      : view.id === "unassigned" ? '<span class="cp tone-unverified line-dashed">No name on these profiles</span>'
+        : noPrimary ? '<span class="cp tone-unverified line-dashed">Not tied to the target</span>' : '<span class="cp tone-different">Different person</span>';
+  const who = view ? h`<span>${view.label}</span>` : "<span>Nobody is selected</span>";
+  const members = view ? h`<div class="id-row"><span class="id-k">${plural(view.sites.length, "account")}</span>${raw(view.sites.slice(0, 12).map((x) => h`<span class="chip">${x}</span>`).join(""))}${view.sites.length > 12 ? raw(h`<span class="id-k">and ${view.sites.length - 12} more</span>`) : ""}</div>` : "";
+  const people = views.length > 1 || noPrimary ? h`<div class="id-row who-switch" role="group" aria-label="People and profile groups under this handle"><span class="id-k">Show</span>${raw(views.map((v) => h`<button type="button" class="who-btn" data-cluster-btn="${v.id}" aria-pressed="${!!view && v.id === view.id}">${v.label}${v.primary ? " (primary)" : ""}<span class="sr-only">, ${plural(v.sites.length, "account")}</span></button>`).join(""))}</div>` : "";
+  return mark(view ? view.label : "?", { thumb: view?.thumb || "", favicon: false, cls: "id-mark" })
+    + h`<div><p class="id-name">${raw(who)}${raw(pill)}</p><p class="id-why">${view ? viewWhy(view, noPrimary) : noPrimaryText(views)}</p>${raw(members)}${raw(people)}</div>`;
+}
+
+// ---- verdict strip ----------------------------------------------------------------------------
+// The tiles come from present.js (investigateTiles, reconTiles). Each is a button that opens its
+// group or tab. A count of zero is quiet and not a button to anywhere; "unknown" opens By source,
+// where the failure is.
+export function verdictHtml(tiles) {
+  return tiles.map((t) => {
+    const caveat = t.caveat ? " caveat" : "";
+    const jump = t.state === "zero" ? "disabled" : t.state === "unknown" || t.state === "off" || t.jump?.tab ? h`data-jump-tab="${t.jump?.tab || "sources"}"` : t.jump?.tier ? h`data-jump-tier="${t.jump.tier}"` : "disabled";
+    return h`<button type="button" class="vt state-${t.state} ${t.tone ? `tone-${t.tone}` : ""} ${t.line === "dashed" ? "line-dashed" : ""}" ${raw(jump)}><span class="vt-n">${t.atLeast ? raw('<span class="sr-only">at least </span>') : ""}${typeof t.value === "number" ? fmtNum(t.value) : t.value}${t.atLeast ? raw('<span aria-hidden="true">+</span>') : ""}</span><span class="vt-l">${t.label}</span>${t.sub ? raw(h`<span class="vt-s${caveat}">${t.sub}</span>`) : ""}</button>`;
+  }).join("");
+}
+export function renderVerdict(el, tiles) {
+  el.className = `verdict-strip n${tiles.length}`;
+  el.innerHTML = verdictHtml(tiles);
+}
+// One listener per strip. setTab(name) switches the result tabs; ledger is the findings element.
+export function bindVerdict(el, { ledger, setTab, tabEl }) {
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest(".vt"); if (!b || b.disabled) return;
+    if (b.dataset.jumpTab) { setTab(b.dataset.jumpTab); const t = tabEl(b.dataset.jumpTab); t?.scrollIntoView({ block: "start" }); t?.focus({ preventScroll: true }); return; }
+    setTab("findings");
+    const sec = [...ledger.querySelectorAll(".tier")].find((x) => x.dataset.tier === b.dataset.jumpTier);
+    const head = sec?.querySelector(".tier-head");
+    if (!head) return;
+    if (sec.classList.contains("collapsed")) head.click();
+    sec.scrollIntoView({ block: "start" });
+    head.focus({ preventScroll: true });
+  });
 }
 
 // "What we know" for a name case: nobody is selected, so there are no facts to show.
@@ -303,6 +383,10 @@ export function itemCollector() {
   return { items, add };
 }
 
+// What the HTML export removes from the page's markup. No image with a remote address survives:
+// site icons go, and so would any other image that is not an embedded thumbnail.
+export const EXPORT_STRIP = '[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs, .sk-wrap, .sk-card, .who-switch, .case-details, .mark img.mark-fav, img:not([src^="data:image/"])';
+
 // ---- print / standalone HTML export --------------------------------------------------
 // The same markup as the screen, with every collapsed section opened, wrapped in a page
 // that carries its own stylesheet. Nothing is uploaded: the file is built in the browser.
@@ -311,11 +395,11 @@ export async function standaloneHtml(title, mainEl, asideEl) {
   let css = "";
   try { css = await (await fetch(cssUrl)).text(); } catch { /* unstyled is still readable */ }
   css = css.replace(/@font-face\s*{[^}]*}/g, "");   // fonts are not embedded; system fonts take over
-  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll("[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs").forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true));
+  const clone = (el) => { const c = el.cloneNode(true); c.querySelectorAll(".panel").forEach((x) => (x.hidden = false)); c.querySelectorAll(EXPORT_STRIP).forEach((x) => x.remove()); c.querySelectorAll(".collapsed, .clipped").forEach((x) => x.classList.remove("collapsed", "clipped")); c.querySelectorAll("details").forEach((d) => (d.open = true));
     // Adult and dating site rows go after every other finding, under a heading that says what they are.
     c.querySelectorAll('.tier[data-tier="adult"]').forEach((t) => { const title = t.querySelector(".tier-title"); if (title) title.textContent = ADULT_SECTION; t.parentElement?.append(t); });
     return c.innerHTML; };
-  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.tier[data-tier="adult"] .tier-title::after{content:none !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Unverified" items are leads, not facts, and a profile that exists is not proof of who owns it.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
+  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${css}\nbody{padding:24px;max-width:1000px;margin:0 auto}.print-only{display:block !important}.tier[data-tier="adult"] .tier-title::after{content:none !important}.export-meta{color:var(--ink-3);font-size:13px;margin:0 0 20px}.ev{grid-template-columns:minmax(0,1fr) auto}.ev.rich{grid-template-columns:32px minmax(0,1fr) auto}.mark img{opacity:1}</style></head><body><p class="export-meta">Exported from CrawlR on ${esc(new Date().toLocaleString())}. Findings come from third-party public sources and can be wrong. "Unverified" items are leads, not facts, and a profile that exists is not proof of who owns it.</p><main class="main">${clone(mainEl)}</main>${asideEl ? `<aside class="aside">${clone(asideEl)}</aside>` : ""}</body></html>`;
 }
 
 // ---- tabs ---------------------------------------------------------------------------

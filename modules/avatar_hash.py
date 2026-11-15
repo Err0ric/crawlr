@@ -3,7 +3,9 @@ Perceptual hashes for profile pictures.
 
 Two accounts that use the same picture are a strong link between them, and a visual match
 survives the resizing and recompression every platform applies. Each image is fetched once,
-reduced to a 64-bit difference hash (dHash) and thrown away: nothing but the hash is kept.
+reduced to a 64-bit difference hash (dHash) and thrown away. Besides the hash, a real picture
+(never a placeholder) also leaves a 48 pixel grayscale thumbnail as a small data URI, so the
+case page can show it without the investigator's browser ever contacting the picture's host.
 
 Placeholders are marked `default: true` so the default avatar a platform gives every new
 account is never read as a match.
@@ -13,6 +15,7 @@ and is capped in size, time and pixel count.
 """
 
 import asyncio
+import base64
 import io
 import re
 import threading
@@ -37,6 +40,9 @@ WORK_SIDE = 128                     # everything after decoding works on a thumb
 ALLOWED_FORMATS = ["PNG", "JPEG", "GIF", "WEBP"]
 MIN_SIDE = 16
 MIN_GRAY_LEVELS = 8
+THUMB_SIDE = 48                     # square, grayscale
+THUMB_MAX_BYTES = 3000              # one thumbnail, before base64
+THUMB_TOTAL_BYTES = 48_000          # every thumbnail in one answer, before base64
 UA = "Mozilla/5.0 (compatible; CrawlR/1.0; +https://crawlr.lol)"
 
 # Pillow's own bomb guard, as a backstop. Oversized images are rejected below from the header
@@ -262,12 +268,40 @@ def looks_default(gray: Image.Image, size: tuple[int, int] | None = None) -> boo
     return sum(1 for n in counts.values() if n >= 10) < MIN_GRAY_LEVELS
 
 
+def make_thumb(gray: Image.Image) -> str:
+    """
+    A 48 pixel square grayscale thumbnail as a data URI, or "" when it cannot be made small enough.
+    Built from the already shrunk working copy, so nothing here touches the full-size picture.
+    """
+    try:
+        w, h = gray.size
+        side = min(w, h)
+        left, top = (w - side) // 2, (h - side) // 2
+        small = gray.crop((left, top, left + side, top + side)).resize((THUMB_SIDE, THUMB_SIDE), Image.Resampling.LANCZOS)
+        for fmt, mime, opts in (("WEBP", "image/webp", {"quality": 60, "method": 4}), ("WEBP", "image/webp", {"quality": 30, "method": 4}), ("PNG", "image/png", {"optimize": True})):
+            buf = io.BytesIO()
+            try:
+                (small if fmt == "WEBP" else small.quantize(16)).save(buf, fmt, **opts)
+            except Exception:
+                continue
+            if 0 < buf.tell() <= THUMB_MAX_BYTES:
+                return f"data:{mime};base64,{base64.b64encode(buf.getvalue()).decode('ascii')}"
+    except Exception:
+        pass
+    return ""
+
+
 def hash_image(data: bytes) -> dict:
-    """Bytes -> {hash, default}. Raises _Rejected for anything that is not a readable image."""
+    """Bytes -> {hash, default[, thumb]}. Raises _Rejected for anything that is not a readable image."""
     with _decode_slots:
         gray, size = _open_gray(data)
         value = dhash(gray)
-        return {"hash": value, "default": looks_default(gray, size) or low_information(value)}
+        out = {"hash": value, "default": looks_default(gray, size) or low_information(value)}
+        # A placeholder is never shown as somebody's picture, so it gets no thumbnail.
+        thumb = "" if out["default"] else make_thumb(gray)
+        if thumb:
+            out["thumb"] = thumb
+        return out
 
 
 def hamming(a: str, b: str) -> int:
@@ -293,16 +327,33 @@ async def _one(client: httpx.AsyncClient, sem: asyncio.Semaphore, url: str) -> d
         # error_detail carries the exception type only: the text can hold the image URL.
         return error_fields(e, detail=type(e).__name__)
     result["default"] = bool(result["default"] or is_default_url(url))
+    if result["default"]:
+        result.pop("thumb", None)
     _cache_put(url, result)
     return result
 
 
 async def run_avatar_hash(images: list[dict]) -> dict:
-    """images: [{id, url}] -> {"results": [{id, hash, default} | {id, error, error_code, error_detail}]}"""
+    """
+    images: [{id, url}] -> {"results": [{id, hash, default[, thumb]} | {id, error, error_code, error_detail}]}
+    thumb is a small grayscale data URI, present only for a real picture and only while the
+    answer's thumbnails stay under THUMB_TOTAL_BYTES together.
+    """
     items = [(str(i.get("id") or ""), str(i.get("url") or "").strip()) for i in (images or [])[:MAX_IMAGES]]
     urls = list(dict.fromkeys(url for _id, url in items))
     sem = asyncio.Semaphore(CONCURRENCY)
     async with _client() as client:
         fetched = await asyncio.gather(*(_one(client, sem, url) for url in urls))
     by_url = dict(zip(urls, fetched))
-    return {"results": [{"id": id_, **by_url[url]} for id_, url in items]}
+    results, spent = [], 0
+    for id_, url in items:
+        row = {"id": id_, **by_url[url]}
+        thumb = row.get("thumb")
+        if thumb:
+            size = len(thumb) * 3 // 4
+            if spent + size > THUMB_TOTAL_BYTES:
+                row.pop("thumb")
+            else:
+                spent += size
+        results.append(row)
+    return {"results": results}

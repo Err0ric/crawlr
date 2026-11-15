@@ -1,4 +1,5 @@
 // Headers analyzer, dork builder, decoders.
+import { writeHistory } from "./present.js";
 import { $, $$, h, raw, esc, link, store, toast, post, postAi, aiAvailable, aiCost, providerName, looksLikeHeaders, fmtNum } from "./core.js";
 import { md5 } from "./md5.js";
 
@@ -88,7 +89,7 @@ function saveHeaderHistory(text) {
   const subj = lastHeaders?.key_headers?.Subject || lastHeaders?.key_headers?.From || "Email headers";
   list.unshift({ id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: String(subj).slice(0, 120), type: "email_headers", timestamp: Date.now(), results: lastHeaders, raw: text.slice(0, 20000), v2: true });
   while (list.length > 50) list.pop();
-  if (!store.set("crawlr_history", list)) { list.splice(Math.floor(list.length / 2)); store.set("crawlr_history", list); }
+  writeHistory(list, "", (l) => store.set("crawlr_history", l));
 }
 export function loadHeaderHistory(e) {
   $("#hdrInput").value = e.raw || "";
@@ -102,6 +103,26 @@ $("#hdrRun").addEventListener("click", runHeaders);
 $("#hdrInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runHeaders(); });
 $("#hdrClear").addEventListener("click", () => { $("#hdrInput").value = ""; lastHeaders = null; $("#hdrOut").innerHTML = $("#hdrEmptyTpl").innerHTML; $("#hdrInput").focus(); });
 $("#hdrOut").addEventListener("click", (e) => { if (e.target.id === "hdrAiBtn") runHeaderAi(); });
+// "Load a sample" fills the box with a harmless, invented header block (documentation domains and
+// address ranges). It does not run: the investigator presses Analyze.
+const SAMPLE_HEADERS = [
+  "Return-Path: <billing@example.org>",
+  "Received: from mx.example.net (mx.example.net [203.0.113.25]) by inbound.example.com with ESMTPS id 4XkQ2 for <sam@example.com>; Tue, 03 Nov 2026 09:14:07 +0000",
+  "Received: from mail-out.example.org (mail-out.example.org [198.51.100.14]) by mx.example.net with ESMTPS id 9aB31; Tue, 03 Nov 2026 09:14:02 +0000",
+  "Authentication-Results: inbound.example.com; spf=pass smtp.mailfrom=example.org; dkim=pass header.d=example.org; dmarc=pass header.from=example.org",
+  "DKIM-Signature: v=1; a=rsa-sha256; d=example.org; s=mail2026; h=from:to:subject:date; bh=c2FtcGxl; b=c2FtcGxl",
+  "From: Example Billing <billing@example.org>",
+  "To: sam@example.com",
+  "Subject: Your November statement",
+  "Date: Tue, 03 Nov 2026 09:14:00 +0000",
+  "Message-ID: <20261103091400.1234@example.org>",
+  "MIME-Version: 1.0",
+].join("\n");
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-hdr-sample]")) return;
+  $("#hdrInput").value = SAMPLE_HEADERS; $("#hdrInput").focus();
+  toast("Sample headers loaded. Press Analyze headers to run them.");
+});
 
 // =====================================================================================
 // Dork builder
