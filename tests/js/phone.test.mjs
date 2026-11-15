@@ -27,7 +27,7 @@ const brief = (k) => { const e = ev(k); const t = tally(k); return investigateBr
 const text = (b) => b.rows.map((r) => `${r.level}: ${r.text}`).join("\n");
 const tiles = (k) => { const t = tally(k); const st = (s) => t.rows.filter((r) => r.state === s).map((r) => r.key); return investigateTiles({ items: ev(k).items, collected: { phone: fx[k] }, type: "phone", failedKeys: st("failed"), partialKeys: st("partial"), extra: P.phoneTileExtra(fx[k]) }); };
 const show = (ts) => ts.map((t) => `${t.label}=${t.value}`).join("|");
-const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtest|intelius|peoplefinder/i;
+const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtest|intelius|peoplefinder|shouldianswer/i;
 
 // ---- detection: both directions -------------------------------------------------------------------
 {
@@ -67,6 +67,8 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   ok(!e.sources.npa_nxx && !e.sources.extra && e.sources.numlookup.carrier.length === 80 && e.sources.numlookup.line_type === "", "sources keep known keys and states");
   ok(e.assignment.evidence_url === "" && e.assignment.rate_centre === "" && e.assignment.block_assigned === null, "with no answered block source there is no block record, and the evidence link is never taken from the file");
   ok(P.blockPage("202-456") === "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456" && P.blockPage("202-000") === "" && P.blockPage("202-456&x=1") === "" && P.blockPage(null) === "", "the block page is built from a checked prefix only");
+  const sia = JSON.parse(JSON.stringify(fx.us)); sia.search_links.push({ site: "Should I Answer", url: "https://www.shouldianswer.com/phone-number/2024561111", kind: "search" });
+  ok(!P.readPhone(sia).search_links.some((l) => /shouldianswer/i.test(l.url + l.site)), "a saved answer's link to a site that shows an approximate location is dropped");
   ok(P.readPhone(null) === null && P.readPhone("x") === null && P.readPhone([]) === null, "not an answer");
   eq(P.readPhone({ error: "Boom", error_code: "timeout", error_detail: "x", number: {} }), { error: "Boom", error_code: "timeout", error_detail: "x" }, "a failure keeps its three fields");
 }
@@ -108,7 +110,7 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
 // ---- search links ------------------------------------------------------------------------------------
 {
   const s = tier(ev("us"), "websearch");
-  eq(s.map((i) => i.what), ["Google", "Bing", "DuckDuckGo", "800notes", "Should I Answer", "WhoCallsMe"], "three search engines and three free report sites for a +1 number");
+  eq(s.map((i) => i.what), ["Google", "Bing", "DuckDuckGo", "800notes", "WhoCallsMe"], "three search engines and two free report sites for a +1 number");
   ok(s.every((i) => i.link_kind === "search" && L.LINK_KINDS.includes("search") && i.key.startsWith("search:") && i.source === "opens on that site" && !isFinding(i)), "every one has the search kind and is not a finding");
   const q = new URL(s[0].url).searchParams.get("q");
   ok(q === '"(202) 456-1111" OR "202-456-1111" OR "+1 202-456-1111" OR "+12024561111"', "the query is the number in its written forms, quoted");
@@ -238,7 +240,7 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   const md = caseMarkdown({ collected: { phone: fx.fiction }, target: "+1 202 555 0143", type: "phone", now: new Date("2026-11-14T00:00:00Z") });
   ok(/## What we know/.test(md) && /- \*\*Validity:\*\* Valid: the digits fit/.test(md) && /- \*\*Who uses it:\*\* Not something open numbering data shows\. _\(Numbering plan\)_/.test(md), "Markdown has the facts");
   ok(/## Flags \(1\)\n- Reserved for fiction · In North America/.test(md) && /## About this number \(\d\)/.test(md), "the flags and the notes");
-  ok(/## Search the web \(6\)\n_These open a search on another site\. The number goes to that site\._\n- \[Google\]\(https:\/\/www\.google\.com\/search\?q=/.test(md), "and the searches, under their own heading with the warning");
+  ok(/## Search the web \(5\)\n_These open a search on another site\. The number goes to that site\._\n- \[Google\]\(https:\/\/www\.google\.com\/search\?q=/.test(md), "and the searches, under their own heading with the warning");
   ok(/Block record\]\(https:\/\/localcallingguide\.com\/lca_prefix\.php\?npa=202&nxx=555\)/.test(md), "with the block record as a link");
 
   const file = (collected) => JSON.stringify(buildCaseFile({ mode: "investigate", target: T, type: "phone", ran: 1700000000000, collected, ai: null, deep: null, notes: "", purpose: "" }));
@@ -249,12 +251,50 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   evil.search_links.push({ site: "Spokeo", url: "https://www.spokeo.com/phone-lookup/2024561111" }); evil.search_links[0].url = "https://evil.example/?q=1"; evil.lookup_links = { Spokeo: "https://www.spokeo.com/x" };
   evil.assignment.evidence_url = "https://evil.example/"; evil.findings.push({ level: "flag", code: "owner", title: "x".repeat(900), detail: "y".repeat(5000) }); evil.owner = { name: "Jane Doe" };
   const re = parseCaseFile(file({ phone: evil })).entry.results.phone;
-  ok(!JSON.stringify(re).match(/evil\.example|spokeo|Jane Doe/i) && re.search_links.length === 5 && re.findings[1].title.length === 120 && re.findings[1].detail.length === 400, "a case file's phone answer is bounded: unknown fields, foreign links and long text are dropped");
+  ok(!JSON.stringify(re).match(/evil\.example|spokeo|Jane Doe/i) && re.search_links.length === 4 && re.findings[1].title.length === 120 && re.findings[1].detail.length === 400, "a case file's phone answer is bounded: unknown fields, foreign links and long text are dropped");
   ok(re.assignment.evidence_url === "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456", "and its evidence link is rebuilt, not read");
   const old = parseCaseFile(file({ phone: fx.old_keyed }));
   ok(old.ok && old.entry.results.phone.legacy === true && !JSON.stringify(old.entry.results.phone).match(BROKERS), "an old case file opens without its people-search links");
   ok(parseCaseFile(file({ phone: "x", hash: { found: false } })).entry.results.phone === undefined, "a phone field that is not an answer is dropped");
   ok(detect(T) === "phone" && parseCaseFile(JSON.stringify({ ...JSON.parse(file({ phone: fx.us })), type: undefined })).entry.kind === "phone", "a case file with no type is still read as a phone case");
+}
+
+// ---- the country of a number typed without a country code ---------------------------------------
+{
+  for (const t of ["020 7946 0958", "0121 234 5678", "2024561111", "(202) 456-1111", "07400 123456", "1-800-FLOWERS", "011 44 20 7946 0958"]) ok(P.needsCountry(t) === true, `"${t}" has no country code, so the Country select is offered`);
+  for (const t of ["+44 20 7946 0958", "+12024561111", " +1 202 456 1111", "0044 20 7946 0958", "00 44 20 7946 0958", "(+44) 20 7946 0958", "", "   "]) ok(P.needsCountry(t) === false, `"${t}" carries its country code (or is empty), so the select is not offered`);
+  eq(["en-GB", "en-US", "pt_BR", "de-DE", "zh-Hant-TW", "fr-CA", "es-419", "en", "", null, "xx-ZZ", "en-EU", "tlh-Latn-AQ"].map(P.defaultRegion), ["GB", "US", "BR", "DE", "TW", "CA", "US", "US", "US", "US", "US", "US", "US"], "the default is the browser's region when the numbering data knows it, otherwise the United States");
+  ok(P.readRegion("gb") === "GB" && P.readRegion(" us ") === "US" && P.readRegion("ZZ") === "" && P.readRegion("GBR") === "" && P.readRegion(44) === "" && P.readRegion("<b>") === "", "a region is a known two-letter code or nothing");
+  ok(P.PHONE_REGIONS.length > 200 && P.regionName("GB") === "United Kingdom" && P.regionName("us") === "United States" && P.regionName("ZZ") === "", "the list names every region");
+  eq(P.PHONE_REGIONS.map((r) => r[1]), P.PHONE_REGIONS.map((r) => r[1]).slice().sort((a, b) => a.localeCompare(b, "en")), "sorted by name");
+  // The finding names the chosen country, and the same digits read as another country say so.
+  const gb = ev("uk_national", "0121 234 5678"), us = ev("uk_national_as_us", "0121 234 5678");
+  ok(gb.items.some((i) => i.what === "No country code given, read as a United Kingdom number") && fact(gb, "E.164").v === "+441212345678" && tiles("uk_national")[0].value === "Valid" && tiles("uk_national")[2].value === "Birmingham", "read as a United Kingdom number, it is one");
+  ok(us.items.some((i) => i.what === "No country code given, read as a United States number") && tiles("uk_national_as_us")[0].value === "Not valid" && /too long for the United States/.test(fact(us, "Validity").v), "read as a United States number, it is not valid, and the row says which country was used");
+  ok(/No country code given, read as a United Kingdom number\./.test(text(brief("uk_national"))), "the brief states the country it was read as");
+  // Saved with the case, and bounded in a case file.
+  const file = (collected) => JSON.stringify(buildCaseFile({ mode: "investigate", target: "0121 234 5678", type: "phone", ran: 1700000000000, collected, ai: null, deep: null, notes: "", purpose: "" }));
+  ok(parseCaseFile(file({ phone: fx.uk_national, phoneRegion: "GB" })).entry.results.phoneRegion === "GB", "the country travels with a case file");
+  ok(!("phoneRegion" in parseCaseFile(file({ phone: fx.uk_national, phoneRegion: "<script>" })).entry.results) && !("phoneRegion" in parseCaseFile(file({ phone: fx.uk_national, phoneRegion: "ZZ" })).entry.results), "anything but a known region is dropped");
+  ok(parseCaseFile(file({ phoneRegion: "GB" })).ok === false, "a country alone is not a case");
+  ok(buildEvidence({ phone: fx.uk_national, phoneRegion: "GB" }, "0121 234 5678").type === "phone" && aiPayloadFor({ phone: fx.uk_national, phoneRegion: "GB" }, "0121 234 5678", "phone").phone.number.e164 === "+441212345678", "the saved country does not disturb the case");
+  const html = fs.readFileSync(new URL("../../static/v2/index.html", import.meta.url), "utf8");
+  const sel = html.match(/<select\b[^>]*id="phoneRegion"[^>]*>/)[0], wrap = html.match(/<div[^>]*id="phoneCountry"[^>]*>/)[0];
+  ok(/<label for="phoneRegion">Country<\/label>/.test(html) && /Used only when the number has no country code\./.test(html) && /aria-describedby="phoneRegionHint"/.test(sel) && /\bhidden\b/.test(wrap), "the select is labelled Country, has its hint, and starts hidden");
+  ok(!/user|e-?mail|login|account|passw/i.test(sel + wrap), "nothing about it looks like a login field");
+  const inv = fs.readFileSync(new URL("../../static/v2/js/investigate.js", import.meta.url), "utf8");
+  ok(/type === "phone" && needsCountry\(/.test(inv) && /\.\.\.\(region \? \{ region \} : \{\}\)/.test(inv) && /c\.phoneRegion = region/.test(inv), "it shows only for a phone number with no country code, and its value is sent and saved");
+}
+
+// ---- the numbering plan could not be read ----------------------------------------------------------
+{
+  const e = ev("plan_failed");
+  ok(e.items.length === 0 && e.facts.length === 0, "a worker failure says nothing about the number");
+  const t = tally("plan_failed").rows[0];
+  ok(t.state === "failed" && /could not be read on the server/.test(t.text), "the lookup is a failed source");
+  ok(tiles("plan_failed").every((x) => x.state === "unknown" && x.line === "dashed") && tiles("plan_failed")[0].value !== "Not valid", "every tile is unknown: never Not valid");
+  ok(/failed/.test(sourceCards.phone(fx.plan_failed)) && !/not valid/i.test(sourceCards.phone(fx.plan_failed)) && P.phoneForAi(fx.plan_failed).error_code === "timeout", "its card and the AI field say failed");
+  ok(tier(ev("au_drama", "+61 2 5550 1234"), "flag").some((i) => i.what === "Reserved for fiction" && /ACMA/.test(i.meta)), "an Australian drama number is flagged");
 }
 
 // ---- wording rules ----------------------------------------------------------------------------------

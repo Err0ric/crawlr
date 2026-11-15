@@ -132,6 +132,10 @@
       <div class="field"><label for="qKeyword">Keyword</label><input class="input" id="qKeyword" name="q-word" maxlength="80" aria-describedby="qualHint" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
       <p class="hint" id="qualHint">Optional. Used to rank the people found, not to search for them.</p>
     </div>
+    <div class="qualifiers phone-country" id="phoneCountry" hidden>
+      <div class="field"><label for="phoneRegion">Country</label><select class="input" id="phoneRegion" name="q-region" aria-describedby="phoneRegionHint" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></select></div>
+      <p class="hint" id="phoneRegionHint">Used only when the number has no country code.</p>
+    </div>
     <p class="notice err name-error" id="nameError" role="alert" hidden></p>
     <div class="rail" id="rail" hidden>
       <div class="rail-head"><h2 id="sourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>

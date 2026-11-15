@@ -103,13 +103,6 @@
     "label": "community reports of unwanted calls"
    },
    {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/2024561111",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
     "site": "WhoCallsMe",
     "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
     "group": "spam reports",
@@ -225,13 +218,6 @@
    {
     "site": "800notes",
     "url": "https://800notes.com/Phone.aspx/1-202-456-1111",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/2024561111",
     "group": "spam reports",
     "kind": "search",
     "label": "community reports of unwanted calls"
@@ -357,13 +343,6 @@
     "label": "community reports of unwanted calls"
    },
    {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/2024561111",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
     "site": "WhoCallsMe",
     "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
     "group": "spam reports",
@@ -470,13 +449,6 @@
    {
     "site": "800notes",
     "url": "https://800notes.com/Phone.aspx/1-202-456-1111",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/2024561111",
     "group": "spam reports",
     "kind": "search",
     "label": "community reports of unwanted calls"
@@ -590,13 +562,6 @@
    {
     "site": "800notes",
     "url": "https://800notes.com/Phone.aspx/1-604-687-1234",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/6046871234",
     "group": "spam reports",
     "kind": "search",
     "label": "community reports of unwanted calls"
@@ -717,13 +682,6 @@
     "label": "community reports of unwanted calls"
    },
    {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/2025550143",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
     "site": "WhoCallsMe",
     "url": "https://whocallsme.com/Phone-Number.aspx/2025550143",
     "group": "spam reports",
@@ -834,13 +792,6 @@
    {
     "site": "800notes",
     "url": "https://800notes.com/Phone.aspx/1-202-555-1234",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/2025551234",
     "group": "spam reports",
     "kind": "search",
     "label": "community reports of unwanted calls"
@@ -965,13 +916,6 @@
     "label": "community reports of unwanted calls"
    },
    {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/2024561111",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
     "site": "WhoCallsMe",
     "url": "https://whocallsme.com/Phone-Number.aspx/2024561111",
     "group": "spam reports",
@@ -1085,13 +1029,6 @@
     "label": "community reports of unwanted calls"
    },
    {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/8003569377",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
     "site": "WhoCallsMe",
     "url": "https://whocallsme.com/Phone-Number.aspx/8003569377",
     "group": "spam reports",
@@ -1194,13 +1131,6 @@
    {
     "site": "800notes",
     "url": "https://800notes.com/Phone.aspx/1-900-234-5678",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/9002345678",
     "group": "spam reports",
     "kind": "search",
     "label": "community reports of unwanted calls"
@@ -1384,6 +1314,261 @@
    {
     "site": "DuckDuckGo",
     "url": "https://duckduckgo.com/?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "uk_national": {
+  "input": "0121 234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+441212345678",
+  "valid": true,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": "Birmingham",
+  "carrier": null,
+  "line_type": "Fixed line",
+  "number": {
+   "e164": "+441212345678",
+   "international": "+44 121 234 5678",
+   "national": "0121 234 5678",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United Kingdom.",
+   "line_type": "fixed_line",
+   "line_type_text": "Fixed line",
+   "line_type_note": null,
+   "region_assumed": true,
+   "assumed_text": "No country code given, read as a United Kingdom number.",
+   "time_zones": [
+    "Europe/London"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Birmingham",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "info",
+    "code": "assumed_country",
+    "title": "No country code given, read as a United Kingdom number",
+    "detail": "Add the country code with a + (for example +44) if the number belongs somewhere else."
+   },
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United Kingdom",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "uk_national_as_us": {
+  "input": "0121 234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": null,
+  "valid": false,
+  "country": "United States",
+  "country_code": "US",
+  "location": null,
+  "carrier": null,
+  "line_type": null,
+  "number": {
+   "e164": null,
+   "international": null,
+   "national": "01212345678",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": false,
+   "possible_reason": "too long for the United States",
+   "valid": false,
+   "validity_text": "Not valid: too long for the United States.",
+   "line_type": "unknown",
+   "line_type_text": "Unknown",
+   "line_type_note": null,
+   "region_assumed": true,
+   "assumed_text": "No country code given, read as a United States number.",
+   "time_zones": [],
+   "time_zone_count": 0,
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "info",
+    "code": "assumed_country",
+    "title": "No country code given, read as a United States number",
+    "detail": "Add the country code with a + (for example +44) if the number belongs somewhere else."
+   },
+   {
+    "level": "flag",
+    "code": "invalid",
+    "title": "Not a valid number for the United States",
+    "detail": "Too long for the United States."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "au_drama": {
+  "input": "+61 2 5550 1234",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+61255501234",
+  "valid": true,
+  "country": "Australia",
+  "country_code": "AU",
+  "location": null,
+  "carrier": null,
+  "line_type": "Fixed line",
+  "number": {
+   "e164": "+61255501234",
+   "international": "+61 2 5550 1234",
+   "national": "(02) 5550 1234",
+   "extension": null,
+   "calling_code": 61,
+   "region": "AU",
+   "country": "Australia",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of Australia.",
+   "line_type": "fixed_line",
+   "line_type_text": "Fixed line",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "time_zones": [
+    "Australia/Sydney"
+   ],
+   "time_zone_count": 1,
+   "vanity": false,
+   "fiction": true
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "flag",
+    "code": "fiction",
+    "title": "Reserved for fiction",
+    "detail": "The Australian regulator (ACMA) sets this range aside for film, television and radio. It is reserved for fiction and is not in use, so nobody can be reached on it."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%2802%29+5550+1234%22+OR+%2202-5550-1234%22+OR+%22%2B61+2+5550+1234%22+OR+%22%2B61255501234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%2802%29+5550+1234%22+OR+%2202-5550-1234%22+OR+%22%2B61+2+5550+1234%22+OR+%22%2B61255501234%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%2802%29+5550+1234%22+OR+%2202-5550-1234%22+OR+%22%2B61+2+5550+1234%22+OR+%22%2B61255501234%22",
     "group": "search engine",
     "kind": "search",
     "label": "the number in its common written forms"
@@ -1752,13 +1937,6 @@
     "label": "community reports of unwanted calls"
    },
    {
-    "site": "Should I Answer",
-    "url": "https://www.shouldianswer.com/phone-number/5555551234",
-    "group": "spam reports",
-    "kind": "search",
-    "label": "community reports of unwanted calls"
-   },
-   {
     "site": "WhoCallsMe",
     "url": "https://whocallsme.com/Phone-Number.aspx/5555551234",
     "group": "spam reports",
@@ -1942,6 +2120,21 @@
   "line_type": null,
   "lookup_links": {
    "Spokeo": "https://www.spokeo.com/phone-lookup/12024561111"
+  }
+ },
+ "plan_failed": {
+  "input": "+1 202 456 1111",
+  "error": "The numbering data could not be read on the server. Try again in a moment.",
+  "error_code": "timeout",
+  "error_detail": "worker timed out",
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "failed",
+    "error": "The numbering data could not be read on the server. Try again in a moment.",
+    "error_code": "timeout",
+    "error_detail": "worker timed out"
+   }
   }
  },
  "failed": {

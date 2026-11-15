@@ -906,6 +906,8 @@ details.more[open] > summary { margin-bottom: 6px; }
 .casebar .qualifiers .field { flex: 1 1 180px; min-width: 0; }
 .casebar .qualifiers .field label { font-size: var(--fs-0); margin-bottom: 4px; }
 .casebar .qualifiers .input { width: 100%; }
+.casebar .phone-country .field { flex: 0 1 300px; }
+.casebar .phone-country select.input { min-height: 36px; padding: 6px 10px; }
 .casebar .qualifiers .hint { flex: 1 1 100%; margin: 0; color: var(--ink-3); font-size: var(--fs-0); }
 .casebar .name-error { max-width: 1100px; margin: 8px 0 0; }
 

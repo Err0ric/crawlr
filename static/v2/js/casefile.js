@@ -5,14 +5,14 @@
 import { detect, INVESTIGATE_TYPES, RECON_TYPES } from "./core.js";
 import { scrubNames } from "./names.js";
 import { boundAvatarHash } from "./present.js";
-import { readPhone } from "./phone.js";
+import { readPhone, readRegion } from "./phone.js";
 
 export const CASE_VERSION = 1;
 export const MAX_CASE_BYTES = 3 * 1024 * 1024;   // browser storage holds about 5 MB for the whole history
 const MAX_NOTES = 20000, MAX_PURPOSE = 300, MAX_SOURCES = 60;
 const KEY_OK = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 const KEY_BAD = new Set(["constructor", "prototype"]);
-const TEXT_KEYS = new Set(["nameSearch", "reverseImage"]);
+const TEXT_KEYS = new Set(["nameSearch", "reverseImage", "phoneRegion"]);
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const clip = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
 const fail = (error) => ({ ok: false, error });
@@ -73,9 +73,11 @@ export function parseCaseFile(text) {
   if (results.avatarHash) results.avatarHash = boundAvatarHash(results.avatarHash);
   // A phone answer keeps only its checked, bounded fields: text is clipped, a search link must
   // point at the site it names, and the evidence link is rebuilt from the area code and exchange.
+  // The country a number without a country code was read as: a known two-letter region, or nothing.
+  if ("phoneRegion" in results) { const r = readRegion(results.phoneRegion); if (r) results.phoneRegion = r; else delete results.phoneRegion; }
   if ("phone" in results) { const ph = readPhone(results.phone); if (ph) results.phone = ph; else delete results.phone; }
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
-  if (!Object.keys(results).filter((k) => k !== "adultMode").length) return fail("The case file holds no results.");
+  if (!Object.keys(results).filter((k) => k !== "adultMode" && k !== "phoneRegion").length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();
   const ai = report(j.ai), deep = report(j.deep);
   const entry = {

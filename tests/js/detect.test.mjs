@@ -24,7 +24,7 @@ if (bad) process.exit(1);
   const fs = await import("node:fs");
   const html = fs.readFileSync(new URL("../../static/v2/index.html", import.meta.url), "utf8");
   const bad = /user|e-?mail|login|account|passw/i;
-  const inputs = [...html.matchAll(/<(?:input|textarea)\b[^>]*>/g)].map((m) => m[0]).filter((t) => !/type="(checkbox|radio|file|hidden)"/.test(t));
+  const inputs = [...html.matchAll(/<(?:input|textarea|select)\b[^>]*>/g)].map((m) => m[0]).filter((t) => !/type="(checkbox|radio|file|hidden)"/.test(t));
   const attr = (t, a) => (t.match(new RegExp(`\\b${a}="([^"]*)"`)) || [])[1] || "";
   const hits = [];
   for (const t of inputs) {

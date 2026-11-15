@@ -12,7 +12,7 @@ import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
 import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards } from "./workbench.js";
 import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
-import { readPhone, phoneTileExtra, PHONE_SOURCE, PHONE_SOURCE_DESC, PHONE_NOT_USABLE } from "./phone.js";
+import { readPhone, phoneTileExtra, readRegion, needsCountry, defaultRegion, PHONE_REGIONS, PHONE_SOURCE, PHONE_SOURCE_DESC, PHONE_NOT_USABLE } from "./phone.js";
 import { buildCaseFile } from "./casefile.js";
 
 // ---- sources ---------------------------------------------------------------
@@ -69,10 +69,21 @@ function nameError(msg) { const el = $("#nameError"); el.textContent = msg || ""
 $("#targetInput").addEventListener("input", () => nameError(""));
 $("#nameQualifiers").addEventListener("keydown", (e) => { if (e.key === "Enter" && !state.running) $("#runBtn").click(); });
 
+// ---- the country of a phone number typed without a country code --------------------------------
+// One select under the target, shown only while the Phone type is active and the text has no +
+// or 00 prefix. It starts on the browser's region when the numbering data knows it, otherwise
+// the United States. The choice goes with the lookup as `region` and is saved with the case.
+const regionSelect = $("#phoneRegion");
+regionSelect.innerHTML = PHONE_REGIONS.map(([code, name]) => h`<option value="${code}">${name}</option>`).join("");
+regionSelect.value = defaultRegion(globalThis.navigator?.language);
+const phoneRegion = (target) => (needsCountry(target) ? readRegion(regionSelect.value) || "US" : "");
+const paintCountry = (type) => { $("#phoneCountry").hidden = !(type === "phone" && needsCountry($("#targetInput").value)); };
+
 let sourcesType = "";   // the target type the panel was last drawn for
 export function renderSources(type) {
   sourcesType = type || "";
   $("#nameQualifiers").hidden = type !== "name";
+  paintCountry(type);
   const box = $("#sources");
   const rows = SOURCES.filter((s) => !type || s.types.includes(type));
   box.innerHTML = rows.map((s) => h`
@@ -321,7 +332,7 @@ function renderHead(meta) {
 // ---- AI panel ---------------------------------------------------------------------
 // Never an adult or dating site: Deep Dive reads the pages it is given (see deepDiveUrls).
 const profileUrls = () => deepDiveUrls(state.collected);
-const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "nameQualifiers", "nameProfiles", "notAnswered"].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
+const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "nameQualifiers", "nameProfiles", "notAnswered", "phoneRegion"].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
 
 // What the report will cover, said for the kind of target on screen.
 const AI_PITCH = {
@@ -585,10 +596,12 @@ export async function run(targetRaw, typeOverride) {
     if (srcOn("phone")) {
       // One request. The open numbering data needs no key; a NumLookup key only adds to it, and a
       // rejected key is reported as that source failing while everything else stands.
-      const k = getKey("numlookup");
-      await runSource(PHONE_SOURCE, "/api/phone/lookup", { phone: target }, k ? { "X-Numlookup-Key": k } : {}, "phone", { what: "phone number", badInput: (err) => {
+      // A number with no country code is read as the country in the select, and the case keeps which.
+      const k = getKey("numlookup"), region = phoneRegion(target);
+      if (region) c.phoneRegion = region;
+      await runSource(PHONE_SOURCE, "/api/phone/lookup", { phone: target, ...(region ? { region } : {}) }, k ? { "X-Numlookup-Key": k } : {}, "phone", { what: "phone number", badInput: (err) => {
         state.nameInvalid = err.status === 400 && err.detail ? err.detail : PHONE_NOT_USABLE;
-        nameError(state.nameInvalid);
+        nameError(state.nameInvalid); delete c.phoneRegion;
       } });
       // Kept in the checked, bounded shape, so History and exports hold nothing else.
       if (c.phone && !c.phone.error && !c.phone.error_code) c.phone = readPhone(c.phone) || { error: "The answer could not be read.", error_code: "bad_response", error_detail: "" };
@@ -732,6 +745,8 @@ export function loadHistory(idOrEntry) {
   $("#targetInput").value = e.target;
   // Opening a saved name case puts its qualifiers back and fetches nothing.
   nameError(""); setQualifiers(state.collected.nameQualifiers);
+  // A saved phone case puts its country back, so a re-run reads the number the same way.
+  if (readRegion(state.collected.phoneRegion)) regionSelect.value = readRegion(state.collected.phoneRegion);
   renderSources(state.type);
   $("#runlog").hidden = true; $("#tabs").hidden = false; tabs.set("findings");
   renderHead(`${TYPE_LABEL[state.type]} · ${e.imported ? "opened from a case file · collected" : "from history ·"} ${new Date(e.timestamp).toLocaleString()}`);

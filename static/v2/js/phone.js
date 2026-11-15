@@ -6,7 +6,8 @@
 // link is rebuilt from the checked prefix and a search link must point at the site it names.
 //
 // Three sources sit inside one answer, each with its own state (see modules/phone_lookup.py):
-//   numbering_plan  libphonenumber, offline               always "ok"
+//   numbering_plan  libphonenumber, offline               ok (when it cannot be read the whole
+//                                                         lookup is a failed source, never "not valid")
 //   npa_nxx         Local Calling Guide, US and Canada     ok | none | failed | rate_limited
 //   numlookup       only with the investigator's own key   ok | failed
 // A source that was not asked has no entry, so it is never read as "none".
@@ -17,6 +18,7 @@
 // known: a failed lookup, or a tile with nothing to show.
 
 import { classifyLink } from "./links.js";
+import { PHONE_REGIONS } from "./phone-regions.js";
 
 export const PHONE_SOURCE = "Phone lookup";
 export const PHONE_SOURCE_DESC = "validity, country, line type and where the number range is assigned, from open numbering data; your NumLookup key adds the current carrier";
@@ -32,17 +34,32 @@ export const PHONE_TIERS = [
   { id: "websearch", title: "Search the web",    cls: "",     open: true, blurb: "These open a search on another site. The number goes to that site." },
 ];
 
+// ---- the country a number without a country code is read as -----------------------------------
+// The page offers a Country select only while the Phone type is active and the text carries no
+// country code (no leading + and no 00). Its value is sent as `region`, saved with the case as
+// `phoneRegion`, and is one of the regions the server's numbering data knows.
+const REGION_NAMES = new Map(PHONE_REGIONS);
+export { PHONE_REGIONS };
+export const readRegion = (v) => (typeof v === "string" && REGION_NAMES.has(v.trim().toUpperCase()) ? v.trim().toUpperCase() : "");
+export const regionName = (code) => REGION_NAMES.get(readRegion(code)) || "";
+export const needsCountry = (text) => { const t = String(text ?? "").trim(); return !!t && !/^\(?\s*(?:\+|00)/.test(t); };
+// The browser's region when its language tag has one the list knows ("en-GB", "pt_BR"), otherwise the United States.
+export function defaultRegion(lang) {
+  const m = /^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?[-_]([A-Za-z]{2})(?:$|[-_])/.exec(String(lang ?? "").trim());
+  return readRegion(m ? m[1] : "") || "US";
+}
+
 // ---- reading an answer ------------------------------------------------------------------------
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const line = (v, n) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim().slice(0, n).trim() : "");
 const bool = (v) => (v === true ? true : v === false ? false : null);
 const LEVELS = new Set(["flag", "ok", "info"]);
 const KINDS = new Set(["number", "short_code", "emergency"]);
-const STATES = { numbering_plan: ["ok"], npa_nxx: ["ok", "none", "failed", "rate_limited"], numlookup: ["ok", "failed"] };
+const STATES = { numbering_plan: ["ok", "failed"], npa_nxx: ["ok", "none", "failed", "rate_limited"], numlookup: ["ok", "failed"] };
 export const LINE_TYPES = { fixed_line: "Fixed line", mobile: "Mobile", fixed_line_or_mobile: "Fixed line or mobile", toll_free: "Toll free", premium_rate: "Premium rate", shared_cost: "Shared cost",
   voip: "VoIP", personal_number: "Personal number", pager: "Pager", uan: "Company number (UAN)", voicemail: "Voicemail access", unknown: "Unknown" };
 // The only sites a search link may open, by the name the row shows.
-const SEARCH_HOSTS = { Google: "www.google.com", Bing: "www.bing.com", DuckDuckGo: "duckduckgo.com", "800notes": "800notes.com", "Should I Answer": "www.shouldianswer.com", WhoCallsMe: "whocallsme.com" };
+const SEARCH_HOSTS = { Google: "www.google.com", Bing: "www.bing.com", DuckDuckGo: "duckduckgo.com", "800notes": "800notes.com", WhoCallsMe: "whocallsme.com" };
 const MAX_FINDINGS = 20, MAX_LINKS = 12;
 // The public page for a North American block. Only the area code and the exchange are in it.
 export const blockPage = (prefix) => { const m = /^([2-9]\d\d)-([2-9]\d\d)$/.exec(String(prefix ?? "")); return m ? `https://localcallingguide.com/lca_prefix.php?npa=${m[1]}&nxx=${m[2]}` : ""; };
