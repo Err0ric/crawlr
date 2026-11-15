@@ -27,10 +27,10 @@
    "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "America/New_York"
+   "utc_offsets": [
+    "UTC-5"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-5",
    "vanity": false,
    "fiction": false
   },
@@ -140,10 +140,10 @@
    "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "America/New_York"
+   "utc_offsets": [
+    "UTC-5"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-5",
    "vanity": false,
    "fiction": false
   },
@@ -260,10 +260,10 @@
    "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "America/New_York"
+   "utc_offsets": [
+    "UTC-5"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-5",
    "vanity": false,
    "fiction": false
   },
@@ -380,10 +380,10 @@
    "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "America/New_York"
+   "utc_offsets": [
+    "UTC-5"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-5",
    "vanity": false,
    "fiction": false
   },
@@ -491,10 +491,10 @@
    "line_type_note": "The numbering plan of Canada does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "America/Vancouver"
+   "utc_offsets": [
+    "UTC-7"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-7",
    "vanity": false,
    "fiction": false
   },
@@ -604,10 +604,10 @@
    "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "America/New_York"
+   "utc_offsets": [
+    "UTC-5"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-5",
    "vanity": false,
    "fiction": true
   },
@@ -616,13 +616,13 @@
    "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
    "carrier": null,
    "carrier_note": null,
-   "prefix": "202-555",
+   "prefix": null,
    "rate_centre": null,
    "region": null,
    "company": null,
    "ocn": null,
-   "block_assigned": false,
-   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=555"
+   "block_assigned": null,
+   "evidence_url": null
   },
   "findings": [
    {
@@ -630,12 +630,6 @@
     "code": "fiction",
     "title": "Reserved for fiction",
     "detail": "In North America 555-0100 to 555-0199 is set aside for films, television and examples. It is reserved for fiction and is not in use, so nobody can be reached on it."
-   },
-   {
-    "level": "info",
-    "code": "unassigned_block",
-    "title": "The 202-555 block is not assigned",
-    "detail": "Local Calling Guide lists no carrier for area code 202, exchange 555. A working number should not start with these six digits, though caller ID can be made to show any number."
    }
   ],
   "sources": {
@@ -644,12 +638,6 @@
     "state": "ok",
     "version": "9.0.43",
     "offline": true
-   },
-   "npa_nxx": {
-    "name": "Local Calling Guide",
-    "asked": "202-555",
-    "state": "none",
-    "cached": false
    }
   },
   "search_links": [
@@ -692,10 +680,10 @@
   "owner_note": "Who uses this number is not something open numbering data shows."
  },
  "unassigned": {
-  "input": "+1 202 555 1234",
+  "input": "+1 202 999 1234",
   "parsed": true,
   "kind": "number",
-  "normalized": "+12025551234",
+  "normalized": "+12029991234",
   "valid": true,
   "country": "United States",
   "country_code": "US",
@@ -703,9 +691,9 @@
   "carrier": null,
   "line_type": "Fixed line or mobile",
   "number": {
-   "e164": "+12025551234",
-   "international": "+1 202-555-1234",
-   "national": "(202) 555-1234",
+   "e164": "+12029991234",
+   "international": "+1 202-999-1234",
+   "national": "(202) 999-1234",
    "extension": null,
    "calling_code": 1,
    "region": "US",
@@ -719,10 +707,10 @@
    "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "America/New_York"
+   "utc_offsets": [
+    "UTC-5"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-5",
    "vanity": false,
    "fiction": false
   },
@@ -731,13 +719,13 @@
    "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
    "carrier": null,
    "carrier_note": null,
-   "prefix": "202-555",
+   "prefix": "202-999",
    "rate_centre": null,
    "region": null,
    "company": null,
    "ocn": null,
    "block_assigned": false,
-   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=555"
+   "evidence_url": "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=999"
   },
   "findings": [
    {
@@ -749,8 +737,8 @@
    {
     "level": "flag",
     "code": "unassigned_block",
-    "title": "The 202-555 block is not assigned",
-    "detail": "Local Calling Guide lists no carrier for area code 202, exchange 555. A working number should not start with these six digits, though caller ID can be made to show any number."
+    "title": "The 202-999 block is not assigned",
+    "detail": "Local Calling Guide lists no carrier for area code 202, exchange 999. A working number should not start with these six digits, though caller ID can be made to show any number."
    }
   ],
   "sources": {
@@ -762,7 +750,7 @@
    },
    "npa_nxx": {
     "name": "Local Calling Guide",
-    "asked": "202-555",
+    "asked": "202-999",
     "state": "none",
     "cached": false
    }
@@ -770,38 +758,719 @@
   "search_links": [
    {
     "site": "Google",
-    "url": "https://www.google.com/search?q=%22%28202%29+555-1234%22+OR+%22202-555-1234%22+OR+%22%2B1+202-555-1234%22+OR+%22%2B12025551234%22",
+    "url": "https://www.google.com/search?q=%22%28202%29+999-1234%22+OR+%22202-999-1234%22+OR+%22%2B1+202-999-1234%22+OR+%22%2B12029991234%22",
     "group": "search engine",
     "kind": "search",
     "label": "the number in its common written forms"
    },
    {
     "site": "Bing",
-    "url": "https://www.bing.com/search?q=%22%28202%29+555-1234%22+OR+%22202-555-1234%22+OR+%22%2B1+202-555-1234%22+OR+%22%2B12025551234%22",
+    "url": "https://www.bing.com/search?q=%22%28202%29+999-1234%22+OR+%22202-999-1234%22+OR+%22%2B1+202-999-1234%22+OR+%22%2B12029991234%22",
     "group": "search engine",
     "kind": "search",
     "label": "the number in its common written forms"
    },
    {
     "site": "DuckDuckGo",
-    "url": "https://duckduckgo.com/?q=%22%28202%29+555-1234%22+OR+%22202-555-1234%22+OR+%22%2B1+202-555-1234%22+OR+%22%2B12025551234%22",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+999-1234%22+OR+%22202-999-1234%22+OR+%22%2B1+202-999-1234%22+OR+%22%2B12029991234%22",
     "group": "search engine",
     "kind": "search",
     "label": "the number in its common written forms"
    },
    {
     "site": "800notes",
-    "url": "https://800notes.com/Phone.aspx/1-202-555-1234",
+    "url": "https://800notes.com/Phone.aspx/1-202-999-1234",
     "group": "spam reports",
     "kind": "search",
     "label": "community reports of unwanted calls"
    },
    {
     "site": "WhoCallsMe",
-    "url": "https://whocallsme.com/Phone-Number.aspx/2025551234",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2029991234",
     "group": "spam reports",
     "kind": "search",
     "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "directory": {
+  "input": "+1 202 555 1212",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12025551212",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12025551212",
+   "international": "+1 202-555-1212",
+   "national": "(202) 555-1212",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "utc_offsets": [
+    "UTC-5"
+   ],
+   "utc_offset_text": "UTC-5",
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   },
+   {
+    "level": "info",
+    "code": "directory_assistance",
+    "title": "Directory assistance",
+    "detail": "202-555-1212 is the directory assistance number for area code 202. It is a service, not a subscriber's line."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+555-1212%22+OR+%22202-555-1212%22+OR+%22%2B1+202-555-1212%22+OR+%22%2B12025551212%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+555-1212%22+OR+%22202-555-1212%22+OR+%22%2B1+202-555-1212%22+OR+%22%2B12025551212%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+555-1212%22+OR+%22202-555-1212%22+OR+%22%2B1+202-555-1212%22+OR+%22%2B12025551212%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-555-1212",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2025551212",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "special": {
+  "input": "+1 202 555 7890",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+12025557890",
+  "valid": true,
+  "country": "United States",
+  "country_code": "US",
+  "location": "Washington D.C.",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+12025557890",
+   "international": "+1 202-555-7890",
+   "national": "(202) 555-7890",
+   "extension": null,
+   "calling_code": 1,
+   "region": "US",
+   "country": "United States",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United States.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "utc_offsets": [
+    "UTC-5"
+   ],
+   "utc_offset_text": "UTC-5",
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Washington D.C.",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United States",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   },
+   {
+    "level": "info",
+    "code": "special_exchange",
+    "title": "Special-use exchange",
+    "detail": "Exchange 555 is set aside for special services in North America. No carrier holds it as an ordinary block, so no block assignment is looked up."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%28202%29+555-7890%22+OR+%22202-555-7890%22+OR+%22%2B1+202-555-7890%22+OR+%22%2B12025557890%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%28202%29+555-7890%22+OR+%22202-555-7890%22+OR+%22%2B1+202-555-7890%22+OR+%22%2B12025557890%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%28202%29+555-7890%22+OR+%22202-555-7890%22+OR+%22%2B1+202-555-7890%22+OR+%22%2B12025557890%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "800notes",
+    "url": "https://800notes.com/Phone.aspx/1-202-555-7890",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   },
+   {
+    "site": "WhoCallsMe",
+    "url": "https://whocallsme.com/Phone-Number.aspx/2025557890",
+    "group": "spam reports",
+    "kind": "search",
+    "label": "community reports of unwanted calls"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "idd00": {
+  "input": "00 44 121 234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+441212345678",
+  "valid": true,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": "Birmingham",
+  "carrier": null,
+  "line_type": "Fixed line",
+  "number": {
+   "e164": "+441212345678",
+   "international": "+44 121 234 5678",
+   "national": "0121 234 5678",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United Kingdom.",
+   "line_type": "fixed_line",
+   "line_type_text": "Fixed line",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "utc_offsets": [
+    "UTC"
+   ],
+   "utc_offset_text": "UTC",
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Birmingham",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "info",
+    "code": "idd_prefix",
+    "title": "00 read as the international call prefix",
+    "detail": "00 is what most countries dial before a country code, though not the United States. The digits after it were read as country code +44 and the number. Write the number with a + to be sure."
+   },
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United Kingdom",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "idd_au": {
+  "input": "0011 44 121 234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+441212345678",
+  "valid": true,
+  "country": "United Kingdom",
+  "country_code": "GB",
+  "location": "Birmingham",
+  "carrier": null,
+  "line_type": "Fixed line",
+  "number": {
+   "e164": "+441212345678",
+   "international": "+44 121 234 5678",
+   "national": "0121 234 5678",
+   "extension": null,
+   "calling_code": 44,
+   "region": "GB",
+   "country": "United Kingdom",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of the United Kingdom.",
+   "line_type": "fixed_line",
+   "line_type_text": "Fixed line",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "utc_offsets": [
+    "UTC"
+   ],
+   "utc_offset_text": "UTC",
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Birmingham",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "info",
+    "code": "idd_prefix",
+    "title": "0011 read as the international call prefix of Australia",
+    "detail": "The digits after it were read as country code +44 and the number. Writing the number with a + means the same in every country."
+   },
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for the United Kingdom",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%220121+234+5678%22+OR+%220121-234-5678%22+OR+%22%2B44+121+234+5678%22+OR+%22%2B441212345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "mexico": {
+  "input": "+52 1 55 1234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+525512345678",
+  "valid": true,
+  "country": "Mexico",
+  "country_code": "MX",
+  "location": "Mexico City, FD",
+  "carrier": null,
+  "line_type": "Fixed line or mobile",
+  "number": {
+   "e164": "+525512345678",
+   "international": "+52 55 1234 5678",
+   "national": "55 1234 5678",
+   "extension": null,
+   "calling_code": 52,
+   "region": "MX",
+   "country": "Mexico",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of Mexico.",
+   "line_type": "fixed_line_or_mobile",
+   "line_type_text": "Fixed line or mobile",
+   "line_type_note": "The numbering plan of Mexico does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
+   "region_assumed": false,
+   "assumed_text": null,
+   "utc_offsets": [
+    "UTC-6"
+   ],
+   "utc_offset_text": "UTC-6",
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Mexico City, FD",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "info",
+    "code": "legacy_prefix",
+    "title": "Read without the old mobile 1 after +52",
+    "detail": "Mexican mobile numbers were written with a 1 after the country code until 2019, and often still are. The 1 is no longer part of the number, so it was read as +52 55 1234 5678."
+   },
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for Mexico",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%2255+1234+5678%22+OR+%2255-1234-5678%22+OR+%22%2B52+55+1234+5678%22+OR+%22%2B525512345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%2255+1234+5678%22+OR+%2255-1234-5678%22+OR+%22%2B52+55+1234+5678%22+OR+%22%2B525512345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%2255+1234+5678%22+OR+%2255-1234-5678%22+OR+%22%2B52+55+1234+5678%22+OR+%22%2B525512345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "estonia": {
+  "input": "+372 5123 4567",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+37251234567",
+  "valid": true,
+  "country": "Estonia",
+  "country_code": "EE",
+  "location": null,
+  "carrier": "Telia Eesti AS",
+  "line_type": "Mobile",
+  "number": {
+   "e164": "+37251234567",
+   "international": "+372 5123 4567",
+   "national": "5123 4567",
+   "extension": null,
+   "calling_code": 372,
+   "region": "EE",
+   "country": "Estonia",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of Estonia.",
+   "line_type": "mobile",
+   "line_type_text": "Mobile",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "utc_offsets": [
+    "UTC+2"
+   ],
+   "utc_offset_text": "UTC+2",
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": null,
+   "area_note": null,
+   "carrier": "Telia Eesti AS",
+   "carrier_note": "The carrier this number range was first assigned to. Numbers are ported between carriers, so it may not be the current one.",
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for Estonia",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%225123+4567%22+OR+%225123-4567%22+OR+%22%2B372+5123+4567%22+OR+%22%2B37251234567%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%225123+4567%22+OR+%225123-4567%22+OR+%22%2B372+5123+4567%22+OR+%22%2B37251234567%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%225123+4567%22+OR+%225123-4567%22+OR+%22%2B372+5123+4567%22+OR+%22%2B37251234567%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   }
+  ],
+  "owner_note": "Who uses this number is not something open numbering data shows."
+ },
+ "dublin": {
+  "input": "+353 1 234 5678",
+  "parsed": true,
+  "kind": "number",
+  "normalized": "+35312345678",
+  "valid": true,
+  "country": "Ireland",
+  "country_code": "IE",
+  "location": "Dublin",
+  "carrier": null,
+  "line_type": "Fixed line",
+  "number": {
+   "e164": "+35312345678",
+   "international": "+353 1 234 5678",
+   "national": "(01) 234 5678",
+   "extension": null,
+   "calling_code": 353,
+   "region": "IE",
+   "country": "Ireland",
+   "possible": true,
+   "possible_reason": null,
+   "valid": true,
+   "validity_text": "Valid: the digits fit a number range in the numbering plan of Ireland.",
+   "line_type": "fixed_line",
+   "line_type_text": "Fixed line",
+   "line_type_note": null,
+   "region_assumed": false,
+   "assumed_text": null,
+   "utc_offsets": [
+    "UTC"
+   ],
+   "utc_offset_text": "UTC",
+   "vanity": false,
+   "fiction": false
+  },
+  "assignment": {
+   "area": "Dublin",
+   "area_note": "Where this number range is assigned. It is not where the phone or the person using it is.",
+   "carrier": null,
+   "carrier_note": null,
+   "prefix": null,
+   "rate_centre": null,
+   "region": null,
+   "company": null,
+   "ocn": null,
+   "block_assigned": null,
+   "evidence_url": null
+  },
+  "findings": [
+   {
+    "level": "ok",
+    "code": "valid",
+    "title": "Valid number for Ireland",
+    "detail": "The digits fit a number range in the numbering plan. That shows the number can exist. It does not show that it is in service."
+   }
+  ],
+  "sources": {
+   "numbering_plan": {
+    "name": "libphonenumber",
+    "state": "ok",
+    "version": "9.0.43",
+    "offline": true
+   }
+  },
+  "search_links": [
+   {
+    "site": "Google",
+    "url": "https://www.google.com/search?q=%22%2801%29+234+5678%22+OR+%2201-234-5678%22+OR+%22%2B353+1+234+5678%22+OR+%22%2B35312345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "Bing",
+    "url": "https://www.bing.com/search?q=%22%2801%29+234+5678%22+OR+%2201-234-5678%22+OR+%22%2B353+1+234+5678%22+OR+%22%2B35312345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
+   },
+   {
+    "site": "DuckDuckGo",
+    "url": "https://duckduckgo.com/?q=%22%2801%29+234+5678%22+OR+%2201-234-5678%22+OR+%22%2B353+1+234+5678%22+OR+%22%2B35312345678%22",
+    "group": "search engine",
+    "kind": "search",
+    "label": "the number in its common written forms"
    }
   ],
   "owner_note": "Who uses this number is not something open numbering data shows."
@@ -834,10 +1503,10 @@
    "line_type_note": "The numbering plan of the United States does not keep fixed lines and mobiles in separate ranges, so the number alone cannot say which this is.",
    "region_assumed": true,
    "assumed_text": "No country code given, read as a United States number.",
-   "time_zones": [
-    "America/New_York"
+   "utc_offsets": [
+    "UTC-5"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC-5",
    "vanity": false,
    "fiction": false
   },
@@ -953,8 +1622,8 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [],
-   "time_zone_count": 42,
+   "utc_offsets": [],
+   "utc_offset_text": null,
    "vanity": true,
    "fiction": false
   },
@@ -1066,8 +1735,8 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [],
-   "time_zone_count": 42,
+   "utc_offsets": [],
+   "utc_offset_text": null,
    "vanity": false,
    "fiction": false
   },
@@ -1173,8 +1842,10 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [],
-   "time_zone_count": 4,
+   "utc_offsets": [
+    "UTC"
+   ],
+   "utc_offset_text": "UTC",
    "vanity": false,
    "fiction": false
   },
@@ -1260,10 +1931,10 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "Europe/London"
+   "utc_offsets": [
+    "UTC"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC",
    "vanity": false,
    "fiction": false
   },
@@ -1349,10 +2020,10 @@
    "line_type_note": null,
    "region_assumed": true,
    "assumed_text": "No country code given, read as a United Kingdom number.",
-   "time_zones": [
-    "Europe/London"
+   "utc_offsets": [
+    "UTC"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC",
    "vanity": false,
    "fiction": false
   },
@@ -1444,8 +2115,8 @@
    "line_type_note": null,
    "region_assumed": true,
    "assumed_text": "No country code given, read as a United States number.",
-   "time_zones": [],
-   "time_zone_count": 0,
+   "utc_offsets": [],
+   "utc_offset_text": null,
    "vanity": false,
    "fiction": false
   },
@@ -1515,10 +2186,10 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "Australia/Sydney"
+   "utc_offsets": [
+    "UTC+11"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC+11",
    "vanity": false,
    "fiction": true
   },
@@ -1604,8 +2275,8 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [],
-   "time_zone_count": 0,
+   "utc_offsets": [],
+   "utc_offset_text": null,
    "vanity": false,
    "fiction": true
   },
@@ -1691,8 +2362,10 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [],
-   "time_zone_count": 4,
+   "utc_offsets": [
+    "UTC"
+   ],
+   "utc_offset_text": "UTC",
    "vanity": false,
    "fiction": false
   },
@@ -1784,10 +2457,10 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [
-    "Europe/Berlin"
+   "utc_offsets": [
+    "UTC+1"
    ],
-   "time_zone_count": 1,
+   "utc_offset_text": "UTC+1",
    "vanity": false,
    "fiction": false
   },
@@ -1873,8 +2546,8 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [],
-   "time_zone_count": 0,
+   "utc_offsets": [],
+   "utc_offset_text": null,
    "vanity": false,
    "fiction": false
   },
@@ -1974,8 +2647,8 @@
    "line_type_note": null,
    "region_assumed": false,
    "assumed_text": null,
-   "time_zones": [],
-   "time_zone_count": 0,
+   "utc_offsets": [],
+   "utc_offset_text": null,
    "vanity": false,
    "fiction": false
   },
@@ -2053,7 +2726,7 @@
   "owner_note": "Who uses this number is not something open numbering data shows."
  },
  "short_code": {
-  "input": "46645",
+  "input": "611",
   "parsed": true,
   "kind": "short_code",
   "normalized": null,
@@ -2064,7 +2737,7 @@
   "carrier": null,
   "line_type": "Short code",
   "number": {
-   "short": "46645",
+   "short": "611",
    "region": "US",
    "country": "United States",
    "possible": false,
@@ -2079,7 +2752,7 @@
     "level": "info",
     "code": "short_code",
     "title": "Short code",
-    "detail": "46645 is a short code in the United States: a service number that only works inside that country's networks. It is not a subscriber number, so there is nothing to look up."
+    "detail": "611 is a short code in the United States: a service number that only works inside that country's networks. It is not a subscriber number, so there is nothing to look up."
    }
   ],
   "sources": {

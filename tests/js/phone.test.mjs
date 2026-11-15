@@ -53,7 +53,7 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   ok(!("owner_note" in r) && !JSON.stringify(r).includes("rc-lat"), "nothing but the known fields is kept");
   // A hostile answer or case file.
   const evil = JSON.parse(JSON.stringify(fx.us));
-  evil.number.e164 = "+1202<script>"; evil.number.international = "x".repeat(500); evil.number.line_type = "<b>"; evil.number.time_zones = ["America/New_York", "<img>", 3, "a".repeat(80)];
+  evil.number.e164 = "+1202<script>"; evil.number.international = "x".repeat(500); evil.number.line_type = "<b>"; evil.number.utc_offsets = ["UTC-5", "Europe/Bucharest", "<img>", 3, "UTC+25:99x", "UTC+5:30"]; evil.number.time_zones = ["America/New_York"];
   evil.assignment.evidence_url = "https://evil.example/lca_prefix.php?npa=202&nxx=456"; evil.assignment.prefix = "202-456";
   evil.findings = [{ level: "flag", code: "x y", title: `T${String.fromCharCode(0x2028)}itle\nsecond`, detail: "d".repeat(900) }, { level: "critical", title: "no" }, { level: "ok" }, ...Array(40).fill({ level: "info", code: "note", title: "n", detail: "" })];
   evil.search_links = [{ site: "Google", url: "https://evil.example/search?q=1" }, { site: "Spokeo", url: "https://www.spokeo.com/1" }, { site: "Bing", url: "http://www.bing.com/search?q=1" }, { site: "DuckDuckGo", url: "https://user:pw@duckduckgo.com/?q=1" },
@@ -61,9 +61,10 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   evil.sources.npa_nxx.state = "maybe"; evil.sources.numlookup = { state: "ok", carrier: "C".repeat(300), line_type: 7 }; evil.sources.extra = { state: "ok" };
   const e = P.readPhone(evil);
   ok(e.number.e164 === "" && e.number.international.length === 30 && e.number.line_type === "unknown" && e.number.line_type_text === "Unknown", "bad number fields are dropped or clipped");
-  eq(e.number.time_zones, ["America/New_York"], "a time zone must look like one");
+  eq(e.number.utc_offsets, ["UTC-5", "UTC+5:30"], "an offset must look like one, and a zone name is never kept");
+  ok(!("time_zones" in e.number), "an answer saved with zone names loses them");
   ok(e.findings.length === 20 && e.findings[0].code === "note" && e.findings[0].title === "T itle second" && e.findings[0].detail.length === 400, "findings are bounded, one line each, with a known level");
-  eq(e.search_links.map((l) => [l.site, l.url, l.group, l.kind]), [["WhoCallsMe", "https://whocallsme.com/Phone-Number.aspx/2024561111", "search engine", "search"]], "a search link must be https and point at the site it names");
+  eq(e.search_links, [], "with no checked number there is nothing to build a search from, whatever links the answer carries");
   ok(!e.sources.npa_nxx && !e.sources.extra && e.sources.numlookup.carrier.length === 80 && e.sources.numlookup.line_type === "", "sources keep known keys and states");
   ok(e.assignment.evidence_url === "" && e.assignment.rate_centre === "" && e.assignment.block_assigned === null, "with no answered block source there is no block record, and the evidence link is never taken from the file");
   ok(P.blockPage("202-456") === "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456" && P.blockPage("202-000") === "" && P.blockPage("202-456&x=1") === "" && P.blockPage(null) === "", "the block page is built from a checked prefix only");
@@ -85,7 +86,8 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   ok(block.link_kind === "evidence" && block.link_label === "Block record" && block.url === "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456" && block.source === "Local Calling Guide", "it links to the public page for the prefix, as evidence");
   ok(!/1111/.test(block.url), "the evidence link carries the area code and exchange, never the number");
   ok(/data-link-kind="evidence"/.test(evWhat(block)) && />Block record</.test(evWhat(block)), "and is drawn as a labelled evidence link");
-  eq(e.facts.map((f) => f.k), ["Number", "National format", "E.164", "Validity", "Country", "Line type", "Range assigned in", "Rate centre", "Range first assigned to", "Time zone of the range", "Who uses it"], "What we know, in order");
+  eq(e.facts.map((f) => f.k), ["Number", "National format", "E.164", "Validity", "Country", "Line type", "Range assigned in", "Rate centre", "Range first assigned to", "Time offset of the range", "Who uses it"], "What we know, in order");
+  ok(/^UTC-[45]$/.test(fact(e, "Time offset of the range").v), "the time is an offset");
   ok(fact(e, "Number").v === "+1 202-456-1111" && fact(e, "E.164").v === "+12024561111" && fact(e, "Country").v === "United States (+1)", "formats and country");
   ok(fact(e, "Line type").v === "Fixed line or mobile (the numbering plan cannot tell which)", "the line type says the plan cannot tell which");
   ok(fact(e, "Range assigned in").v === "Washington D.C. (the range, not the phone or the person using it)", "the area is labelled as the range's, not the phone's");
@@ -127,12 +129,12 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   const f = ev("fiction", "+1 202 555 0143");
   eq(tier(f, "flag").map((i) => [i.key, i.what, i.source]), [["phone:fiction", "Reserved for fiction", "Numbering plan"]], "a fiction number is flagged");
   ok(/reserved for fiction and is not in use/.test(tier(f, "flag")[0].meta), "with one plain sentence");
-  ok(tier(f, "info").some((i) => i.key === "phone:unassigned_block" && i.link_kind === "evidence"), "its empty block is a note, with the block record");
+  ok(!f.items.some((i) => /block/.test(i.key)) && !fx.fiction.sources.npa_nxx, "its exchange is a special one, so the block source is not asked and nothing is called unassigned");
   eq(show(tiles("fiction")), "Valid=Valid|Line type=Fixed line or mobile|Assigned in=Washington D.C.|Flags=1", "fiction tiles");
   ok(tiles("fiction")[0].sub === "but reserved for fiction" && tiles("fiction")[0].tone === "" && tiles("fiction")[3].tone === "flag", "the Valid tile says it is reserved for fiction");
   ok(/^flag: Reserved for fiction\. In North America 555-0100 to 555-0199/.test(text(brief("fiction"))) && !/^ok:/m.test(text(brief("fiction"))), "the brief leads with what the flag means, and nothing is tagged Good");
 
-  const u = ev("unassigned", "+1 202 555 1234");
+  const u = ev("unassigned", "+1 202 999 1234");
   ok(tier(u, "flag").some((i) => i.key === "phone:unassigned_block" && i.source === "Local Calling Guide" && i.link_label === "Block record"), "a block no carrier holds is a flag from the source that said so");
   const d = ev("uk_drama", "+44 7700 900123");
   ok(tier(d, "flag").length === 1 && /Ofcom/.test(tier(d, "flag")[0].meta), "a UK drama number is flagged once");
@@ -218,7 +220,7 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
 // ---- a case saved before this change ---------------------------------------------------------------------
 {
   const o = ev("old_keyed", "+1 202 555 0143");
-  eq(o.facts.map((f) => [f.k, f.v, f.source]), [["Carrier", "Example Mobile", "NumLookup"], ["Line type", "voip", "NumLookup"], ["Location", "Washington, United States", "NumLookup"]], "an old case keeps its three facts");
+  eq(o.facts.map((f) => [f.k, f.v, f.source]), [["Carrier", "Example Mobile (as NumLookup reported it then)", "NumLookup"], ["Line type", "voip", "NumLookup"], ["Range location", "Washington, United States (the number range as NumLookup reported it, not the phone or the person using it)", "NumLookup"]], "an old case keeps its three facts, each saying what it is");
   eq(o.items.map((i) => [i.tier, i.key]), [["flag", "phone:voip"]], "and its flag, under the same key");
   ok(!JSON.stringify(o).match(BROKERS) && !BROKERS.test(sourceCards.phone(fx.old_keyed)), "the people-search links it was saved with are not shown");
   eq(show(tiles("old_keyed")), "Valid=Valid|Line type=voip|Assigned in=Washington, United States|Flags=1", "old case tiles");
@@ -237,11 +239,19 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   ok(aiPayloadFor({ phone: fx.failed }, T, "phone").phone.error_code === "network" && aiPayloadFor({}, T, "phone").phone === null, "a failed lookup travels as a failure");
   eq(sourcePlan("phone", T), ["phone"], "one source in the plan");
 
-  const md = caseMarkdown({ collected: { phone: fx.fiction }, target: "+1 202 555 0143", type: "phone", now: new Date("2026-11-14T00:00:00Z") });
+  const md = caseMarkdown({ collected: { phone: fx.fiction }, target: "+1 202 555 0143", type: "phone", now: new Date("2026-11-14T00:00:00Z") }) + caseMarkdown({ collected: { phone: fx.unassigned }, target: "+1 202 999 1234", type: "phone", now: new Date("2026-11-14T00:00:00Z") });
   ok(/## What we know/.test(md) && /- \*\*Validity:\*\* Valid: the digits fit/.test(md) && /- \*\*Who uses it:\*\* Not something open numbering data shows\. _\(Numbering plan\)_/.test(md), "Markdown has the facts");
   ok(/## Flags \(1\)\n- Reserved for fiction · In North America/.test(md) && /## About this number \(\d\)/.test(md), "the flags and the notes");
+  // An export says the same caveated things the screen says. The bare location and carrier keys never reach it.
+  const mdUs = caseMarkdown({ collected: { phone: fx.us }, target: T, type: "phone", now: new Date("2026-11-14T00:00:00Z") });
+  ok(/- \*\*Range assigned in:\*\* Washington D\.C\. \(the range, not the phone or the person using it\)/.test(mdUs) && /- \*\*Range first assigned to:\*\* VERIZON WASHINGTON DC, INC\. \(numbers are ported, so this may not be the current carrier\)/.test(mdUs), "Markdown carries the caveats on place and carrier");
+  ok(!/\*\*(Location|Carrier):\*\*/.test(mdUs) && !/^- \*\*[^*]+:\*\* Washington D\.C\.\s*_/m.test(mdUs) && /- \*\*Time offset of the range:\*\* UTC-[45] /.test(mdUs) && !/America\/New_York/.test(mdUs), "and no bare location, carrier or zone name");
+  const mdMob = caseMarkdown({ collected: { phone: fx.uk_mobile }, target: "+44 7400 123456", type: "phone", now: new Date("2026-11-14T00:00:00Z") });
+  ok(/Three \(numbers are ported, so this may not be the current carrier\)/.test(mdMob) && !/\*\*[^*]*:\*\* Three _/.test(mdMob), "the library's carrier is exported with its caveat too");
+  const mdOld = caseMarkdown({ collected: { phone: fx.old_keyed }, target: "+1 202 555 0143", type: "phone", now: new Date("2026-11-14T00:00:00Z") });
+  ok(/Range location:\*\* Washington, United States \(the number range as NumLookup reported it, not the phone or the person using it\)/.test(mdOld) && /Example Mobile \(as NumLookup reported it then\)/.test(mdOld), "and so is a case saved by the older version");
   ok(/## Search the web \(5\)\n_These open a search on another site\. The number goes to that site\._\n- \[Google\]\(https:\/\/www\.google\.com\/search\?q=/.test(md), "and the searches, under their own heading with the warning");
-  ok(/Block record\]\(https:\/\/localcallingguide\.com\/lca_prefix\.php\?npa=202&nxx=555\)/.test(md), "with the block record as a link");
+  ok(/Block record\]\(https:\/\/localcallingguide\.com\/lca_prefix\.php\?npa=202&nxx=999\)/.test(md), "with the block record as a link");
 
   const file = (collected) => JSON.stringify(buildCaseFile({ mode: "investigate", target: T, type: "phone", ran: 1700000000000, collected, ai: null, deep: null, notes: "", purpose: "" }));
   const r = parseCaseFile(file({ phone: fx.us_numlookup }));
@@ -251,7 +261,7 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   evil.search_links.push({ site: "Spokeo", url: "https://www.spokeo.com/phone-lookup/2024561111" }); evil.search_links[0].url = "https://evil.example/?q=1"; evil.lookup_links = { Spokeo: "https://www.spokeo.com/x" };
   evil.assignment.evidence_url = "https://evil.example/"; evil.findings.push({ level: "flag", code: "owner", title: "x".repeat(900), detail: "y".repeat(5000) }); evil.owner = { name: "Jane Doe" };
   const re = parseCaseFile(file({ phone: evil })).entry.results.phone;
-  ok(!JSON.stringify(re).match(/evil\.example|spokeo|Jane Doe/i) && re.search_links.length === 4 && re.findings[1].title.length === 120 && re.findings[1].detail.length === 400, "a case file's phone answer is bounded: unknown fields, foreign links and long text are dropped");
+  ok(!JSON.stringify(re).match(/evil\.example|spokeo|Jane Doe/i) && re.search_links.length === 5 && JSON.stringify(re.search_links) === JSON.stringify(P.readPhone(fx.us).search_links) && re.findings[1].title.length === 120 && re.findings[1].detail.length === 400, "a case file's phone answer is bounded: unknown fields, foreign links and long text are dropped");
   ok(re.assignment.evidence_url === "https://localcallingguide.com/lca_prefix.php?npa=202&nxx=456", "and its evidence link is rebuilt, not read");
   const old = parseCaseFile(file({ phone: fx.old_keyed }));
   ok(old.ok && old.entry.results.phone.legacy === true && !JSON.stringify(old.entry.results.phone).match(BROKERS), "an old case file opens without its people-search links");
@@ -261,8 +271,8 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
 
 // ---- the country of a number typed without a country code ---------------------------------------
 {
-  for (const t of ["020 7946 0958", "0121 234 5678", "2024561111", "(202) 456-1111", "07400 123456", "1-800-FLOWERS", "011 44 20 7946 0958"]) ok(P.needsCountry(t) === true, `"${t}" has no country code, so the Country select is offered`);
-  for (const t of ["+44 20 7946 0958", "+12024561111", " +1 202 456 1111", "0044 20 7946 0958", "00 44 20 7946 0958", "(+44) 20 7946 0958", "", "   "]) ok(P.needsCountry(t) === false, `"${t}" carries its country code (or is empty), so the select is not offered`);
+  for (const t of ["020 7946 0958", "0121 234 5678", "2024561111", "(202) 456-1111", "07400 123456", "1-800-FLOWERS", "011 44 20 7946 0958", "0044 20 7946 0958", "00 44 20 7946 0958", "0011 44 20 7946 0958", "(00) 44 20 7946 0958"]) ok(P.needsCountry(t) === true, `"${t}" has no country code, so the Country select is offered`);
+  for (const t of ["+44 20 7946 0958", "+12024561111", " +1 202 456 1111", "(+44) 20 7946 0958", `${String.fromCharCode(0x202a)}+1 202 456 1111${String.fromCharCode(0x202c)}`, "", "   "]) ok(P.needsCountry(t) === false, `"${t}" starts with a + (or is empty), so the select is not offered`);
   eq(["en-GB", "en-US", "pt_BR", "de-DE", "zh-Hant-TW", "fr-CA", "es-419", "en", "", null, "xx-ZZ", "en-EU", "tlh-Latn-AQ"].map(P.defaultRegion), ["GB", "US", "BR", "DE", "TW", "CA", "US", "US", "US", "US", "US", "US", "US"], "the default is the browser's region when the numbering data knows it, otherwise the United States");
   ok(P.readRegion("gb") === "GB" && P.readRegion(" us ") === "US" && P.readRegion("ZZ") === "" && P.readRegion("GBR") === "" && P.readRegion(44) === "" && P.readRegion("<b>") === "", "a region is a known two-letter code or nothing");
   ok(P.PHONE_REGIONS.length > 200 && P.regionName("GB") === "United Kingdom" && P.regionName("us") === "United States" && P.regionName("ZZ") === "", "the list names every region");
@@ -295,6 +305,70 @@ const BROKERS = /spokeo|whitepages|beenverified|truecaller|numverify|calleridtes
   ok(tiles("plan_failed").every((x) => x.state === "unknown" && x.line === "dashed") && tiles("plan_failed")[0].value !== "Not valid", "every tile is unknown: never Not valid");
   ok(/failed/.test(sourceCards.phone(fx.plan_failed)) && !/not valid/i.test(sourceCards.phone(fx.plan_failed)) && P.phoneForAi(fx.plan_failed).error_code === "timeout", "its card and the AI field say failed");
   ok(tier(ev("au_drama", "+61 2 5550 1234"), "flag").some((i) => i.what === "Reserved for fiction" && /ACMA/.test(i.meta)), "an Australian drama number is flagged");
+}
+
+// ---- review fixes -------------------------------------------------------------------------------------
+{
+  // Offsets, never zone names: the library files Estonia under Bucharest and Dublin under Guernsey and London.
+  const ZONE = /\b(?:Africa|America|Antarctica|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)\/[A-Za-z_]+/;
+  for (const k of Object.keys(fx).filter((x) => x !== "failed")) {
+    const e = ev(k), all = JSON.stringify([e.facts, e.items.map((i) => [i.what, i.meta]), text(brief(k)), sourceCards.phone(fx[k]), P.phoneForAi(fx[k]), fx[k]]);
+    ok(!ZONE.test(all), `${k}: no time zone name anywhere, from the server to the card and the AI field`);
+  }
+  ok(/^UTC\+[23]$/.test(fact(ev("estonia", "+372 5123 4567"), "Time offset of the range").v) && /^UTC(\+1)?$/.test(fact(ev("dublin", "+353 1 234 5678"), "Time offset of the range").v), "Estonia and Dublin show their offset");
+  ok(/Time offset of the range/.test(sourceCards.phone(fx.estonia)) && !/Time zone/.test(sourceCards.phone(fx.estonia)), "the card labels it Time offset of the range");
+  const two = JSON.parse(JSON.stringify(fx.us)); two.number.utc_offsets = ["UTC+10", "UTC+10:30", "UTC+11"];
+  ok(fact(buildEvidence({ phone: two }, T, "phone"), "Time offset of the range").v === "UTC+10 to UTC+11", "several offsets read as a span");
+  ok(!fact(ev("toll_free"), "Time offset of the range"), "a range that is not tied to a place has no offset row");
+
+  // Tiles keep the sublines that carry meaning at phone width (.vt-s.caveat is the one class the stylesheet keeps under 760px).
+  const { verdictHtml } = await import("../../static/v2/js/workbench.js");
+  const cav = (k) => tiles(k).map((t) => (t.caveat ? t.sub : ""));
+  eq(cav("us").slice(0, 3), ["", "the plan cannot tell which", "the range, not the phone"], "a US number keeps the two sublines that change the meaning");
+  eq(cav("fiction").slice(0, 3), ["but reserved for fiction", "the plan cannot tell which", "the range, not the phone"], "a fiction number keeps its Valid caveat");
+  eq(cav("uk_landline").slice(0, 3), ["", "", "the range, not the phone"], "London or Birmingham is always the range, not the phone");
+  eq(cav("uk_drama").slice(0, 3), ["no range matches these digits", "not a valid number", "not a valid number"], "an invalid number keeps every reason");
+  const html = verdictHtml(tiles("fiction"));
+  ok((html.match(/class="vt-s caveat"/g) || []).length === 3 && /<span class="vt-s caveat">but reserved for fiction<\/span>/.test(html) && /<span class="vt-s">read these first<\/span>/.test(html), "they are drawn with the caveat class, and plain descriptions are not");
+  const css = fs.readFileSync(new URL("../../static/v2/css/app.css", import.meta.url), "utf8");
+  ok(/\.vt-s:not\(\.caveat\) \{ display: none; \}/.test(css) && /\.vt-s\.caveat \{ display: block;/.test(css), "which is the class the stylesheet keeps under 760px");
+
+  // Special exchanges: named, never "not assigned".
+  const da = ev("directory", "+1 202 555 1212");
+  ok(tier(da, "flag").length === 0 && tier(da, "info").some((i) => i.what === "Directory assistance") && !da.items.some((i) => /unassigned/.test(i.key)) && tiles("directory")[3].value === 0, "555-1212 is directory assistance, with no flag");
+  ok(tier(ev("special", "+1 202 555 7890"), "info").some((i) => i.what === "Special-use exchange") && /special-use exchange, which no carrier holds/.test(sourceCards.phone(fx.special)), "another 555 number is a special-use exchange, and the card says why the block source was not asked");
+  ok(tally("directory").rows[0].state === "results" && !fx.directory.sources.npa_nxx, "the lookup is complete: nothing was left unasked that should have been asked");
+
+  // The international prefix: how it was read is said, and the Country select stays.
+  const i0 = ev("idd00", "00 44 121 234 5678");
+  ok(fact(i0, "E.164").v === "+441212345678" && tier(i0, "info").some((i) => i.what === "00 read as the international call prefix" && /country code \+44/.test(i.meta)) && tiles("idd00")[0].value === "Valid", "00 with a space is read as international, and the row says so");
+  ok(tier(ev("idd_au", "0011 44 121 234 5678"), "info").some((i) => i.what === "0011 read as the international call prefix of Australia"), "the chosen country's own prefix is named");
+  ok(/00 read as the international call prefix\./.test(text(brief("idd00"))) && !/No country code given/.test(text(brief("idd00"))), "the brief says how the prefix was read");
+  ok(tier(ev("mexico", "+52 1 55 1234 5678"), "info").some((i) => i.what === "Read without the old mobile 1 after +52") && tiles("mexico")[0].value === "Valid", "the old Mexican form is read, and the row says how");
+
+  // Search links are rebuilt here, never read.
+  for (const k of Object.keys(fx).filter((x) => Array.isArray(fx[x].search_links))) eq(P.readPhone(fx[k]).search_links.map((l) => [l.site, l.url, l.group, l.label]), fx[k].search_links.map((l) => [l.site, l.url, l.group, l.label]), `${k}: the links built in the page are the links the server builds`);
+  const evil = JSON.parse(JSON.stringify(fx.us));
+  evil.search_links = [{ site: "Google", url: "https://www.google.com/url?q=https://evil.example", label: "the number" }, { site: "DuckDuckGo", url: "https://duckduckgo.com/?q=%22Jane+Doe%22+12+Main+Street", label: "the number in its common written forms" }, { site: "Spokeo", url: "https://www.spokeo.com/x" }];
+  const got = P.readPhone(evil).search_links;
+  eq(got.map((l) => l.site), ["Google", "DuckDuckGo"], "a file chooses among the known sites by name, and nothing else");
+  ok(got.every((l) => l.url === fx.us.search_links.find((x) => x.site === l.site).url) && !/evil|Jane|Main|url\?q/.test(JSON.stringify(got)), "their addresses are built from the number, whatever the file says");
+  const forged = JSON.parse(JSON.stringify(fx.us)); forged.number.national = "12 Main St 20500"; forged.number.international = "+1 555 000 0000";
+  const fq = decodeURIComponent(P.readPhone(forged).search_links[0].url.replace(/\+/g, " "));
+  ok(fq.includes('"+12024561111"') && !/Main|555 000/.test(fq), "a written form that is not this number is not searched for");
+  ok(!/Main|555 000/.test(JSON.stringify(P.readPhone(forged).search_links)), "and never reaches a link");
+  eq(P.searchLinks({ e164: "+441212345678", national: "0121 234 5678", international: "+44 121 234 5678" }).map((l) => l.site), ["Google", "Bing", "DuckDuckGo"], "outside +1 only the search engines are built");
+  eq(P.searchLinks({ e164: "x" }), [], "no number, no links");
+  eq(P.searchLinks({ e164: "+12024561111", national: "(202) 456-1111", international: "+1 202-456-1111" }, ["Bing", "WhoCallsMe", "Evil"]).map((l) => l.site), ["Bing", "WhoCallsMe"], "only the named sites, from the fixed set");
+
+  // Pasted numbers: the same pairs the server's suite asserts.
+  const { normalizePhoneText } = await import("../../static/v2/js/core.js");
+  const pairs = JSON.parse(fs.readFileSync(new URL("../fixtures/phone_text.json", import.meta.url), "utf8")).pairs;
+  ok(pairs.length >= 12 && pairs.every(([raw, want]) => normalizePhoneText(raw) === want), "pasted text is cleaned exactly as the server cleans it");
+  for (const [raw, want] of pairs.filter((p) => p[1])) ok(detect(raw) === "phone", `pasted "${want}" is detected as a phone number`);
+  ok(detect("+1 202 456 1111;ext=22") === "phone" && detect("202-456-1111;ext=7") === "phone", "the ;ext= form the server accepts is a phone number in the page too");
+  ok(P.PHONE_REGIONS.some((r) => r[0] === "XK" && r[1] === "Kosovo") && P.regionName("TA") === "Tristan da Cunha" && P.regionName("AC") === "Ascension Island" && P.PHONE_REGIONS.every((r) => r[1] !== r[0]), "every region in the list has a name");
+  ok(tiles("short_code")[0].value === "Short code" && fx.short_code.number.short === "611", "a listed service code is a short code");
 }
 
 // ---- wording rules ----------------------------------------------------------------------------------

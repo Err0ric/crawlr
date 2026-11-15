@@ -70,8 +70,8 @@ $("#targetInput").addEventListener("input", () => nameError(""));
 $("#nameQualifiers").addEventListener("keydown", (e) => { if (e.key === "Enter" && !state.running) $("#runBtn").click(); });
 
 // ---- the country of a phone number typed without a country code --------------------------------
-// One select under the target, shown only while the Phone type is active and the text has no +
-// or 00 prefix. It starts on the browser's region when the numbering data knows it, otherwise
+// One select under the target, shown while the Phone type is active and the text does not start
+// with a +. It starts on the browser's region when the numbering data knows it, otherwise
 // the United States. The choice goes with the lookup as `region` and is saved with the case.
 const regionSelect = $("#phoneRegion");
 regionSelect.innerHTML = PHONE_REGIONS.map(([code, name]) => h`<option value="${code}">${name}</option>`).join("");

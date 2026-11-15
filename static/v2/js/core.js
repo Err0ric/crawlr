@@ -314,11 +314,16 @@ export function looksLikeName(t) {
 // parentheses, with a leading 00, with an extension, or as a vanity number after a toll-free or
 // premium prefix (1-800-FLOWERS). It must not take a date, a year range, a decimal or an
 // all-digit handle: bare digits are a phone number only at the lengths national numbers have.
-const PHONE_EXT = /\s*(?:ext\.?|extension|x|#)\s*\d{1,6}$/i;
+const PHONE_EXT = /\s*(?:;ext=|ext\.?|extension|x|#)\s*\d{1,6}$/i;
+// A pasted number as plain text: invisible format characters (the direction marks phones and
+// contact apps wrap a number in) are dropped, every Unicode dash becomes "-", every Unicode space
+// becomes " ", and runs of whitespace collapse. core.validate.phone_text on the server does the
+// same; tests/fixtures/phone_text.json holds the pairs both suites assert.
+export const normalizePhoneText = (input) => String(input ?? "").normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/[\p{Pd}\u2212]/gu, "-").replace(/\p{Zs}/gu, " ").split(/\s+/).filter(Boolean).join(" ");
 const VANITY = /^\+?(?:1[\s.-]*)?\(?(?:800|833|844|855|866|877|888|900)\)?[\s.-]+(?=[A-Za-z0-9\s.-]*[A-Za-z])[A-Za-z0-9](?:[\s.-]?[A-Za-z0-9]){6,10}$/;
 const DATE_LIKE = /^(?:\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}|(?:19|20)\d\d\s*[-/]\s*(?:19|20)\d\d)$/;
 export function looksLikePhone(input) {
-  const t = String(input ?? "").trim();
+  const t = normalizePhoneText(input);
   if (!t || t.length > 40) return false;
   if (VANITY.test(t)) return true;
   const body = t.replace(PHONE_EXT, "");

@@ -192,7 +192,7 @@ const CARDS = {
         ["Range assigned in", v.area ? h`${v.area} <span class="dim">${AREA_NOTE}</span>` : ""],
         ["Rate centre", v.rateCentre ? h`${[v.rateCentre, v.region].filter(Boolean).join(", ")} ${raw(ev(v.evidenceUrl, "Block record"))}` : ""],
         ["Range first assigned to", first ? h`${first} <span class="dim">${PORTED_NOTE}</span>` : ""],
-        ["Time zone of the range", esc(v.zones.join(", "))],
+        ["Time offset of the range", esc(v.offset)],
         ["Current carrier", v.nl?.state === "ok" && v.nl.carrier ? h`${v.nl.carrier} <span class="dim">from NumLookup</span>` : ""],
         ["Line type from NumLookup", v.nl?.state === "ok" ? esc(v.nl.line_type) : ""]])
       + h`<p class="muted small">Sources in this lookup:</p>` + kv(phoneSourceRows(v).map(([k, t]) => [k, esc(t)]))
