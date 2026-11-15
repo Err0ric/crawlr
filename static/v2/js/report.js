@@ -114,7 +114,8 @@ function dossier({ target, profile = {}, facts, accounts, collected }) {
   const exp = profile.exposure;
   const lvl = { Low: 1, Medium: 2, High: 3 }[exp] || 0;
   // Only accounts tied to the primary identity, or consistent with it, sit beside its name.
-  const confirmed = accounts.filter((a) => a.tier === "linked" || a.tier === "matches");
+  // A profile added from a similar handle is a row of the case, never part of the identity shown here.
+  const confirmed = accounts.filter((a) => (a.tier === "linked" || a.tier === "matches") && !a.similar);
   // Linked and matching accounts were read, so their URLs came from the source. One with no public page is not a link.
   const chips = confirmed.slice(0, 14).map((a) => (a.link_kind !== "none" && su(a.url) ? `<a class="chip" href="${esc(su(a.url))}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(a.what)}">${icon(a)}<span class="sr-only">${esc(a.what)} (opens in a new tab)</span></a>` : `<span class="chip" title="${esc(a.what)}">${icon(a, "")}<span class="sr-only">${esc(a.what)}</span></span>`)).join("");
   // The picture is the server-made thumbnail of a linked account, or initials. Never a remote image.

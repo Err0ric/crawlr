@@ -100,8 +100,12 @@ const base = (o = {}) => [
 const pp = (site, variant, o = {}) => asProfile(variant, readProbe(probeOf([prof(site, o)]), variant).profiles[0]);
 const lu = (p, b = base()) => lineUp(p, b, { handle: "sam" });
 {
-  const pic = lu(pp("GitHub", "sam_", { name: "Riley Otherperson", avatar_hash: H2 }));
-  ok(pic.outcome === "picture" && pic.strength === "strong" && pic.canAdd && pic.text === "Same picture as the GitHub profile", "the same picture is a strong signal, and it says which profile it matches");
+  const pic = lu(pp("GitHub", "sam_", { avatar_hash: H2 }));
+  ok(pic.outcome === "picture" && pic.strength === "strong" && pic.canAdd && pic.tier === "linked" && pic.text === "Same picture as the GitHub profile" && lu(pp("GitHub", "sam_", { name: "Sam Example", avatar_hash: H2 })).outcome === "picture", "the same picture is a strong signal, and it says which profile it matches");
+  // the same picture under another name is its own outcome, and it says both names
+  const pcf = lu(pp("GitHub", "sam_", { name: "Jordan Unrelated", avatar_hash: H2 }));
+  ok(pcf.outcome === "picture_conflict" && pcf.canAdd && pcf.tier === "linked" && pcf.text === "Same picture, but the name on it differs (Jordan Unrelated, against Sam Example)" && pcf.reason === "same picture as the GitHub profile, but the name on it differs (Jordan Unrelated, against Sam Example)", "the same picture with a conflicting name says so in those words");
+  ok(lu(pp("GitHub", "sam_", { name: "Riley Otherperson", avatar_hash: H2 })).outcome === "picture_conflict", "also when that name is one another person under the handle carries");
   ok(lu(pp("GitHub", "sam_", { avatar_hash: FAR, name: "" })).outcome === "nothing" && lu(pp("GitHub", "sam_", { avatar_hash: H2, avatar_default: true })).outcome === "nothing", "a different picture, or a placeholder with the same hash, never matches");
   ok(lineUp(pp("GitHub", "sam_", { avatar_hash: FLAT }), base({ avatarHash: FLAT }), { handle: "sam" }).outcome === "nothing" && lineUp(pp("GitHub", "sam_", { avatar_hash: H1 }), base({ avatarDefault: true }), { handle: "sam" }).outcome === "nothing", "a near-blank picture or a default on the case's side never matches either");
   const link = lineUp(pp("X", "sam_ex"), base({ links: ["https://x.com/sam_ex"] }), { handle: "sam" });
@@ -109,9 +113,18 @@ const lu = (p, b = base()) => lineUp(p, b, { handle: "sam" });
   ok(lu(pp("GitHub", "sam_", { links: ["https://sam.example.org"] })).outcome === "link" && /sam\.example\.org/.test(lu(pp("GitHub", "sam_", { links: ["https://sam.example.org"] })).text), "the same personal site on both is the shared-link rule");
   ok(lu(pp("GitHub", "sam_", { links: ["https://github.com/sam"] })).outcome === "nothing", "a link from the profile to the target alone is its own claim, not a tie");
   const nm = lu(pp("Instagram", "sam.example", { name: "Sam Example" }));
-  ok(nm.outcome === "name" && nm.strength === "supporting" && nm.canAdd && /^Name on profile: Sam Example, the same as on (GitHub|Threads)$/.test(nm.text), "the same name is supporting, not proof");
+  ok(nm.outcome === "name" && nm.strength === "supporting" && nm.canAdd && nm.tier === "matches" && /^Name on profile: Sam Example, the same full name as on (GitHub|Threads)$/.test(nm.text) && nm.reason === "same full name. A name alone is supporting, not proof", "the same full name on both sides is supporting, lands in Exists (matches), and says it is not proof");
+  // a name alone is offered only for the same full name, and never under a handle built from that name
+  const builtNm = lineUp(pp("Instagram", "samexample", { name: "Sam Example" }), base(), { handle: "sam", fromName: true });
+  ok(builtNm.outcome === "name_built" && !builtNm.canAdd && /this handle was built from the name on the primary profile, so the match proves nothing$/.test(builtNm.text), "the same name under a handle built from that name proves nothing and is not offered");
+  ok(lineUp(pp("GitHub", "samexample", { name: "Jordan Unrelated", avatar_hash: H2 }), base(), { handle: "sam", fromName: true }).canAdd && /this handle was built from the name on the primary profile$/.test(lineUp(pp("GitHub", "samexample", { avatar_hash: H2 }), base(), { handle: "sam", fromName: true }).reason), "a picture still counts under a name-built handle, and the note says how the handle was built");
+  const one = lineUp(pp("Instagram", "sam.example", { name: "Sam" }), base().slice(0, 2), { handle: "x" });
+  ok(one.outcome === "name_weak" && !one.canAdd && /a single word is shared by many people/.test(one.text), "a single word that fits a full name is not enough to add");
+  const longer = lineUp(pp("Instagram", "eric_", { name: "Eric Smith" }), [{ id: "acct:github", site: "GitHub", url: "https://github.com/eric", handle: "ericx", name: "Eric", links: [], websites: [], anchor: "github" }], { handle: "ericx" });
+  ok(longer.outcome === "name_weak" && !longer.canAdd && /not the same full name/.test(longer.text), "a full name against a one word primary name is not enough to add");
+  ok(lu(pp("Instagram", "sam_", { name: "SamExample" })).outcome === "name_weak" && lu(pp("Instagram", "sam.example", { name: "Example Sam" })).outcome === "name" && lu(pp("Instagram", "sam.example", { name: "Sam J Example" })).canAdd === false, "the same words in another order are the same full name; run together or with a word more they are not");
   const sub = lineUp(pp("Instagram", "sam.example", { name: "Sam" }), base().slice(0, 2), { handle: "x" });
-  ok(sub.outcome === "name" && /which fits the name on/.test(sub.text), "a name contained in the primary's name fits when only one person fits");
+  ok(sub.outcome === "name_weak" && !sub.canAdd && /which fits the name on/.test(sub.text), "a name contained in the primary's name fits, and is not enough to add");
   const cf = lu(pp("Instagram", "sam.example", { name: "Jordan Unrelated" }));
   ok(cf.outcome === "conflict" && !cf.canAdd && cf.text === "Name on profile: Jordan Unrelated, which conflicts with Sam Example", "a conflicting name is a different person and is never offered for adding");
   ok(lu(pp("Instagram", "sam.example", { name: "Riley Otherperson" })).canAdd === false, "a name that matches someone else under the handle does not line up with the primary identity");
@@ -158,10 +171,13 @@ const entry = (variant, profiles, added = [], sources = {}) => ({ variant, check
   // through a case file
   const collected = { github: { found: true, username: "sam", name: "Sam Example", profile_url: "https://github.com/sam", avatar_url: "", public_repos: 1, followers: 1 }, similar: hostile };
   const file = parseCaseFile(JSON.stringify(buildCaseFile({ mode: "investigate", target: "sam", type: "username", collected })));
-  ok(file.ok && Object.keys(file.entry.results.similar).sort().join() === "ok_err,sam_", "a case file's similar handles are re-read when it is opened");
+  ok(file.ok && Object.keys(file.entry.results.similar).join() === "sam_" && file.entry.results.similar["sam_"].from_file === true && file.entry.results.similar["sam_"].added.length === 0, "a case file keeps only handles the case would offer itself, marked as from the file, with nothing added");
   const ev = buildEvidence(file.entry.results, "sam", "username");
   // sam_ holds a GitHub profile whose name conflicts: the file says "added", the rules say no
-  ok(!ev.items.some((i) => /~/.test(i.key)) && ev.items.find((i) => i.key === "similar:sam_").sim.profiles[0].added === false && ev.items.find((i) => i.key === "similar:sam_").sim.profiles[0].lineup.outcome === "conflict", "a file cannot add a profile that does not line up: it is evaluated again and stays out of the ledger");
+  ok(!ev.items.some((i) => /~/.test(i.key)) && ev.items.find((i) => i.key === "similar:sam_").sim.profiles[0].added === false && ev.items.find((i) => i.key === "similar:sam_").sim.state === "file", "nothing from a file is in the ledger: its rows wait to be checked here");
+  // a stored (not imported) case with a conflicting profile marked added: the rules say no
+  const local = buildEvidence({ ...collected, similar: readSimilar(hostile, "sam") }, "sam", "username");
+  ok(!local.items.some((i) => /~/.test(i.key)) && local.items.find((i) => i.key === "similar:sam_").sim.profiles[0].lineup.outcome === "conflict", "a stored case cannot add a profile that does not line up: it is evaluated again and stays out of the ledger");
   ok(!/onerror=alert|javascript:/.test(JSON.stringify(ev.items.map((i) => [i.url, i.sim?.profiles.map((p) => p.url)]))) && !evWhat(ev.items.find((i) => i.key === "similar:sam_")).includes("<img src=x"), "nothing from the file becomes an address or markup");
   ok(!("similar" in parseCaseFile(JSON.stringify(buildCaseFile({ mode: "investigate", target: "44d88612fea8a8f36de82e1278abb02f", type: "hash", collected: { hash: { found: false }, similar: hostile } }))).entry.results), "a case that is not a username or an email keeps no similar handles");
   ok(!("similar" in parseCaseFile(JSON.stringify(buildCaseFile({ mode: "investigate", target: "sam", type: "username", collected: { github: { found: false }, similar: "x" } }))).entry.results), "a similar field that is not a map is dropped");
@@ -221,11 +237,13 @@ const erroric = (added = []) => ({ erroric: entry("erroric", [prof("GitHub", { n
   ok(evSrc(a).includes('data-sim-remove="acct:github~erroric"') && evSrc(a).includes("Remove from this case") && evWhat(ev2.items.find((i) => i.key === "similar:erroric")).includes('data-sim-remove="acct:github~erroric"') && evWhat(ev2.items.find((i) => i.key === "similar:erroric")).includes(">Added</span>"), "it can be removed from its row and from the similar handle");
   ok(ev2.items.find((i) => i.key === "acct:github").tier === "linked" && ev2.items.find((i) => i.key === "acct:github").url === "https://github.com/Err0ric", "the target's own GitHub row is untouched");
   const primary = ev2.identity.views.find((v) => v.primary);
-  ok(primary.sites.includes("GitHub (erroric)") && primary.facts.some((f) => f.k === "Name" && f.v === "Sam Example" && f.source === "GitHub (erroric)" && f.url === "https://github.com/erroric") && primary.signals.some((s) => s.detail === "same avatar image" && [s.a, s.b].includes("GitHub (erroric)")), "it joins the primary identity through its own signal, and its facts name the handle they came from");
+  ok(JSON.stringify(ev2.identity) === JSON.stringify(plain.identity) && JSON.stringify(ev2.facts) === JSON.stringify(plain.facts), "an added profile is a row, never part of the identity: label, members, signals, picture and facts are unchanged");
+  ok(ev2.added.length === 1 && ev2.added[0].label === "GitHub (erroric)" && ev2.added[0].facts.some((f) => f.k === "Name" && f.v === "Sam Example" && f.source === "GitHub (erroric)" && f.url === "https://github.com/erroric") && plain.added.length === 0, "its facts are kept apart, each naming the site and the handle");
+  ok(JSON.stringify(ev2.items.filter((i) => !/~/.test(i.key) && i.tier !== "similar")) === JSON.stringify(plain.items.filter((i) => i.tier !== "similar")), "every other row is exactly as it was: tier, text, link and order");
   ok(ev2.items.filter(isFinding).length === plain.items.filter(isFinding).length + 1 && leadTile(ev2, c2) === leadTile(plain, caseOf(null)) && ev2.items.filter((i) => i.tier === "lead").length === plain.items.filter((i) => i.tier === "lead").length, "it is one more finding, and it starts no leads");
   ok(ev2.similarLine === "1 similar handle checked: 1 added." && ev2.items.find((i) => i.key === "similar:erroric").sim.summary === "3 profiles read: 1 added to this case, 2 could not be compared.", "the brief line and the row count it as added");
   ok(avatarImages(c2, T, "username").every((i) => !/~/.test(i.id)) && deepDiveUrls(c2).every((u) => !/erroric/.test(u.url)), "an added profile is not sent to the avatar comparison or to a Deep Dive");
-  ok(collectProfiles(c2, T, "username").some((p) => p.id === "acct:github~erroric") && !collectProfiles(c2, T, "username", { similar: false }).some((p) => p.similar), "collectProfiles carries the added profile, and can leave it out");
+  ok(!collectProfiles(c2, T, "username").some((p) => p.similar || /~/.test(p.id)), "collectProfiles holds the case's own profiles only");
   // the AI payload
   const ai = aiPayloadFor(c2, T, "username");
   const acc = ai.accounts.find((x) => x.handle === "erroric");
@@ -235,7 +253,7 @@ const erroric = (added = []) => ({ erroric: entry("erroric", [prof("GitHub", { n
   ok(md.includes("## Similar handles (") && /\[GitHub\]\(https:\/\/github\.com\/erroric\) · under the handle erroric, added from a similar handle check/.test(md) && md.includes("- erroric · the 0 read as the letter o · 3 profiles read: 1 added to this case, 2 could not be compared."), "the Markdown export has the added row and the similar handles with their results");
   // through a case file and back
   const back = parseCaseFile(JSON.stringify(buildCaseFile({ mode: "investigate", target: T, type: "username", collected: c2 }))).entry.results;
-  ok(buildEvidence(back, T, "username").items.filter((i) => /~/.test(i.key)).map((i) => `${i.key}:${i.tier}`).join() === "acct:github~erroric:linked" && back.similar.erroric.added.join() === "acct:github~erroric,acct:instagram~erroric,acct:bluesky~erroric", "a case file keeps the checks, and the ledger is rebuilt from the rules");
+  ok(!buildEvidence(back, T, "username").items.some((i) => /~/.test(i.key)) && back.similar.erroric.added.length === 0 && back.similar.erroric.from_file === true, "a case file carries the check, never the add: the investigator checks and adds again here");
   // removal
   const c3 = caseOf(erroric([]));
   ok(JSON.stringify(buildEvidence(c3, T, "username").items.map((i) => i.key)) === JSON.stringify(ev1.items.map((i) => i.key)) && JSON.stringify(buildEvidence(c3, T, "username").identity) === JSON.stringify(plain.identity), "removing it puts the ledger and the identities back as they were");
@@ -244,11 +262,17 @@ const erroric = (added = []) => ({ erroric: entry("erroric", [prof("GitHub", { n
   ok(!buildEvidence(noPic, T, "username").items.some((i) => /~/.test(i.key)) && buildEvidence(noPic, T, "username").items.find((i) => i.key === "similar:erroric").sim.profiles[0].added === false, "when the signal it was added on is gone, the profile is no longer part of the case");
   // a name-only match lands in Exists (matches)
   const tv = fx("torvalds");
-  const named = { ...tv.collected, similar: { linustorvalds: entry("linustorvalds", [prof("GitHub", { name: "Linus Torvalds" }), prof("X", { name: "Jordan Unrelated" })], ["acct:github~linustorvalds", "acct:x~linustorvalds"]) } };
+  const named = { ...tv.collected, similar: { "torvalds_": entry("torvalds_", [prof("GitHub", { name: "Linus Torvalds" }), prof("X", { name: "Jordan Unrelated" })], ["acct:github~torvalds_", "acct:x~torvalds_"]) } };
   const evn = buildEvidence(named, tv.target, "username");
-  const nrow = evn.items.find((i) => i.key === "acct:github~linustorvalds");
-  ok(nrow && nrow.tier === "matches" && /same name as on/.test(nrow.card.note) && !evn.items.some((i) => i.key === "acct:x~linustorvalds") && evn.similarLine === "1 similar handle checked: 1 added.", "a name-only match is added to Exists (matches), and a conflicting profile beside it is not");
-  ok(evn.items.find((i) => i.key === "similar:linustorvalds").sim.profiles.find((p) => p.site === "X (Twitter)").lineup.outcome === "conflict" && /A name alone is supporting, not proof\./.test(evWhat(evn.items.find((i) => i.key === "similar:linustorvalds"))), "the conflicting profile says so, and a name match says it is not proof");
+  const nrow = evn.items.find((i) => i.key === "acct:github~torvalds_");
+  ok(nrow && nrow.tier === "matches" && nrow.card.note === "Added from the similar handle torvalds_: same full name. A name alone is supporting, not proof." && nrow.card.why === "" && !evn.items.some((i) => i.key === "acct:x~torvalds_") && evn.similarLine === "1 similar handle checked: 1 added.", "a full-name match is added to Exists (matches) with the caveat in its note, and a conflicting profile beside it is not");
+  const tvPlain = buildEvidence(tv.collected, tv.target, "username");
+  ok(JSON.stringify(evn.identity) === JSON.stringify(tvPlain.identity) && JSON.stringify(evn.facts) === JSON.stringify(tvPlain.facts) && JSON.stringify(evn.items.filter((i) => !/~/.test(i.key) && i.tier !== "similar")) === JSON.stringify(tvPlain.items.filter((i) => i.tier !== "similar")), "a name add changes nothing else either");
+  // the handle built from the primary's name: a stranger with that name is never offered
+  const builtCase = buildEvidence({ ...tv.collected, similar: { linustorvalds: entry("linustorvalds", [prof("GitHub", { name: "Linus Torvalds" })], ["acct:github~linustorvalds"]) } }, tv.target, "username");
+  const builtRow = builtCase.items.find((i) => i.key === "similar:linustorvalds");
+  ok(builtRow.sim.profiles[0].lineup.outcome === "name_built" && !builtRow.sim.profiles[0].added && !builtCase.items.some((i) => /~/.test(i.key)) && !evWhat(builtRow).includes("data-sim-add") && evWhat(builtRow).includes(">Same name, proves nothing</span>") && evSrc(builtRow).includes('data-pivot="investigate"'), "a name match under a handle built from that name has no Add, says why, and keeps Investigate this");
+  ok(evn.items.find((i) => i.key === "similar:torvalds_").sim.profiles.find((p) => p.site === "X (Twitter)").lineup.outcome === "conflict" && /A name alone is supporting, not proof\./.test(evWhat(evn.items.find((i) => i.key === "similar:torvalds_"))), "the conflicting profile says so, and a name match says it is not proof");
   ok(buildEvidence(tv.collected, tv.target, "username").items.filter((i) => i.tier === "similar").slice(0, 3).map((i) => i.source).join() === "built from the name,built from the name,built from the name", "with a name on the primary profile, the handles built from it come first");
   // a handle checked earlier stays listed even when it is no longer generated
   const gone = buildEvidence(caseOf({ zzcustom: entry("zzcustom", []) }), T, "username").items.find((i) => i.key === "similar:zzcustom");
@@ -301,7 +325,7 @@ const erroric = (added = []) => ({ erroric: entry("erroric", [prof("GitHub", { n
   ok(deepDiveUrls({ platformCheck: PC }).every((u) => !/discord/i.test(u.site)) && avatarImages(c, T, "username").every((i) => !/discord/.test(i.id)), "the taken row gives a Deep Dive nothing to read and has no picture");
   // the source as a whole
   const cv = sourceCoverage(PC);
-  ok(cv.answered === PC.results.filter((x) => ["found", "not_found", "taken"].includes(x.state)).length && cv.answered < cv.total && sourceHasResults({ results: [{ platform: "Discord", state: "taken" }] }) && !sourceHasResults({ results: [{ platform: "Discord", state: "not_found" }] }), "Discord answered, so it is not a part that failed; blocked rows still make the source partial");
+  ok(cv.answered === PC.results.filter((x) => ["found", "not_found", "taken"].includes(x.state)).length && cv.answered < cv.total && !sourceHasResults({ results: [{ platform: "Discord", state: "taken" }] }) && !sourceHasResults({ results: [{ platform: "Discord", state: "taken" }, { platform: "Reddit", state: "blocked" }] }), "Discord answered, so it is not a part that failed; a taken handle is still not a result, and blocked rows make the source partial");
   const card = sourceCards.platformCheck(PC, {});
   ok(/Discord<\/?[^>]*>?\s*<span class="tag ">handle taken<\/span>|Discord <span class="tag ">handle taken<\/span>/.test(card) && card.includes("1 handle taken") && />Reddit<svg/.test(card) && card.includes("Blocked by site") && !/<a[^>]*>Discord</.test(card), "the Platform check card lists Reddit and Discord with their states, and Discord has no link");
   // Reddit
@@ -321,6 +345,100 @@ const erroric = (added = []) => ({ erroric: entry("erroric", [prof("GitHub", { n
   const fc = { ...c, platformCheck: found }, fe = buildEvidence(fc, T, "username"), fr = fe.items.find((i) => i.key === "acct:reddit");
   ok(fr.link_kind === "verified_profile" && ["linked", "matches", "different"].includes(fr.tier) && fr.card.facts.includes("Sam Example") && fr.card.facts.includes("1,354 karma") && fr.card.facts.includes("joined 2015") && fr.card.bio === "Maps and bread" && fr.card.note === "The site marks this account as suspended.", "a Reddit profile read through the API shows its name, bio, year, karma and the suspended note");
   ok(avatarImages(fc, T, "username").some((i) => i.id === "acct:reddit" && /^https:\/\/styles\.redditmedia\.com\//.test(i.url)) && !JSON.stringify(fe.items).includes("redditmedia"), "its picture goes to the server's avatar comparison and is never an image address on the page");
+}
+
+// ---- review fixes: an added profile is a row, never part of the identity ----------------------
+{
+  const { addedFactsHtml, ADDED_FACTS } = await import("../../static/v2/js/workbench.js");
+  const { fromFile, FROM_FILE, LINEUP_PILL } = S;
+  const tv = fx("torvalds"), extra = fx("identity-extras");
+  const tvCase = (similar) => ({ ...tv.collected, avatarHash: extra.avatarHash, ...(similar ? { similar } : {}) });
+  const before = buildEvidence(tvCase(null), tv.target, "username");
+  const rest = (ev) => JSON.stringify(ev.items.filter((i) => !/~/.test(i.key) && i.tier !== "similar"));
+  const same = (ev) => JSON.stringify(ev.identity) === JSON.stringify(before.identity) && JSON.stringify(ev.facts) === JSON.stringify(before.facts) && rest(ev) === rest(before);
+  const main = (ev) => ev.identity.views.find((v) => v.primary);
+  // the same picture under a conflicting name: offered, said in words, and nothing else moves
+  const pcf = buildEvidence(tvCase({ "torvalds_": entry("torvalds_", [prof("GitHub", { name: "Jordan Unrelated", location: "Elsewhere", bio: "Not the kernel", avatar_hash: H2, thumb: THUMB })], ["acct:github~torvalds_"]) }), tv.target, "username");
+  const prow = pcf.items.find((i) => i.key === "acct:github~torvalds_");
+  ok(prow && prow.tier === "linked" && prow.card.note === "Added from the similar handle torvalds_: same picture as the GitHub profile, but the name on it differs (Jordan Unrelated, against Linus Torvalds)." && pillOf(prow).includes(">Linked<"), "same picture, conflicting name: the row lands in Linked with the difference in its note");
+  ok(same(pcf) && main(pcf).label === "Linus Torvalds" && main(pcf).thumb === main(before).thumb && !JSON.stringify(pcf.identity).includes("Jordan") && !pcf.facts.some((f) => /Jordan|Elsewhere|Not the kernel/.test(f.v)), "and the primary's label, picture, members and facts, and every other row, are as they were");
+  ok(pcf.added[0].facts.map((f) => `${f.k}=${f.v}`).join() === "Name=Jordan Unrelated,Location=Elsewhere,Bio=Not the kernel" && pcf.added[0].facts.every((f) => f.source === "GitHub (torvalds_)"), "its name and facts are only in the block for added profiles");
+  const card = evWhat(pcf.items.find((i) => i.key === "similar:torvalds_"));
+  ok(card.includes("Same picture, but the name on it differs (Jordan Unrelated, against Linus Torvalds).") && card.includes(">Same picture, name differs</span>") && card.includes("data-sim-remove"), "the card says so before and after the add");
+  // a nameless primary never takes the added profile's name as its label
+  ok(main(buildEvidence(caseOf(erroric(["acct:github~erroric"])), T, "username")).label === main(buildEvidence(caseOf(null), T, "username")).label && main(buildEvidence(caseOf(null), T, "username")).label !== "Sam Example", "a primary with no name keeps its label when a named profile is added");
+  // the block in "What we know", and in the Markdown export
+  const block = addedFactsHtml(pcf.added);
+  ok(ADDED_FACTS === "From profiles you added (under a different handle)" && block.includes(`>${ADDED_FACTS}</h3>`) && block.includes("Jordan Unrelated") && block.includes("GitHub (torvalds_)") && addedFactsHtml([]) === "" && addedFactsHtml(before.added) === "", "What we know gets a separate, labelled block for added profiles, and only when there is one");
+  const md = caseMarkdown({ collected: tvCase({ "torvalds_": entry("torvalds_", [prof("GitHub", { name: "Jordan Unrelated", avatar_hash: H2 })], ["acct:github~torvalds_"]) }), target: tv.target, type: "username" });
+  ok(md.includes(`## ${ADDED_FACTS}`) && md.indexOf("Jordan Unrelated") > md.indexOf(`## ${ADDED_FACTS}`) && !md.slice(0, md.indexOf(`## ${ADDED_FACTS}`)).includes("Jordan Unrelated"), "the Markdown export keeps the same separation");
+  const briefRows = investigateBrief({ collected: {}, items: pcf.items, facts: pcf.facts, identity: pcf.identity, failed: [], type: "username", target: tv.target }).rows.map((r) => r.text).join("\n");
+  const briefBefore = investigateBrief({ collected: {}, items: before.items, facts: before.facts, identity: before.identity, failed: [], type: "username", target: tv.target }).rows.map((r) => r.text).join("\n");
+  ok(briefRows === briefBefore, "the brief's account counts do not include an added profile");
+  // name-only adds
+  const strangers = buildEvidence(tvCase({ linustorvalds: entry("linustorvalds", [prof("X", { name: "Linus Torvalds" })], ["acct:x~linustorvalds"]), "torvalds_": entry("torvalds_", [prof("X", { name: "Linus" }), prof("Instagram", { name: "Linus B Torvalds" })], ["acct:x~torvalds_", "acct:instagram~torvalds_"]) }), tv.target, "username");
+  ok(!strangers.items.some((i) => /~/.test(i.key)) && same(strangers), "a name under a handle built from that name, one word of the name, or a longer name: none is added, whatever the stored case says");
+  const outcomes = (ev, v) => ev.items.find((i) => i.key === `similar:${v}`).sim.profiles.map((p) => `${p.lineup.outcome}:${p.pill.word}`).join("|");
+  ok(outcomes(strangers, "linustorvalds") === "name_built:Same name, proves nothing" && outcomes(strangers, "torvalds_") === "name_weak:Same name, not enough to add|name_weak:Same name, not enough to add", "each says in its pill why it is not offered");
+  ok(strangers.items.find((i) => i.key === "similar:torvalds_").sim.summary === "2 profiles read: 2 share a name, which is not enough to add." && !evWhat(strangers.items.find((i) => i.key === "similar:torvalds_")).includes("data-sim-add") && /Use Investigate this to look at the handle as a case of its own\./.test(evWhat(strangers.items.find((i) => i.key === "similar:torvalds_"))), "the row counts them apart and points at Investigate this");
+  ok(Object.keys(LINEUP_PILL).join() === "picture,picture_conflict,link,name,name_weak,name_built,conflict,nothing", "the outcome list");
+  const nameAdd = aiPayloadFor(tvCase({ "torvalds_": entry("torvalds_", [prof("GitHub", { name: "Linus Torvalds" })], ["acct:github~torvalds_"]) }), tv.target, "username").accounts.find((a) => a.handle === "torvalds_");
+  ok(nameAdd.status === "matches" && /same full name\. A name alone is supporting, not proof/.test(nameAdd.note), "the AI gets a name add as Exists (matches), with the caveat");
+  const builtAdd = aiPayloadFor(tvCase({ linustorvalds: entry("linustorvalds", [prof("GitHub", { avatar_hash: H2 })], ["acct:github~linustorvalds"]) }), tv.target, "username").accounts.find((a) => a.handle === "linustorvalds");
+  ok(builtAdd.status === "linked" && /this handle was built from the name on the primary profile/.test(builtAdd.note), "and is told when the handle was built from the name");
+
+  // a picture that could not be read is not "no picture"
+  const lost = readProbe(probeOf([{ ...prof("GitHub"), avatar_state: "failed" }]), "sam_").profiles[0];
+  ok(lost.avatar_state === "failed" && readProbe(probeOf([prof("GitHub")]), "sam_").profiles[0].avatar_state === "none" && readProbe(probeOf([prof("GitHub", { avatar_hash: H1, avatar_state: "failed" })]), "sam_").profiles[0].avatar_state === "ok" && readProbe(probeOf([{ ...prof("GitHub"), avatar_state: "<b>" }]), "sam_").profiles[0].avatar_state === "none", "the picture's state is read as one of four words");
+  const lt = lineUp(asProfile("sam_", lost), base(), { handle: "sam" });
+  ok(lt.why === "picture_failed" && lt.text === "Read, but nothing to compare: this profile carries no name, and the picture could not be compared." && /The picture could not be compared, and no link ties it/.test(lineUp(asProfile("sam_", { ...lost, name: "Lisbon Maps Club" }), base(), { handle: "sam" }).text), "the card says the picture could not be compared, never that there is none");
+
+  // a case file cannot attach a handle
+  const gates = { billgates: entry("billgates", [prof("X", { name: "Sam Example" })], ["acct:x~billgates"]), "sam_": entry("sam_", [prof("GitHub", { name: "Sam Example", avatar_hash: H2, thumb: THUMB })], ["acct:github~sam_"]), samexample: entry("samexample", [prof("X", { name: "Sam Example" })], ["acct:x~samexample"]) };
+  const own = { github: { found: true, username: "sam", name: "Sam Example", profile_url: "https://github.com/sam", avatar_url: "", public_repos: 1, followers: 1 }, avatarHash: { results: [{ id: "acct:github", hash: H1, default: false }] } };
+  const localEv = buildEvidence({ ...own, similar: gates }, "sam", "username");
+  ok(localEv.items.some((i) => i.key === "acct:x~billgates") && localEv.items.some((i) => i.key === "acct:github~sam_"), "(in a case checked in this browser both would be rows)");
+  const imp = parseCaseFile(JSON.stringify(buildCaseFile({ mode: "investigate", target: "sam", type: "username", collected: { ...own, similar: gates } }))).entry.results;
+  ok(Object.keys(imp.similar).sort().join() === "sam_,samexample" && Object.values(imp.similar).every((e) => e.from_file === true && e.added.length === 0), "from a file: a handle the case would not offer is dropped, and nothing stays added");
+  const impEv = buildEvidence(imp, "sam", "username");
+  ok(!impEv.items.some((i) => /~/.test(i.key)) && !JSON.stringify(impEv.items).includes("billgates") && impEv.similarLine === "" && impEv.added.length === 0, "nothing from the file is in the ledger, the brief or What we know");
+  const frow = impEv.items.find((i) => i.key === "similar:sam_"), fhtml = evWhat(frow);
+  ok(frow.sim.state === "file" && frow.sim.summary.startsWith(FROM_FILE) && frow.sim.profiles[0].link_kind === "templated_unverified" && frow.sim.profiles[0].thumb === "" && !frow.sim.profiles[0].lineup.canAdd, "a kept answer is marked as from the file, not checked here");
+  ok(fhtml.includes("lk-unverified") && fhtml.includes(">From the file</span>") && /class="cp tone-unverified line-dashed"/.test(fhtml) && /class="sim-card tone-unverified line-dashed"/.test(fhtml) && !fhtml.includes("data-sim-add") && !fhtml.includes("mark-thumb") && />Check here</.test(evSrc(frow)), "its links are unverified, its card is dashed, it has no Add, and the row offers Check here");
+  ok(JSON.stringify(fromFile(gates, "sam", [])) === "{}" && Object.keys(fromFile({ ...gates, bad: { variant: "bad", error: { error: "x" } } }, "sam", ["sam_", "bad"])).join() === "sam_" && readSimilar({ "sam_": { ...gates["sam_"], from_file: true } }, "sam")["sam_"].added.length === 0, "fromFile keeps only allowed handles with an answer, and from_file never carries an add");
+  // checking it here replaces the file's answer
+  const rechecked = buildEvidence({ ...imp, similar: { ...imp.similar, "sam_": { variant: "sam_", checked_at: 5, probe: gates["sam_"].probe, added: ["acct:github~sam_"] } } }, "sam", "username");
+  ok(rechecked.items.some((i) => i.key === "acct:github~sam_" && i.tier === "linked") && rechecked.items.find((i) => i.key === "similar:sam_").sim.state === "checked", "once checked here it can be added like any other");
+
+  // a check in flight shows in every redraw
+  const busyRow = { ...before.items.find((i) => i.tier === "similar"), sim: { ...before.items.find((i) => i.tier === "similar").sim, busy: true } };
+  const box = { innerHTML: "", id: "t" };
+  renderTiers(box, [busyRow], ledgerTiers(tv.target, "username"), new Set(), "");
+  ok(/aria-disabled="true">Checking…/.test(evSrc(busyRow)) && /data-row="similar:[^"]+" aria-busy="true"/.test(box.innerHTML) && !/aria-busy|aria-disabled/.test(evSrc(before.items.find((i) => i.tier === "similar"))), "a handle being checked is drawn busy with a disabled button, whoever redraws the ledger");
+
+  // counts: a handle with nothing anywhere has no findings
+  const blockedPc = { username: "zqnobody", total: 0, checked: 2, results: PC.results.filter((x) => ["Reddit", "Discord"].includes(x.platform)) };
+  const empty = { sherlock: { results: [{ site: "Discord", url: "https://discord.com" }] }, maigret: { results: [] }, github: { found: false }, platformCheck: blockedPc };
+  const ee = buildEvidence(empty, "zqnobody", "username");
+  ok(ee.items.filter(isFinding).length === 0 && ee.items.filter((i) => i.tier === "unverified").length === 2 && investigateTiles({ items: ee.items, collected: empty, type: "username" }).find((t) => t.id === "unverified").value === 2, "a blocked Reddit row and a taken Discord handle are not findings; they count on the Unverified tile only");
+  const tl = sourceTally(empty, { sherlock: "Sherlock", platformCheck: "Platform check", github: "GitHub" });
+  ok(tl.rows.find((r) => r.key === "platformCheck").hasResults === false && tl.rows.find((r) => r.key === "platformCheck").state === "partial", "and the platform check is not counted as a source with results");
+  const withReddit = buildEvidence({ ...empty, sherlock: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/zqnobody" }] } }, "zqnobody", "username");
+  ok(withReddit.items.filter(isFinding).map((i) => i.key).join() === "acct:reddit" && withReddit.items.find((i) => i.key === "acct:reddit").tools === 1, "a tool's own report of Reddit is still a finding, by one tool");
+  // Reddit's API not-found keeps a tool's report
+  const hiddenPc = { ...blockedPc, results: [{ platform: "Reddit", url: "https://www.reddit.com/user/zqnobody", state: "not_found", found: false, evidence: "x", hidden_possible: true }] };
+  const hid = buildEvidence({ ...empty, sherlock: { results: [{ site: "Reddit", url: "https://reddit.com/" }] }, platformCheck: hiddenPc }, "zqnobody", "username").items.find((i) => i.key === "acct:reddit");
+  ok(hid && hid.tier === "unverified" && hid.url === "https://www.reddit.com/user/zqnobody" && hid.meta === L.REDDIT_HIDDEN && hid.card.note === `${L.REDDIT_HIDDEN}.` && hid.sources.join() === "Sherlock", "when Reddit's API finds no visible account, a tool's Reddit row stays, unverified, with that said");
+  ok(!buildEvidence({ ...empty, platformCheck: hiddenPc }, "zqnobody", "username").items.some((i) => i.key === "acct:reddit") && !buildEvidence({ ...empty, sherlock: { results: [{ site: "Reddit", url: "https://reddit.com/" }] }, platformCheck: { ...hiddenPc, results: [{ ...hiddenPc.results[0], hidden_possible: undefined }] } }, "zqnobody", "username").items.some((i) => i.key === "acct:reddit"), "with no tool report there is no row, and the keyless not-found still drops one");
+
+  // variants: nothing absurd
+  ok(!values("realestate").includes("estate") && !values("realtor_jane").includes("tor_jane") && !values("TheRapist").includes("rapist") && !values("the_rapist").includes("rapist") && !values("theory_x").includes("ory_x") && !values("official").some((v) => v.length < 3), "a decoration is not taken off an ordinary word that starts with it");
+  ok(!values("realsam").includes("sam") && !values("therealsam").includes("sam") && values("real_sam")[0] === "sam" && values("RealSam")[0] === "sam" && values("the_real_sam")[0] === "sam" && values("SamOfficial")[0] === "sam", "and only at a separator or a change of case");
+  ok(!values("im_x").includes("x") && !values("its_ab").includes("ab"), "never when fewer than 3 characters would be left");
+  for (const h of [".eric", "_eric_", "a..b", "x_", "-", "._", "sam.", "__init__"]) ok(similarHandles(h).every((x) => !/^[._-]{2}|[._-]{2}$/.test(x.value)), `${h}: no variant begins or ends with two separators`);
+  ok(similarBase("info@", "email") === "" && similarBase("@", "email") === "" && similarBase("info@", "username") === "" && buildEvidence({}, "info@", "email").items.every((i) => i.tier !== "similar") && handleVariants("info@").length === 0, "something that is not a whole address or a valid handle builds nothing");
+  ok(nameVariants("Linux Kernel Dev").length === 0 && nameVariants("Dr Eric").length === 0 && nameVariants("Example Security Labs").length === 0 && nameVariants("Sam Example 2").length === 0 && nameVariants("A B C D").length === 0, "no handles are built from a label that is not a person's name");
+  ok(nameVariants("Dr. Sam Example")[0].value === "samexample" && nameVariants("Prof Sam Q Example").some((x) => x.value === "samqexample") && nameVariants("Sam Example").length > 0, "a title is dropped, and a name of two or three words builds");
 }
 
 console.log(bad ? `${bad} of ${n} similar handle checks failed` : `${n}/${n} similar handle checks passed`);

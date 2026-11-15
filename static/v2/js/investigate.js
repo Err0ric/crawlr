@@ -10,7 +10,7 @@ import { openModal, closeModal } from "./ui.js";
 import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText } from "./links.js";
 import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
-import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards } from "./workbench.js";
+import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards, addedFactsHtml } from "./workbench.js";
 import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
 import { buildCaseFile } from "./casefile.js";
 import { readSimilar, readProbe, similarBase, probeStatus, similarBlurb } from "./similar.js";
@@ -155,6 +155,8 @@ function adultNotice() {
 }
 
 // ---- ledger + facts -------------------------------------------------------------
+// Similar handles whose check is in flight (see simCheck).
+const simBusy = new Set();
 function evidence() {
   const ev = buildEvidence(state.collected, state.target, state.type);
   // Leads and host inventory are not findings, so they are not part of "what changed".
@@ -163,6 +165,8 @@ function evidence() {
   if (diff) { const added = new Set(diff.added.map((i) => i.key)); for (const it of ev.items) it.isNew = added.has(it.key); }
   // Similar handles are offered once the run is in: they are built from the handle and from the
   // name on the primary profile, which is not known until the sources have answered.
+  // A handle whose check is in flight says so in every redraw, not only on the button that was pressed.
+  for (const it of ev.items) if (it.sim && simBusy.has(it.sim.variant)) it.sim.busy = true;
   return { ...ev, items: state.running ? ev.items.filter((i) => i.tier !== "similar") : ev.items, diff };
 }
 // opts.keep: a redraw after the investigator changed one row (added or removed a profile from a
@@ -201,6 +205,8 @@ function paintSummary(ev) {
   if (isName && !state.running) renderNameKnown($("#facts"), nameKnown(state.collected, state.target));
   else if (ev.identity.views.length) renderIdentityFacts($("#facts"), ev.identity, (id) => factsFor(ev, id), state.view, emptyFacts);
   else renderFacts($("#facts"), facts, emptyFacts);
+  // Facts of profiles added from a similar handle: apart from every identity, at the end.
+  if (!isName && ev.added?.length) $("#facts").insertAdjacentHTML("beforeend", addedFactsHtml(ev.added));
   if (state.type === "name") setTabCount($("#tabFindings"), "Candidates", items.filter((i) => i.tier === "people").length);
   else setTabCount($("#tabFindings"), "Findings", items.filter(isFinding).length);
   // The identity header: whose profiles these are. Username and email cases only.
@@ -568,7 +574,10 @@ export async function run(targetRaw, typeOverride) {
   checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear();
   // The switch as it stands for this handle, and only if the handle passes the minor guard.
   const adult = adultOn(type, target, adultSwitch.view(target, type).on);
-  Object.assign(state, { target, type, collected: adult ? { adultMode: true } : {}, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
+  // The similar handles checked in the last run of this target are the investigator's work: they
+  // are carried into the new run, and every line-up is evaluated again against what it finds.
+  const carried = last && last.kind === type ? readSimilar(last.results?.similar, similarBase(target, type)) : {};
+  Object.assign(state, { target, type, collected: { ...(adult ? { adultMode: true } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}) }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: adult, adultBlocked: "" });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -719,7 +728,6 @@ $("#ledger").addEventListener("click", async (e) => {
 // and adding one to the case is the investigator's click, per profile, and can be undone.
 // Loading and the outcome are said through the polite live region, only that row is redrawn while
 // a handle is checked, and focus stays where the investigator is.
-const simBusy = new Set();
 const simRow = (variant) => evidence().items.find((i) => i.tier === "similar" && i.sim.variant === variant);
 const simOk = () => (state.type === "username" || state.type === "email") && !state.running && !!similarBase(state.target, state.type);
 async function simCheck(b) {

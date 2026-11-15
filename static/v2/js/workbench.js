@@ -112,16 +112,17 @@ export function simWhat(it) {
   if (s.state === "new") return head;
   const cards = s.profiles.map((p) => {
     const pill = p.pill || { word: "", tone: "" };
+    const dashed = pill.dashed ? "line-dashed" : "";
     const who = `${p.site} ${s.variant}`;
-    return h`<li class="sim-card ${pill.tone ? `tone-${pill.tone}` : ""}">
+    return h`<li class="${["sim-card", pill.tone ? `tone-${pill.tone}` : "", dashed].filter(Boolean).join(" ")}">
       ${raw(mark(p.site, { thumb: p.thumb, favicon: false }))}
       <div class="sim-main">
-        <span class="ev-title">${raw(link(p.url, p.site, "", { kind: "verified_profile" }))}<span class="ev-handle">${s.variant}</span></span>
+        <span class="ev-title">${raw(link(p.url, p.site, "", { kind: p.link_kind || "verified_profile" }))}<span class="ev-handle">${s.variant}</span></span>
         ${p.facts?.length ? raw(`<span class="ev-line">${p.facts.map((f) => h`<span class="ev-fact">${f}</span>`).join("")}</span>`) : ""}
         ${p.bio ? raw(h`<span class="ev-bio">${p.bio}</span>`) : ""}
-        <span class="ev-why"><span>${p.lineup.text}${/[.!?]$/.test(p.lineup.text) ? "" : "."}${p.lineup.outcome === "name" ? " A name alone is supporting, not proof." : ""}${p.note === "suspended" ? " The site marks this account as suspended." : ""}</span></span>
+        <span class="ev-why"><span>${p.lineup.text}${/[.!?]$/.test(p.lineup.text) ? "" : "."}${p.lineup.outcome === "name" ? " A name alone is supporting, not proof." : ""}${p.lineup.outcome === "name_weak" || p.lineup.outcome === "name_built" || p.lineup.outcome === "conflict" || p.lineup.outcome === "nothing" ? " Use Investigate this to look at the handle as a case of its own." : ""}${p.note === "suspended" ? " The site marks this account as suspended." : ""}</span></span>
       </div>
-      <div class="sim-side">${pill.word ? raw(h`<span class="cp ${pill.tone ? `tone-${pill.tone}` : ""}">${pill.word}</span>`) : ""}${p.added ? raw(h`<span class="tag ok">Added</span><button type="button" class="btn btn-sm" data-sim-remove="${p.id}" data-variant="${s.variant}">Remove from this case<span class="sr-only">: ${who}</span></button>`)
+      <div class="sim-side">${pill.word ? raw(h`<span class="${["cp", pill.tone ? `tone-${pill.tone}` : "", dashed].filter(Boolean).join(" ")}">${pill.word}</span>`) : ""}${p.added ? raw(h`<span class="tag ok">Added</span><button type="button" class="btn btn-sm" data-sim-remove="${p.id}" data-variant="${s.variant}">Remove from this case<span class="sr-only">: ${who}</span></button>`)
         : p.lineup.canAdd ? raw(h`<button type="button" class="btn btn-sm" data-sim-add="${p.id}" data-variant="${s.variant}">Add to this case<span class="sr-only">: ${who}</span></button>`) : ""}</div>
     </li>`;
   }).join("");
@@ -154,7 +155,8 @@ export function evWhat(it) {
 // its visible text plus the login for screen readers, so the text can change to "Loading…" and be heard.
 // A similar handle has "Check" until it was checked ("Try again" after a failed check). A profile
 // that was added from one has "Remove from this case" on its row in the ledger.
-const simAct = (it) => (it.sim && it.sim.state !== "checked" ? h`<button type="button" class="btn btn-sm ev-act" data-sim-check="${it.sim.variant}">${it.sim.state === "failed" ? "Try again" : "Check"}<span class="sr-only">: ${it.sim.variant}</span></button>` : "")
+// While a handle is being checked (it.sim.busy) the button says so and is aria-disabled, in every redraw.
+const simAct = (it) => (it.sim && it.sim.state !== "checked" ? h`<button type="button" class="btn btn-sm ev-act" data-sim-check="${it.sim.variant}" ${it.sim.busy ? raw('aria-disabled="true"') : ""}>${it.sim.busy ? "Checking…" : it.sim.state === "failed" ? "Try again" : it.sim.state === "file" ? "Check here" : "Check"}<span class="sr-only">: ${it.sim.variant}</span></button>` : "")
   + (it.similar ? h`<button type="button" class="btn btn-sm ev-act" data-sim-remove="${it.key}" data-variant="${it.similar.variant}">Remove from this case<span class="sr-only">: ${it.what} ${it.similar.variant}</span></button>` : "");
 export const evSrc = (it) => simAct(it) + (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
   + (it.action ? h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${it.action.type ? raw(h`data-pivot-type="${it.action.type}"`) : ""} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>` : "")
@@ -232,7 +234,7 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
           <div class="tier-blurb">${t.blurb}</div>
           ${t.note ? raw(h`<div class="tier-blurb">${t.note}</div>`) : ""}
           ${raw(rows.slice(0, limit).map((it, i) => h`
-            <div class="ev ${raw(rowClass(it))} ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}">
+            <div class="ev ${raw(rowClass(it))} ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}" ${it.sim?.busy ? raw('aria-busy="true"') : ""}>
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
               ${it.card ? raw(rowMark(it, opts)) : ""}
               <div class="what">${raw(evWhat(it))}</div>
@@ -305,6 +307,18 @@ export function diffNotice(diff, prevTs) {
     <strong>${diff.added.length} new, ${diff.removed.length} gone, ${diff.same} unchanged</strong> ${raw(when)}
     ${raw(list("New this run", diff.added.map((i) => i.what)))}${raw(list("No longer reported", diff.removed.map(keyLabel)))}
   </div>`;
+}
+
+// The facts of profiles the investigator added from a similar handle. They are shown apart, under
+// their own heading at the end of "What we know", and each names the site and the handle it came
+// from: an added profile is a row of the case, never part of an identity.
+export const ADDED_FACTS = "From profiles you added (under a different handle)";
+export function addedFactsHtml(added) {
+  const facts = (added || []).flatMap((a) => a.facts);
+  if (!facts.length) return "";
+  const box = { innerHTML: "" };
+  renderFacts(box, facts);
+  return h`<h3 class="who-added">${ADDED_FACTS}</h3>` + box.innerHTML;
 }
 
 // ---- facts panel -------------------------------------------------------------------

@@ -171,8 +171,8 @@ export function sourceHasResults(d) {
   if (d.found === true) return true;
   // A source that answers per site (platform check, adult site check): only a page that was read
   // is a result. Its own "total" may count the sites asked, not the pages found.
-  // A sign-up check that says "taken" is an answer worth showing, though nothing was read.
-  if (!d.link_check && Array.isArray(d.results) && d.results.some((r) => r && typeof r.state === "string")) return d.results.some((r) => r && (r.state === "found" || r.state === "taken"));
+  // A sign-up check that says "taken" read nothing, so it is not a result: it counts nowhere but the Unverified tile.
+  if (!d.link_check && Array.isArray(d.results) && d.results.some((r) => r && typeof r.state === "string")) return d.results.some((r) => r && r.state === "found");
   if (typeof d.total === "number") return d.total > 0;
   for (const k of ["results", "breaches", "emails", "hosts", "profiles", "subdomains", "candidates", "ports", "findings", "hops"]) {
     if (Array.isArray(d[k]) && d[k].some((r) => !r || typeof r !== "object" || (r.found !== false && r.open !== false && r.found !== null && !r.error))) return true;

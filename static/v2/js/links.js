@@ -68,6 +68,8 @@ export const REDDIT_HINT = "Open the link in a browser. A missing account shows 
 export const TAKEN_TEXT = { discord: "Discord's sign-up check says this handle is taken. Discord has no public profile page, so who holds it is unknown." };
 export const TAKEN_GENERIC = "The site's sign-up check says this handle is taken. Nothing was read, so who holds it is unknown.";
 export const TAKEN_NOTE = "handle taken, owner unknown";
+// Reddit's API answers "not found" for an account it hides, so that answer is never the last word on a tool's report.
+export const REDDIT_HIDDEN = "Reddit's API has no visible account with this name (a hidden or shadow-banned account looks the same)";
 export const GENERIC_HINT = "This link is the site's homepage. Search the handle on the site itself.";
 export const REGISTERED_HINT = "Found through the site's sign-up or reset form. There is no public page for an email address.";
 export const BREACH_HINT = "No reference page for this breach. Search the address at xposedornot.com to check it.";

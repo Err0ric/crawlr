@@ -1328,3 +1328,7 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
   .sim-card { grid-template-columns: 32px minmax(0, 1fr); }
   .sim-side { grid-column: 2; justify-content: flex-start; max-width: none; }
 }
+/* An answer that came with a case file was not read here: dashed, like everything nothing checked. */
+.sim-card.tone-unverified { --tone: var(--unverified); } .sim-card.line-dashed { border-left-style: dashed; }
+/* Facts of profiles added from a similar handle sit apart from every identity, under their own heading. */
+.who-added { margin: var(--s-4) 0 var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--line); font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); }

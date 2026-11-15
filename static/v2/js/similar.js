@@ -11,7 +11,7 @@
 // part in the case only while lineUp() still says it lines up, evaluated again from the profiles
 // the case holds. A crafted file cannot add a profile the rules would not offer.
 
-import { clusterIdentities, standing, meaningfulName, usableAvatar, linkParts } from "./identity.js";
+import { clusterIdentities, standing, meaningfulName, compareNames, nameTokens, personalName, usableAvatar, linkParts } from "./identity.js";
 import { parseName, handlePatterns, PATTERN_WORD } from "./names.js";
 import { parseUrl } from "./links.js";
 import { safeThumb, THUMB_MAX_COUNT } from "./present.js";
@@ -32,7 +32,8 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 // before the @ (without a +tag). Never anything from the email's domain.
 export function similarBase(target, type) {
   const t = String(target ?? "").trim();
-  const hd = type === "email" ? t.split("@")[0].replace(/\+.*$/, "") : type === "username" ? t.replace(/^@/, "") : "";
+  // An email case only for a whole address: "info@" is not one.
+  const hd = type === "email" ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) ? t.split("@")[0].replace(/\+.*$/, "") : "") : type === "username" ? t.replace(/^@/, "") : "";
   return /^[A-Za-z0-9._-]{1,64}$/.test(hd) && !hd.startsWith("-") ? hd : "";
 }
 
@@ -40,6 +41,9 @@ export function similarBase(target, type) {
 // Each rule gives a value, a reason in plain words and a rank: lower is more plausible.
 const LEET = { 0: "o", 1: "l", 3: "e", 4: "a", 5: "s", 7: "t" };
 const TO_DIGIT = [["o", "0"], ["e", "3"], ["a", "4"], ["i", "1"], ["s", "5"], ["l", "1"], ["t", "7"]];
+// Ordinary words that begin with a decoration. Nothing is taken off a handle that starts with one.
+const DECOR_STOP = ["realestate", "realtor", "reality", "realm", "really", "realis", "theory", "theatre", "theater", "thermal", "therapy", "therapist", "these", "there", "they", "itself", "image", "imagine", "important", "official"].filter((w, i, a) => a.indexOf(w) === i);
+const TITLES = new Set(["dr", "mr", "mrs", "ms", "miss", "prof", "sir"]);
 const SEP_WORD = { _: "underscore", ".": "dot", "-": "hyphen" };
 const SEP_A = { _: "an underscore", ".": "a dot", "-": "a hyphen" };
 
@@ -50,7 +54,8 @@ export function handleVariants(handle) {
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(orig) || orig.startsWith("-")) return [];
   const s = orig.toLowerCase();
   const found = [];
-  const add = (value, reason, rank) => { if (valid(value) && value !== s) found.push({ value, reason, rank, i: found.length }); };
+  // Never a variant that begins or ends with two separators.
+  const add = (value, reason, rank) => { if (valid(value) && value !== s && !/^[._-]{2}|[._-]{2}$/.test(value)) found.push({ value, reason, rank, i: found.length }); };
   const alpha = /^[a-z]+$/.test(s), noDigits = !/\d/.test(s);
 
   // Digits that stand for letters: a run of them inside a word (after a letter, or one digit at
@@ -70,12 +75,18 @@ export function handleVariants(handle) {
   // Decorations taken off: x at each end, and a few words people put around a handle.
   const xs = s.match(/^(x+)([._-]?)(.{3,}?)\2\1$/);
   if (xs && (xs[2] || xs[1].length > 1)) add(xs[3], "without the x at each end", 12);
-  const front = s.match(/^(the[._-]?real|real|official)[._-]?(.{4,})$/) || s.match(/^(the|its|im|i[._-]?am)[._-](.{3,})$/)
-    || (/^(The|Its|Im|IAm)[A-Z]/.test(orig) ? s.match(/^(the|its|im|iam)(.{3,})$/) : null);
-  if (front) add(front[2], `without "${front[1].replace(/[._-]/g, " ").replace(/^thereal$/, "the real")}" in front`, 12);
-  const back = s.match(/^(.{3,}?)[._-]?(official)$/);
+  // A word is taken off only at a real boundary (a separator, or a change of case in the handle as
+  // typed), only when at least 3 characters are left, and never from a handle that is an ordinary
+  // word beginning with it ("realtor", "therapist").
+  const flat = s.replace(/[._-]/g, "");
+  const wordy = !flat.startsWith("thereal") && DECOR_STOP.some((w) => flat.startsWith(w));
+  const cased = (orig.match(/^(TheReal|The|Real|Its|Im|IAm|Official)(?=[A-Z0-9])/) || [])[1];
+  const front = wordy ? null : s.match(/^(the[._-]?real|the|real|its|im|i[._-]?am|official)[._-]+(.{3,})$/) || (cased ? [null, cased.toLowerCase(), s.slice(cased.length)] : null);
+  const frontWord = front ? front[1].replace(/[._-]/g, " ").replace(/^thereal$/, "the real").replace(/^iam$/, "i am") : "";
+  if (front && front[2].length >= 3) add(front[2], `without "${frontWord}" in front`, 12);
+  const back = s.match(/^(.{3,}?)[._-]+(official)$/) || (/[a-z0-9]Official$/.test(orig) && s.length >= 11 ? [null, s.slice(0, -8), "official"] : null);
   if (back) add(back[1], `without "${back[2]}" at the end`, 12);
-  const both = front && front[2].match(/^(.{3,}?)[._-]?(official)$/);
+  const both = front && front[2].match(/^(.{3,}?)[._-]+(official)$/);
   if (both) add(both[1], "without the words around it", 13);
 
   // A number at either end.
@@ -119,7 +130,7 @@ export function handleVariants(handle) {
   }
 
   // A few common decorations put on, for a plain word only.
-  if (alpha && s.length >= 3) { add(`real${s}`, 'with "real" in front', 60); add(`the${s}`, 'with "the" in front', 61); add(`${s}official`, 'with "official" at the end', 62); }
+  if (alpha && s.length >= 3 && !/^(the|real|its|official)|official$/.test(s)) { add(`real${s}`, 'with "real" in front', 60); add(`the${s}`, 'with "the" in front', 61); add(`${s}official`, 'with "official" at the end', 62); }
 
   const seen = new Set(), out = [];
   // close: the handle with something taken off or read differently, which is likelier than one with something put on.
@@ -129,8 +140,12 @@ export function handleVariants(handle) {
 
 // Handles built from a person's name, with the patterns a name case uses. A single word is not
 // enough to build from. [{ value, reason }]
+// Only a name that looks like a person's: two or three words once a title (Dr, Prof) is dropped,
+// with no digit and no word that describes an organisation or a role ("Linux Kernel Dev").
 export function nameVariants(name, handle = "") {
-  const parsed = parseName(line(name, 80));
+  const words = line(name, 80).split(" ").filter((w) => w && !TITLES.has(w.toLowerCase().replace(/\./g, "")));
+  if (words.length < 2 || words.length > 3 || !personalName(nameTokens(words.join(" ")))) return [];
+  const parsed = parseName(words.join(" "));
   if (parsed.single_token) return [];
   return handlePatterns(parsed).filter((x) => valid(x.value) && x.value !== lc(handle)).map((x) => ({ value: x.value, reason: `built from the name on the primary profile (${PATTERN_WORD[x.pattern]})`, fromName: true }));
 }
@@ -168,8 +183,11 @@ export const PROBE_STATES = ["found", "taken", "not_found", "blocked", "unknown"
 export const STATE_WORD = { found: "Profile read", taken: "Handle taken, owner unknown", not_found: "Not found", blocked: "Blocked by site", unknown: "Could not tell", rate_limited: "Rate limited", failed: "Failed", not_asked: "Not asked" };
 const HEX16 = /^[0-9a-f]{16}$/i;
 export const profileId = (variant, site) => `acct:${PROBE_SITES[site]?.id || ""}~${lc(variant)}`;
+const AVATAR_STATES = ["ok", "none", "default", "failed"];
 
 // One probe answer, read defensively: { profiles, sources } or null.
+// avatar_state per profile: "ok" (a real picture was hashed), "default" (a placeholder), "none"
+// (the profile has no picture) or "failed" (there is one, and it could not be fetched or read).
 export function readProbe(raw, variant) {
   if (!isObj(raw) || !valid(String(variant ?? ""))) return null;
   const sources = {};
@@ -186,6 +204,7 @@ export function readProbe(raw, variant) {
       followers: Number.isFinite(p.followers) && p.followers >= 0 ? Math.floor(p.followers) : null, note: p.note === "suspended" ? "suspended" : "",
       links: (Array.isArray(p.links) ? p.links : []).filter((u) => typeof u === "string" && u.length <= 300 && ((x) => x && !x.username && !x.password)(parseUrl(u))).slice(0, 6),
       avatar_hash: hash, avatar_default: dflt, thumb: hash && !dflt ? safeThumb(p.thumb) : "",
+      avatar_state: hash ? (dflt ? "default" : "ok") : p.avatar_state === "failed" ? "failed" : "none",
     });
     sources[p.site] = "found";
   }
@@ -196,6 +215,7 @@ export function readProbe(raw, variant) {
 
 // The whole map, as a case may carry it. `handle` is the case's own handle: a "variant" equal to
 // it is dropped. Thumbnails are bounded across the map.
+// from_file: the answer came with a case file and was not checked in this browser (see fromFile).
 export function readSimilar(raw, handle = "") {
   const out = {};
   if (!isObj(raw)) return out;
@@ -213,8 +233,21 @@ export function readSimilar(raw, handle = "") {
       entry.added = [...new Set((Array.isArray(v.added) ? v.added : []).filter((id) => typeof id === "string" && ids.has(id)))];
     } else if (isObj(v.error)) entry.error = { error: line(v.error.error, 200) || "The check failed.", error_code: line(v.error.error_code, 40) };
     else continue;
+    // Nothing from a file is ever "added": that is a decision taken in this browser.
+    if (v.from_file === true) { entry.from_file = true; entry.added = []; }
     out[k] = entry;
   }
+  return out;
+}
+// The similar handles of a case that was opened from a case file. Whoever made the file chose
+// what is in it, so: only a handle this case would offer itself is kept (`allowed`, from
+// similarHandles for the case's own handle and primary name), every "added" mark is dropped (the
+// investigator can check the handle here and add it again), a failed check is dropped, and what
+// is left is marked as coming from the file until it is checked in this browser.
+export function fromFile(raw, handle, allowed) {
+  const ok = new Set([].concat(allowed || []).map(lc));
+  const out = {};
+  for (const [k, e] of Object.entries(readSimilar(raw, handle))) if (ok.has(k) && e.probe) out[k] = { ...e, added: [], from_file: true };
   return out;
 }
 
@@ -226,39 +259,61 @@ export function asProfile(variant, p) {
   return {
     id: profileId(variant, p.site), site: site.label, url: p.url, handle: variant, name: p.name, location: p.location, bio: p.bio, image: "",
     links: p.links.filter((u) => !websites.includes(u)), websites, anchor: "", sources: [SIMILAR_SOURCE], facts: [], leads: [], evidence: p.note === "suspended" ? "the site marks this account as suspended" : "",
-    created: p.created, repos: null, followers: p.followers, thumb: p.thumb, avatarHash: p.avatar_hash, avatarDefault: p.avatar_default, similar: { variant },
+    created: p.created, repos: null, followers: p.followers, thumb: p.thumb, avatarHash: p.avatar_hash, avatarDefault: p.avatar_default, avatarState: p.avatar_state, similar: { variant },
   };
 }
 
 // ---- does it line up? ----------------------------------------------------------------------
-// Compares one probed profile with the case's primary identity, using the rules that group the
-// case's own profiles (clusterIdentities and standing in identity.js): the profile is placed
-// among the case's profiles and the rules say where it lands. Nothing here decides on its own.
-//   outcome  "picture"   the same picture as a profile of the primary identity (strong)
-//            "link"      a link ties them by the cross-link or shared-link rule (strong)
-//            "name"      the name is the same, or fits, with nothing conflicting (supporting, not proof)
-//            "conflict"  the name conflicts: a different person
-//            "nothing"   nothing to compare, and `why` says which side has nothing
-//   canAdd   true only for picture, link and name
+// Compares one probed profile with the case's primary identity. Whether a picture matches, a link
+// ties two profiles or a name fits is decided by the rules that group the case's own profiles
+// (clusterIdentities and standing in identity.js): the profile is placed among them and the
+// rules say where it lands. What follows from that is decided here, and it is deliberately
+// stricter for a name, because a name is shared by many people:
+//   outcome            Add    tier     meaning
+//   "picture"          yes    linked   the same picture as a profile of the primary identity
+//   "picture_conflict" yes    linked   the same picture, but the name on it conflicts. Said in
+//                                      those words on the card and on the row: one person can use
+//                                      two names, and two people can use one picture.
+//   "link"             yes    linked   a link ties them by the cross-link or shared-link rule
+//   "name"             yes    matches  both carry a full name (two words or more) made of the same
+//                                      words, and the handle was not built from that name
+//   "name_weak"        no              the name fits but is one word, or is only part of the other
+//   "name_built"       no              the name is the same, but the handle was built from that
+//                                      very name, so finding the name under it proves nothing
+//   "conflict"         no              the name conflicts: a different person
+//   "nothing"          no              nothing to compare; `why` says which side has nothing
 // baseProfiles: the case's own read profiles (never ones added from a similar handle).
+// opts.fromName: the variant was built from the primary identity's name.
 export const LINEUP_PILL = {
-  picture: { word: "Same picture", tone: "linked" }, link: { word: "Links back", tone: "linked" }, name: { word: "Same name", tone: "match" },
+  picture: { word: "Same picture", tone: "linked" }, picture_conflict: { word: "Same picture, name differs", tone: "linked" }, link: { word: "Links back", tone: "linked" },
+  name: { word: "Same full name", tone: "match" }, name_weak: { word: "Same name, not enough to add", tone: "" }, name_built: { word: "Same name, proves nothing", tone: "" },
   conflict: { word: "Name conflicts", tone: "different" }, nothing: { word: "Nothing to compare", tone: "" },
 };
+export const LINEUP_TIER = { picture: "linked", picture_conflict: "linked", link: "linked", name: "matches" };
+export const NAME_CAVEAT = "A name alone is supporting, not proof.";
+const BUILT = "this handle was built from the name on the primary profile";
 const STRONG = new Set(["cross-link", "avatar", "shared-link"]);
 const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
-export function lineUp(pp, baseProfiles, { handle = "" } = {}) {
+const sameWords = (a, b) => a.length >= 2 && b.length >= 2 && a.length === b.length && a.every((t) => b.includes(t));
+export function lineUp(pp, baseProfiles, { handle = "", fromName = false } = {}) {
   const base = (baseProfiles || []).filter((p) => p && p.id !== pp?.id && !p.similar);
-  const nothing = (why, text) => ({ outcome: "nothing", strength: "", why, text, reason: "", canAdd: false });
+  const res = (outcome, text, extra = {}) => ({ outcome, strength: LINEUP_TIER[outcome] === "linked" ? "strong" : outcome === "name" ? "supporting" : "", why: "", text, reason: "", canAdd: !!LINEUP_TIER[outcome], tier: LINEUP_TIER[outcome] || "", ...extra });
+  const nothing = (why, text) => res("nothing", text, { why });
   if (!pp || !pp.id) return nothing("unreadable", "Read, but nothing to compare.");
   const before = clusterIdentities(base, { handle });
   const primary = before.clusters.find((c) => c.primary);
   if (!primary) return nothing("no_primary", "Read, but nothing to compare: this case has no primary identity.");
   const after = clusterIdentities([...base, pp], { handle });
   const prim = after.clusters.find((c) => c.primary);
-  const siteOf = (id) => base.find((p) => p.id === id)?.site || "another";
+  const byId = (id) => base.find((p) => p.id === id);
+  const siteOf = (id) => byId(id)?.site || "another";
   const named = meaningfulName(pp.name, [pp.handle, handle]);
   const members = base.filter((p) => primary.members.includes(p.id));
+  const keys = [...(before.handles || []), pp.handle, handle];
+  // The name on the profile against every name the primary identity carries.
+  const differs = !!named && primary.tokens.length > 0 && primary.tokens.every((t) => compareNames(t, named, keys) === "conflict");
+  const but = differs ? `, but the name on it differs (${pp.name}, against ${primary.label})` : "";
+  const built = fromName ? `; ${BUILT}` : "";
   // The primary identity must still be the one it was: a probed profile never picks another.
   // Only a signal between the profile and one of the case's own primary profiles counts.
   if (prim && (primary.anchorId ? prim.anchorId === primary.anchorId : prim.members.some((id) => primary.members.includes(id)))) {
@@ -266,45 +321,56 @@ export function lineUp(pp, baseProfiles, { handle = "" } = {}) {
     const mine = prim.links.filter((l) => l.a === pp.id || l.b === pp.id).map((l) => ({ other: l.a === pp.id ? l.b : l.a, signals: l.signals })).filter((l) => primary.members.includes(l.other));
     if (s.tier === "linked") {
       const pic = mine.find((l) => l.signals.some((g) => g.type === "avatar"));
-      if (pic) return { outcome: "picture", strength: "strong", why: "", text: `Same picture as the ${siteOf(pic.other)} profile`, reason: `same picture as the ${siteOf(pic.other)} profile`, canAdd: true };
+      if (pic) return res(differs ? "picture_conflict" : "picture", differs ? `Same picture${but}` : `Same picture as the ${siteOf(pic.other)} profile`, { reason: `same picture as the ${siteOf(pic.other)} profile${but}${built}` });
       const lk = mine.flatMap((l) => l.signals).find((g) => STRONG.has(g.type));
-      if (lk) return { outcome: "link", strength: "strong", why: "", text: cap(lk.detail), reason: lk.detail, canAdd: true };
+      if (lk) return res("link", `${cap(lk.detail)}${but}`, { reason: `${lk.detail}${but}${built}` });
     }
     if (s.tier === "matches" && after.byProfile[pp.id] === prim.id && named) {
       const nm = mine.map((l) => ({ other: l.other, g: l.signals.find((x) => x.type === "name" || x.type === "weak-name") })).find((x) => x.g);
       if (nm) {
-        const same = nm.g.type === "name";
-        return { outcome: "name", strength: "supporting", why: "", text: same ? `Name on profile: ${pp.name}, the same as on ${siteOf(nm.other)}` : `Name on profile: ${pp.name}, which fits the name on ${siteOf(nm.other)}`, reason: same ? `same name as on ${siteOf(nm.other)}` : `name fits the one on ${siteOf(nm.other)}`, canAdd: true };
+        // A full name on both sides, made of the same words. Anything less is not enough to add.
+        const full = members.find((m) => sameWords(meaningfulName(m.name, [m.handle, handle]) || [], named));
+        if (full && fromName) return res("name_built", `Name on profile: ${pp.name}, the same as on ${full.site}. But ${BUILT}, so the match proves nothing`, { why: "built" });
+        if (full) return res("name", `Name on profile: ${pp.name}, the same full name as on ${full.site}`, { reason: `same full name. ${NAME_CAVEAT.replace(/\.$/, "")}` });
+        return res("name_weak", `Name on profile: ${pp.name}, which fits the name on ${siteOf(nm.other)}. That is not enough to add it: ${named.length < 2 ? "a single word is shared by many people" : "the two names are not the same full name"}${fromName ? `, and ${BUILT}` : ""}`, { why: named.length < 2 ? "single_word" : "not_equal" });
       }
     }
-    if (s.tier === "different") return { outcome: "conflict", strength: "", why: "", text: `Name on profile: ${pp.name}, which conflicts with ${primary.label}`, reason: "", canAdd: false };
+    if (s.tier === "different") return res("conflict", `Name on profile: ${pp.name}, which conflicts with ${primary.label}`);
   }
-  const picture = usableAvatar(pp);
-  if (!named && !picture) return nothing("profile_empty", "Read, but nothing to compare: this profile carries no name and no picture.");
+  const picture = usableAvatar(pp), lost = pp.avatarState === "failed";
+  if (!named && !picture) return nothing(lost ? "picture_failed" : "profile_empty", lost ? "Read, but nothing to compare: this profile carries no name, and the picture could not be compared." : "Read, but nothing to compare: this profile carries no name and no picture.");
   if (!primary.tokens.length && !members.some(usableAvatar)) return nothing("primary_empty", "Read, but nothing to compare: the primary identity carries no name and no picture.");
-  if (named && !primary.tokens.length) return nothing("no_tie", `Name on profile: ${pp.name}. The primary identity carries no name to compare it with, and no picture or link ties it to this case.`);
-  return nothing("no_tie", named ? `Name on profile: ${pp.name}. It neither matches nor conflicts with ${primary.label}, and no picture or link ties it to this case.` : "Read, but nothing ties it to this case: it carries no name, and its picture is not one the case has.");
+  const tail = lost ? "The picture could not be compared, and no link ties it to this case." : "No picture or link ties it to this case.";
+  if (named && !primary.tokens.length) return nothing("no_tie", `Name on profile: ${pp.name}. The primary identity carries no name to compare it with. ${tail}`);
+  return nothing("no_tie", named ? `Name on profile: ${pp.name}. It neither matches nor conflicts with ${primary.label}. ${tail}` : "Read, but nothing ties it to this case: it carries no name, and its picture is not one the case has.");
 }
 
 // Every checked variant against the case: per profile, its line-up and whether it is added.
-// A profile counts as added only when it was added AND still lines up.
-//   { <variant>: { variant, checked_at, error?, sources, profiles: [{ ...p, id, profile, lineup, added }] } }
+// A profile counts as added only when it was added AND still lines up, and never when the answer
+// came with a case file and was not checked here.
+//   { <variant>: { variant, checked_at, error?, fromFile, fromName, sources, profiles: [{ ...p, id, profile, lineup, added }] } }
 // handle: the searched handle as the identity rules use it ("" for an email case).
 // own: the handle the variants were built from, which is never a variant of itself.
-export function evaluateSimilar(similar, baseProfiles, { handle = "", own = handle } = {}) {
+// name: the primary identity's name, when it has one: a variant built from it is marked.
+export function evaluateSimilar(similar, baseProfiles, { handle = "", own = handle, name = "" } = {}) {
   const out = {};
+  const built = new Set(name ? nameVariants(name, own).map((x) => x.value) : []);
   for (const [k, e] of Object.entries(readSimilar(similar, own))) {
+    const fromName = built.has(k), file = e.from_file === true;
     const profiles = (e.probe?.profiles || []).map((p) => {
       const profile = asProfile(e.variant, p);
-      const lineup = lineUp(profile, baseProfiles, { handle });
+      const lineup = lineUp(profile, baseProfiles, { handle, fromName });
+      // What a file says was read is not something this browser saw: nothing is added on it.
+      if (file) lineup.canAdd = false;
       return { ...p, id: profile.id, profile, lineup, added: lineup.canAdd && e.added.includes(profile.id) };
     });
-    out[k] = { variant: e.variant, checked_at: e.checked_at, ...(e.error ? { error: e.error } : {}), sources: e.probe?.sources || {}, profiles };
+    out[k] = { variant: e.variant, checked_at: e.checked_at, ...(e.error ? { error: e.error } : {}), fromFile: file, fromName, sources: e.probe?.sources || {}, profiles };
   }
   return out;
 }
-// The profiles that take part in the case: added by the investigator and still lining up.
-export const addedProfiles = (evaluated) => Object.values(evaluated || {}).flatMap((e) => e.profiles.filter((p) => p.added).map((p) => ({ ...p.profile, similar: { variant: e.variant, reason: p.lineup.reason, outcome: p.lineup.outcome } })));
+// The profiles the investigator added and that still line up. Each is a row of the case and
+// nothing more: it is never a member of an identity (see buildEvidence).
+export const addedProfiles = (evaluated) => Object.values(evaluated || {}).flatMap((e) => e.profiles.filter((p) => p.added).map((p) => ({ ...p.profile, similar: { variant: e.variant, reason: p.lineup.reason, outcome: p.lineup.outcome, tier: p.lineup.tier } })));
 
 // ---- words ---------------------------------------------------------------------------------
 // What one checked variant amounts to: "added" | "lines_up" | "someone_else" | "no_compare" | "none" | "failed".
@@ -317,14 +383,17 @@ export function variantOutcome(e) {
   return e.profiles.length ? "no_compare" : "none";
 }
 const DOWN = ["blocked", "unknown", "rate_limited", "failed"];
+export const FROM_FILE = "From the case file, not checked here.";
 // One sentence on a checked variant, and its sources grouped by state (everything but "found").
 export function variantSummary(e) {
   if (e.error) return `Could not be checked: ${e.error.error}`;
   const n = e.profiles.length, down = Object.values(e.sources).filter((s) => DOWN.includes(s)).length;
+  if (e.fromFile) return `${FROM_FILE} The file lists ${plural(n, "profile")} for this handle. Check it here before relying on it.`;
   if (!n) return down ? `No profile was read. ${plural(down, "site")} could not be checked, so ${down === 1 ? "that one is" : "those are"} unknown, not absent.` : "No profile under this handle on the sites checked.";
   const c = (f) => e.profiles.filter(f).length;
-  const added = c((p) => p.added), up = c((p) => p.lineup.canAdd && !p.added), other = c((p) => p.lineup.outcome === "conflict"), rest = n - added - up - other;
-  return `${plural(n, "profile")} read: ${[added && `${added} added to this case`, up && `${up} ${up === 1 ? "lines" : "line"} up with this case`, other && `${other} ${other === 1 ? "belongs" : "belong"} to someone else`, rest && `${rest} could not be compared`].filter(Boolean).join(", ")}.`;
+  const weak = (p) => p.lineup.outcome === "name_weak" || p.lineup.outcome === "name_built";
+  const added = c((p) => p.added), up = c((p) => p.lineup.canAdd && !p.added), other = c((p) => p.lineup.outcome === "conflict"), names = c(weak), rest = n - added - up - other - names;
+  return `${plural(n, "profile")} read: ${[added && `${added} added to this case`, up && `${up} ${up === 1 ? "lines" : "line"} up with this case`, other && `${other} ${other === 1 ? "belongs" : "belong"} to someone else`, names && `${names} ${names === 1 ? "shares" : "share"} a name, which is not enough to add`, rest && `${rest} could not be compared`].filter(Boolean).join(", ")}.`;
 }
 export function sourceStates(e) {
   const by = {};
@@ -338,9 +407,9 @@ export function probeStatus(variant, phase, e) {
   if (phase === "removed") return `Removed from this case. The handle ${variant} stays under Similar handles.`;
   return e ? `Checked the handle ${variant}. ${variantSummary(e)}` : `The handle ${variant} could not be checked.`;
 }
-// One line for the brief, only once something was checked.
+// One line for the brief, only once something was checked in this browser.
 export function similarBrief(evaluated) {
-  const all = Object.values(evaluated || {}).filter((e) => !e.error);
+  const all = Object.values(evaluated || {}).filter((e) => !e.error && !e.fromFile);
   if (!all.length) return "";
   const n = (o) => all.filter((e) => variantOutcome(e) === o).length;
   const parts = [n("added") && `${n("added")} added`, n("lines_up") && `${n("lines_up")} ${n("lines_up") === 1 ? "lines" : "line"} up and ${n("lines_up") === 1 ? "is" : "are"} not added`, n("someone_else") && `${n("someone_else")} ${n("someone_else") === 1 ? "belongs" : "belong"} to someone else`,
@@ -350,8 +419,9 @@ export function similarBrief(evaluated) {
 
 // ---- ledger rows ---------------------------------------------------------------------------
 // One row per variant: the generated ones in order, then any checked earlier that are no longer
-// generated. An unchecked row has "Check"; every row has "Investigate this" (a separate case).
-// facts: what a probed profile's card shows (built by the caller with cardSnippet).
+// generated. A row that was not checked here has "Check"; every row has "Investigate this" (a
+// separate case). state: "new" | "checked" | "failed" | "file" (an answer from a case file).
+// snippet: what a probed profile's card shows (built by the caller with cardSnippet).
 export function similarItems({ handle, name = "", evaluated = {}, snippet = () => ({ facts: [], bio: "" }) }) {
   const h = String(handle ?? "").replace(/^@/, "");
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(h) || h.startsWith("-")) return [];
@@ -360,14 +430,16 @@ export function similarItems({ handle, name = "", evaluated = {}, snippet = () =
   for (const e of Object.values(evaluated)) if (!listed.has(e.variant)) rows.push({ value: e.variant, reason: "checked earlier in this case" });
   return rows.map((r) => {
     const e = evaluated[r.value] || null;
-    const state = !e ? "new" : e.error ? "failed" : "checked";
+    const state = !e ? "new" : e.error ? "failed" : e.fromFile ? "file" : "checked";
     return {
       tier: "similar", what: r.value, url: "", link_kind: "none", key: `similar:${r.value}`, source: r.fromName ? "built from the name" : "built from the handle",
       meta: [r.reason, e ? variantSummary(e) : "not checked"].join(" · "),
       action: { label: "Investigate this", pivot: "investigate", value: r.value, type: "username" },
       sim: {
         variant: r.value, reason: r.reason, state, summary: e ? variantSummary(e) : "", sources: e && !e.error ? sourceStates(e) : [],
-        profiles: (e?.profiles || []).map((p) => ({ id: p.id, site: PROBE_SITES[p.site].label, url: p.url, thumb: p.thumb, note: p.note, ...snippet(p), lineup: p.lineup, pill: LINEUP_PILL[p.lineup.outcome], added: p.added })),
+        // A profile a file lists was not read here: its link is a template nothing checked, and it carries no line-up.
+        profiles: (e?.profiles || []).map((p) => ({ id: p.id, site: PROBE_SITES[p.site].label, url: p.url, link_kind: e.fromFile ? "templated_unverified" : "verified_profile", thumb: e.fromFile ? "" : p.thumb, note: p.note, ...snippet(p),
+          lineup: e.fromFile ? { ...p.lineup, outcome: "file", text: "Listed in the case file. Nothing was read here", canAdd: false } : p.lineup, pill: e.fromFile ? { word: "From the file", tone: "unverified", dashed: true } : LINEUP_PILL[p.lineup.outcome], added: p.added })),
       },
     };
   });

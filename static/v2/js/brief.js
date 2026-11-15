@@ -25,7 +25,8 @@ const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 export function investigateBrief({ collected: c, items, facts, identity, failed, incomplete = [], type, target, similarLine = "" }) {
   const rows = [], actions = [];
   const add = (level, text, ev) => rows.push(sealLink({ level, text, ev }, { subjects: [target] }));
-  const accounts = items.filter((i) => i.key?.startsWith("acct:"));
+  // A profile added from a similar handle has its own line (similarLine) and is in none of these counts.
+  const accounts = items.filter((i) => i.key?.startsWith("acct:") && !i.similar);
   const tier = (t) => accounts.filter((i) => i.tier === t);
   const linked = tier("linked"), matches = tier("matches"), different = tier("different"), unverified = tier("unverified");
 
@@ -90,7 +91,8 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     const holehe = c.holehe && !c.holehe.error ? c.holehe.results || [] : [];
     if (holehe.length) add("info", `Registered on ${plural(holehe.length, "service")} according to Holehe (${list(holehe.map((r) => r.site || r.domain), 6)}).`);
     if (c.sherlock || c.maigret) {
-      const two = unverified.filter((i) => (i.sources || []).length > 1).length;
+      // The platform check asking Reddit or Discord itself is not a second tool reporting the handle.
+      const two = unverified.filter((i) => !i.taken && (i.tools ?? (i.sources || []).length) > 1).length;
       if (two) add("info", `${plural(two, "unverified account")} ${two === 1 ? "was" : "were"} reported by two tools. That is worth more than one, but still not verification.`);
     }
     if (!accounts.length && !breaches.length && !holehe.length && !failed.length && (c.sherlock || c.maigret || c.holehe)) add("info", "No source found anything for this target. Check the spelling, or try a variant of the handle.");
