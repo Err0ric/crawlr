@@ -90,6 +90,28 @@ export function parseName(name) {
   if (parts.length < 2) return { given: parts[0] || "", middle: "", family: "", suffix: suffix.join(" "), single_token: true };
   return { given: parts[0], middle: parts.slice(1, -1).join(" "), family: parts[parts.length - 1], suffix: suffix.join(" "), single_token: false };
 }
+// One name part as handle characters: "O'Brien" gives "obrien", "Müller" gives "muller". A
+// script with no ASCII form comes out empty: nothing is transliterated.
+const asciiPart = (part) => [...String(part ?? "").toLowerCase().replace(/[ßæœøđðłþıħ]/g, (c) => ASCII_MAP[c]).normalize("NFKD")].filter((ch) => /[a-z0-9]/.test(ch)).join("");
+// Usernames a person with this name might use. Suggestions only: nothing is looked up.
+// The same function as handle_patterns() in modules/name_search.py, which builds the "Handles to
+// try" of a name case. tests/fixtures/handle_patterns.json holds the pairs both must produce.
+export function handlePatterns(parsed) {
+  const g = asciiPart(parsed?.given), f = asciiPart(parsed?.family);
+  const m = String(parsed?.middle ?? "").split(/\s+/).filter(Boolean).map(asciiPart).join(""), mi = m.slice(0, 1);
+  let rows = [];
+  if (parsed?.single_token) rows = [[g, "name"]];
+  else if (g && f) {
+    rows = [[g + f, "givenfamily"], [`${g}.${f}`, "given.family"], [`${g}_${f}`, "given_family"], [g[0] + f, "gfamily"], [g + f[0], "givenf"], [f + g, "familygiven"], [`${f}.${g}`, "family.given"], [`${g}-${f}`, "given-family"]];
+    if (mi) rows.push([g + mi + f, "givenmfamily"], [`${g}.${mi}.${f}`, "given.m.family"], [g[0] + mi + f, "gmfamily"], [g + m + f, "givenmiddlefamily"]);
+  }
+  const out = [], seen = new Set();
+  for (const [value, pattern] of rows) {
+    if (!HANDLE_OK.test(value) || value.startsWith("-") || value.length < 2 || seen.has(value)) continue;
+    seen.add(value); out.push({ value, pattern });
+  }
+  return out.slice(0, MAX_HANDLES);
+}
 // How well the best of `names` fits the searched name: "exact", "tokens" (every word is there),
 // "partial" (the family name plus the bare initial of the given name, "L. Torvalds") or null.
 // Another given name with the same first letter is a different person. The suffix is left out of
