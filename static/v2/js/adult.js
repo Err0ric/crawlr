@@ -1,11 +1,12 @@
-// Adult and dating site coverage. An explicit opt-in for one case: sextortion and romance-scam
+// Adult and dating site coverage. An explicit opt-in for the page session: sextortion and romance-scam
 // investigations, catfish checks, trust and safety work, and people checking their own exposure.
 // Pure functions: no DOM, no network, no storage. Old saved cases and case files go through the
 // same code.
 //
 // The rules this module holds, so they can be tested in one place:
-//   - Off by default and never remembered. The switch belongs to the target in the box; another
-//     target, a new case, Clear, a page load or a case opened from History starts with it off.
+//   - Off on every page load and never stored. The switch is a session mode (modes.js): held in
+//     memory only, it stays on across handles, new cases, Clear and cases opened from History
+//     until it is switched off or the page is reloaded. Whether it applies is decided per case.
 //   - A case shows adult rows only when it recorded that the mode was on (collected.adultMode ===
 //     true), it is a username case, and the handle does not suggest a minor. There is no override.
 //   - Rows from adult and dating sites never enter the ordinary flow: withoutAdult() removes them
@@ -19,14 +20,15 @@ import { classifyLink, mdLink, mdNote, parseUrl, regHost, NO_PAGE_HINT } from ".
 import { looksBoilerplate } from "./identity.js";
 import { ADULT_SITE_HOSTS, ADULT_SITE_NAMES } from "./adult-sites.js";
 
-export const ADULT_SWITCH = "Include adult sites";
+export const ADULT_SWITCH = "Adult sites";
 export const ADULT_NOTICE = "Adult and dating sites are existence checks only. A match shows a handle is taken there, not who owns it.";
 export const ADULT_GROUP = "Adult and dating sites";
 export const ADULT_SECTION = "Adult and dating sites (existence checks only)";
 export const ADULT_SOURCE = "Adult site check";
 // One sentence for the Sources panel, the consent gate and the acceptable-use statement.
-export const ADULT_COPY = "Adult and dating sites are checked only when you switch that on for a case: existence checks only, never for a handle that suggests a minor, and only for lawful purposes.";
-export const ADULT_SWITCH_DESC = "Off for every new case and never remembered. Sherlock and Maigret add adult and dating sites, and an adult site check runs.";
+export const ADULT_COPY = "Adult and dating sites are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes.";
+// What the consent gate and the acceptable-use statement add about how long the switch lasts.
+export const ADULT_LASTS = "The switch is off when the page loads, and stays on until you switch it off or reload.";
 // The reason is one of the guard's fixed sentences, set inside this one.
 const asClause = (r) => { const t = String(r ?? "").trim().replace(/\.$/, ""); return t ? t[0].toLowerCase() + t.slice(1) : "the server's rule set says so"; };
 export const guardText = (reason) => `Adult and dating sites are not checked for this handle: it suggests a minor (${asClause(reason)}).`;
@@ -128,31 +130,6 @@ export const adultOn = (type, target, want) => want === true && type === "userna
 export const adultAllowed = (collected, target, type = "username") => isObj(collected) && collected.adultMode === true && type === "username" && !minorGuard(target).blocked;
 // The body of a Sherlock or Maigret request. nsfw is always sent, and is true only when the mode is on.
 export const usernameBody = (handle, adult) => ({ username: handle, nsfw: adult === true });
-
-// The switch in the Sources panel. Nothing here touches storage: the state lives in memory, is
-// tied to one handle, and is gone on a page load.
-export function makeAdultSwitch() {
-  let on = false, forKey = "", refused = null;   // refused: { key, reason } from the server's guard
-  const key = (t) => lc(handleOf(t));
-  const view = (target, type) => {
-    const k = key(target);
-    // Another handle is another case: the switch starts off again.
-    if (k !== forKey) { on = false; forKey = k; }
-    if (refused && refused.key !== k) refused = null;
-    if (type !== "username" || !k) { on = false; return { show: false, on: false, disabled: false, reason: "" }; }
-    const g = minorGuard(target);
-    const blocked = g.blocked || !!refused;
-    if (blocked) on = false;
-    return { show: true, on, disabled: blocked, reason: blocked ? guardText(g.blocked ? g.reason : refused.reason) : "" };
-  };
-  return {
-    view,
-    set(want, target, type) { const v = view(target, type); on = !!want && v.show && !v.disabled; return view(target, type); },
-    // The server's guard refused this handle: off for this case, with its reason, and no way back on.
-    refuse(target, reason) { on = false; forKey = key(target); refused = { key: forKey, reason: String(reason || "").slice(0, 160) }; },
-    reset() { on = false; forKey = ""; refused = null; },
-  };
-}
 
 // ---- which sites are adult or dating sites ------------------------------------------------------
 // The platforms the adult site check knows, with the address of a profile there. This is the

@@ -10,6 +10,7 @@ import { buildEvidence, isFinding } from "./evidence.js";
 import { buildFindings } from "./reconfindings.js";
 import { scrubCollected } from "./adult.js";
 import { scrubNames } from "./names.js";
+import "./modeui.js";
 
 // ---- theme ---------------------------------------------------------------------
 // The stylesheet follows the system setting on its own. This only applies an explicit choice.
@@ -87,19 +88,25 @@ function closeRail({ refocus = false } = {}) {
   if (refocus && open.length) railBtn()?.focus();
 }
 // Sticky things below the case bar (result tabs, the summary column) need its height.
+// The mode strip under it is always sticky (the case bar itself scrolls away on a phone), so its
+// height counts at every width.
 function measureCasebar() {
-  const c = $(".bench:not([hidden]) .casebar");
-  const sticky = c && getComputedStyle(c).position === "sticky";
-  document.documentElement.style.setProperty("--casebar-h", `${sticky ? c.offsetHeight : 0}px`);
+  const c = $(".bench:not([hidden]) .casebar"), strip = $(".bench:not([hidden]) .modestrip");
+  const own = c && getComputedStyle(c).position === "sticky" ? c.offsetHeight : 0;
+  document.documentElement.style.setProperty("--casebar-own", `${own}px`);
+  document.documentElement.style.setProperty("--casebar-h", `${own + (strip ? strip.offsetHeight : 0)}px`);
 }
 const casebarWatch = new ResizeObserver(measureCasebar);
-$$(".casebar").forEach((c) => casebarWatch.observe(c));
+$$(".casebar, .modestrip").forEach((c) => casebarWatch.observe(c));
 window.addEventListener("resize", measureCasebar);
 const syncIdle = () => {};   // kept for callers; the layout no longer depends on whether a case is open
 $$(".sources-btn").forEach((b) => b.addEventListener("click", () => ($(".rail.open") ? closeRail({ refocus: true }) : openRail())));
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-close-rail]")) { closeRail({ refocus: true }); return; }
-  if ($(".rail.open") && !e.target.closest(".rail, .sources-btn")) closeRail();
+  // A button of a dialog is already out of the page when this runs (the dialog closed first): a
+  // click on it is not a click outside the sheet.
+  if (!e.target.isConnected) return;
+  if ($(".rail.open") && !e.target.closest(".rail, .sources-btn, #overlays")) closeRail();
 });
 // preventDefault matters: the target field is type=search, and browsers clear a search field on Escape.
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $(".rail.open") && !$("#overlays").children.length) { e.preventDefault(); closeRail({ refocus: true }); } });
@@ -110,8 +117,8 @@ $$("[data-how-legend]").forEach((el) => { el.innerHTML = HOW_LEGEND; });
 // ---- landing -------------------------------------------------------------------
 const detectBox = $("#landingDetect");
 const WILL_RUN = {
-  domain: "Runs in Recon: DNS, WHOIS, TLS, headers, subdomains, exposure and a port scan.",
-  ip: "Runs in Recon: TLS, headers, network owner, exposure and a port scan.",
+  domain: "Runs in Recon: DNS, WHOIS, TLS, headers, subdomains and exposure. A port scan runs only if you switch Port scan on.",
+  ip: "Runs in Recon: TLS, headers, network owner and exposure. A port scan runs only if you switch Port scan on.",
   asn: "Runs in Recon: registry, prefix and peering lookups.",
   username: "Runs in Investigate: Sherlock, Maigret, GitHub and platform checks.",
   email: "Runs in Investigate: Holehe, breaches, Gravatar and the email's domain.",
@@ -124,7 +131,9 @@ const WILL_RUN = {
 $("#landingInput").addEventListener("input", (e) => { const t = detect(e.target.value); detectBox.innerHTML = t ? h`<span class="pill ${INVESTIGATE_TYPES.includes(t) || RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t]}</span><span>${WILL_RUN[t] || ""}</span>` : ""; });
 // type: set by a button that knows what its value is, so a suggested handle such as "maria.co"
 // is searched as a username and not opened as a domain.
-function startInvestigate(v, type = "") { $("#targetInput").value = v; typeOverride = INVESTIGATE_TYPES.includes(type) && detect(v) !== type ? type : ""; onTargetInput(); show("investigate", { focus: false }); run(v, typeOverride || undefined).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
+// opts: how the run was started (see run() in investigate.js). A pivot button passes it; a target
+// that was typed does not.
+function startInvestigate(v, type = "", opts = {}) { $("#targetInput").value = v; typeOverride = INVESTIGATE_TYPES.includes(type) && detect(v) !== type ? type : ""; onTargetInput(); show("investigate", { focus: false }); run(v, typeOverride || undefined, opts).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
 function startRecon(v) { show("recon", { focus: false }); recon.run(v).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
 $("#landingForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -138,7 +147,10 @@ $("#landingForm").addEventListener("submit", (e) => {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-pivot]"); if (!b) return;
   const v = b.dataset.value; if (!v) return;
-  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v, b.dataset.pivotType || ""); };
+  // Where the button was: a pivot from the Investigate case on screen carries that case's standing
+  // with the minor guard into the new case. A Recon run started here is a pivot, so it never scans.
+  const from = current === "investigate" ? "case" : "other";
+  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v, b.dataset.pivotType || "", { pivot: true, from }); };
   if (state.running || recon.state.running) {
     // A lead button asks before it ends a run in flight; other pivots just say why they wait.
     if (!b.dataset.confirmRun) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
@@ -379,8 +391,8 @@ async function importCase(file) {
 const USE_HTML = `<div class="terms">
   <p><b>CrawlR is for</b> security work on systems you own or are authorized to test, checking your own exposure, research, journalism, incident response and training exercises such as CTFs.</p>
   <p><b>Do not use it to</b> harass, stalk, dox or locate a private individual, to scan or probe systems without permission, or to try credentials found in breaches. CrawlR never logs in to anything, never triggers a password reset and never contacts a person.</p>
-  <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and stay off until you turn them on.</p>
-  <p><b>Adult and dating sites are opt-in.</b> They are checked only when you switch that on for a case: existence checks only, never for a handle that suggests a minor, and only for lawful purposes. The switch is off for every new case, and no picture or post from those sites is ever loaded.</p>
+  <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and are off whenever the page loads. Each has its own switch: Port scan in Recon, Active techniques in Investigate. Once you switch one on it stays on for every case until you switch it off or reload, it is never saved, and it does not switch the other on.</p>
+  <p><b>Adult and dating sites are opt-in.</b> They are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload. It is never saved, and no picture or post from those sites is ever loaded.</p>
   <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Linked" means a strong signal ties an account to the primary identity. "Exists" means a profile was read, which shows the handle is taken there, not who owns it. "Unverified" means a tool reported it and nothing was read. A source that failed says nothing either way.</p>
   <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
   <p><b>Collect only what your purpose needs.</b> Public does not mean harmless: separate public facts can identify someone once combined. You are responsible for how you use what you find, under the law where you are and where the target is.</p>
@@ -392,9 +404,11 @@ document.addEventListener("click", (e) => { if (e.target.closest("[data-open-use
 // ---- terms ---------------------------------------------------------------------------------
 // The gate cannot be dismissed with Escape, the backdrop or a close button: the only way
 // through is to tick the box and continue.
-const TERMS_KEY = "crawlr_terms_v2";
+const TERMS_KEY = "crawlr_terms_v3";
 function termsIfNeeded() {
-  // v2: the gate gained the sentence about name searches, so everyone sees it once more.
+  // v3: adult sites and active techniques now stay on for the page session once switched on, where
+  // the gate used to say "for a case" and "until you turn them on". Everyone sees it once more.
+  // (v2: the gate gained the sentence about name searches.)
   if (store.get(TERMS_KEY)) return false;
   const el = openModal({
     title: "Before you start",
@@ -403,8 +417,8 @@ function termsIfNeeded() {
     body: `<div class="terms">
       <p>CrawlR queries public sources about the target you enter. Use it only for lawful purposes: your own accounts, authorized assessments, research, or investigations you're entitled to run.</p>
       <p>Results come from third parties and can be wrong. "Unverified" findings are leads to check, not facts, and a profile that exists shows that a handle is taken, not who owns it.</p>
-      <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled and stay off until you turn them on. Only scan hosts you own or are authorized to test.</p>
-      <p>Adult and dating sites are checked only when you switch that on for a case: existence checks only, never for a handle that suggests a minor, and only for lawful purposes.</p>
+      <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled, each has its own switch, and both are off when the page loads; once you switch one on it stays on for every case until you switch it off or reload. Only scan hosts you own or are authorized to test.</p>
+      <p>Adult and dating sites are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload.</p>
       <p>A name search asks public directories (Wikidata, GitHub, ORCID, OpenAlex and Bluesky) who shares a name and lists them as candidates. It does not tell you which of them is the person you mean.</p>
       <p>Your cases and notes stay in this browser. Don't collect more about a person than your purpose needs.</p>
       <p>The full acceptable-use statement is always under Settings.</p>

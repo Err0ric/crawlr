@@ -125,7 +125,10 @@
       <button class="btn btn-primary" id="runBtn" type="button">Run investigation</button>
       <button class="btn sources-btn" id="sourcesBtn" type="button" aria-expanded="false" aria-controls="rail">Sources <span class="count" id="sourcesCount"></span></button>
     </div>
-    <div class="detected" id="targetDetected" aria-live="polite"></div>
+    <div class="casebar-sub">
+      <div class="detected" id="targetDetected" aria-live="polite"></div>
+      <div class="modes" id="modes" role="group" aria-label="Session modes"></div>
+    </div>
     <div class="qualifiers" id="nameQualifiers" role="group" aria-label="Details about the person" hidden>
       <div class="field"><label for="qLocation">Location</label><input class="input" id="qLocation" name="q-place" maxlength="80" aria-describedby="qualHint" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
       <div class="field"><label for="qEmployer">Employer or school</label><input class="input" id="qEmployer" name="q-org" maxlength="80" aria-describedby="qualHint" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
@@ -139,12 +142,14 @@
     <p class="notice err name-error" id="nameError" role="alert" hidden></p>
     <div class="rail" id="rail" hidden>
       <div class="rail-head"><h2 id="sourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
-      <p class="rail-note">Sources that apply to this target type. Your choices are remembered.</p>
+      <p class="rail-note">Sources that apply to this target type. Your choices are remembered, except the two at the end of the list: Adult sites and Active techniques are off when the page loads, stay on until you switch them off or reload, and are never saved.</p>
       <p class="rail-note how-legend" data-how-legend></p>
-      <p class="rail-note">Adult and dating sites are checked only when you switch that on for a case: existence checks only, never for a handle that suggests a minor, and only for lawful purposes.</p>
+      <p class="rail-note">Adult and dating sites are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes.</p>
       <div id="sources" role="group" aria-labelledby="sourcesH"></div>
     </div>
   </div>
+
+  <div class="modestrip mode-status" id="modeStatus" aria-live="polite"></div>
 
   <div class="workspace">
   <main class="main" id="main" aria-busy="false">
@@ -208,6 +213,7 @@
   </main>
 
   <aside class="aside" id="aside" aria-label="Case summary">
+    <div class="mode-status mode-echo" id="modeEcho"></div>
     <section aria-labelledby="factsH">
       <h2 id="factsH">What we know</h2>
       <div class="facts" id="facts"><p class="empty flat">Nothing yet.</p></div>
@@ -239,14 +245,19 @@
       <button class="btn btn-primary" id="rRunBtn" type="button">Run recon</button>
       <button class="btn sources-btn" id="rSourcesBtn" type="button" aria-expanded="false" aria-controls="rRail">Sources <span class="count" id="rSourcesCount"></span></button>
     </div>
-    <div class="detected" id="rTargetDetected" aria-live="polite"></div>
+    <div class="casebar-sub">
+      <div class="detected" id="rTargetDetected" aria-live="polite"></div>
+      <div class="modes" id="rModes" role="group" aria-label="Session modes"></div>
+    </div>
     <div class="rail" id="rRail" hidden>
       <div class="rail-head"><h2 id="rSourcesH">Sources</h2><button class="btn btn-ghost btn-sm" type="button" data-close-rail>Done</button></div>
-      <p class="rail-note">Sources that apply to this target type. Your choices are remembered.</p>
+      <p class="rail-note">Sources that apply to this target type. Your choices are remembered, except the port scan: it is off when the page loads, stays on until you switch it off or reload, and is never saved.</p>
       <p class="rail-note how-legend" data-how-legend></p>
       <div id="rSources" role="group" aria-labelledby="rSourcesH"></div>
     </div>
   </div>
+
+  <div class="modestrip mode-status" id="rModeStatus" aria-live="polite"></div>
 
   <div class="workspace">
   <main class="main" id="rMain" aria-busy="false">
@@ -288,7 +299,7 @@
             <button class="ex" type="button" data-fill="#rTargetInput" data-value="1.1.1.1"><span class="k">IP address</span>1.1.1.1</button>
             <button class="ex" type="button" data-fill="#rTargetInput" data-value="AS13335"><span class="k">ASN</span>AS13335</button>
           </div>
-          <span class="empty-note">Nothing runs until you press Run. The port scan stays off unless you switch it on.</span>
+          <span class="empty-note">Nothing runs until you press Run. The port scan stays off unless you switch Port scan on.</span>
         </div>
       </div>
     </div>
@@ -309,6 +320,7 @@
   </main>
 
   <aside class="aside" id="rAside" aria-label="Case summary">
+    <div class="mode-status mode-echo" id="rModeEcho"></div>
     <section aria-labelledby="rFactsH">
       <h2 id="rFactsH">What we know</h2>
       <div class="facts" id="rFacts"><p class="empty flat">Nothing yet.</p></div>

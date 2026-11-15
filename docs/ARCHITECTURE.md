@@ -123,7 +123,7 @@ Three ways to get a written report, none automatic:
 
 ## API keys
 
-- AI, Hunter, Shodan and Numlookup keys are entered in Settings and kept in the browser's `localStorage`.
+- AI, Hunter, Shodan and Numlookup keys are entered in Settings and kept in the browser's `localStorage`. The per-source switches are kept there too; the session modes (adult sites, active techniques, port scan) never are.
 - They are sent with each request to the CrawlR server, which passes them to the matching provider. The server does not store them.
 - The house Gemini key lives only in the server environment (`GEMINI_API_KEY`).
 - `ABUSECH_AUTH_KEY` (optional, server-side, free from abuse.ch) lets the hash lookup ask MalwareBazaar and ThreatFox, which refuse anonymous requests. Without it they are reported as failed, not as "not found".
@@ -141,7 +141,9 @@ Three ways to get a written report, none automatic:
 | `recon.js` | Recon mode for a domain, IP or ASN; loads the self-hosted d3 for the topology tab |
 | `graph.js` | D3 topology graph. Nodes are focusable and emit `crawlr:node` when selected, which Recon turns into a pivot bar |
 | `evidence.js` | Turns module responses into ranked evidence (`flag`, `linked`, `matches`, `different`, `unverified`, `noise`, plus `lead` and `hosts`), facts per identity, and the source plan for each target type. Pure functions, no DOM |
-| `adult.js` | The opt-in adult and dating mode: the in-memory switch, the minor guard, the separate group, and the scrub that removes adult rows from a case that did not have the mode on. Pure functions, no storage |
+| `adult.js` | The opt-in adult and dating mode: the minor guard, the separate group, and the scrub that removes adult rows from a case that did not have the mode on. Pure functions, no storage |
+| `modes.js` | The three session modes, "Adult sites" and "Active techniques" in Investigate and "Port scan" in Recon, each with its own state so that none switches another on: off on every page load, held in this module's memory only, on until switched off or the page is reloaded, and confirmed once per page session. Also whether a mode applies to the case on screen (`adultFor`, `activeCase`, `portscanCase`: not used for the wrong kind of target, suspended by the minor guard), the cleanup that drops old stored `active`, `maigret.nsfw` and `portscan` preferences, and the markup of the switches and the status line. No DOM, no storage |
+| `modeui.js` | The session mode switches on the page: the first-use confirmation, "Turn off", keeping the case bar's copy and the Sources sheet's copy of a switch in step, and drawing the status strip and its copy in the Case details drawer |
 | `adult-sites.js` | Generated copy of the server's adult and dating site list, so the page can filter without asking |
 | `names.js` | Name cases: reads the name search answer defensively (rows re-checked, text clipped, links rebuilt from checked IDs), merges a GitHub profile loaded on a click and re-matches its name with the server's rule, and builds the four name groups (public figure, people, handles to try, search the web), the notices, "What we know", the brief lines and the AI field. Pure functions, no DOM |
 | `phone-regions.js` | Generated list of the countries a number without a country code can be read as |
@@ -161,5 +163,7 @@ Three ways to get a written report, none automatic:
 | `tools.js` | Headers analyzer, dork builder, decoders (Base64, URL, hash, VIN) |
 | `present.js` | Presentation rules with no DOM: the certainty grammar (tier word, color and line style), what an evidence card may say (`cardSnippet`), the verdict tiles (`investigateTiles`, `reconTiles`), History grouped by target (`groupHistory`, `lastRunDiff`) and the check on a thumbnail before it is shown (`safeThumb`, `boundAvatarHash`) |
 | `md5.js` | MD5 for the hash decoder and Gravatar |
+
+**What a run does about the modes is decided in `modes.js`, once, when the run starts.** `investigate.js` calls `startAdult({ on, type, target, from, suspended })` and keeps its answer for the whole run (`state.adultMode`, `state.minor`); `recon.js` calls `portscanFor({ on, type, startedBy })` and keeps `scan`; `runDeepDive` calls `deepDiveFor({ on })` just before it would fetch. A switch moved mid-run applies from the next run. `startAdult` is also where the minor guard is made to follow the person: `minorFor` marks a case whose handle or email local part fails the guard, a case opened by a pivot from a marked case (`from`, passed by the one pivot handler in `app.js`), and any handle in the session's suspended list (`makeSuspended`: the handle that failed, every variant `handleVariants` generates for it, and every handle reached by a pivot from it, compared without case, "@" or separators; memory only). `portscanFor` scans only when `startedBy` is `"run"`, which only Recon's own Run button passes; every other way into `recon.run()` is a pivot and gets the "Port scan not run" note instead.
 
 Design tokens and UI rules: `static/v2/DESIGN.md`.

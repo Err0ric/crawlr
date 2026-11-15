@@ -116,11 +116,17 @@ def test_adult_sites_default_is_off_at_every_layer():
 
 def test_adult_sites_default_is_off_in_the_ui():
     src = open("static/v2/js/investigate.js").read()
-    # The old Maigret-only extra and its stored preference are gone: the mode is one switch for
-    # one case, held in memory, and nothing reads a stored value.
+    # The old Maigret-only extra and its stored preference are gone: the mode is a session switch,
+    # off on every page load and held in memory, and nothing reads a stored value. Stored source
+    # preferences go through cleanPrefs, which drops the old adult and active keys.
+    modes = open("static/v2/js/modes.js").read()
     assert "include adult and dating sites" not in src
-    assert 'delete srcState["maigret.nsfw"]' in src
-    assert src.count("maigret.nsfw") == 1
+    assert "maigret.nsfw" not in src
+    assert 'cleanPrefs(store.get("crawlr_v2_sources", {}))' in src
+    assert 'export const LEGACY_PREFS = ["active", "maigret.nsfw", "adult", "portscan"];' in modes
+    assert "const on = { adult: false, active: false, portscan: false }" in modes
+    code = "\n".join(line.split("//")[0] for line in modes.splitlines())
+    assert "localStorage" not in code and "sessionStorage" not in code and "store." not in code
     assert "nsfw: adult === true" in open("static/v2/js/adult.js").read()
 
 
