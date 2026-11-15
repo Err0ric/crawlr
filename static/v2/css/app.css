@@ -1300,3 +1300,35 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .report a.tile .n { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
 .lg-note { color: var(--ink-3); font-size: var(--fs-0); }
 @media (max-width: 360px) { .verdict-strip, .verdict-strip.n3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---- similar handles ---------------------------------------------------------------------
+   A row per handle. Once one was checked, the profiles that were read sit under it as small
+   evidence cards on an inset, with the same edge, mark and pill as a card in the ledger. A
+   profile that was read has a solid edge; the row itself, which is a guess until then, has none
+   of the tier colors. The handle is data, so it is set in mono. */
+.sim-handle { font-family: var(--mono); font-size: var(--fs-1); font-weight: 500; color: var(--ink); }
+.ev .what > .sim-res { flex: 1 1 100%; min-width: 0; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.sim-sum { margin: 0; color: var(--ink-2); }
+.sim-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sim-card {
+  --tone: var(--line-strong);
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 4px var(--s-3); align-items: start;
+  padding: 8px 10px 8px 8px; background: var(--bg-sunken); border: 1px solid var(--line); border-left: 3px solid var(--tone); border-radius: var(--r-2);
+}
+.sim-card.tone-linked { --tone: var(--linked); } .sim-card.tone-match { --tone: var(--match); } .sim-card.tone-different { --tone: var(--different); }
+.sim-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.sim-main .ev-title a.lk { font-size: var(--fs-2); font-weight: 600; }
+.sim-side { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 300px; }
+.sim-side .tag { margin-left: 0; }
+.sim-states { margin: 0; display: flex; flex-wrap: wrap; gap: 2px var(--s-4); color: var(--ink-3); font-size: var(--fs-0); }
+.sim-state b { font-weight: 500; color: var(--ink-2); margin-right: 4px; }
+.ev[aria-busy="true"] .sim-handle { color: var(--ink-3); }
+.btn[aria-disabled="true"] { cursor: progress; }
+@media (max-width: 760px) {
+  .sim-card { grid-template-columns: 32px minmax(0, 1fr); }
+  .sim-side { grid-column: 2; justify-content: flex-start; max-width: none; }
+}
+/* An answer that came with a case file was not read here: dashed, like everything nothing checked. */
+.sim-card.tone-unverified { --tone: var(--unverified); } .sim-card.line-dashed { border-left-style: dashed; }
+/* Facts of profiles added from a similar handle sit apart from every identity, under their own heading. */
+.who-added { margin: var(--s-4) 0 var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--line); font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); }

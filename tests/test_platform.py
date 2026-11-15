@@ -300,15 +300,16 @@ def test_run_reports_every_state_in_the_contract_shape(monkeypatch):
     }), calls)
     out = asyncio.run(pc.run_platform_check("torvalds"))
     rows = by_platform(out)
-    assert list(rows) == ["Facebook", "Instagram", "X", "Threads", "TikTok", "LinkedIn"]
+    # Reddit and Discord are always part of a run, after the page rules.
+    assert list(rows) == ["Facebook", "Instagram", "X", "Threads", "TikTok", "LinkedIn", "Reddit", "Discord"]
     assert {p: r["state"] for p, r in rows.items()} == {
         "Facebook": "unknown", "Instagram": "found", "X": "found", "Threads": "blocked",
-        "TikTok": "not_found", "LinkedIn": "blocked"}
-    assert out["username"] == "torvalds" and out["total"] == 2 and out["checked"] == 6
+        "TikTok": "not_found", "LinkedIn": "blocked", "Reddit": "unknown", "Discord": "unknown"}
+    assert out["username"] == "torvalds" and out["total"] == 2 and out["checked"] == 8
     for r in out["results"]:
         assert {"platform", "url", "state", "found", "evidence", "display_name", "public_url"} <= set(r)
         assert r["found"] is (True if r["state"] == "found" else False if r["state"] == "not_found" else None)
-        assert r["evidence"] and r["public_url"] is True
+        assert r["evidence"] and r["public_url"] is (r["platform"] != "Discord")
     assert rows["Instagram"]["url"] == "https://www.instagram.com/torvalds/" and rows["Instagram"]["display_name"] == "Sam Example"
     assert rows["Threads"]["evidence"] == "login wall"
     # no adult site in an ordinary run: not as a row, not as a link, not as a request
@@ -325,7 +326,10 @@ def test_every_request_is_a_get_with_navigation_headers(monkeypatch):
 
     fake_sites(monkeypatch, respond)
     asyncio.run(pc.run_platform_check("torvalds"))
-    assert len(seen) == 6 and all(m == "GET" and mode == "navigate" and "Mozilla" in ua for m, mode, ua in seen)
+    pages = [x for x in seen if x[0] == "GET"]
+    # Six profile pages and Reddit's about.json, each a browser navigation; Discord's sign-up check is the one POST.
+    assert len(pages) == 7 and all(mode == "navigate" and "Mozilla" in ua for _m, mode, ua in pages)
+    assert [m for m, _mode, _ua in seen if m != "GET"] == ["POST"] and len(seen) == 8
 
 
 def test_a_not_found_page_is_only_believed_when_the_canary_is_readable(monkeypatch):
@@ -387,8 +391,8 @@ def test_sherlock_sites_are_skipped(monkeypatch):
     calls = []
     fake_sites(monkeypatch, site_responder({}), calls)
     out = asyncio.run(pc.run_platform_check("torvalds", ["Facebook", "Twitter", "threads", "GitHub"]))
-    assert [r["platform"] for r in out["results"]] == ["Instagram", "TikTok", "LinkedIn"]
-    assert out["checked"] == 3
+    assert [r["platform"] for r in out["results"]] == ["Instagram", "TikTok", "LinkedIn", "Reddit", "Discord"]
+    assert out["checked"] == 5
     assert not any(h in c for c in calls for h in ("facebook.com", "x.com", "threads.com"))
     # "X" covers the X row as well
     out = asyncio.run(pc.run_platform_check("torvalds", ["X"]))

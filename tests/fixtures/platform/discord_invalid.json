@@ -1,0 +1,1 @@
+{"message": "Invalid Form Body", "code": 50035, "errors": {"username": {"_errors": [{"code": "USERNAME_INVALID_CONTAINS", "message": "Username cannot contain \"discord\""}]}}}

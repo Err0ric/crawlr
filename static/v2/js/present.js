@@ -22,8 +22,11 @@ export const certaintyOf = (tier) => CERTAINTY[tier] || { word: "", tone: "", li
 //   page checked     solid neutral edge, solid pill "Page checked"
 //   page not found   solid muted edge, greyed pill "Page not found"
 //   blocked, or could not be checked: unchanged, dashed "Unverified" (the reason is on the row)
+//   handle taken     a sign-up check said the handle is in use and nothing was read: dashed, like
+//                    every row nothing read, with its own words
 export function rowCertainty(it) {
   const c = certaintyOf(it?.tier);
+  if (it?.tier === "unverified" && it.taken) return { word: "Handle taken", tone: "unverified", line: "dashed" };
   if (it?.tier === "unverified" && it.check === "verified") return { word: "Page checked", tone: "", line: "solid", checked: true };
   if (it?.tier === "unverified" && (it.check === "not_found" || it.gone)) return { word: "Page not found", tone: "", line: "solid", gone: true };
   return c;
@@ -58,9 +61,14 @@ export const mayFavicon = (it, { imported = false } = {}) => !imported && !!it &
 // Thumbnails are the first thing dropped when the browser's storage is full: every stored run
 // except `keepId` loses them, oldest first matters less than keeping the runs themselves.
 export function withoutThumbs(list, keepId = "") {
-  return (Array.isArray(list) ? list : []).map((e) => {
+  return (Array.isArray(list) ? list : []).map((e0) => {
+    if (!e0 || e0.id === keepId) return e0;
+    // The thumbnails of profiles read for a similar handle go the same way.
+    const sim = e0.results?.similar;
+    const hasSim = sim && typeof sim === "object" && Object.values(sim).some((v) => (v?.probe?.profiles || []).some?.((p) => p && p.thumb));
+    const e = hasSim ? { ...e0, results: { ...e0.results, similar: Object.fromEntries(Object.entries(sim).map(([k, v]) => [k, v?.probe && Array.isArray(v.probe.profiles) ? { ...v, probe: { ...v.probe, profiles: v.probe.profiles.map((p) => (p && p.thumb ? { ...p, thumb: "" } : p)) } } : v])) } } : e0;
     const av = e?.results?.avatarHash;
-    if (!e || e.id === keepId || !av || !Array.isArray(av.results) || !av.results.some((r) => r && "thumb" in r)) return e;
+    if (!av || !Array.isArray(av.results) || !av.results.some((r) => r && "thumb" in r)) return e;
     return { ...e, results: { ...e.results, avatarHash: { ...av, results: av.results.map((r) => { if (!r || !("thumb" in r)) return r; const { thumb, ...rest } = r; return rest; }) } } };
   });
 }
@@ -126,9 +134,10 @@ export function cardSnippet(row, profile, now = new Date()) {
   if (p) {
     if (p.shownName) facts.push(String(p.shownName));
     if (p.location) facts.push(clipText(p.location, 60));
-    const repos = count(p.repos), followers = count(p.followers), year = joinedYear(p.created, now);
+    const repos = count(p.repos), followers = count(p.followers), karma = count(p.karma), year = joinedYear(p.created, now);
     if (repos) facts.push(`${repos} ${repos === "1" ? "repo" : "repos"}`);
     if (followers) facts.push(`${followers} ${followers === "1" ? "follower" : "followers"}`);
+    if (karma) facts.push(`${karma} karma`);
     if (year) facts.push(`joined ${year}`);
   }
   const bio = p ? clipText(p.bio, 140) : "";

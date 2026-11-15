@@ -9,12 +9,17 @@ from pydantic import BaseModel, Field
 from core import validate
 from modules.avatar_hash import MAX_IMAGES, run_avatar_hash
 from modules.github import run_github_deep
+from modules.handle_probe import run_handle_probe
 from modules.link_verify import MAX_LINKS, run_link_verify
 
 router = APIRouter()
 
 
 class GithubDeepRequest(BaseModel):
+    username: str = Field(max_length=320)
+
+
+class HandleProbeRequest(BaseModel):
     username: str = Field(max_length=320)
 
 
@@ -42,6 +47,13 @@ class VerifyLinksRequest(BaseModel):
 @router.post("/github-deep")
 async def github_deep(req: GithubDeepRequest):
     return await run_github_deep(validate.username(req.username))
+
+
+@router.post("/handle-probe")
+async def handle_probe(req: HandleProbeRequest):
+    """One similar handle, on a click: GitHub, the platform check and Bluesky, with the
+    pictures hashed here. Never Sherlock or Maigret, never an adult or dating site."""
+    return await run_handle_probe(validate.username(req.username))
 
 
 @router.post("/avatar-hash")

@@ -295,7 +295,7 @@ ok(L.classifyLink({ url: "https://example.org/find?q=jdoe@example.org", want: "e
   ok(ee.items.filter((i) => /^breach:/.test(i.key)).every((i) => i.link_kind === "none"), "old breach rows (names only) have no link");
   const old = buildEvidence(tv.collected, tv.target, tv.type);
   ok(old.items.every((i) => L.LINK_KINDS.includes(i.link_kind)) && old.items.filter((i) => i.tier === "unverified" && i.url).every((i) => i.link_kind === "templated_unverified"), "a case saved before link kinds existed is classified when it is opened");
-  ok(ledgerTiers(tv.target, tv.type).length === 10, "the link check adds no tier");
+  ok(ledgerTiers(tv.target, tv.type).length === 11, "the link check adds no tier");
 }
 
 // ---- 1. a case that was opened, not run, never starts fetches on its own ---------------------------

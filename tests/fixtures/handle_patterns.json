@@ -1,0 +1,449 @@
+[
+ {
+  "name": "Linus Torvalds",
+  "parsed": {
+   "given": "Linus",
+   "middle": "",
+   "family": "Torvalds",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "linustorvalds",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "linus.torvalds",
+    "pattern": "given.family"
+   },
+   {
+    "value": "linus_torvalds",
+    "pattern": "given_family"
+   },
+   {
+    "value": "ltorvalds",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "linust",
+    "pattern": "givenf"
+   },
+   {
+    "value": "torvaldslinus",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "torvalds.linus",
+    "pattern": "family.given"
+   },
+   {
+    "value": "linus-torvalds",
+    "pattern": "given-family"
+   }
+  ]
+ },
+ {
+  "name": "Eric Henderson",
+  "parsed": {
+   "given": "Eric",
+   "middle": "",
+   "family": "Henderson",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "erichenderson",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "eric.henderson",
+    "pattern": "given.family"
+   },
+   {
+    "value": "eric_henderson",
+    "pattern": "given_family"
+   },
+   {
+    "value": "ehenderson",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "erich",
+    "pattern": "givenf"
+   },
+   {
+    "value": "hendersoneric",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "henderson.eric",
+    "pattern": "family.given"
+   },
+   {
+    "value": "eric-henderson",
+    "pattern": "given-family"
+   }
+  ]
+ },
+ {
+  "name": "Mary Jane Watson",
+  "parsed": {
+   "given": "Mary",
+   "middle": "Jane",
+   "family": "Watson",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "marywatson",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "mary.watson",
+    "pattern": "given.family"
+   },
+   {
+    "value": "mary_watson",
+    "pattern": "given_family"
+   },
+   {
+    "value": "mwatson",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "maryw",
+    "pattern": "givenf"
+   },
+   {
+    "value": "watsonmary",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "watson.mary",
+    "pattern": "family.given"
+   },
+   {
+    "value": "mary-watson",
+    "pattern": "given-family"
+   },
+   {
+    "value": "maryjwatson",
+    "pattern": "givenmfamily"
+   },
+   {
+    "value": "mary.j.watson",
+    "pattern": "given.m.family"
+   },
+   {
+    "value": "mjwatson",
+    "pattern": "gmfamily"
+   },
+   {
+    "value": "maryjanewatson",
+    "pattern": "givenmiddlefamily"
+   }
+  ]
+ },
+ {
+  "name": "Seán O'Brien",
+  "parsed": {
+   "given": "Seán",
+   "middle": "",
+   "family": "O'Brien",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "seanobrien",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "sean.obrien",
+    "pattern": "given.family"
+   },
+   {
+    "value": "sean_obrien",
+    "pattern": "given_family"
+   },
+   {
+    "value": "sobrien",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "seano",
+    "pattern": "givenf"
+   },
+   {
+    "value": "obriensean",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "obrien.sean",
+    "pattern": "family.given"
+   },
+   {
+    "value": "sean-obrien",
+    "pattern": "given-family"
+   }
+  ]
+ },
+ {
+  "name": "José Müller-Straße",
+  "parsed": {
+   "given": "José",
+   "middle": "",
+   "family": "Müller-Straße",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "josemullerstrasse",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "jose.mullerstrasse",
+    "pattern": "given.family"
+   },
+   {
+    "value": "jose_mullerstrasse",
+    "pattern": "given_family"
+   },
+   {
+    "value": "jmullerstrasse",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "josem",
+    "pattern": "givenf"
+   },
+   {
+    "value": "mullerstrassejose",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "mullerstrasse.jose",
+    "pattern": "family.given"
+   },
+   {
+    "value": "jose-mullerstrasse",
+    "pattern": "given-family"
+   }
+  ]
+ },
+ {
+  "name": "Cher",
+  "parsed": {
+   "given": "Cher",
+   "middle": "",
+   "family": "",
+   "suffix": "",
+   "single_token": true
+  },
+  "handles": [
+   {
+    "value": "cher",
+    "pattern": "name"
+   }
+  ]
+ },
+ {
+  "name": "Sam Example Jr.",
+  "parsed": {
+   "given": "Sam",
+   "middle": "",
+   "family": "Example",
+   "suffix": "Jr.",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "samexample",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "sam.example",
+    "pattern": "given.family"
+   },
+   {
+    "value": "sam_example",
+    "pattern": "given_family"
+   },
+   {
+    "value": "sexample",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "same",
+    "pattern": "givenf"
+   },
+   {
+    "value": "examplesam",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "example.sam",
+    "pattern": "family.given"
+   },
+   {
+    "value": "sam-example",
+    "pattern": "given-family"
+   }
+  ]
+ },
+ {
+  "name": "Łukasz Æther",
+  "parsed": {
+   "given": "Łukasz",
+   "middle": "",
+   "family": "Æther",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "lukaszaether",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "lukasz.aether",
+    "pattern": "given.family"
+   },
+   {
+    "value": "lukasz_aether",
+    "pattern": "given_family"
+   },
+   {
+    "value": "laether",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "lukasza",
+    "pattern": "givenf"
+   },
+   {
+    "value": "aetherlukasz",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "aether.lukasz",
+    "pattern": "family.given"
+   },
+   {
+    "value": "lukasz-aether",
+    "pattern": "given-family"
+   }
+  ]
+ },
+ {
+  "name": "山田 太郎",
+  "parsed": {
+   "given": "山田",
+   "middle": "",
+   "family": "太郎",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": []
+ },
+ {
+  "name": "A B",
+  "parsed": {
+   "given": "A",
+   "middle": "",
+   "family": "B",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "ab",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "a.b",
+    "pattern": "given.family"
+   },
+   {
+    "value": "a_b",
+    "pattern": "given_family"
+   },
+   {
+    "value": "ba",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "b.a",
+    "pattern": "family.given"
+   },
+   {
+    "value": "a-b",
+    "pattern": "given-family"
+   }
+  ]
+ },
+ {
+  "name": "Anna-Maria van der Berg",
+  "parsed": {
+   "given": "Anna-Maria",
+   "middle": "van der",
+   "family": "Berg",
+   "suffix": "",
+   "single_token": false
+  },
+  "handles": [
+   {
+    "value": "annamariaberg",
+    "pattern": "givenfamily"
+   },
+   {
+    "value": "annamaria.berg",
+    "pattern": "given.family"
+   },
+   {
+    "value": "annamaria_berg",
+    "pattern": "given_family"
+   },
+   {
+    "value": "aberg",
+    "pattern": "gfamily"
+   },
+   {
+    "value": "annamariab",
+    "pattern": "givenf"
+   },
+   {
+    "value": "bergannamaria",
+    "pattern": "familygiven"
+   },
+   {
+    "value": "berg.annamaria",
+    "pattern": "family.given"
+   },
+   {
+    "value": "annamaria-berg",
+    "pattern": "given-family"
+   },
+   {
+    "value": "annamariavberg",
+    "pattern": "givenmfamily"
+   },
+   {
+    "value": "annamaria.v.berg",
+    "pattern": "given.m.family"
+   },
+   {
+    "value": "avberg",
+    "pattern": "gmfamily"
+   },
+   {
+    "value": "annamariavanderberg",
+    "pattern": "givenmiddlefamily"
+   }
+  ]
+ }
+]

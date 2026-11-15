@@ -19,6 +19,13 @@ const run = (collected, target, type, failed = []) => { const ev = buildEvidence
   ok(!/Ignored/.test(t), "ignores names from unverified hits");
   ok(/2 unverified accounts were reported by two tools/.test(t), "notes two-tool agreement without calling it verified");
   ok(/flag: 1 source failed \(Holehe\)/.test(t), "lists failed sources");
+  // The platform check asking Reddit or Discord itself is not a second tool: a blocked Reddit row
+  // or a taken Discord handle that one tool also listed is not "reported by two tools".
+  const pc = { results: [{ platform: "Reddit", url: "https://www.reddit.com/user/jdoe", state: "blocked", found: null, evidence: "Reddit refuses requests from servers, so this could not be checked automatically." }, { platform: "Discord", url: "", state: "taken", found: null }] };
+  const one = text(run({ sherlock: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe" }, { site: "Discord", url: "https://discord.com" }] }, platformCheck: pc }, "jdoe", "username"));
+  ok(!/reported by two tools/.test(one), "a blocked Reddit row or a taken Discord row plus one tool is not two-tool agreement");
+  const two = text(run({ sherlock: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe" }, { site: "Discord", url: "https://discord.com" }] }, maigret: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe", verified: false }, { site: "Discord", url: "https://discord.com", verified: false }] }, platformCheck: pc }, "jdoe", "username"));
+  ok(/1 unverified account was reported by two tools/.test(two), "two tools that both list Reddit are two tools; a taken handle never is");
   ok(b.actions.some((a) => a.pivot === "investigate" && a.value === "j@example.org") && b.actions.some((a) => a.pivot === "recon" && a.value === "jdoe.dev"), "offers pivots from extracted facts");
 }
 {
