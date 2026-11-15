@@ -167,3 +167,33 @@ def registrable_domain(hostname: str) -> str:
 def same_site(a: str, b: str) -> bool:
     ra, rb = registrable_domain(a), registrable_domain(b)
     return bool(ra) and ra == rb
+
+
+# A phone number as people write it: digits with spaces, dashes, dots, slashes and parentheses,
+# an optional leading +, an extension ("ext. 22", "x22", ";ext=22", "#22") and letters for a
+# vanity number (1-800-FLOWERS). It must start like a number and carry at least two digits.
+PHONE_MAX = 40
+PHONE_MSG = ("Enter a phone number: digits with an optional + and country code, for example +1 202 456 1111. "
+             "Spaces, dashes, dots, parentheses, an extension and vanity letters are accepted.")
+_PHONE_RE = re.compile(r"^[+(]?[0-9(][0-9A-Za-z()\-. /,;=#*]*$")
+_REGION_RE = re.compile(r"^[A-Za-z]{2}$")
+
+
+def phone(value: str) -> str:
+    """The number as typed, trimmed, with runs of spaces collapsed. Refuses text that is not
+    written like a phone number. Whether it is a possible or a valid number is decided later,
+    by modules/phone_lookup.py."""
+    v = " ".join(unicodedata.normalize("NFKC", value or "").split())
+    if not v or len(v) > PHONE_MAX or not _PHONE_RE.fullmatch(v) or sum(ch.isdigit() for ch in v) < 2:
+        raise _bad(PHONE_MSG)
+    return v
+
+
+def phone_region(value: str | None, default: str = "US") -> str:
+    """The two-letter country a number written without a country code is read as."""
+    v = (value or "").strip().upper()
+    if not v:
+        return default
+    if not _REGION_RE.fullmatch(v):
+        raise _bad("The region must be a two-letter country code, for example US or GB.")
+    return v
