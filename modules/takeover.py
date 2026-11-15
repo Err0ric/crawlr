@@ -112,17 +112,23 @@ def _check(host: str) -> dict | None:
     return {"host": host, "cname": cname, "service": service, "status": status}
 
 
-async def run_takeover(domain: str, hosts: list[str]) -> dict:
+async def run_takeover(domain: str, hosts: list[str], wildcard_cnames: list[str] | None = None) -> dict:
+    """`wildcard_cnames`: the CNAME targets of the zone's wildcard record, when the subdomain
+    check found one. A host whose CNAME is one of them only repeats the wildcard: it is not
+    a candidate of its own (the wildcard is reported once, by the subdomain check)."""
     wanted = []
     for h in hosts:
         h = str(h).strip().lower().rstrip(".")
         if (h == domain or h.endswith("." + domain)) and h not in wanted:
             wanted.append(h)
     wanted = wanted[:MAX_HOSTS]
+    wild = {str(c).strip().lower().rstrip(".") for c in wildcard_cnames or [] if c}
     async def one(h):
         return await dns_thread(_check, h)
 
     rows = [x for x in await asyncio.gather(*(one(h) for h in wanted)) if x]
+    via_wildcard = sorted(x["host"] for x in rows if x.get("cname") in wild)
+    rows = [x for x in rows if x.get("cname") not in wild]
     # Hosts whose CNAME could not be read are not candidates. They are counted apart so a
     # run with failed lookups does not read as "checked, nothing found".
     unchecked = sorted(x["host"] for x in rows if "cname" not in x)
@@ -135,5 +141,6 @@ async def run_takeover(domain: str, hosts: list[str]) -> dict:
         "dangling": sum(1 for x in hits if x["status"] == "dangling"),
         "unknown": sum(1 for x in hits if x["status"] == "unknown"),
         "unchecked": unchecked[:50],
+        "via_wildcard": len(via_wildcard),
         "candidates": hits,
     }
