@@ -6,17 +6,20 @@ pointed at someone who may be a child. The guard has two stages, and every serve
 can reach such a site calls `gate` first. There is no override: no parameter, header or
 setting turns either stage off.
 
-  1. The handle (narrow, before anything runs). Only an explicit age under 18 blocks
-     (14yo, 15y/o, 15_y_o, age16, 16yrs, 13yearsold), or one of three words (underage,
-     preteen, jailbait). A bare number in a handle never blocks: gamer13, sk8r_15 and
-     err0ric17 are ordinary handles.
+  1. The handle (narrow, before anything runs). Only an age-specific token for 8 to 17
+     blocks (14yo, 15y/o, 15_y_o, age16, 16yrsold, 13yearsold), or one of three words
+     (underage, preteen, jailbait). A bare number in a handle never blocks: gamer13, sk8r_15
+     and err0ric17 are ordinary handles. Years with no "old" (10yrs_exp, 12years_sober,
+     16yrs) do not block either: like a birth year, they are a soft signal for stage 2.
 
   2. The profiles (the main guard). The adult pass is its own request, made after the
      ordinary sources. core.profile_record keeps the profile text those sources returned for
-     the handle; `gate` refuses when no ordinary source has run for it yet (HTTP 409,
-     "mainstream_first"), and otherwise scans that text for a stated age under 18, a school
-     level, or a birth date under 18. A year in the handle that looks like a birth year is a
-     soft signal: it blocks only together with a weaker sign in a profile.
+     the handle, per visitor; `gate` refuses when no source that reads profiles (Maigret or
+     the platform check) has answered for it yet (HTTP 409, "mainstream_first"): with nothing
+     to read, a clean check would mean nothing. Otherwise it scans that text for a stated age under 18, a school
+     level, or a birth date under 18. A year in the handle that looks like a birth year, and
+     bare years (16yrs), are soft signals: they block only together with a weaker sign in a
+     profile.
 
 The rules themselves (patterns, thresholds) are in static/v2/data/minor-rules.json, applied
 by core.minor_rules here and by static/v2/js/minorscan.js in the page. If that file cannot be
@@ -36,7 +39,7 @@ from core.errors import error_fields
 ERROR_CODE = "minor_guard"
 MESSAGE = "Adult and dating sites are not checked for this handle."
 MAINSTREAM_CODE = "mainstream_first"
-MAINSTREAM_MESSAGE = "Run the ordinary sources for this handle first: adult and dating sites are checked only after its profiles have been read."
+MAINSTREAM_MESSAGE = "Run a source that reads profiles for this handle first (Maigret or the platform check): adult and dating sites are checked only after its profiles have been read."
 PASS_MESSAGE = "Adult and dating sites run as their own pass after the ordinary sources: send nsfw and adult_only together."
 
 REASONS = {
@@ -48,7 +51,7 @@ CONTENT_REASONS = {
     "age": "A profile found for this handle states an age under 18.",
     "school": "A profile found for this handle suggests a school-age person.",
     "birth": "A profile found for this handle states a birth date under 18.",
-    "soft": "A profile found for this handle suggests a minor, and the handle carries a matching birth year.",
+    "soft": "A profile found for this handle suggests a minor, and the handle carries a matching age or birth year.",
 }
 
 
@@ -99,7 +102,8 @@ def gate(username: str) -> tuple[int, dict] | None:
 
       400 minor_guard        the handle fails the handle check, or a profile on record for it
                              suggests a minor (the body then has kind, source, snippet, url)
-      409 mainstream_first   no ordinary source has run for the handle inside the record's TTL
+      409 mainstream_first   no source that reads profiles has answered for the handle inside
+                             the record's TTL, under this visitor's session
     """
     first = refusal(username)
     if first:
@@ -107,11 +111,20 @@ def gate(username: str) -> tuple[int, dict] | None:
     if not profile_record.ran(username):
         return 409, {"detail": MAINSTREAM_MESSAGE, "code": MAINSTREAM_CODE,
                      **error_fields(code=MAINSTREAM_CODE, message=MAINSTREAM_MESSAGE, detail="")}
-    found = content_check(username)
-    if found["blocked"]:
-        s = found["signal"]
-        return 400, _body(CONTENT_REASONS[found["kind"]], kind=found["kind"], source=s["source"], snippet=s["snippet"], url=s["url"])
+    # One scan per change of the record, and a block stays for the record's lifetime: a later
+    # answer with fewer rows cannot make the server forget what it read.
+    block = profile_record.verdict(username, lambda: _content_block(username))
+    if block:
+        return 400, _body(CONTENT_REASONS[block["kind"]], **block)
     return None
+
+
+def _content_block(username: str) -> dict | None:
+    found = content_check(username)
+    if not found["blocked"]:
+        return None
+    s = found["signal"]
+    return {"kind": found["kind"], "source": s["source"], "snippet": s["snippet"], "url": s["url"]}
 
 
 def gate_fields(refused: tuple[int, dict]) -> dict:

@@ -49,6 +49,7 @@ ADULT_HOSTS = frozenset(adult_sites.HOSTS)
 _ID_KEYS = {"uid", "username", "account_id", "gaia_id"}
 _NAME_KEYS = ("fullname", "name", "nickname")
 _BIRTH_KEYS = ("birthday", "birth_date", "birthdate", "born", "dob", "date_of_birth")
+_TEXT_KEYS = ("about", "status", "headline", "description", "school", "occupation", "education", "job")
 
 
 def profile_signal(ids: dict | None, site: str = "", username: str = "") -> dict | None:
@@ -75,11 +76,20 @@ def profile_signal(ids: dict | None, site: str = "", username: str = "") -> dict
         "bio_boilerplate": bool(raw_bio) and not bio,
         "created_at": fields.get("created_at", "")[:40],
         "image": fields.get("image", "")[:500],
-        # Read only by the minor guard's content check (core.profile_record, minorscan.js).
-        "birthday": next((fields[k] for k in _BIRTH_KEYS if fields.get(k)), "")[:40],
-        "age": fields.get("age", "") if fields.get("age", "").isdigit() and len(fields.get("age", "")) <= 3 else "",
         "extractor": str(ids.get("_extractor", ""))[:60],
     }
+    # Guard-only: what the minor guard's content check reads and nothing else uses. The whole bio
+    # (the row shows 300 characters), the other text fields an extractor returns, a birth date
+    # and an age. The server scans it (core.profile_record) and so does the page, which removes
+    # `guard` before the case is stored, exported or sent to the AI.
+    age = fields.get("age", "")
+    guard = {
+        "bio": bio[:2000] if len(bio) > 300 else "",
+        "text": "\n".join(fields[k][:300] for k in _TEXT_KEYS if fields.get(k) and fields[k] != raw_bio)[:1000],
+        "birthday": next((fields[k] for k in _BIRTH_KEYS if fields.get(k)), "")[:40],
+        "age": age if age.isdigit() and len(age) <= 3 else "",
+    }
+    out["guard"] = {k: v for k, v in guard.items() if v}
     return {k: v for k, v in out.items() if v}
 
 

@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from core import adult_guard, profile_record, validate
-from middleware.observability import client_ip
 from modules.adult_check import run_adult_check
 from modules.sherlock import run_sherlock
 from modules.holehe import run_holehe
@@ -65,8 +64,9 @@ def _adult_pass(req) -> bool:
 
 
 def _mine(request: Request) -> None:
-    """The record of the ordinary sources is kept per caller (core.profile_record.bind)."""
-    profile_record.bind(client_ip(request))
+    """The record of the ordinary sources is kept per visitor: the random session ID that
+    middleware/run_session.py issued in the crawlr_run cookie (core.profile_record.bind)."""
+    profile_record.bind(getattr(request.state, "run_session", ""))
 
 
 def _noted(username: str, source: str, answer: dict) -> dict:

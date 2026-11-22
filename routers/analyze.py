@@ -418,6 +418,7 @@ _BLOCK_WORDS = {
     "age": "minor indicator on {source}", "school": "minor indicator on {source}", "birth": "minor indicator on {source}", "soft": "minor indicator on {source}",
     "handle": "minor indicator in the handle", "word": "minor indicator in the handle", "rules": "the minor rules could not be loaded",
     "server": "refused by the minor guard", "pivot": "opened from a case with a minor indicator",
+    "unread": "no source that reads profiles answered, so there was nothing to check",
 }
 
 
@@ -425,6 +426,8 @@ def _adult_block_lines(req) -> list[str]:
     """One line when the minor guard stopped the adult pass. The site's name is data: it is cut
     to plain characters, and the profile text that triggered the guard is never sent at all."""
     block = getattr(req, "adult_block", None)
+    if block is not None and block.kind == "fresh":
+        return ["ADULT AND DATING SITES NOT CHECKED: adult sites not run: a fresh run was needed"]
     if block is None or block.kind not in _BLOCK_WORDS:
         return []
     source = re.sub(r"[^A-Za-z0-9 ._()/-]", "", block.source or "")[:60].strip() or "a profile"
@@ -465,7 +468,7 @@ class AdultSiteEvidence(BaseModel):
 
 class AdultBlockEvidence(BaseModel):
     """Why a case has no adult and dating rows. The quoted profile text is never part of it."""
-    kind: str = Field(max_length=12)                      # "age" | "school" | "birth" | "soft" | "handle" | "word" | "rules" | "server" | "pivot"
+    kind: str = Field(max_length=12)                      # "age" | "school" | "birth" | "soft" | "handle" | "word" | "rules" | "server" | "pivot" | "unread" | "fresh"
     source: str = Field(default="", max_length=80)        # the site the sign was read on, for the first four
 
 

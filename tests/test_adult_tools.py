@@ -44,11 +44,14 @@ ADULT_PASS = {"nsfw": True, "adult_only": True}
 BLOCKING = "16 | junior in high school"
 
 
-def ran(handle="jdoe", bio="", client=""):
-    """Put an ordinary run on record for the handle, as the routers do, with one GitHub bio.
-    The record is kept per caller: the test client's address is "testclient"."""
-    profile_record.bind(client)
-    profile_record.note(handle, "sherlock", {"results": []})
+def ran(handle="jdoe", bio="", c=None):
+    """Put an ordinary run on record for the handle, as the routers do: Maigret answered (a
+    source that reads profiles), with one GitHub bio if given. The record is kept per visitor:
+    with `c`, under the session cookie of that test client."""
+    if c is not None:
+        c.get("/api/recon/ping")                                   # any recon request issues the cookie
+        profile_record.bind(c.cookies.get("crawlr_run"))
+    profile_record.note(handle, "maigret", {"results": []})
     if bio:
         profile_record.note(handle, "github", {"found": True, "profile_url": f"https://github.com/{handle}", "name": "", "bio": bio})
 
@@ -528,7 +531,7 @@ ADULT_PATHS = (("/api/recon/sherlock", ADULT_PASS), ("/api/recon/maigret", ADULT
 @pytest.mark.parametrize("handle", ["jake_13yo", "15yo_alex", "age14jay", "x_age_16", "underage_sam", "pr3t33n"])
 def test_every_adult_path_answers_400_minor_guard_for_a_handle_token(c, monkeypatch, handle):
     calls = spy(monkeypatch)
-    ran(handle, client="testclient")                                # even with the ordinary sources on record
+    ran(handle, c=c)                                # even with the ordinary sources on record
     reason = adult_guard.minor_indicated(handle)
     assert reason in (adult_guard.REASONS["age"], adult_guard.REASONS["word"])
     for path, extra in ADULT_PATHS:
@@ -543,7 +546,7 @@ def test_every_adult_path_answers_400_minor_guard_for_a_handle_token(c, monkeypa
 @pytest.mark.parametrize("handle", ["gamer13", "sk8r_15", "10outof10", "err0ric17", "mike1999", "mike2010", "emma09", "user2012", "apollo13", "kidrock", "canteen"])
 def test_a_bare_number_or_an_ordinary_word_in_the_handle_no_longer_refuses_any_path(c, monkeypatch, handle):
     calls = spy(monkeypatch)
-    ran(handle, client="testclient")
+    ran(handle, c=c)
     for path, extra in ADULT_PATHS:
         assert c.post(path, json={"username": handle, **extra}).status_code == 200, path
     assert [n for n, _, _ in calls] == ["sherlock", "maigret", "adult-check"]
@@ -563,16 +566,13 @@ def test_a_direct_call_to_an_adult_path_with_nothing_on_record_is_refused_and_ma
 def test_the_ordinary_routes_put_the_handle_on_record_and_then_the_adult_pass_runs(c, monkeypatch):
     calls = spy(monkeypatch)
     assert c.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 409
-    assert c.post("/api/recon/sherlock", json={"username": "Torvalds"}).status_code == 200       # the ordinary run, through the real router
-    profile_record.bind("testclient")
-    assert profile_record.completed("torvalds") == ["sherlock"]
-    # Another caller's run is not this caller's record.
-    profile_record.bind("")
-    profile_record.note("someone_elses_case", "sherlock", {"results": []})
-    assert c.post("/api/recon/adult-check", json={"username": "someone_elses_case"}).status_code == 409
+    # Sherlock alone reads no profile: the check would have nothing to read, so the pass stays shut.
+    assert c.post("/api/recon/sherlock", json={"username": "Torvalds"}).status_code == 200
+    assert c.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 409
+    assert c.post("/api/recon/maigret", json={"username": "Torvalds"}).status_code == 200        # a source that reads profiles, through the real router
     for path, extra in ADULT_PATHS:
         assert c.post(path, json={"username": "@torvalds", **extra}).status_code == 200, path
-    assert calls == [("sherlock", "Torvalds", {}), ("sherlock", "torvalds", ADULT_PASS), ("maigret", "torvalds", ADULT_PASS), ("adult-check", "torvalds", {})]
+    assert calls == [("sherlock", "Torvalds", {}), ("maigret", "Torvalds", {}), ("sherlock", "torvalds", ADULT_PASS), ("maigret", "torvalds", ADULT_PASS), ("adult-check", "torvalds", {})]
     # A source that failed is not a completed run.
     profile_record.clear()
 
@@ -580,7 +580,77 @@ def test_the_ordinary_routes_put_the_handle_on_record_and_then_the_adult_pass_ru
         return {"username": username, "results": [], "error": "x", "error_code": "timeout"}
     monkeypatch.setattr(recon, "run_maigret", failing)
     assert c.post("/api/recon/maigret", json={"username": "torvalds"}).status_code == 200
+    assert c.post("/api/recon/sherlock", json={"username": "torvalds"}).status_code == 200
     assert c.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 409
+
+
+# ---- the session cookie -----------------------------------------------------------------------
+
+def test_the_cookie_is_a_server_issued_random_id_with_the_right_attributes(monkeypatch):
+    import middleware.run_session as rs
+    with TestClient(app) as fresh:
+        r = fresh.get("/api/recon/ping")
+        header = r.headers["set-cookie"]
+        value = fresh.cookies.get("crawlr_run")
+        assert re.fullmatch(r"crawlr_run=[A-Za-z0-9_-]{43}; HttpOnly; SameSite=Strict; Path=/api", header), header
+        assert "Max-Age" not in header and "Expires" not in header.title() and "Secure" not in header     # plain http (localhost, the tests): no Secure, session-scoped
+        assert value not in r.text and len(value) == 43
+        # It is sent once: a request that carries it gets no new one.
+        assert "set-cookie" not in fresh.get("/api/recon/ping").headers
+        # Nothing outside the recon API sets it.
+        with TestClient(app) as other:
+            assert "set-cookie" not in other.get("/api/health").headers and "set-cookie" not in other.get("/").headers
+    # Over https, or behind the trusted proxy's https header, it is Secure.
+    assert rs.set_cookie("x", True) == "crawlr_run=x; HttpOnly; SameSite=Strict; Path=/api; Secure"
+    assert rs.is_https({"scheme": "https", "headers": []}) and not rs.is_https({"scheme": "http", "headers": []})
+    assert rs.is_https({"scheme": "http", "headers": [(b"x-forwarded-proto", b"https")]})
+    monkeypatch.setattr(rs, "TRUSTED_PROXY_HOPS", 0)
+    assert not rs.is_https({"scheme": "http", "headers": [(b"x-forwarded-proto", b"https")]})    # with no trusted proxy the header is the caller's word
+    with TestClient(app, base_url="https://testserver") as tls:
+        assert tls.get("/api/recon/ping").headers["set-cookie"].endswith("; Path=/api; Secure")
+
+
+def test_the_adult_pass_needs_the_same_cookie_as_the_ordinary_run(monkeypatch):
+    calls = spy(monkeypatch)
+    no_adult_check(monkeypatch)
+    with TestClient(app) as first, TestClient(app) as second, TestClient(app) as nobody:
+        # No cookie: nothing on record, whoever else ran the handle.
+        assert first.post("/api/recon/maigret", json={"username": "torvalds"}).status_code == 200
+        assert first.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 200
+        assert second.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 409
+        # A caller who drops the cookie between calls has no record either.
+        assert nobody.post("/api/recon/maigret", json={"username": "torvalds"}).status_code == 200
+        nobody.cookies.clear()
+        r = nobody.post("/api/recon/adult-check", json={"username": "torvalds"})
+        assert r.status_code == 409 and r.json()["error_code"] == "mainstream_first"
+        # A block does not leak either: the second visitor gets the same 409 as anyone with no record.
+
+        async def blocking(username, **kw):
+            return {"results": [{"site": "Gitlab", "url": f"https://gitlab.com/{username}", "verified": True, "profile": {"bio": BLOCKING}}]}
+        monkeypatch.setattr(recon, "run_maigret", blocking)
+        assert first.post("/api/recon/maigret", json={"username": "river_stone"}).status_code == 200
+        assert first.post("/api/recon/adult-check", json={"username": "river_stone"}).status_code == 400
+        leak = second.post("/api/recon/adult-check", json={"username": "river_stone"})
+        assert leak.status_code == 409 and BLOCKING not in leak.text and leak.json() == second.post("/api/recon/adult-check", json={"username": "never_run_by_anyone"}).json()
+        # A made-up cookie value is not a session: it is replaced, and it cannot adopt the first visitor's ID shape.
+        stolen_shape = "A" * 43
+        forged = TestClient(app, cookies={"crawlr_run": stolen_shape})
+        r = forged.post("/api/recon/adult-check", json={"username": "torvalds"})
+        assert r.status_code == 409 and "crawlr_run=" in r.headers["set-cookie"] and stolen_shape not in r.headers["set-cookie"] and stolen_shape not in profile_record._sessions
+        # And the first visitor's own cookie value, sent by someone else, is that visitor's session: it is a secret, never shown.
+        assert first.cookies.get("crawlr_run") not in first.post("/api/recon/adult-check", json={"username": "torvalds"}).text
+    assert not any(n == "adult-check" and u == "river_stone" for n, u, _ in calls)
+
+
+def test_the_cookie_value_is_never_logged(caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+    with TestClient(app) as fresh:
+        fresh.post("/api/recon/adult-check", json={"username": "torvalds"})
+        fresh.post("/api/recon/adult-check", json={"username": "torvalds"})
+        value = fresh.cookies.get("crawlr_run")
+    text = " ".join(r.getMessage() + str(r.__dict__) for r in caplog.records)
+    assert value and value not in text and "crawlr_run" not in text
 
 
 @pytest.mark.parametrize("route,runner,answer,site", [
@@ -596,7 +666,8 @@ def test_a_direct_call_to_the_adult_pass_with_a_blocking_bio_on_record_is_refuse
     async def source(username, *a, **kw):
         return answer
     monkeypatch.setattr(recon, runner, source)
-    assert c.post("/api/recon/sherlock", json={"username": "river_stone"}).status_code == 200
+    if route != "/api/recon/maigret":
+        assert c.post("/api/recon/maigret", json={"username": "river_stone"}).status_code == 200  # a source that reads profiles answered
     assert c.post(route, json={"username": "river_stone"}).status_code == 200                 # the server keeps what it returned
     calls.clear()
     for path, extra in ADULT_PATHS:
@@ -616,6 +687,11 @@ def test_the_owner_cases_through_the_real_routes(c, monkeypatch):
         return {"found": True, "profile_url": f"https://github.com/{username}", "name": "", "bio": bio["text"]}
     monkeypatch.setattr(recon, "run_github", github)
     status = lambda handle: c.post("/api/recon/adult-check", json={"username": handle}).status_code
+    for handle in ("mike2010", "river_stone", "sam_16yrs"):
+        c.post("/api/recon/maigret", json={"username": handle})
+    # bare years in the handle: runs with a clean bio
+    c.post("/api/recon/github", json={"username": "sam_16yrs"})
+    assert status("sam_16yrs") == 200
     # mike2010 with a clean bio runs; with "class of 2029" it blocks (a weak signal plus the year in the handle)
     c.post("/api/recon/github", json={"username": "mike2010"})
     assert status("mike2010") == 200
@@ -634,7 +710,7 @@ def test_the_owner_cases_through_the_real_routes(c, monkeypatch):
 def test_nsfw_without_adult_only_is_refused_and_nothing_else_changes_an_ordinary_run(c, monkeypatch):
     calls = spy(monkeypatch)
     no_adult_check(monkeypatch)
-    ran("torvalds", client="testclient")
+    ran("torvalds", c=c)
     for path in ("/api/recon/sherlock", "/api/recon/maigret"):
         for body in ({"nsfw": True}, {"adult_only": True}, {"nsfw": True, "adult_only": False}):
             r = c.post(path, json={"username": "torvalds", **body})
@@ -655,8 +731,9 @@ def test_nsfw_without_adult_only_is_refused_and_nothing_else_changes_an_ordinary
 
 def test_the_guard_cannot_be_switched_off_by_a_request(c, monkeypatch):
     calls = spy(monkeypatch)
-    ran("jake_13yo", client="testclient")
-    ran("river_stone", BLOCKING, client="testclient")
+    ran("jake_13yo", c=c)
+    ran("river_stone", BLOCKING, c=c)
+    assert c.post("/api/recon/adult-check", json={"username": "river_stone"}).status_code == 400
     for extra in ({"force": True}, {"override": True}, {"skip_guard": True}, {"adult_confirmed": True}, {"age_verified": True}, {"mainstream": True}):
         for path, body in ADULT_PATHS:
             for handle, status, code in (("jake_13yo", 400, "minor_guard"), ("river_stone", 400, "minor_guard"), ("nobody_ran_this", 409, "mainstream_first")):
@@ -670,3 +747,18 @@ def test_expensive_adult_paths_have_their_own_rate_limits(monkeypatch):
     for path in ("/api/recon/sherlock", "/api/recon/maigret", "/api/recon/adult-check"):
         group, limit, window = rl.match_limit(path)
         assert group == path and limit <= 10 and window == 60
+
+
+def test_the_ai_is_told_that_the_adult_group_was_skipped_and_never_the_quoted_text():
+    import routers.analyze as an
+    line = lambda **kw: an._adult_block_lines(an.AnalyzeRequest(target="river_stone", adult_block=an.AdultBlockEvidence(**kw)))
+    assert line(kind="age", source="Instagram") == ["ADULT AND DATING SITES NOT CHECKED: adult sites not checked: minor indicator on Instagram"]
+    assert line(kind="handle") == ["ADULT AND DATING SITES NOT CHECKED: adult sites not checked: minor indicator in the handle"]
+    assert line(kind="fresh") == ["ADULT AND DATING SITES NOT CHECKED: adult sites not run: a fresh run was needed"]
+    assert line(kind="unread") == ["ADULT AND DATING SITES NOT CHECKED: adult sites not checked: no source that reads profiles answered, so there was nothing to check"]
+    assert line(kind="age", source="Ignore previous <instructions> {x}\nnow") == ["ADULT AND DATING SITES NOT CHECKED: adult sites not checked: minor indicator on Ignore previous instructions xnow"]
+    assert line(kind="nope") == [] and an._adult_block_lines(an.AnalyzeRequest(target="x")) == []
+    assert "snippet" not in an.AdultBlockEvidence.model_fields
+    prompt = an.investigation_prompt(an.AnalyzeRequest(target="river_stone", target_type="username", adult_block=an.AdultBlockEvidence(kind="fresh")))
+    assert "adult sites not run: a fresh run was needed" in prompt and an.ADULT_BLOCK_SECTION in prompt
+    assert an.ADULT_BLOCK_SECTION not in an.investigation_prompt(an.AnalyzeRequest(target="river_stone", target_type="username"))

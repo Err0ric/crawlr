@@ -186,15 +186,22 @@ def test_an_adult_link_is_not_opened_before_the_ordinary_sources_ran_or_when_a_p
     rows, calls = verify(monkeypatch, "torvalds", links, adult=True)
     assert [r["evidence"] for r in rows[:-1]] == [lv.EVIDENCE["adult_not_checked"]] * len(ADULT_LINKS) and calls == ["github.com/torvalds"]
     lv.clear_cache_for_tests()
-    profile_record.note("river_stone", "sherlock", {"results": []})
+    profile_record.note("river_stone", "maigret", {"results": []})
     profile_record.note("river_stone", "enricher", {"profiles": [{"platform": "Instagram", "url": "https://www.instagram.com/river_stone/", "bio": "16 | junior in high school"}]})
     rows, calls = verify(monkeypatch, "river_stone", links, adult=True)
     assert all(r["state"] == "unknown" and r["evidence"] == lv.EVIDENCE["adult_not_checked"] for r in rows[:-1]) and calls == ["github.com/river_stone"]
     # A bare number in the handle is not a reason any more.
     lv.clear_cache_for_tests()
-    profile_record.note("gamer13", "sherlock", {"results": []})
+    profile_record.note("gamer13", "maigret", {"results": []})
     rows, calls = verify(monkeypatch, "gamer13", [("Pornhub", "https://www.pornhub.com/users/{u}")], adult=True)
     assert calls == ["www.pornhub.com/users/gamer13"] and rows[0]["evidence"] != lv.EVIDENCE["adult_not_checked"]
+    # The guard is asked once per request, however many adult links it holds.
+    asked = []
+    real = adult_guard.gate
+    monkeypatch.setattr(adult_guard, "gate", lambda u: (asked.append(u), real(u))[1])
+    lv.clear_cache_for_tests()
+    verify(monkeypatch, "gamer13", ADULT_LINKS * 3, adult=True)
+    assert asked == ["gamer13"]
 
 
 def test_without_the_opt_in_no_adult_link_is_opened_for_any_handle(monkeypatch):

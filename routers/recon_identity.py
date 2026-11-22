@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import profile_record, validate
-from middleware.observability import client_ip
 from modules.avatar_hash import MAX_IMAGES, run_avatar_hash
 from modules.github import run_github_deep
 from modules.handle_probe import run_handle_probe
@@ -65,7 +64,7 @@ async def avatar_hash(req: AvatarHashRequest):
 
 @router.post("/verify-links")
 async def verify_links(req: VerifyLinksRequest, request: Request):
-    profile_record.bind(client_ip(request))      # the minor guard reads this caller's record
+    profile_record.bind(getattr(request.state, "run_session", ""))      # the minor guard reads this visitor's record
     username = validate.username(req.username)
     links = []
     for link in req.links:
