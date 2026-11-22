@@ -11,7 +11,7 @@ const J = "../../static/v2/js/";
 const S = await import(J + "minorscan.js");
 const A = await import(J + "adult.js");
 const M = await import(J + "modes.js");
-const { buildEvidence, sourcePlan, profileTexts, contentCheck, aiPayloadFor, aiSignature, caseMarkdown, collectProfiles } = await import(J + "evidence.js");
+const { buildEvidence, sourcePlan, profileTexts, contentCheck, ordinaryRequests, adultPassPlan, adultRefusal, aiPayloadFor, aiSignature, caseMarkdown, collectProfiles } = await import(J + "evidence.js");
 const { sourceTally, tallyText, partialGaps } = await import(J + "core.js");
 const { evWhat, renderTiers } = await import(J + "workbench.js");
 const { sourceCards } = await import(J + "renderers.js");
@@ -31,11 +31,18 @@ const scan = (bio, handle = BIOS.handle, extra = {}) => S.scanProfiles([{ source
 // ---- 1. the handle check, from the fixture ----------------------------------------------------------
 {
   ok(HANDLES.today === TODAY && HANDLES.cases.length >= 100, "the handle fixture is pinned to a date and holds a hundred handles or more");
-  for (const c of HANDLES.cases) ok((S.handleToken(c.handle) || null) === c.token, `handle ${c.handle || "(empty)"} -> ${c.token}`);
+  for (const c of HANDLES.cases) ok((S.handleToken(c.handle) || null) === c.token && S.softBareYears(c.handle) === c.years, `handle ${c.handle || "(empty)"} -> ${c.token}${c.years ? `, bare years ${c.years}` : ""}`);
   for (const c of HANDLES.soft) ok(S.softBirthYear(c.handle, TODAY) === c.soft, `soft birth year of ${c.handle} -> ${c.soft}`);
   // The owner's lists.
-  for (const h of ["14yo", "15y/o", "15_y_o", "age16", "16yrs", "16yrsold", "13yearsold", "15yo_alex", "age14jay"]) ok(S.handleToken(h) === "age", `must block: ${h}`);
-  for (const h of ["gamer13", "sk8r_15", "10outof10", "err0ric17", "team14", "1337", "2015ford", "mike1999", "mike2010"]) ok(S.handleToken(h) === "", `must not block: ${h}`);
+  for (const h of ["15yo_alex", "age14jay", "16yrsold", "14yo", "15y/o", "15_y_o", "age16", "13yearsold", "8yo", "17_years_old"]) ok(S.handleToken(h) === "age", `must block: ${h}`);
+  for (const h of ["10yrs_exp", "12years_sober", "15yrsInfosec", "2yrs_sober", "5years", "7yo", "3yo_dad", "gamer13", "sk8r_15", "10outof10", "err0ric17", "team14", "1337", "2015ford", "mike1999", "mike2010"]) ok(S.handleToken(h) === "", `must not block: ${h}`);
+  // Years with no "old" are weak (the number is reported and nothing blocks). 16yrs was on the owner's first block list; 16yrsold is what blocks now.
+  for (const [h, y] of [["16yrs", 16], ["15yrs_x", 15], ["12years", 12], ["10yrs_exp", 10], ["15yrsInfosec", 15], ["john15yrs", 15], ["15_years", 15]]) ok(S.handleToken(h) === "" && S.softBareYears(h) === y, `weak only: ${h}`);
+  for (const h of ["2yrs_sober", "5years", "1year", "7yo", "16yrsold", "gamer13"]) ok(S.softBareYears(h) === null, `no bare-years signal: ${h}`);
+  // The floor is 8 for both, and "age" inside a phrase or an age about someone else does not block.
+  ok(S.handleToken("8yo") === "age" && S.handleToken("7yo") === "" && S.handleToken("age8") === "age" && S.handleToken("age7") === "" && RULES.handle.age.min === 8 && RULES.handle.soft_years.min === 8, "the floor is 8");
+  for (const h of ["stone_age_12", "new_age_17", "ice.age.9", "golden_age16", "sage16", "mage17", "teenage16", "average15", "page14", "stage15", "image16", "mom_of_16yo", "dad_of_15yo", "l5yo", "age5"]) ok(S.handleToken(h) === "", `must run: ${h}`);
+  for (const h of ["x_age_16", "my_age_14", "myage14", "age14jay", "im_age15"]) ok(S.handleToken(h) === "age", `still blocks: ${h}`);
   // A birth-year-looking number is a soft signal only, and moves with the date.
   ok(S.softBirthYear("mike2010", TODAY) === 2010 && S.handleToken("mike2010") === "" && S.softBirthYear("mike1999", TODAY) === null, "a year in the handle is soft: it is reported and blocks nothing");
   ok(S.softBirthYear(`sam_${YEAR - 18}`, TODAY) === YEAR - 18 && S.softBirthYear(`sam_${YEAR - 19}`, TODAY) === null && S.softBirthYear(`sam_${YEAR - 6}`, TODAY) === YEAR - 6 && S.softBirthYear(`sam_${YEAR - 5}`, TODAY) === null, "the soft range is 6 to 18 years back from today");
@@ -76,10 +83,16 @@ const scan = (bio, handle = BIOS.handle, extra = {}) => S.scanProfiles([{ source
   for (const bio of ["Tengo 15 años y me gusta el fútbol", "J'ai 15 ans", "Ich bin 15 Jahre alt", "Мне 15 лет", "日本語のプロフィール 15歳"]) ok(scan(bio).signals.length === 0, `another language gives no signal: ${bio.slice(0, 20)}`);
   // Shape of the answer.
   const r = scan("16 | junior in high school");
-  ok(JSON.stringify(Object.keys(r)) === JSON.stringify(["blocked", "kind", "signal", "signals", "soft", "read"]) && JSON.stringify(Object.keys(r.signal).sort()) === JSON.stringify(["kind", "rule", "snippet", "source", "strength", "url"]) && r.read === 1 && r.soft === null, "the answer has the documented shape");
+  ok(JSON.stringify(Object.keys(r)) === JSON.stringify(["blocked", "kind", "signal", "signals", "soft", "soft_years", "read"]) && JSON.stringify(Object.keys(r.signal).sort()) === JSON.stringify(["kind", "rule", "snippet", "source", "strength", "url"]) && r.read === 1 && r.soft === null, "the answer has the documented shape");
   ok(S.scanProfiles([], "torvalds", TODAY).blocked === false && S.scanProfiles(null, "torvalds", TODAY).read === 0 && S.scanProfiles([null, "x", 3, []], "torvalds", TODAY).signals.length === 0, "no profile text and a clean handle: the check is clean");
   const many = S.scanProfiles(Array.from({ length: 300 }, (_, i) => ({ source: `Site ${i}`, bio: `i'm 15 and this is profile ${i}` })), "x", TODAY);
   ok(many.signals.length === RULES.signals_max && many.read === 300, "the list of signals is bounded");
+  // The decision is made before the cut: a strong signal behind forty weak ones still blocks.
+  const buried = S.scanProfiles([...Array.from({ length: 20 }, (_, i) => ({ source: `Site ${i}`, bio: "student, teen" })), { source: "Instagram", bio: "I'm 15" }], "river_stone", TODAY);
+  ok(buried.blocked && buried.kind === "age" && buried.signal.source === "Instagram" && buried.signals.length === RULES.signals_max && buried.signals.includes(buried.signal), "a strong signal is never lost behind the cap, and is in the list that is returned");
+  // Fancy digits and letters are folded to plain ones before matching.
+  ok(scan("\ud835\udfcf\ud835\udfd3 | she/her").blocked && scan("\uff11\uff15 y/o").signal.snippet === "15 y/o" && scan("i'm \ud835\udcbb\ud835\udcbe\ud835\udcbb\ud835\udcc9\ud835\udc52\ud835\udc52\ud835\udcc3 years old").blocked, "mathematical and fullwidth digits and letters are read as plain ones");
+  ok(scan("\ud83c\udf82 5/14/2011").kind === "birth" && scan("5/14/2011").signals.length === 0 && scan("\u0002 5/14/2011").signals.length === 0, "the birthday cake is a birth marker, a bare date is nothing, and no input can forge the marker");
   const t0 = Date.now(); S.scanProfiles([{ source: "S", bio: "a ".repeat(200000) + "i'm 15" }, { source: "T", bio: "(((((".repeat(50000) }], "x", TODAY);
   ok(Date.now() - t0 < 2000, "a very long bio is cut before it is scanned");
 }
@@ -99,9 +112,9 @@ const MAIN = {
 const withBio = (bio, base = MAIN) => { const c = clone(base); c.enricher.profiles[0].bio = bio; return c; };
 {
   const t = profileTexts(MAIN);
-  ok(t.map((p) => p.source).join() === "Gitlab,GitHub,Reddit,Instagram", "the text of every profile that was read, in the server's order: Maigret, GitHub, the platform check, enrichment");
+  ok(t.map((p) => p.source).join() === "Gitlab,GitHub,Reddit,Instagram" && S.sourceRoles().textOrder.map((x) => x[1]).join() === "maigret,github,platformCheck,enricher", "the text of every profile that was read, in the order the rules file gives: Maigret, GitHub, the platform check, enrichment");
   ok(!JSON.stringify(t).includes("Noisy") && !t.some((p) => p.source === "Twitch"), "a site that answers for any name, and a profile that was not read, are left out");
-  ok(t.every((p) => JSON.stringify(Object.keys(p).filter((k) => !["birthday", "age"].includes(k))) === JSON.stringify(["source", "url", "name", "bio"])), "only the site, its address, the display name and the bio are taken");
+  ok(t.every((p) => JSON.stringify(Object.keys(p)) === JSON.stringify(["source", "url", "name", "bio", "text"])), "only the site, its address, the display name, the bio and further text are taken");
   // nothing adult is ever read
   const dirty = clone(MAIN);
   dirty.maigret.results.push({ site: "Pornhub", url: `https://www.pornhub.com/users/${H}`, verified: true, adult: true, profile: { bio: "i'm 15" } }, { site: "Fansly", url: `https://fansly.com/${H}`, verified: true, profile: { bio: "i'm 15" } });
@@ -118,22 +131,41 @@ const withBio = (bio, base = MAIN) => { const c = clone(base); c.enricher.profil
   // a profile the identity grouping calls a different person is still read
   const other = clone(MAIN); other.maigret.results[0].profile = { name: "Someone Else Entirely", bio: "8th grade" };
   ok(collectProfiles(other, H, "username").length >= 3 && contentCheck(other, H, "username", TODAY).signal.source === "Gitlab", "a profile under this handle that belongs to another person is read too: the message names the site so it can be judged");
-  // birth and age fields from enrichment
-  const born = clone(MAIN); born.maigret.results[0].profile.birthday = `${YEAR - 15}-03-02`;
+  // further text fields: GitHub's company and location, Maigret's location
+  const school = clone(MAIN); school.github.company = "Lincoln High School"; school.github.location = "9th grade";
+  ok(profileTexts(school)[1].text === "Lincoln High School\n9th grade" && contentCheck(school, H, "username", TODAY).kind === "school" && contentCheck(school, H, "username", TODAY).signal.source === "GitHub", "GitHub's company and location are read as text");
+  // guard-only text: the whole bio (a row shows 300 characters), other text fields, a birth date, an age
+  const long = "Hello there. ".repeat(30) + "i'm 15";
+  const guarded = clone(MAIN);
+  guarded.maigret.results[0].profile = { name: "River S", bio: long.slice(0, 300), location: "Leeds", guard: { bio: long, text: "about me\nLincoln High", birthday: `${YEAR - 15}-03-02`, age: "15" } };
+  const g = profileTexts(guarded)[0];
+  ok(g.bio === long && g.text === "Leeds\nabout me\nLincoln High" && g.birthday === `${YEAR - 15}-03-02` && g.age === "15", "the guard-only fields of a row are read: the uncut bio, the other text, a birthday, an age");
+  ok(contentCheck(guarded, H, "username", TODAY).blocked && !contentCheck({ ...guarded, maigret: A.stripGuard(guarded).maigret }, H, "username", TODAY).blocked, "a sign past the 300 characters a row shows is found, through the guard text");
+  const born = clone(MAIN); born.maigret.results[0].profile.guard = { birthday: `${YEAR - 15}-03-02` };
   ok(contentCheck(born, H, "username", TODAY).kind === "birth" && contentCheck(born, H, "username", TODAY).signal.snippet === `birthday: ${YEAR - 15}-03-02`, "a birthday field a source returned is read");
+  // ...and is never kept: not in the stored case, an export, a case file or the AI payload
+  const bare = A.stripGuard(guarded);
+  ok(!JSON.stringify(bare).includes('"guard"') && JSON.stringify(guarded).includes('"guard"') && bare.maigret.results[0].profile.bio === long.slice(0, 300), "stripGuard removes it and changes nothing else (and not its input)");
+  for (const [what, text] of [["the ordinary view", JSON.stringify(A.withoutAdult(guarded))], ["History", JSON.stringify(A.scrubCollected(guarded, H, "username"))], ["History with the mode on", JSON.stringify(A.scrubCollected({ ...guarded, adultMode: true }, H, "username"))], ["the AI payload", JSON.stringify(aiPayloadFor(guarded, H, "username"))], ["the Markdown export", caseMarkdown({ collected: guarded, target: H, type: "username", now: new Date(TODAY) })]]) ok(!text.includes('"guard"') && !text.includes(`${YEAR - 15}-03-02`) && !text.includes("about me"), `guard-only text is not in ${what}`);
+  ok(/const bare = stripGuard\(c\); for \(const k of Object\.keys\(bare\)\) c\[k\] = bare\[k\];/.test(read(J + "investigate.js")), "the run removes it from the case once the check has read it");
   ok(contentCheck(MAIN, "river_stone@example.org", "email", TODAY).read === 0 && contentCheck(MAIN, "", "hash", TODAY).blocked === false, "only a username case has a content check");
-  // a source that failed gives less text, never a block
-  const partial = clone(MAIN); partial.maigret = { error: "timeout", error_code: "timeout" }; partial.enricher = { error: "x", error_code: "upstream" };
-  const pc = contentCheck(partial, H, "username", TODAY);
-  ok(!pc.blocked && pc.read === 2 && A.mainstreamAnswered(partial), "a mainstream source that failed means less text to read, and the pass still runs");
-  ok(!A.mainstreamAnswered({ sherlock: { error: "x", error_code: "busy" }, enricher: { profiles: [] } }) && !A.mainstreamAnswered({}) && A.mainstreamAnswered({ github: { found: false } }), "no ordinary source answered: the server would refuse, so the page does not ask");
+
+  // Could the check read anything? The rule is the rules file's, the same list the server uses.
+  ok(JSON.stringify(RULES.sources.profile_readers) === JSON.stringify([["maigret", "maigret"], ["platform_check", "platformCheck"]]) && !/"maigret", "platformCheck"|\["sherlock", "maigret", "github"/.test(read(J + "adult.js")), "the sources that read profiles are named once, in the rules file");
+  const fail = { error: "x", error_code: "timeout" };
+  ok(A.readiness(MAIN).ok && A.readiness({ maigret: { results: [] } }).ok && A.readiness({ platformCheck: { results: [] } }).ok, "Maigret or the platform check answering is enough");
+  for (const [what, c] of [["Sherlock alone", { sherlock: { results: [] } }], ["GitHub alone", { github: { found: true } }], ["enrichment alone", { enricher: { profiles: [] } }], ["all three", { sherlock: { results: [] }, github: { found: true }, enricher: { profiles: [] } }], ["nothing", {}], ["both readers failed", { sherlock: { results: [] }, maigret: fail, platformCheck: fail }]]) ok(!A.readiness(c).ok, `not enough: ${what}`);
+  ok(A.readiness({ platformCheck: { results: [{ platform: "LinkedIn", state: "blocked" }, { platform: "Reddit", state: "blocked" }, { platform: "Facebook", state: "blocked" }] } }).ok, "a site that blocked the platform check is not a failure of that source");
+  ok(A.readiness({ sherlock: { results: [] } }, { maigret: false, platformCheck: false }).via === "off" && A.readiness({ maigret: fail }, { maigret: true, platformCheck: false }).via === "failed" && A.readiness({ maigret: fail, platformCheck: fail }).via === "failed" && A.readiness(MAIN).via === "", "it says whether the readers were switched off or failed");
+  ok(JSON.stringify(A.readiness({ ...MAIN, github: fail }).silent) === JSON.stringify(["GitHub"]) && A.readiness({ ...MAIN, github: fail }).ok && A.readiness(MAIN).silent.length === 0 && A.readiness({ ...MAIN, github: undefined }).silent.length === 0, "a failed GitHub lookup does not stop the pass, and is said; GitHub switched off is not a failure");
 }
 
-// ---- 4. a run, end to end through the decision functions ------------------------------------------------
-// What investigate.js does, with the same functions and no DOM: start the case (the handle check),
-// send the ordinary requests, wait for them, check the profiles, then either the adult pass or a block.
-function simulate(handle, collected, { on = true, sources = { sherlock: true, maigret: true }, suspended = M.makeSuspended() } = {}) {
-  const log = [], requests = [];
+// ---- 4. a run, end to end through the functions investigate.js calls ---------------------------------------
+// The same calls, in the same order, as run() in investigate.js makes: start the case (the handle
+// check), build the ordinary requests, and once they have answered ask adultPassPlan what the
+// adult pass is. Nothing here re-implements a decision.
+function simulate(handle, collected, { on = true, sources = { sherlock: true, maigret: true, platformCheck: true }, suspended = M.makeSuspended(), cancelled = false } = {}) {
+  const log = [];
   const mode = M.startAdult({ on, type: "username", target: handle, suspended });
   const adult = A.adultOn("username", handle, mode.adult);
   const plan = sourcePlan("username", handle, { adult });
@@ -141,48 +173,45 @@ function simulate(handle, collected, { on = true, sources = { sherlock: true, ma
   if (on && mode.view.state === "suspended") { c.adultBlock = A.readBlock(mode.minor.block); log.push(A.ADULT_LOG.blocked(c.adultBlock)); }
   const wantAdult = plan.includes("adult");
   if (wantAdult) log.push(A.ADULT_LOG.waiting);
-  for (const k of ["sherlock", "maigret"]) if (sources[k]) requests.push({ url: `/api/recon/${k}`, body: A.usernameBody(handle, false) });
-  requests.push({ url: "/api/recon/github", body: { username: handle } }, { url: "/api/recon/enrich", body: { username: handle } }, { url: "/api/recon/platform-check", body: { username: handle } });
-  const before = requests.length;
+  const main = ordinaryRequests(handle, sources);
   Object.assign(c, clone(collected));            // the ordinary sources have answered
-  let scan = null;
-  if (wantAdult) {
-    if (!A.mainstreamAnswered(c)) log[log.length - 1] = A.ADULT_LOG.noSources;
-    else {
-      scan = contentCheck(c, handle, "username", TODAY);
-      if (scan.blocked) { c.adultBlock = A.blockFromScan(scan); M.suspendContent(suspended, handle, c.adultBlock); log[log.length - 1] = A.ADULT_LOG.blocked(c.adultBlock); }
-      else { c.adultMode = true; log[log.length - 1] = A.ADULT_LOG.clean(scan.read); }
-    }
-  }
-  for (const r of A.adultRequests(handle, scan, sources)) requests.push({ url: r.url, body: r.body, key: r.key });
-  return { mode, requests, main: requests.slice(0, before), adult: requests.slice(before), log, c, scan, suspended, message: c.adultBlock ? A.blockText(c.adultBlock) : "" };
+  const pass = adultPassPlan({ planned: wantAdult, cancelled, collected: c, target: handle, type: "username", switched: sources, today: TODAY });
+  if (pass.state !== "none") log[log.length - 1] = pass.log;
+  if (pass.block) { c.adultBlock = pass.block; if (pass.state === "blocked") M.suspendContent(suspended, handle, pass.block); }
+  if (pass.state === "clean") c.adultMode = true;
+  return { mode, main, adult: pass.requests, pass, log, c, scan: pass.scan, suspended, message: c.adultBlock ? A.blockText(c.adultBlock) : "" };
 }
 const ADULT_THREE = [["/api/recon/sherlock", { nsfw: true, adult_only: true }], ["/api/recon/maigret", { nsfw: true, adult_only: true }], ["/api/recon/adult-check", {}]];
 const isThree = (run, handle) => JSON.stringify(run.adult.map((r) => [r.url, r.body])) === JSON.stringify(ADULT_THREE.map(([u, b]) => [u, { username: handle, ...b }]));
 const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
 {
-  // The owner's item 7: these run the adult checks.
-  for (const h of ["gamer13", "sk8r_15", "10outof10", "err0ric17", "mike1999"]) {
+  // The owner's lists: these run the adult checks.
+  for (const h of ["gamer13", "sk8r_15", "10outof10", "err0ric17", "mike1999", "10yrs_exp", "12years_sober", "15yrsInfosec", "2yrs_sober", "5years", "7yo", "3yo_dad", "team14", "1337", "2015ford", "16yrs", "15yrs_x", "12years"]) {
     const run = simulate(h, forHandle(h));
-    ok(run.mode.minor === null && run.scan.blocked === false && isThree(run, h) && run.c.adultMode === true && !("adultBlock" in run.c), `${h}: the adult checks run`);
-    ok(run.main.filter((r) => /sherlock|maigret/.test(r.url)).every((r) => JSON.stringify(r.body) === JSON.stringify({ username: h, nsfw: false })) && run.main.length === 5, `${h}: the ordinary requests carry nsfw false and no adult_only`);
+    ok(run.mode.minor === null && run.pass.state === "clean" && run.scan.blocked === false && isThree(run, h) && run.c.adultMode === true && !("adultBlock" in run.c), `${h}: the adult checks run`);
+    ok(run.main.length === 2 && run.main.every((r) => JSON.stringify(r.body) === JSON.stringify({ username: h, nsfw: false })), `${h}: the ordinary requests carry nsfw false and no adult_only`);
     ok(JSON.stringify(run.log) === JSON.stringify(["Adult sites: profile check clean (4 profiles read), checking"]), `${h}: the run log says the profile check was clean, and how many profiles were read`);
   }
   // These block before the run, on the handle.
-  for (const h of ["15yo_alex", "age14jay"]) {
+  for (const h of ["15yo_alex", "age14jay", "16yrsold", "14yo", "15_y_o", "age16", "13yearsold", "8yo", "17_years_old"]) {
     const run = simulate(h, forHandle(h));
-    ok(run.mode.minor.kind === "guard" && run.adult.length === 0 && run.scan === null && run.c.adultBlock.kind === "handle" && !("adultMode" in run.c), `${h}: blocked before the run, no adult request`);
+    ok(run.mode.minor.kind === "guard" && run.adult.length === 0 && run.pass.state === "none" && run.c.adultBlock.kind === "handle" && !("adultMode" in run.c), `${h}: blocked before the run, no adult request`);
     ok(run.message === "Adult and dating sites were not checked: the handle states an age under 18." && JSON.stringify(run.log) === JSON.stringify(["Adult sites: not checked · the handle states an age under 18"]), `${h}: the message and the run log say so, with no mention of a number`);
-    ok(run.main.every((r) => !r.body.nsfw) && run.main.length === 5, `${h}: the ordinary sources still run`);
+    ok(run.main.length === 2 && run.main.every((r) => !r.body.nsfw), `${h}: the ordinary sources still run`);
+  }
+  // Bare years in the handle are weak: with a weak sign in a bio they block, with a clean bio they ran (above).
+  for (const h of ["16yrs", "15yrs_x", "12years"]) {
+    const run = simulate(h, withBio("student", forHandle(h)));
+    ok(run.pass.state === "blocked" && run.scan.kind === "soft" && run.scan.soft_years !== null && run.adult.length === 0, `${h} with the bio "student": blocked`);
+    ok(run.message === 'Adult and dating sites were not checked: a profile found for this handle suggests a minor, and the handle carries a matching age or birth year (Instagram: "student").' && !/1[0-9]/.test(run.message), `${h}: the message names no digit of the handle`);
   }
   // A clean handle whose fixture bio says "16 | junior in high school": blocked after the mainstream run.
   {
     const run = simulate(H, withBio("16 | junior in high school"));
-    ok(run.mode.minor === null && run.mode.adult === true && run.scan.blocked && run.adult.length === 0 && !("adultMode" in run.c), "a clean handle with that bio: the adult pass was planned, and nothing adult was asked");
+    ok(run.mode.minor === null && run.mode.adult === true && run.pass.state === "blocked" && run.adult.length === 0 && !("adultMode" in run.c), "a clean handle with that bio: the adult pass was planned, and nothing adult was asked");
     ok(JSON.stringify(run.c.adultBlock) === JSON.stringify({ kind: "age", source: "Instagram", snippet: "16 | junior in high school", url: `https://www.instagram.com/${H}/` }), "the case records the kind, the source, the snippet and the address");
     ok(run.message === 'Adult and dating sites were not checked: a profile found for this handle states an age under 18 (Instagram: "16 | junior in high school").', "the message is the owner's sentence, with the source and the quoted snippet");
     ok(JSON.stringify(run.log) === JSON.stringify(['Adult sites: not checked · a profile found for this handle states an age under 18 (Instagram: "16 | junior in high school")']), "the run log row says the same");
-    ok(run.main.length === 5 && run.main.every((r) => !r.body.nsfw && !r.body.adult_only), "the mainstream requests carried nsfw false");
     // The handle is suspended for the rest of the session.
     const again = simulate(H, MAIN, { suspended: run.suspended });
     ok(again.mode.minor.kind === "content" && again.adult.length === 0 && again.c.adultBlock.snippet === "16 | junior in high school", "run again in the same session, the handle is still suspended, though the bio is clean now");
@@ -194,7 +223,7 @@ const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
     ok(clean.scan.soft === 2010 && !clean.scan.blocked && isThree(clean, "mike2010"), "mike2010 with a clean bio runs: the year in the handle is a soft signal and blocks nothing alone");
     const cls = simulate("mike2010", withBio(`class of ${YEAR + 3}`, forHandle("mike2010")));
     ok(cls.scan.blocked && cls.scan.kind === "soft" && cls.adult.length === 0 && cls.c.adultBlock.kind === "soft", "mike2010 with a class year three years ahead blocks: a weak signal plus the soft birth year");
-    ok(cls.message === `Adult and dating sites were not checked: a profile found for this handle suggests a minor, and the handle carries a matching birth year (Instagram: "class of ${YEAR + 3}").` && !/2010/.test(cls.message), "the message says so, and prints no digit of the handle");
+    ok(cls.message === `Adult and dating sites were not checked: a profile found for this handle suggests a minor, and the handle carries a matching age or birth year (Instagram: "class of ${YEAR + 3}").` && !/2010/.test(cls.message), "the message says so, and prints no digit of the handle");
     ok(YEAR + 3 === 2029, "(pinned to 2026-11-22, that class year is the owner's \"class of 2029\")");
     const alone = simulate(H, withBio(`class of ${YEAR + 3}`));
     ok(!alone.scan.blocked && isThree(alone, H), "the same bio under a handle with no year runs");
@@ -206,14 +235,34 @@ const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
   // The mode off: exactly the ordinary run, and no adult request.
   for (const h of [H, "15yo_alex", "mike2010"]) {
     const off = simulate(h, withBio("16 | junior in high school", forHandle(h)), { on: false });
-    ok(off.adult.length === 0 && off.scan === null && off.log.length === 0 && !("adultBlock" in off.c) && !("adultMode" in off.c) && off.main.length === 5 && off.main.every((r) => !r.body.nsfw), `mode off (${h}): no adult request, no check, no log row, nothing recorded`);
+    ok(off.adult.length === 0 && off.pass.state === "none" && off.log.length === 0 && !("adultBlock" in off.c) && !("adultMode" in off.c) && off.main.length === 2 && off.main.every((r) => !r.body.nsfw), `mode off (${h}): no adult request, no check, no log row, nothing recorded`);
   }
-  // No ordinary source answered: the server would refuse, so nothing is asked.
-  const none = simulate(H, { sherlock: { error: "busy", error_code: "busy" }, maigret: { error: "x", error_code: "timeout" } });
-  ok(none.adult.length === 0 && none.scan === null && JSON.stringify(none.log) === JSON.stringify([A.ADULT_LOG.noSources]) && !("adultMode" in none.c), "no ordinary source answered: no adult request");
+  // Unknown is not clean: with nothing that reads profiles, there is no adult pass.
+  const fail = { error: "x", error_code: "timeout" };
+  for (const [what, c, sources, via] of [
+    ["Sherlock answered, every text source failed", { sherlock: MAIN.sherlock, maigret: fail, github: fail, platformCheck: fail, enricher: fail }, undefined, "failed"],
+    ["Sherlock and GitHub answered, Maigret and the platform check failed", { sherlock: MAIN.sherlock, github: MAIN.github, maigret: fail, platformCheck: fail }, undefined, "failed"],
+    ["Maigret and the platform check switched off", { sherlock: MAIN.sherlock, github: MAIN.github }, { sherlock: true, maigret: false, platformCheck: false }, "off"],
+    ["nothing answered", {}, undefined, "failed"],
+  ]) {
+    const run = simulate(H, c, sources ? { sources } : {});
+    ok(run.pass.state === "unread" && run.adult.length === 0 && run.scan === null && !("adultMode" in run.c) && run.c.adultBlock.kind === "unread" && run.c.adultBlock.via === via, `${what}: no adult request, and no "clean"`);
+    ok(!/clean/.test(run.log.join(" ")) && run.log[0] === "Adult sites: not checked · no source that reads profiles answered for this handle, so there was nothing to check", `${what}: the run log does not say clean`);
+    ok(run.message === `Adult and dating sites were not checked: no source that reads profiles answered for this handle, so there was nothing to check. ${via === "off" ? "Switch on Maigret or Platform check and run again." : "Run the case again."}`, `${what}: the message says what to do`);
+    ok(M.startAdult({ on: true, type: "username", target: H, suspended: run.suspended }).adult === true, `${what}: the handle is not suspended, a new run decides again`);
+  }
+  // A profile reader answered with no profiles at all: that is an answer, and it is said plainly.
+  const empty = simulate(H, { sherlock: MAIN.sherlock, maigret: { results: [] }, platformCheck: { results: [{ platform: "Reddit", state: "blocked" }] } });
+  ok(empty.pass.state === "clean" && empty.scan.read === 0 && isThree(empty, H) && empty.log[0] === "Adult sites: profile check: no profile text was found for this handle, checking", "a reader that answered with no profile text: the pass runs, and the log does not claim profiles were read");
+  // A failed GitHub lookup does not stop the pass, and is said.
+  const noGh = simulate(H, { ...clone(MAIN), github: fail });
+  ok(noGh.pass.state === "clean" && isThree(noGh, H) && noGh.log[0] === "Adult sites: profile check clean (3 profiles read; GitHub did not answer), checking" && JSON.stringify(noGh.pass.silent) === JSON.stringify(["GitHub"]), "GitHub failed: the pass runs and the log says GitHub did not answer");
   // A source switched off takes its adult pass with it; the adult site check still runs.
-  const noSherlock = simulate(H, MAIN, { sources: { sherlock: false, maigret: true } });
-  ok(noSherlock.adult.map((r) => r.key).join() === "maigretAdult,adultCheck" && !noSherlock.main.some((r) => /sherlock/.test(r.url)), "with Sherlock switched off its adult pass is not run either");
+  const noSherlock = simulate(H, MAIN, { sources: { sherlock: false, maigret: true, platformCheck: true } });
+  ok(noSherlock.adult.map((r) => r.key).join() === "maigretAdult,adultCheck" && noSherlock.main.map((r) => r.key).join() === "maigret", "with Sherlock switched off its adult pass is not run either");
+  // Cancelled before the pass.
+  const stop = simulate(H, MAIN, { cancelled: true });
+  ok(stop.pass.state === "cancelled" && stop.adult.length === 0 && stop.log[0] === "Adult sites: not run (cancelled)" && !("adultBlock" in stop.c), "a run cancelled before the pass: no adult request, and the log says so");
 }
 
 // ---- 5. ordering: no adult request without a clean check ------------------------------------------------
@@ -224,35 +273,47 @@ const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
   ok(three.slice(0, 2).every((r) => r.body.nsfw === true && r.body.adult_only === true && r.body.username === H) && JSON.stringify(three[2].body) === JSON.stringify({ username: H }), "the two tool requests carry nsfw and adult_only together");
   ok(A.adultRequests("anna_15yo", { blocked: false }).length === 0, "and none for a handle that fails the handle check, whatever the check says");
   ok(JSON.stringify(A.usernameBody(H, false)) === JSON.stringify({ username: H, nsfw: false }) && JSON.stringify(A.usernameBody(H)) === JSON.stringify({ username: H, nsfw: false }) && A.usernameBody(H, "true").nsfw === false, "the ordinary request body is nsfw false, with no adult_only");
+  ok(JSON.stringify(ordinaryRequests(H)) === JSON.stringify([{ key: "sherlock", label: "Sherlock", url: "/api/recon/sherlock", body: { username: H, nsfw: false } }, { key: "maigret", label: "Maigret", url: "/api/recon/maigret", body: { username: H, nsfw: false } }]) && ordinaryRequests(H, { sherlock: false, maigret: false }).length === 0, "the ordinary requests of the two tools: nsfw false, whatever the mode");
   ok(sourcePlan("username", H, { adult: true }).join() === "sherlock,maigret,github,platform,adult" && sourcePlan("username", H).join() === "sherlock,maigret,github,platform", "the adult pass is last in the plan, and absent with the mode off");
-  // The page's run, as written: wait row, ordinary sources, follow-ups, then the check, then the pass.
+  // The plan has requests in exactly one state, and never before the scan exists.
+  for (const args of [{}, { planned: false, collected: MAIN, target: H }, { planned: "true", collected: MAIN, target: H }, { planned: true, collected: MAIN, target: "a@example.org", type: "email" }, { planned: true, cancelled: true, collected: MAIN, target: H }, { planned: true, collected: {}, target: H }, { planned: true, collected: withBio("i'm 15"), target: H, today: TODAY }]) { const p = adultPassPlan(args); ok(p.requests.length === 0 && p.state !== "clean", `no request: ${JSON.stringify(Object.keys(args))} -> ${p.state}`); }
+  const clean = adultPassPlan({ planned: true, collected: MAIN, target: H, today: TODAY });
+  ok(clean.state === "clean" && clean.requests.length === 3 && clean.scan && clean.scan.blocked === false && clean.block === null, "requests come only with a scan that came back clean");
+  // The server's refusals, as the run reads them.
+  const fresh = adultRefusal({ code: "mainstream_first", status: 409 });
+  ok(fresh.state === "fresh" && JSON.stringify(fresh.block) === JSON.stringify({ kind: "fresh", source: "", snippet: "", url: "" }) && fresh.notice === "Adult sites need a fresh run. Re-run the case to enable them." && fresh.log === fresh.notice && fresh.minor === "", "409 mainstream_first: a fresh run is needed, said in the owner's words, and nobody is suspended");
+  const refused = adultRefusal({ code: "minor_guard", reason: A.CONTENT_REASONS.school, block: { kind: "school", source: "Reddit", snippet: "8th grade", url: "https://www.reddit.com/user/x" } });
+  ok(refused.state === "refused" && refused.block.kind === "school" && refused.minor === "content" && refused.notice === 'Adult and dating sites were not checked: a profile found for this handle suggests a school-age person (Reddit: "8th grade").', "400 minor_guard with a profile: the server's reason is recorded and the handle is suspended for what its profiles said");
+  ok(adultRefusal({ code: "minor_guard", reason: A.GUARD_REASONS.age }).minor === "server" && adultRefusal({ code: "timeout" }) === null && adultRefusal(null) === null, "a refusal for the handle suspends it as the server's, and any other error is not a refusal");
+  // investigate.js calls these functions and nothing else decides.
   const inv = read(J + "investigate.js");
-  const at = (text) => { const i = inv.indexOf(text); if (i < 0) console.log("MISSING", text); return i; };
-  const order = ['const adultRow = wantAdult ? log.add(ADULT_LOG.waiting) : null;', "await Promise.all(jobs);", "await Promise.all(after);", "const scan = contentCheck(c, target, type);", "if (scan.blocked) {", "c.adultMode = true; state.adultMode = true;", "await Promise.all(adultRequests(handle, scan,"].map(at);
-  ok(order.every((i) => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]), "investigate.js: the waiting row, the ordinary sources, the follow-ups, the content check, and only then the adult requests");
-  ok(/if \(state\.cancelled\) return stop\(ADULT_LOG\.cancelled, CANCELLED_TEXT\);/.test(inv) && /if \(!mainstreamAnswered\(c\)\) return stop\(ADULT_LOG\.noSources, NO_SOURCES_TEXT\);/.test(inv) && /log\.set\(adultRow, ADULT_LOG\.blocked\(block\), "skip"\);/.test(inv) && /log\.set\(adultRow, ADULT_LOG\.clean\(scan\.read\), "done"\);/.test(inv), "the one adult row ends as cancelled, not checked or clean");
-  ok(/adultSay\(blockText\(block\)\);/.test(inv) && /adultSay\(ADULT_LOG\.clean\(scan\.read\)\);/.test(inv) && /function adultSay\(text\) \{ profileLive\.textContent = text; \}/.test(inv) && /profileLive\.setAttribute\("aria-live", "polite"\)/.test(inv), "the outcome is said through the polite live region");
-  ok(!/nsfw: true/.test(inv) && !/usernameBody\(handle, (?!false\))/.test(inv) && !/usernameBody\([^)]*true\)/.test(inv), "investigate.js never builds an adult request body itself");
-  ok(/Promise\.all\(\[images\.length > 0 \? runSource\("Avatar comparison"[^\n]*, handleOk \? adultPass\(\) : null\]\)/.test(inv), "the adult pass does not wait for the avatar comparison");
+  ok(/for \(const r of ordinaryRequests\(handle, \{ sherlock: on\("sherlock"\), maigret: on\("maigret"\) \}\)\) jobs\.push\(runSource\(r\.label, r\.url, r\.body, \{\}, r\.key\)\);/.test(inv) && /const pass = adultPassPlan\(\{ planned: wantAdult, cancelled: state\.cancelled, collected: c, target, type, switched: \{ sherlock: on\("sherlock"\), maigret: on\("maigret"\), platformCheck: on\("platform"\) \} \}\);/.test(inv) && /await Promise\.all\(pass\.requests\.map\(\(r\) => runSource\(r\.label, r\.url, r\.body, \{\}, r\.key\)\)\);/.test(inv) && /const out = adultRefusal\(err\);/.test(inv), "investigate.js builds its requests with ordinaryRequests, adultPassPlan and adultRefusal");
+  ok(!/nsfw|adult_only|usernameBody\(|adultRequests\(|contentCheck\(|\/api\/recon\/(?:sherlock|maigret|adult-check)/.test(inv.replace(/\/\/.*$/gm, "")), "and builds no Sherlock, Maigret or adult request of its own");
+  ok(/adultSay\(pass\.notice \|\| pass\.log\);/.test(inv) && /function adultSay\(text\) \{ profileLive\.textContent = text; \}/.test(inv) && /profileLive\.setAttribute\("aria-live", "polite"\)/.test(inv), "the outcome is said through the polite live region");
+  ok(/Promise\.all\(\[images\.length > 0 \? runSource\("Avatar comparison"[^\n]*, handleOk \? adultPass\(\) : null\]\)/.test(inv) && inv.indexOf("await Promise.all(after);") < inv.indexOf("const adultPass = async"), "the pass is decided after the follow-up sources, and does not wait for the avatar comparison");
 }
 
 // ---- 6. the words -----------------------------------------------------------------------------------------
 {
   ok(A.ADULT_LOG.waiting === "Adult sites: waiting on profile check", "run log, while the ordinary sources run");
-  ok(A.ADULT_LOG.clean(6) === "Adult sites: profile check clean (6 profiles read), checking" && A.ADULT_LOG.clean(1) === "Adult sites: profile check clean (1 profile read), checking" && A.ADULT_LOG.clean(0) === "Adult sites: profile check clean (0 profiles read), checking", "run log, clean");
+  ok(A.ADULT_LOG.clean(6) === "Adult sites: profile check clean (6 profiles read), checking" && A.ADULT_LOG.clean(1) === "Adult sites: profile check clean (1 profile read), checking", "run log, clean");
+  ok(A.ADULT_LOG.clean(0) === "Adult sites: profile check: no profile text was found for this handle, checking" && !/clean/.test(A.ADULT_LOG.clean(0)), "run log, a reader answered and there was no profile text: never \"clean (0 profiles read)\"");
+  ok(A.ADULT_LOG.clean(6, ["GitHub"]) === "Adult sites: profile check clean (6 profiles read; GitHub did not answer), checking", "run log, clean with GitHub silent");
   ok(A.ADULT_LOG.cancelled === "Adult sites: not run (cancelled)", "run log, cancelled");
   ok(A.ADULT_LOG.blocked({ kind: "handle" }) === "Adult sites: not checked · the handle states an age under 18" && A.ADULT_LOG.blocked({ kind: "word" }) === "Adult sites: not checked · the handle contains a word that marks it as a minor's", "run log, not checked, with the reason");
+  ok(A.ADULT_LOG.blocked({ kind: "fresh" }) === "Adult sites need a fresh run. Re-run the case to enable them." && A.blockText({ kind: "fresh" }) === "Adult sites need a fresh run. Re-run the case to enable them." && A.MAINSTREAM_FIRST_TEXT === A.blockText({ kind: "fresh" }), "the 409 case: the owner's exact words, in the notice and the run log row");
   const B = (kind) => ({ kind, source: "GitHub", snippet: "x", url: "https://github.com/a" });
   ok(A.blockText(B("age")) === 'Adult and dating sites were not checked: a profile found for this handle states an age under 18 (GitHub: "x").', "the block message, age");
   ok(A.blockText(B("school")) === 'Adult and dating sites were not checked: a profile found for this handle suggests a school-age person (GitHub: "x").', "the block message, school");
   ok(A.blockText(B("birth")) === 'Adult and dating sites were not checked: a profile found for this handle states a birth date under 18 (GitHub: "x").', "the block message, birth date");
-  ok(A.blockText(B("soft")) === 'Adult and dating sites were not checked: a profile found for this handle suggests a minor, and the handle carries a matching birth year (GitHub: "x").', "the block message, a weak signal with a birth year in the handle");
+  ok(A.blockText(B("soft")) === 'Adult and dating sites were not checked: a profile found for this handle suggests a minor, and the handle carries a matching age or birth year (GitHub: "x").', "the block message, a weak signal with an age or a birth year in the handle");
   ok(A.blockText({ kind: "handle" }) === "Adult and dating sites were not checked: the handle states an age under 18." && A.blockText({ kind: "word" }) === "Adult and dating sites were not checked: the handle contains a word that marks it as a minor's.", "the block message, the handle");
   ok(A.blockText({ kind: "pivot", source: "emma_15yo", via: "handle" }) === "Adult and dating sites were not checked: this case was opened from emma_15yo, whose handle states an age under 18." && A.blockText({ kind: "pivot", source: "river_stone", via: "content" }) === "Adult and dating sites were not checked: this case was opened from river_stone, where a profile suggested a minor.", "the block message, a case opened from a stopped one");
+  ok(A.blockText({ kind: "unread", via: "off" }) === "Adult and dating sites were not checked: no source that reads profiles answered for this handle, so there was nothing to check. Switch on Maigret or Platform check and run again." && A.blockText({ kind: "unread", via: "failed" }) === "Adult and dating sites were not checked: no source that reads profiles answered for this handle, so there was nothing to check. Run the case again." && A.blockText({ kind: "unread" }) === A.blockText({ kind: "unread", via: "failed" }), "the block message, nothing to check");
   ok(A.blockText({ kind: "rules" }) === "Adult and dating sites were not checked: the minor rules could not be loaded." && A.blockText({ kind: "server" }) === "Adult and dating sites were not checked: the server refused this handle." && A.blockText(null) === "Adult and dating sites were not checked: the minor guard stopped this case.", "the block message, the rest");
-  const every = [...A.BLOCK_KINDS.map((k) => A.blockText(B(k))), ...Object.values(M.MINOR_SHORT), M.MINOR_TIED, M.pivotText("x"), M.pivotText("x", "content"), ...Object.values(A.GUARD_REASONS), ...Object.values(A.CONTENT_REASONS), A.NO_SOURCES_TEXT, A.MAINSTREAM_FIRST_TEXT, A.CANCELLED_TEXT, A.RULES_UNAVAILABLE, A.NOT_CHECKED_BLURB, A.ADULT_COPY, ...M.MODE.adult.confirm].join(" ");
-  ok(!/number|starts or ends|10 to 17|digits?/i.test(every) && !/suggests a minor \(/.test(every) && !every.includes(String.fromCharCode(8212)), "no message mentions a number in the handle, and none uses an em dash");
-  ok((every.match(/birth year/g) || []).length === 2 && /handle carries a matching birth year/.test(every), "only the one sentence for a weak signal names the birth year in the handle");
+  const every = [...A.BLOCK_KINDS.map((k) => A.blockText(B(k))), ...Object.values(M.MINOR_SHORT), M.MINOR_TIED, M.pivotText("x"), M.pivotText("x", "content"), ...Object.values(A.GUARD_REASONS), ...Object.values(A.CONTENT_REASONS), A.CANCELLED_TEXT, A.RULES_UNAVAILABLE, A.NOT_CHECKED_BLURB, A.ADULT_COPY, ...M.MODE.adult.confirm].join(" ");
+  ok(!/number|starts or ends|10 to 17|digits?/i.test(every) && !/suggests a minor \(/.test(every) && !every.includes(String.fromCharCode(8212)) && !/no record of the ordinary sources/.test(every + read(J + "adult.js") + read(J + "investigate.js")), "no message mentions a number in the handle, none uses an em dash, and the old 409 wording is gone");
+  ok((every.match(/birth year/g) || []).length === 2 && /handle carries a matching age or birth year/.test(every), "only the one sentence for a weak signal names the age or birth year in the handle");
   // Old stored reasons map to neutral wording.
   ok(A.guardText("The handle starts or ends with a number from 10 to 17.") === "Adult and dating sites are not checked for this handle: the server refused this handle.", "a reason stored by the old rule set is shown in neutral words");
 }
@@ -331,6 +392,21 @@ const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
   ok(aiSignature(stopped, H, "username") !== aiSignature(withBio("16 | junior in high school"), H, "username"), "a report written for a stopped case is not reused for one that was not");
   const py = read("../../routers/analyze.py");
   ok(/adult_block: Optional\[AdultBlockEvidence\] = None/.test(py) && /ADULT AND DATING SITES NOT CHECKED: adult sites not checked: /.test(py) && /"age": "minor indicator on \{source\}"/.test(py) && !/snippet/.test(py.slice(py.indexOf("class AdultBlockEvidence"), py.indexOf("class NameCandidate"))), "the server words it as \"adult sites not checked: minor indicator on <source>\" and has no field for the snippet");
+  // A pass that did not run for another reason is recorded the same way, so History and exports say so.
+  for (const [block, text, ai] of [[{ kind: "fresh" }, "Adult sites need a fresh run. Re-run the case to enable them.", { kind: "fresh", source: "" }], [{ kind: "unread", via: "off" }, "Adult and dating sites were not checked: no source that reads profiles answered for this handle, so there was nothing to check. Switch on Maigret or Platform check and run again.", { kind: "unread", source: "" }]]) {
+    const c = { ...clone(MAIN), adultBlock: block };
+    const round = file(c).entry.results;
+    ok(round.adultBlock.kind === block.kind && A.blockText(A.scrubCollected(round, H, "username").adultBlock) === text, `${block.kind}: kept by History and a case file, with the same words`);
+    const row = buildEvidence(c, H, "username").items.filter((i) => i.tier === "adult");
+    ok(row.length === 1 && A.isBlockRow(row[0]) && row[0].meta === text && !("more" in row[0]), `${block.kind}: the group's place says it`);
+    ok(JSON.stringify(aiPayloadFor(c, H, "username").adult_block) === JSON.stringify(ai) && caseMarkdown({ collected: c, target: H, type: "username", now: new Date(TODAY) }).includes(`> ${text.replace(/[:]/g, ":")}`.slice(0, 40)), `${block.kind}: the AI payload and the Markdown export say it`);
+    ok(M.makeSuspended().get(H) === null && A.NOT_RUN_KINDS.includes(block.kind), `${block.kind}: it is not a block on the handle`);
+  }
+  ok(/const notRun = av\.state === "applies" && same && state\.type === "username" \? readBlock\(state\.collected\.adultBlock\) : null;/.test(read(J + "investigate.js")) && /NOT_RUN_KINDS\.includes\(notRun\.kind\) \? \{ \.\.\.av, state: "suspended", note: blockText\(notRun\), reason: blockText\(notRun\) \}/.test(read(J + "investigate.js")), "the mode strip says the same words for the case on screen");
+  // The session cookie: fetch sends it by itself, and no script reads it.
+  const allJs = fs.readdirSync(new URL(J, import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => read(J + f)).join("\n");
+  ok(!/credentials\s*:/.test(read(J + "core.js")) && !/document\.cookie|crawlr_run/.test(allJs), "post() leaves credentials at the same-origin default, and no script reads or names the cookie");
+  ok(read(J + "app.js").includes("One random session cookie keeps the minor check tied to your own run. It identifies nothing about you and ends with the browser session.") && read("../../README.md").includes("One random session cookie keeps the minor check tied to your own run. It identifies nothing about you and ends with the browser session."), "the acceptable-use text and the README say what the one cookie is");
   // The brief says it in one line.
   const ev = buildEvidence(stopped, H, "username");
   const brief = investigateBrief({ collected: stopped, items: ev.items, facts: ev.facts, identity: ev.identity, failed: [], incomplete: [], type: "username", target: H });

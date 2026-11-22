@@ -1,7 +1,7 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, partialGaps, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
-import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls, contentCheck } from "./evidence.js";
-import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultRequests, mainstreamAnswered, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, blockFromScan, blockFromRefusal, handleOf, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, NO_SOURCES_TEXT, MAINSTREAM_FIRST_TEXT, CANCELLED_TEXT, NOT_CHECKED_BLURB } from "./adult.js";
+import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal } from "./evidence.js";
+import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, handleOf, readiness, stripGuard, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, NOT_RUN_KINDS, NOT_CHECKED_BLURB, NOT_RUN_BLURB } from "./adult.js";
 import { session, MODE, normHandle, adultFor, startAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
 import { paintBar, paintStatus } from "./modeui.js";
 import { sourceCards } from "./renderers.js";
@@ -61,8 +61,13 @@ const activeView = (type) => activeCase(session.on("active"), type);
 // The two switches in the case bar, the status line under them, and the same two rows in the sheet.
 function paintModes() {
   // For the case on screen the reason is the one its run was given (it may have been opened by a pivot).
-  const av = adultView(sourcesType), mine = av.state === "suspended" && state.minor && normHandle($("#targetInput").value) === normHandle(state.target);
-  const rows = [{ id: "adult", view: mine ? { ...av, reason: state.minor.reason } : av, desc: MODE.adult.desc }, { id: "active", view: activeView(sourcesType), desc: MODE.active.desc }];
+  const same = normHandle($("#targetInput").value) === normHandle(state.target);
+  const av = adultView(sourcesType), mine = av.state === "suspended" && state.minor && same;
+  // The adult pass of the case on screen did not run (a fresh run is needed, or no source that
+  // reads profiles answered): the strip says so, in the same words as the notice.
+  const notRun = av.state === "applies" && same && state.type === "username" ? readBlock(state.collected.adultBlock) : null;
+  const adultRowView = mine ? { ...av, reason: state.minor.reason } : notRun && NOT_RUN_KINDS.includes(notRun.kind) ? { ...av, state: "suspended", note: blockText(notRun), reason: blockText(notRun) } : av;
+  const rows = [{ id: "adult", view: adultRowView, desc: MODE.adult.desc }, { id: "active", view: activeView(sourcesType), desc: MODE.active.desc }];
   paintBar($("#modes"), rows);
   // The line stays in view at every width, is repeated in the Case details drawer, and also names
   // Recon's mode while that is on: it is on for the session wherever the investigator is.
@@ -169,14 +174,16 @@ const hasAdult = () => adultAllowed(state.collected, state.target, state.type);
 // A case the minor guard stopped says which profile triggered it, with the source as a link to
 // that profile, so it can be checked. The quoted text is remote and is escaped in blockHtml.
 function adultNotice() {
-  if (state.type === "username" && isBlocked(state.collected)) return `<div class="notice" role="note" id="adultNotice">${blockHtml(state.collected.adultBlock, handleOf(state.target))} The other sources ran as usual.</div>`;
+  if (state.type === "username" && isBlocked(state.collected)) return `<div class="notice" role="note" id="adultNotice">${blockHtml(state.collected.adultBlock, handleOf(state.target))}${NOT_RUN_KINDS.includes(readBlock(state.collected.adultBlock)?.kind) ? "" : " The other sources ran as usual."}</div>`;
   if (state.adultBlocked) return h`<div class="notice" role="note" id="adultNotice">${state.adultBlocked}</div>`;
   if (!hasAdult()) return "";
   // A part of the adult pass that failed is unknown, never "not found". (A case saved before the
   // pass was its own request keeps Maigret's failure inside its ordinary answer.)
   const c = state.collected, why = (d) => (d && (d.adult_error || d.error) ? String(d.adult_error || d.error).slice(0, 160) : "");
   const failedParts = [["Sherlock", why(c.sherlockAdult)], ["Maigret", why(c.maigretAdult) || (c.maigret?.adult_error ? why(c.maigret) : "")]].filter(([, w]) => w);
-  return h`<div class="notice" role="note" id="adultNotice">${ADULT_NOTICE}${failedParts.map(([name, w]) => ` ${name} could not check adult and dating sites (${w}), so that part is unknown, not "not found".`).join("")}</div>`;
+  // A source the profile check could not read (GitHub is rate limited often) is said too.
+  const silent = readiness(c).silent;
+  return h`<div class="notice" role="note" id="adultNotice">${ADULT_NOTICE}${silent.length ? ` Profile check: ${silent.join(", ")} did not answer, so its text was not read.` : ""}${failedParts.map(([name, w]) => ` ${name} could not check adult and dating sites (${w}), so that part is unknown, not "not found".`).join("")}</div>`;
 }
 
 // ---- ledger + facts -------------------------------------------------------------
@@ -215,7 +222,7 @@ function renderLedger(opts = {}) {
   // The adult group says what its count is made of, under its heading.
   // A case the minor guard stopped has one row in that group's place, open, saying why.
   const stopped = adultItems(items).some(isBlockRow);
-  const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? (stopped ? { ...t, open: true, count: "not checked", blurb: NOT_CHECKED_BLURB } : { ...t, note: adultSummary(adultItems(items)) }) : t.id === "similar" ? { ...t, blurb: similarBlurb(items) } : t)), items);
+  const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? (stopped ? { ...t, open: true, count: "not checked", blurb: NOT_RUN_KINDS.includes(readBlock(state.collected.adultBlock)?.kind) ? NOT_RUN_BLURB : NOT_CHECKED_BLURB } : { ...t, note: adultSummary(adultItems(items)) }) : t.id === "similar" ? { ...t, blurb: similarBlurb(items) } : t)), items);
   renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [], imported: state.imported, handle: state.type === "username" ? state.target.replace(/^@/, "") : "", open });
   paintSummary(ev);
   checker.watch();
@@ -547,20 +554,23 @@ function dropAdult() {
   for (const k of Object.keys(state.collected)) delete state.collected[k];
   Object.assign(state.collected, clean);
 }
+// What the run does with a refusal is decided in evidence.js (adultRefusal): what the case
+// records, and the words. Here it is applied to the page.
+let adultRow = null;      // the run log's one "Adult sites" row, for the run in flight
 function adultRefused(err) {
-  const block = blockFromRefusal(err);
-  if (!isBlocked(state.collected)) { toast(blockText(block), 7000); adultSay(blockText(block)); }
+  const out = adultRefusal(err);
+  if (!out) return false;
+  const first = !isBlocked(state.collected);
   dropAdult();
-  state.collected.adultBlock = block;
-  if (["age", "school", "birth", "soft"].includes(block.kind)) state.minor = suspendContent(suspended, state.target, block);
-  else { suspended.add(state.target, { server: true, detail: err.reason || "" }); state.minor = { kind: "server", via: "handle", origin: handleOf(state.target), reason: guardText(err.reason || ""), block }; }
+  state.collected.adultBlock = out.block;
+  if (first) { if (out.state === "refused") toast(out.notice, 7000); adultSay(out.notice); }
+  if (out.minor === "content") state.minor = suspendContent(suspended, state.target, out.block);
+  else if (out.minor === "server") { suspended.add(state.target, { server: true, detail: err.reason || "" }); state.minor = { kind: "server", via: "handle", origin: handleOf(state.target), reason: guardText(err.reason || ""), block: out.block }; }
+  // A fresh run is needed (409): the server's record of this run lapsed, the cookie was lost
+  // or the server restarted. Not a block on the handle: running the case again fixes it.
+  if (out.state === "fresh" && adultRow && log.live) log.set(adultRow, out.log, "skip");
   renderSources(state.type);
-}
-// The server has no record of the ordinary sources for this handle (its record lasts 30 minutes
-// and does not survive a restart). Nothing adult was asked or is kept; running the case again fixes it.
-function adultNotRun() {
-  dropAdult();
-  state.adultBlocked = MAINSTREAM_FIRST_TEXT;
+  return true;
 }
 // opts.badInput(err): the server refused the input itself (400 or 422). That is a message for the
 // person typing, not a source that failed, so nothing is stored for it.
@@ -592,8 +602,8 @@ async function runSource(label, url, body, headers, key, opts = {}) {
     pending.delete(row);
     if (err.code === "cancelled") { log.set(row, `${label} · cancelled`, "skip"); return null; }
     if (opts.badInput && (err.status === 400 || err.status === 422)) { log.set(row, `${label} · not run: that is not a usable ${opts.what || "name"}`, "skip"); opts.badInput(err); return null; }
-    if (err.code === "minor_guard") { adultRefused(err); log.set(row, `${label} · not run: the server's minor guard refused it`, "skip"); renderLedger(); return GUARDED; }
-    if (err.code === "mainstream_first") { adultNotRun(); log.set(row, `${label} · not run: the server has no record of the ordinary sources for this handle. Run the case again`, "skip"); renderLedger(); return null; }
+    if (err.code === "minor_guard" && adultRefused(err)) { log.set(row, `${label} · not run: the server's minor guard refused it`, "skip"); renderLedger(); return GUARDED; }
+    if (err.code === "mainstream_first" && adultRefused(err)) { log.set(row, `${label} · not run`, "skip"); renderLedger(); return null; }
     // Keep the failure with the results, so the screen and the AI both know this source is unknown.
     state.collected[key] = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
     log.set(row, `${label}: ${err.detail || err.message}`, "err", err.raw);
@@ -703,11 +713,10 @@ export async function run(targetRaw, typeOverride, opts = {}) {
     if (isUser && !handleOk && (on("sherlock") || on("maigret"))) log.add(`Username tools skipped: "${handle}" has characters they can't search`, "skip");
     // The ordinary run never asks an adult or dating site: nsfw is false on these two requests,
     // whatever the mode. Those sites are a pass of their own, after everything below has answered.
-    if (handleOk && on("sherlock")) jobs.push(runSource("Sherlock", "/api/recon/sherlock", usernameBody(handle, false), {}, "sherlock"));
-    if (handleOk && on("maigret")) jobs.push(runSource("Maigret", "/api/recon/maigret", usernameBody(handle, false), {}, "maigret"));
+    if (handleOk) for (const r of ordinaryRequests(handle, { sherlock: on("sherlock"), maigret: on("maigret") })) jobs.push(runSource(r.label, r.url, r.body, {}, r.key));
     // One row holds the adult pass's place while the ordinary sources run.
     const wantAdult = handleOk && plan.has("adult");
-    const adultRow = wantAdult ? log.add(ADULT_LOG.waiting) : null;
+    adultRow = wantAdult ? log.add(ADULT_LOG.waiting) : null;
     if (block0) log.add(ADULT_LOG.blocked(block0), "skip");
     if (handleOk && on("github")) jobs.push(runSource("GitHub", "/api/recon/github", { username: handle }, {}, "github"));
     if (on("holehe")) jobs.push(runSource("Holehe", "/api/recon/holehe", { email: target }, {}, "holehe"));
@@ -735,29 +744,23 @@ export async function run(targetRaw, typeOverride, opts = {}) {
     // Compare profile pictures once every profile is in. A passive read of public CDN images;
     // it needs at least two to say anything. If it fails, clusters fall back to the other signals.
     const images = state.cancelled ? [] : avatarImages(c, target, type);
-    // The adult pass. Everything that returns profile text has answered by now, so the content
-    // check (stage 2 of the minor guard) reads the names and bios that were found. Only a clean
-    // check starts the three adult requests: without one there are none to start (see adult.js).
+    // The adult pass. Everything that returns profile text has answered by now, so the decision
+    // can be made (adultPassPlan in evidence.js): cancelled, nothing to read, a sign of a minor
+    // in a profile, or clean. Only a clean check has requests to send.
     const adultPass = async () => {
-      if (!wantAdult) return;
-      const stop = (text, notice) => { log.set(adultRow, text, "skip"); state.adultBlocked = notice; adultSay(notice); };
-      if (state.cancelled) return stop(ADULT_LOG.cancelled, CANCELLED_TEXT);
-      // The server refuses the pass until an ordinary source has answered for the handle.
-      if (!mainstreamAnswered(c)) return stop(ADULT_LOG.noSources, NO_SOURCES_TEXT);
-      const scan = contentCheck(c, target, type);
-      if (scan.blocked) {
-        const block = blockFromScan(scan);
-        c.adultBlock = block;
-        state.minor = suspendContent(suspended, target, block);
-        log.set(adultRow, ADULT_LOG.blocked(block), "skip");
-        adultSay(blockText(block));
+      const pass = adultPassPlan({ planned: wantAdult, cancelled: state.cancelled, collected: c, target, type, switched: { sherlock: on("sherlock"), maigret: on("maigret"), platformCheck: on("platform") } });
+      if (pass.state === "none") return;
+      log.set(adultRow, pass.log, pass.state === "clean" ? "done" : "skip");
+      adultSay(pass.notice || pass.log);
+      if (pass.state === "cancelled") { state.adultBlocked = pass.notice; return; }
+      if (pass.block) {
+        c.adultBlock = pass.block;
+        if (pass.state === "blocked") state.minor = suspendContent(suspended, target, pass.block);
         renderSources(type); renderLedger();
         return;
       }
       c.adultMode = true; state.adultMode = true;
-      log.set(adultRow, ADULT_LOG.clean(scan.read), "done");
-      adultSay(ADULT_LOG.clean(scan.read));
-      await Promise.all(adultRequests(handle, scan, { sherlock: on("sherlock"), maigret: on("maigret") }).map((r) => runSource(r.label, r.url, r.body, {}, r.key)));
+      await Promise.all(pass.requests.map((r) => runSource(r.label, r.url, r.body, {}, r.key)));
     };
     // One picture is still fetched: it cannot be compared, but its thumbnail is shown on the card.
     // The avatar comparison returns no text, so the adult pass does not wait for it.
@@ -771,6 +774,9 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   // (The adult pass of Sherlock and of Maigret are parts of the one adult site check.)
   const silent = state.cancelled ? [...new Set([...asked].filter((k) => !(k in c)).map((k) => (ADULT_PASS_KEYS.includes(k) ? "adultCheck" : k)))].filter((k) => !(k in c)) : [];
   if (silent.length) c.notAnswered = { keys: silent };
+  // Guard-only text has been read by now (or the mode is off): it is not kept with the case.
+  { const bare = stripGuard(c); for (const k of Object.keys(bare)) c[k] = bare[k]; }
+  adultRow = null;
   setRunning(false);
   const { items, facts } = evidence();
   const sum = summary();

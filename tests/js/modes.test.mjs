@@ -160,7 +160,7 @@ function makeBench(s) {
   const cap = M.makeSuspended(3); for (const h of ["qqa", "qqb", "qqc", "qqd"]) cap.add(h, { server: true });
   ok(cap.size === 3 && !cap.get("qqa") && cap.get("qqd") && cap.get("qqd").server === true, "the suspended list is bounded, and the newest handle is the one kept");
   const inv = read(J + "investigate.js");
-  ok(/err\.code === "minor_guard"\) \{ adultRefused\(err\);/.test(inv) && /suspended\.add\(state\.target, \{ server: true, detail: err\.reason \|\| "" \}\);/.test(inv) && /state\.minor = suspendContent\(suspended, state\.target, block\);/.test(inv), "the run handles the server's refusal: the handle is suspended, by its handle or by what its profiles said");
+  ok(/err\.code === "minor_guard" && adultRefused\(err\)/.test(inv) && /suspended\.add\(state\.target, \{ server: true, detail: err\.reason \|\| "" \}\);/.test(inv) && /state\.minor = suspendContent\(suspended, state\.target, out\.block\);/.test(inv), "the run handles the server's refusal: the handle is suspended, by its handle or by what its profiles said");
   // off, the views say the same things about the case without claiming the mode is on
   const off = M.adultCase(false, "anna_15yo", "username");
   ok(off.state === "off" && !off.on && !off.applies && off.note === M.MINOR_SHORT.handle && M.adultCase(false, T, "email").note === M.NOT_USED && M.adultCase(false, T, "username").note === "" && M.adultCase(true, "", "").state === "idle" && M.adultCase("true", T, "username").on === false, "off is off whatever the case, and only the literal true is on");

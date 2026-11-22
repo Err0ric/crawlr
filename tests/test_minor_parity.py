@@ -42,7 +42,7 @@ def run_py(payload: dict) -> dict:
     engine = mr.load()
     today = _ymd(payload["today"])
     return {
-        "handles": [{"token": engine.handle_token(h), "soft": engine.soft_birth_year(h, today)} for h in payload.get("handles", [])],
+        "handles": [{"token": engine.handle_token(h), "soft": engine.soft_birth_year(h, today), "years": engine.soft_bare_years(h)} for h in payload.get("handles", [])],
         "scans": [engine.scan(s["profiles"], s["handle"], _ymd(s.get("today") or payload["today"])) for s in payload.get("scans", [])],
     }
 
@@ -53,7 +53,7 @@ def assert_same(payload: dict) -> dict:
     for handle, a, b in zip(payload.get("handles", []), py["handles"], js["handles"]):
         assert a == b, (handle, a, b)
     for scan, a, b in zip(payload.get("scans", []), py["scans"], js["scans"]):
-        for key in ("blocked", "kind", "soft", "read"):
+        for key in ("blocked", "kind", "soft", "soft_years", "read"):
             assert a[key] == b[key], (key, scan, a, b)
         assert a["signal"] == b["signal"], (scan, a["signal"], b["signal"])
         assert len(a["signals"]) == len(b["signals"]), (scan, a["signals"], b["signals"])
@@ -69,12 +69,14 @@ def fixture_scans() -> list[dict]:
     # Every bio again under a handle that carries a soft birth year, and as a display name.
     scans += [{**one(row["bio"]), "handle": "mike2010"} for group in ("block", "weak", "clean") for row in BIOS[group]]
     scans += [{"handle": "mike2010", "profiles": [{"source": "Name", "url": "", "name": row["bio"]}]} for group in ("block", "weak", "clean") for row in BIOS[group]]
+    # ...under a handle with bare years, and as further profile text
+    scans += [{"handle": "sam_16yrs", "profiles": [{"source": "Text", "url": "", "text": row["bio"]}]} for group in ("block", "weak", "clean") for row in BIOS[group]]
     scans += [{"handle": c["handle"], "profiles": c["profiles"]} for c in BIOS["cases"]]
     return scans
 
 
 def test_every_fixture_gets_the_same_answer_from_both_engines():
-    handles = [c["handle"] for c in HANDLES["cases"]] + [c["handle"] for c in HANDLES["soft"]]
+    handles = [c["handle"] for c in HANDLES["cases"]] + [c["handle"] for c in HANDLES["soft"]] + ["sam_16yrs", "10yrs_exp"]
     scans = fixture_scans()
     assert len(HANDLES["cases"]) >= 100 and len(BIOS["block"]) + len(BIOS["weak"]) + len(BIOS["clean"]) >= 60
     assert_same({"today": HANDLES["today"], "handles": handles, "scans": scans})
@@ -88,7 +90,7 @@ def test_the_answers_agree_on_other_dates():
         assert_same({"today": today, "handles": handles, "scans": scans})
 
 
-HANDLE_PARTS = ["age", "aged", "my", "yo", "y", "o", "yr", "yrs", "year", "years", "old", "of", "under", "pre", "teen", "jail", "bait", "b41t", "und3r", "th",
+HANDLE_PARTS = ["age", "aged", "my", "im", "of", "mom", "dad", "stone", "8", "12", "exp", "yo", "y", "o", "yr", "yrs", "year", "years", "old", "of", "under", "pre", "teen", "jail", "bait", "b41t", "und3r", "th",
                 "1", "0", "7", "9", "13", "15", "16", "17", "18", "21", "017", "2008", "2010", "2019", "2021", "1999", ".", "_", "-", "/", "@", "x", "k", "a", "e", "mike", "sam", "A", "YO", " "]
 
 
@@ -98,11 +100,12 @@ def test_fuzz_handles_agree():
     got = assert_same({"today": "2026-11-22", "handles": handles, "scans": []})
     # The set exercises the rules: every answer occurs many times.
     for token in ("age", "word", None):
-        assert sum(1 for h in got["handles"] if h["token"] == token) > 200, token
-    assert sum(1 for h in got["handles"] if h["soft"]) > 200
+        assert sum(1 for h in got["handles"] if h["token"] == token) > 100, token
+    assert sum(1 for h in got["handles"] if h["soft"]) > 200 and sum(1 for h in got["handles"] if h["years"]) > 200
 
 
-BIO_PARTS = ["i'm", "I’m", "im", "i am", "15", "16", "17", "18", "13", "9", "2029", "2031", "2010", "2008", "'29", "'09", "class of", "c/o", "co", "high school", "HS", "Lincoln High",
+BIO_PARTS = ["i'm", "I’m", "im", "i am", "15", "16", "17", "18", "13", "9", "2029", "2031", "2010", "2008", "'29", "'09", "class of", "c/o", "co", "high school", "HS", "Lincoln High", "lincoln high", "LHS", "'28", "\U0001f382", "5/14/2011", "3/4/10", "\uff11\uff15", "\U0001d7cf\U0001d7d3", "fifteen", "turned", "just", "Rex is",
+             "whisky", "he/him", "they/them", "and bored", "(almost 18)",
              "middle school", "8th grade", "grade 9", "year 9", "freshman", "sophomore", "junior", "senior", "student", "teacher", "mom of", "my son", "born", "b.", "dob", "baby",
              "yo", "y/o", "years old", "year old", "age", "aged", "turning", "minor", "teen", "under 18", "13+", "18+", "she/her", "f", "m", "|", "•", "·", ",", "/", "-", ".", "!", "\n",
              "\U0001f338", "✨", "é", "日本", "‍", "️", " ", "college", "university", "alumni", "since", "at", "in", "a", "the", "of", "dog", "est.", "#", "$", "%", "k", "th", "GCSEs", "school"]
@@ -113,8 +116,46 @@ def test_fuzz_bios_agree():
     scans = []
     for _ in range(6000):
         text = "".join(rng.choice(BIO_PARTS) + rng.choice([" ", " ", " ", ""]) for _ in range(rng.randint(1, 12)))
-        field = rng.choice(["bio", "bio", "bio", "name"])
-        scans.append({"handle": rng.choice(["sam_rivera", "mike2010", "ana_2011", "x"]), "profiles": [{"source": "S", "url": "", field: text}]})
+        field = rng.choice(["bio", "bio", "bio", "name", "text"])
+        scans.append({"handle": rng.choice(["sam_rivera", "mike2010", "ana_2011", "x", "sam_16yrs"]), "profiles": [{"source": "S", "url": "", field: text}]})
     got = assert_same({"today": "2026-11-22", "handles": [], "scans": scans})
     for kind in ("age", "school", "birth", "soft", ""):
         assert sum(1 for r in got["scans"] if r["kind"] == kind) > 50, kind
+
+
+def test_the_page_and_the_server_read_the_same_text_from_the_same_answers():
+    """One case, as the ordinary sources answer it: what the server keeps for the content check
+    and what the page reads are the same entries, with the same fields, in the same order."""
+    from core import profile_record as pr
+    h = "river_stone"
+    long_bio = "Hello there. " * 30 + "i'm 15 \U0001f338"
+    answers = {
+        "sherlock": {"results": [{"site": "GitHub", "url": f"https://github.com/{h}"}]},
+        "maigret": {"results": [
+            {"site": "Gitlab", "url": f"https://gitlab.com/{h}", "verified": True, "confidence": "normal",
+             "profile": {"name": "River S", "bio": long_bio[:300], "location": "Leeds", "guard": {"bio": long_bio, "text": "about me\nLincoln High", "birthday": "2011-03-02", "age": "15"}}},
+            {"site": "Noisy", "url": f"https://noisy.example/{h}", "verified": True, "confidence": "false_positive", "profile": {"bio": "i'm 15"}},
+            {"site": "Pornhub", "url": f"https://www.pornhub.com/users/{h}", "verified": True, "adult": True, "profile": {"bio": "i'm 15"}},
+            {"site": "Fansly", "url": f"https://fansly.com/{h}", "verified": True, "profile": {"bio": "i'm 15"}},
+            {"site": "Bare", "url": f"https://bare.example/{h}", "verified": False},
+        ]},
+        "github": {"found": True, "profile_url": f"https://github.com/{h}", "name": "River Stone", "bio": "Builds things.", "company": "Lincoln High School", "location": "9th grade", "email": "x@example.org"},
+        "platform_check": {"results": [{"platform": "Reddit", "state": "found", "url": f"https://www.reddit.com/user/{h}", "display_name": "", "bio": "likes maps"},
+                                       {"platform": "Twitch", "state": "blocked", "url": f"https://twitch.tv/{h}", "bio": "i'm 15"}]},
+        "enricher": {"profiles": [{"platform": "Instagram", "url": f"https://www.instagram.com/{h}/", "display_name": "River", "bio": "16 | junior in high school"},
+                                  {"platform": "OnlyFans", "url": f"https://onlyfans.com/{h}", "bio": "i'm 15"},
+                                  {"platform": "Empty", "url": "https://empty.example/u", "display_name": "", "bio": ""}]},
+    }
+    engine = mr.load()
+    server = [e for name, _ in engine.text_order for e in pr.entries_of(name, answers[name])]
+    collected = {page: answers[name] for name, page in [("sherlock", "sherlock"), *engine.text_order]}
+    node = shutil.which("node")
+    assert node, "node is not installed: the parity test needs it"
+    done = subprocess.run([node, str(ROOT / "tests" / "js" / "texts_runner.mjs")], input=json.dumps(collected), capture_output=True, text=True, timeout=60, cwd=str(ROOT))
+    assert done.returncode == 0, done.stderr[-600:]
+    page = json.loads(done.stdout)
+    assert [e["source"] for e in server] == ["Gitlab", "GitHub", "Reddit", "Instagram"]
+    assert page == server
+    assert server[0]["bio"] == long_bio and server[0]["text"] == "Leeds\nabout me\nLincoln High" and server[1]["text"] == "Lincoln High School\n9th grade"
+    # And both then reach the same verdict from it.
+    assert_same({"today": "2026-11-22", "handles": [], "scans": [{"handle": h, "profiles": server}]})

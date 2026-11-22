@@ -53,8 +53,8 @@ import { TYPE_LABEL } from "./core.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
 import { NAME_TIERS, isNameTier, nameItems, nameForAi, nameMarkdownHead } from "./names.js";
 import { PHONE_TIERS, phoneView, phoneItems, phoneFacts, phoneForAi } from "./phone.js";
-import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultFound, adultMarkdown, blockForAi, reportForExport, adultHost, handleOf, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
-import { scanProfiles } from "./minorscan.js";
+import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultFound, adultMarkdown, blockForAi, reportForExport, adultHost, handleOf, isAdultRow, readiness, adultRequests, readBlock, blockText, blockFromScan, blockFromRefusal, usernameBody, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, CANCELLED_TEXT } from "./adult.js";
+import { scanProfiles, sourceRoles } from "./minorscan.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 
@@ -115,38 +115,79 @@ export function sourcePlan(type, target, { adult = false } = {}) {
 }
 
 // ---- the profile text the minor guard reads -----------------------------------------------------
-// Every display name and bio a source returned for this handle in the ordinary run, with the
-// site it was read on. The same fields the server keeps for its own copy of the check
-// (core/profile_record.py), in the same order: Maigret, GitHub, the platform check (Reddit's
-// record included), profile enrichment, then Gravatar and a profile scrape when the case has
-// them. Sites known to answer for any name are left out, and nothing adult is ever read: the
-// case goes through withoutAdult first. Profiles the identity grouping calls a different person
-// are included on purpose: an adult-site account under this handle could be theirs, and the
-// message names the source so the investigator can judge. Addresses and handles are not scanned,
-// and a similar handle's probe is not part of this case.
+// Every display name, bio and further text field a source returned for this handle in the
+// ordinary run, with the site it was read on: the same fields, in the same order, with the same
+// bounds as the server keeps for its own copy of the check (entries_of in core/profile_record.py;
+// tests/test_minor_parity.py feeds one case through both and compares). The order is the rules
+// file's `sources.text_order`: Maigret, GitHub, the platform check (Reddit's record included),
+// profile enrichment. Then, on the page only, Gravatar and a profile scrape when the case has them.
+// A row may carry guard-only text under `guard` (the whole bio, other text fields, a birth date,
+// an age): it is read here and removed before the case is kept (stripGuard in adult.js).
+// Sites known to answer for any name are left out, and nothing adult is ever read. Profiles the
+// identity grouping calls a different person are included on purpose: an adult-site account
+// under this handle could be theirs, and the message names the source so the investigator can
+// judge. Addresses and handles are not scanned, and a similar handle's probe is not part of it.
 const BIRTH_KEYS = ["birthday", "birth_date", "birthdate", "born", "dob", "date_of_birth", "age"];
+const clipText = (v, n) => (typeof v === "string" || typeof v === "number" ? Array.from(String(v)).slice(0, n).join("") : "");
+const textLines = (...parts) => parts.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim()).join("\n");
 export function profileTexts(collected) {
-  const c = withoutAdult(collected), out = [];
-  const text = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
-  const put = (source, url, name, bio, extra) => {
-    const e = { source: text(String(source ?? ""), 80), url: text(url, 600), name: text(name, 200), bio: text(bio, 600) };
-    if (adultHost(e.url)) return;
-    for (const k of BIRTH_KEYS) { const v = extra?.[k]; if (typeof v === "string" || typeof v === "number") { const t = String(v).slice(0, 40); if (t) e[k] = t; } }
+  const c = collected && typeof collected === "object" ? collected : {}, out = [];
+  const guardOf = (r) => (r && r.guard && typeof r.guard === "object" && !Array.isArray(r.guard) ? r.guard : {});
+  const put = (source, url, name, bio, text, extra) => {
+    const e = { source: clipText(source, 80), url: clipText(url, 600), name: clipText(name, 200), bio: clipText(bio, 2000), text: clipText(text, 1000) };
+    if (adultHost(e.url) || isAdultRow({ site: e.source, url: e.url })) return;
+    for (const k of BIRTH_KEYS) { const t = clipText(extra?.[k], 40); if (t) e[k] = t; }
     if (Object.entries(e).some(([k, v]) => k !== "source" && k !== "url" && v)) out.push(e);
   };
   const rows = (d, list = "results") => (d && !failed(d) && Array.isArray(d[list]) ? d[list].filter((r) => r && typeof r === "object") : []);
-  for (const r of rows(c.maigret)) if (r.confidence !== "false_positive" && r.profile && typeof r.profile === "object") put(r.site || r.name, r.url, r.profile.name, r.profile.bio, r.profile);
-  if (c.github?.found && !failed(c.github)) put("GitHub", c.github.profile_url, c.github.name, c.github.bio);
-  for (const r of rows(c.platformCheck)) if (r.state === "found") put(r.platform, r.url, r.display_name, r.bio, r);
-  for (const e of rows(c.enricher, "profiles")) put(e.platform, e.url, e.display_name, e.bio, e);
-  if (c.gravatar?.found && !failed(c.gravatar)) put("Gravatar", c.gravatar.profile_url, c.gravatar.name || c.gravatar.display_name, c.gravatar.about || c.gravatar.bio);
-  for (const r of rows(c.profileScrape)) if (!r.error) put(r.site || "Profile", r.url, r.display_name, r.bio, r);
+  const read = {
+    maigret: (d) => { for (const r of rows(d)) { if (r.adult || r.confidence === "false_positive") continue; const p = r.profile && typeof r.profile === "object" ? r.profile : {}, g = guardOf(p); put(r.site || r.name, r.url, p.name, g.bio || p.bio, textLines(p.location, g.text), g); } },
+    github: (d) => { if (d?.found && !failed(d)) put("GitHub", d.profile_url, d.name, d.bio, textLines(d.company, d.location)); },
+    platformCheck: (d) => { for (const r of rows(d)) if (r.state === "found") put(r.platform, r.url, r.display_name, r.bio, "", guardOf(r)); },
+    enricher: (d) => { for (const e of rows(d, "profiles")) put(e.platform, e.url, e.display_name, e.bio, "", guardOf(e)); },
+  };
+  for (const [, key] of sourceRoles().textOrder) read[key]?.(c[key]);
+  if (c.gravatar?.found && !failed(c.gravatar)) put("Gravatar", c.gravatar.profile_url, c.gravatar.name || c.gravatar.display_name, c.gravatar.about || c.gravatar.bio, "");
+  for (const r of rows(c.profileScrape)) if (!r.error) put(r.site || "Profile", r.url, r.display_name, r.bio, "");
   return out;
 }
 // Stage 2 of the minor guard, for a case whose ordinary sources are in:
-// { blocked, kind, signal: { strength, kind, source, snippet, url } | null, signals, soft, read }.
+// { blocked, kind, signal: { strength, kind, source, snippet, url } | null, signals, soft, soft_years, read }.
 // today is a parameter so the tests can pin it.
 export const contentCheck = (collected, target, type = "username", today = new Date()) => scanProfiles(type === "username" ? profileTexts(collected) : [], handleOf(target), today);
+
+// ---- a username run: what is asked, and when ----------------------------------------------------
+// investigate.js builds its requests with these three functions and does what they say, so the
+// order of a run is tested here and not by reading the page's code.
+// The ordinary run's own Sherlock and Maigret requests: nsfw false whatever the mode.
+export const ordinaryRequests = (handle, { sherlock = true, maigret = true } = {}) => [
+  ...(sherlock ? [{ key: "sherlock", label: "Sherlock", url: "/api/recon/sherlock", body: usernameBody(handle, false) }] : []),
+  ...(maigret ? [{ key: "maigret", label: "Maigret", url: "/api/recon/maigret", body: usernameBody(handle, false) }] : []),
+];
+// The adult pass, decided once everything that returns profile text has answered.
+//   planned    the mode applies to this case (the last entry of sourcePlan is "adult")
+//   switched   { sherlock, maigret, platformCheck }: the Sources panel's switches
+// state: "none" (not planned), "cancelled", "unread" (no source that reads profiles answered:
+// unknown is not clean), "blocked" (the profile check found a sign of a minor) or "clean".
+// Only "clean" has requests. block is what the case records; log is the run log row.
+export function adultPassPlan({ planned, cancelled = false, collected, target, type = "username", switched = {}, today = new Date() } = {}) {
+  const none = { state: "none", requests: [], log: "", notice: "", block: null, scan: null, silent: [] };
+  if (planned !== true || type !== "username") return none;
+  if (cancelled) return { ...none, state: "cancelled", log: ADULT_LOG.cancelled, notice: CANCELLED_TEXT };
+  const ready = readiness(collected, switched);
+  if (!ready.ok) { const block = readBlock({ kind: "unread", via: ready.via }); return { ...none, state: "unread", log: ADULT_LOG.blocked(block), notice: blockText(block), block }; }
+  const scan = contentCheck(collected, target, type, today);
+  if (scan.blocked) { const block = blockFromScan(scan); return { ...none, state: "blocked", log: ADULT_LOG.blocked(block), notice: blockText(block), block, scan }; }
+  return { ...none, state: "clean", scan, silent: ready.silent, log: ADULT_LOG.clean(scan.read, ready.silent), requests: adultRequests(handleOf(target), scan, { sherlock: switched.sherlock !== false, maigret: switched.maigret !== false }) };
+}
+// The server refused an adult request. 400 minor_guard: its own check blocked (or the handle).
+// 409 mainstream_first: it has no record of this run (expired, lost cookie, restart).
+// Returns what the case records and the run log row, or null for any other error.
+export function adultRefusal(err) {
+  if (err?.code === "minor_guard") { const block = blockFromRefusal(err); return { state: "refused", block, log: ADULT_LOG.blocked(block), notice: blockText(block), minor: ["age", "school", "birth", "soft"].includes(block.kind) ? "content" : "server" }; }
+  if (err?.code === "mainstream_first") { const block = readBlock({ kind: "fresh" }); return { state: "fresh", block, log: ADULT_LOG.blocked(block), notice: blockText(block), minor: "" }; }
+  return null;
+}
 
 // ---- breaches ------------------------------------------------------------------------
 // Accepts the old shape (a list of names) and the new one (objects with a date and data classes).

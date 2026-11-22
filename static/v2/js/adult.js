@@ -28,7 +28,7 @@ import { esc, link } from "./core.js";
 import { classifyLink, mdLink, mdNote, parseUrl, regHost, NO_PAGE_HINT } from "./links.js";
 import { looksBoilerplate } from "./identity.js";
 import { ADULT_SITE_HOSTS, ADULT_SITE_NAMES } from "./adult-sites.js";
-import { handleToken, rulesReady } from "./minorscan.js";
+import { handleToken, rulesReady, sourceRoles } from "./minorscan.js";
 
 export const ADULT_SWITCH = "Adult sites";
 export const ADULT_NOTICE = "Adult and dating sites are existence checks only. A match shows a handle is taken there, not who owns it.";
@@ -61,7 +61,7 @@ export const CONTENT_REASONS = {
   age: "A profile found for this handle states an age under 18.",
   school: "A profile found for this handle suggests a school-age person.",
   birth: "A profile found for this handle states a birth date under 18.",
-  soft: "A profile found for this handle suggests a minor, and the handle carries a matching birth year.",
+  soft: "A profile found for this handle suggests a minor, and the handle carries a matching age or birth year.",
 };
 export const RULES_UNAVAILABLE = "Adult sites cannot be switched on: the rules that keep them away from minors could not be loaded. Reload the page.";
 // { blocked, kind, reason }: kind is "age", "word" or "rules".
@@ -82,8 +82,13 @@ export const guardText = (reason) => `Adult and dating sites are not checked for
 //   soft                 a weaker sign in a profile together with a birth year in the handle
 //   handle, word         the handle itself          rules    the rules could not be loaded
 //   server               the server refused         pivot    opened from a case that was stopped
+//   unread               no source that reads profiles answered, so there was nothing to check
+//   fresh                the server had no record of this run any more: a fresh run is needed
+// The last two are not about a minor: the adult pass simply did not run, and a new run decides again.
 // It can only ever hide the adult group. Text in it is remote: every use goes through esc or h.
-export const BLOCK_KINDS = ["age", "school", "birth", "soft", "handle", "word", "rules", "server", "pivot"];
+export const BLOCK_KINDS = ["age", "school", "birth", "soft", "handle", "word", "rules", "server", "pivot", "unread", "fresh"];
+// The kinds that say nothing about the person: the pass did not run, and why.
+export const NOT_RUN_KINDS = ["unread", "fresh"];
 const CONTENT_KINDS = ["age", "school", "birth", "soft"];
 export const SNIPPET_MAX = 60, BLOCK_SOURCE_MAX = 80;
 const oneLine = (v, n) => Array.from(typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f\s]+/g, " ").trim() : "").slice(0, n).join("");
@@ -98,6 +103,8 @@ export function readBlock(v) {
     if (x && /^https?:$/.test(x.protocol) && !x.username && !x.password && !adultHost(v.url)) out.url = v.url.trim();
   }
   if (v.kind === "pivot") { out.source = oneLine(v.source, 64).replace(/[<>]/g, ""); out.via = v.via === "content" ? "content" : "handle"; }
+  // unread: were the profile readers switched off, or did they fail?
+  if (v.kind === "unread") out.via = v.via === "off" ? "off" : "failed";
   return out;
 }
 // A case with a block on record. Any value under the key counts, so a damaged record still hides.
@@ -112,10 +119,22 @@ export function blockClause(block) {
   if (b.kind === "word") return asClause(GUARD_REASONS.word);
   if (b.kind === "rules") return asClause(GUARD_REASONS.rules);
   if (b.kind === "pivot") return `this case was opened from ${b.source || "another case"}, ${PIVOT_VIA[b.via]}`;
+  if (b.kind === "unread") return "no source that reads profiles answered for this handle, so there was nothing to check";
+  if (b.kind === "fresh") return "a fresh run is needed";
   return "the server refused this handle";
 }
 export const BLOCK_LEAD = "Adult and dating sites were not checked";
-export const blockText = (block) => `${BLOCK_LEAD}: ${blockClause(block)}.`;
+// The server answered 409 to the adult pass though the ordinary sources ran here: its record
+// lapsed, the session cookie was lost, or the server restarted. The same words in the notice,
+// the mode strip and the run log row.
+export const MAINSTREAM_FIRST_TEXT = "Adult sites need a fresh run. Re-run the case to enable them.";
+const UNREAD_NEXT = { off: "Switch on Maigret or Platform check and run again.", failed: "Run the case again." };
+export function blockText(block) {
+  const b = readBlock(block);
+  if (b?.kind === "fresh") return MAINSTREAM_FIRST_TEXT;
+  if (b?.kind === "unread") return `${BLOCK_LEAD}: ${blockClause(b)}. ${UNREAD_NEXT[b.via]}`;
+  return `${BLOCK_LEAD}: ${blockClause(block)}.`;
+}
 // The same sentence as markup, with the source as a link to the profile it was read on.
 export function blockHtml(block, handle = "") {
   const b = readBlock(block);
@@ -137,15 +156,24 @@ export function blockForAi(collected) {
 // The words of the run log's one "Adult sites" row.
 export const ADULT_LOG = {
   waiting: "Adult sites: waiting on profile check",
-  clean: (n) => `Adult sites: profile check clean (${plural(n, "profile")} read), checking`,
-  blocked: (block) => `Adult sites: not checked · ${blockClause(block)}`,
+  // silent: sources whose failure is worth saying though the check could go ahead (GitHub).
+  clean: (n, silent = []) => { const also = silent.length ? `; ${silent.join(", ")} did not answer` : ""; return n > 0 ? `Adult sites: profile check clean (${plural(n, "profile")} read${also}), checking` : `Adult sites: profile check: no profile text was found for this handle${also}, checking`; },
+  blocked: (block) => (readBlock(block)?.kind === "fresh" ? MAINSTREAM_FIRST_TEXT : `Adult sites: not checked · ${blockClause(block)}`),
   cancelled: "Adult sites: not run (cancelled)",
-  noSources: "Adult sites: not checked · no ordinary source answered for this handle, so there is nothing to check its profiles against",
-  mainstreamFirst: "Adult sites: not run · the server has no record of the ordinary sources for this handle. Run the case again",
 };
-export const NO_SOURCES_TEXT = `${BLOCK_LEAD}: no ordinary source answered for this handle. They are checked only after its profiles have been read.`;
-export const MAINSTREAM_FIRST_TEXT = `${BLOCK_LEAD}: the server has no record of the ordinary sources for this handle (it keeps one for 30 minutes). Run the case again.`;
 export const CANCELLED_TEXT = `${BLOCK_LEAD}: the run was cancelled before the profile check.`;
+// Could the profile check read anything? The adult pass needs at least one source that reads
+// profiles (Maigret or the platform check: `sources.profile_readers` in the rules file, the same
+// list the server uses) to have answered without an error. Sherlock, GitHub or enrichment alone
+// is not enough: unknown is not clean. A site that blocked the platform check is not a failure
+// of that source. switched: { maigret, platformCheck } as the Sources panel has them.
+//   { ok, via: "" | "failed" | "off", silent: [names of sources that failed and are worth saying] }
+export function readiness(collected, switched = {}) {
+  const roles = sourceRoles(), c = isObj(collected) ? collected : {};
+  const ok = roles.profileReaders.some(([, key]) => isObj(c[key]) && !failed(c[key]));
+  const anyOn = roles.profileReaders.some(([, key]) => switched[key] !== false);
+  return { ok, via: ok ? "" : anyOn ? "failed" : "off", silent: roles.reportedWhenFailed.filter(([, key]) => isObj(c[key]) && failed(c[key])).map(([, , name]) => name) };
+}
 // The requests of the adult pass. There are none without the result of a content check that
 // came back clean, so nothing can ask an adult site before the profiles have been read.
 // sources: which of Sherlock and Maigret are switched on.
@@ -158,8 +186,16 @@ export function adultRequests(handle, scan, { sherlock = true, maigret = true } 
     { key: "adultCheck", label: ADULT_SOURCE, url: "/api/recon/adult-check", body: { username: handle } },
   ];
 }
-// Did an ordinary username source answer? The server refuses the adult pass otherwise.
-export const mainstreamAnswered = (collected) => isObj(collected) && ["sherlock", "maigret", "github", "platformCheck"].some((k) => isObj(collected[k]) && !failed(collected[k]));
+// Guard-only text (the whole bio, other text fields, a birth date, an age) rides on a profile
+// row under `guard`. The content check reads it and nothing else may: this removes it, and
+// withoutAdult and scrubCollected call it, so it is never stored, exported or sent to the AI.
+export function stripGuard(collected) {
+  if (!isObj(collected)) return collected;
+  const out = { ...collected };
+  const bare = (r) => { if (!isObj(r)) return r; const { guard, ...rest } = r; return isObj(rest.profile) && "guard" in rest.profile ? { ...rest, profile: bare(rest.profile) } : rest; };
+  for (const [k, list] of [["maigret", "results"], ["platformCheck", "results"], ["enricher", "profiles"]]) if (isObj(out[k]) && Array.isArray(out[k][list])) out[k] = { ...out[k], [list]: out[k][list].map(bare) };
+  return out;
+}
 
 // ---- when the mode applies -------------------------------------------------------------------
 // May this run plan an adult pass? The switch must be on, the target a username, and the handle
@@ -271,7 +307,7 @@ const MAIGRET_ADULT_KEYS = ["nsfw", "adult_checked", "adult_errors", "adult_erro
 // sources, so it can never be read into a profile by another route. The tools' own counts are
 // recomputed, so nothing downstream reads "2 results" beside an empty list.
 function withoutRows(collected) {
-  const c = collected, out = { ...c };
+  const c = stripGuard(collected), out = { ...c };
   delete out.adultCheck; delete out.adultMode; delete out.adultBlock;
   for (const k of ADULT_PASS_KEYS) delete out[k];
   const names = adultSiteNames(c);
@@ -389,7 +425,7 @@ export function scrubCollected(collected, target, type) {
     if (block) out.adultBlock = block;
     return out;
   }
-  const out = { ...collected };
+  const out = stripGuard(collected);
   for (const k of ["sherlock", "maigret", "adultCheck", ...ADULT_PASS_KEYS]) if (isObj(out[k])) out[k] = scrubResponse(k, out[k], true);
   return out;
 }
@@ -403,10 +439,12 @@ export const isBlockRow = (r) => r?.adult?.state === "not_checked";
 // The rows that are sites: everything but that one.
 export const adultFound = (rows) => (rows || []).filter((r) => !isBlockRow(r));
 export const NOT_CHECKED_BLURB = "These sites were not asked about this handle. The row below says why, with the profile text that triggered it when there is one, so it can be checked. There is no way to override it.";
+// The same, when the pass simply did not run (nothing to read, or a fresh run is needed).
+export const NOT_RUN_BLURB = "These sites were not asked about this handle. The row below says why and what to do.";
 function blockRow(collected, target) {
   const b = readBlock(collected.adultBlock) || { kind: "server", source: "", snippet: "", url: "" };
   const clause = blockClause(b);
-  const row = { tier: "adult", what: "Not checked", url: "", link_kind: "none", key: "adult:block", glyph: "–", meta: clause[0].toUpperCase() + clause.slice(1) + ".", sources: ["Profile check"], source: "Profile check", adult: { state: "not_checked", category: "adult", block: b }, no_check: true };
+  const row = { tier: "adult", what: "Not checked", url: "", link_kind: "none", key: "adult:block", glyph: "–", meta: NOT_RUN_KINDS.includes(b.kind) ? blockText(b) : clause[0].toUpperCase() + clause.slice(1) + ".", sources: ["Profile check"], source: "Profile check", adult: { state: "not_checked", category: "adult", block: b }, no_check: true };
   if (b.url) { const lk = classifyLink({ url: b.url, want: "verified_profile", site: b.source, subjects: [handleOf(target)] }); if (lk.url) row.more = { url: lk.url, label: `Open the ${b.source} profile`, link_kind: lk.link_kind }; }
   return row;
 }
@@ -433,6 +471,7 @@ export function safeToolUrl(site, url) {
 }
 export function adultRows(collected, target, type = "username") {
   if (type === "username" && isBlocked(collected)) return [blockRow(collected, target)];
+  collected = stripGuard(collected);
   if (!adultAllowed(collected, target, type)) return [];
   const c = collected, handle = handleOf(target);
   const sites = new Map();
