@@ -1,4 +1,6 @@
-"""The adult and dating opt-in for Sherlock and Maigret, and the minor guard on every path.
+"""The adult and dating pass of Sherlock and Maigret, and the minor guard on every path.
+The adult pass is its own request (nsfw and adult_only together), made after the ordinary
+sources, and is refused until one of them is on record for the handle.
 The tools are never started: the process layer is faked and the command lines are read. No network."""
 
 import asyncio
@@ -11,7 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from core import adult_guard, adult_sites
+from core import adult_guard, adult_sites, profile_record
 from main import app
 import middleware.rate_limit as rl
 from modules import adult_check as ac
@@ -33,6 +35,22 @@ def _limits(monkeypatch):
     for path in ("/api/recon/sherlock", "/api/recon/maigret", "/api/recon/adult-check"):
         monkeypatch.setitem(rl.RATE_LIMITS, path, (1000, 60))
     ac.clear_cache_for_tests()
+    profile_record.clear()
+    yield
+    profile_record.clear()
+
+
+ADULT_PASS = {"nsfw": True, "adult_only": True}
+BLOCKING = "16 | junior in high school"
+
+
+def ran(handle="jdoe", bio="", client=""):
+    """Put an ordinary run on record for the handle, as the routers do, with one GitHub bio.
+    The record is kept per caller: the test client's address is "testclient"."""
+    profile_record.bind(client)
+    profile_record.note(handle, "sherlock", {"results": []})
+    if bio:
+        profile_record.note(handle, "github", {"found": True, "profile_url": f"https://github.com/{handle}", "name": "", "bio": bio})
 
 
 def no_adult_check(monkeypatch):
@@ -144,19 +162,48 @@ def test_sherlock_without_the_opt_in_is_handed_a_site_file_with_no_adult_site(mo
     assert (out["nsfw"], out["adult_checked"], out["total"]) == (False, 0, 2)
 
 
-def test_sherlock_with_the_opt_in_gets_the_whole_list_and_marks_adult_rows(monkeypatch):
-    out, seen = run_sherlock(monkeypatch, nsfw=True)
+def test_the_sherlock_adult_pass_is_handed_only_the_adult_sites_and_reports_only_those(monkeypatch):
+    ran()
+    out, seen = run_sherlock(monkeypatch, **ADULT_PASS)
+    assert len(seen) == 1
     argv = seen[0]
     assert argv[:6] == ["sherlock", "--csv", "--timeout", "15", "--no-color", "--print-found"] and argv[6] == "--json"
     assert argv[8:] == ["--nsfw", "--", "jdoe"]
     installed = json.loads(Path(sh._sherlock_data_path()).read_text(encoding="utf-8"))
-    assert SITE_FILES[0] == installed and {"RoyalCams", "datingRU", "Pornhub"} <= set(SITE_FILES[0])
+    # The site file holds the denylisted adult and dating sites and nothing else: no site is asked twice.
+    assert SITE_FILES[0] == sh.site_data(True) and {"RoyalCams", "datingRU", "Pornhub"} <= set(SITE_FILES[0])
+    for name, entry in SITE_FILES[0].items():
+        assert sh._entry_is_adult(name, entry), name
+    assert "GitHub" not in SITE_FILES[0] and "Reddit" not in SITE_FILES[0]
+    assert set(SITE_FILES[0]) | set(sh.site_data(False)) == set(installed) and not set(SITE_FILES[0]) & set(sh.site_data(False))
     by = {r["site"]: r for r in out["results"]}
-    assert set(by) == {"GitHub", "Reddit", "Pornhub", "ChaturBate", "Renamed Entry", "RoyalCams", "datingRU"}
-    assert all(by[s].get("adult") is True for s in ("Pornhub", "ChaturBate", "Renamed Entry", "RoyalCams", "datingRU"))
-    assert "adult" not in by["GitHub"] and "adult" not in by["Reddit"]
-    assert out["nsfw"] is True and out["adult_checked"] == len(sh.NSFW_SITES) == len(installed) - len(sh.site_data(False))
+    # A row for an ordinary site that shows up anyway is not reported by this pass.
+    assert set(by) == {"Pornhub", "ChaturBate", "Renamed Entry", "RoyalCams", "datingRU"}
+    assert all(r.get("adult") is True for r in out["results"])
+    assert out["nsfw"] is True and out["adult_checked"] == len(sh.NSFW_SITES) == len(SITE_FILES[0])
     assert media_leaks(out) == []
+
+
+def test_sherlock_never_mixes_adult_sites_into_an_ordinary_run(monkeypatch):
+    async def never(*a, **k):
+        raise AssertionError("sherlock was started")
+    monkeypatch.setattr(sh.asyncio, "create_subprocess_exec", never)
+    ran()
+    for kwargs in ({"nsfw": True}, {"adult_only": True}, {"nsfw": True, "adult_only": False}, {"nsfw": True, "adult_only": 1}):
+        out = asyncio.run(sh.run_sherlock("jdoe", **kwargs))
+        assert out["error_code"] == "adult_pass" and out["error"] == adult_guard.PASS_MESSAGE and out["results"] == [] and out["nsfw"] is False, kwargs
+
+
+def test_the_sherlock_adult_pass_waits_for_the_ordinary_sources_and_for_a_clean_profile_check(monkeypatch):
+    async def never(*a, **k):
+        raise AssertionError("sherlock was started")
+    monkeypatch.setattr(sh.asyncio, "create_subprocess_exec", never)
+    out = asyncio.run(sh.run_sherlock("jdoe", **ADULT_PASS))                 # nothing on record
+    assert out["error_code"] == "mainstream_first" and out["error"] == adult_guard.MAINSTREAM_MESSAGE and out["results"] == []
+    ran("jdoe", BLOCKING)
+    out = asyncio.run(sh.run_sherlock("jdoe", **ADULT_PASS))
+    assert out["error_code"] == "minor_guard" and out["error_detail"] == adult_guard.CONTENT_REASONS["age"]
+    assert (out["block_kind"], out["block_source"], out["block_snippet"]) == ("age", "GitHub", BLOCKING) and out["nsfw"] is False
 
 
 def test_sherlock_does_not_run_without_its_installed_site_list(monkeypatch):
@@ -189,16 +236,18 @@ def test_sherlock_module_refuses_a_minor_handle_before_starting_the_tool(monkeyp
     async def never(*a, **k):
         raise AssertionError("sherlock was started")
     monkeypatch.setattr(sh.asyncio, "create_subprocess_exec", never)
-    out = asyncio.run(sh.run_sherlock("jake13", nsfw=True))
+    ran("jake_13yo")
+    out = asyncio.run(sh.run_sherlock("jake_13yo", **ADULT_PASS))
     assert out["error_code"] == "minor_guard" and out["results"] == [] and out["nsfw"] is False
-    assert out["error_detail"] == adult_guard.REASONS["number"]
+    assert out["error_detail"] == adult_guard.REASONS["age"]
 
 
 def test_sherlock_failures_still_say_which_mode_ran(monkeypatch):
     async def missing(*a, **k):
         raise FileNotFoundError("sherlock")
     monkeypatch.setattr(sh.asyncio, "create_subprocess_exec", missing)
-    out = asyncio.run(sh._run_sherlock_impl("jdoe", nsfw=True))
+    ran()
+    out = asyncio.run(sh._run_sherlock_impl("jdoe", **ADULT_PASS))
     assert out["error_code"] == "not_installed" and out["nsfw"] is True
 
 
@@ -294,58 +343,71 @@ def test_maigret_without_the_opt_in_runs_one_pass_that_excludes_every_adult_tag(
     assert "adult_error" not in out and "error" not in out
 
 
-def test_maigret_with_the_opt_in_adds_an_adult_pass_over_the_full_tag_list(monkeypatch):
-    out, seen = run_maigret(monkeypatch, nsfw=True)
-    assert len(seen) == 2
-    normal, adult = seen
-    # the normal pass is exactly what runs without the opt-in
-    assert normal == mm.build_command("jdoe", option(normal, "--folderoutput"))
-    assert "--exclude-tags" in normal and "--tags" not in normal and option(normal, "--top-sites") == "500"
+def test_the_maigret_adult_pass_runs_only_the_adult_command(monkeypatch):
+    ran()
+    out, seen = run_maigret(monkeypatch, **ADULT_PASS)
+    assert len(seen) == 1                                           # the normal pass is not run again
+    adult = seen[0]
     # the adult pass: only the adult tags, every site that carries one, not the top 500
+    assert adult == mm.build_adult_command("jdoe", option(adult, "--folderoutput"))
     assert ADULT_TAGS <= set(option(adult, "--tags").split(","))
     assert "--all-sites" in adult and "--top-sites" not in adult and "--exclude-tags" not in adult and "--print-errors" in adult
     assert "--use-disabled-sites" not in adult and adult[-2:] == ["--", "jdoe"]
-    for argv in seen:                                               # the limits both passes share
-        assert option(argv, "--timeout") == "10" and "--no-recursion" in argv and option(argv, "-J") == "simple"
+    assert option(adult, "--timeout") == "10" and "--no-recursion" in adult and option(adult, "-J") == "simple"
 
     by = {r["site"]: r for r in out["results"]}
-    assert set(by) == {"GitHub", "Facebook", "Tinder", "Leaky", "Fansly", "Xvideos", "ChaturBate", "RamblerDating", "massagerepublic.com"}
-    assert "Stray" not in by and "Gone" not in by
-    for site in ("Xvideos", "ChaturBate", "RamblerDating", "massagerepublic.com", "Tinder", "Leaky", "Fansly"):
-        assert by[site]["adult"] is True and by[site]["category"] in ("adult", "dating"), site
-    assert {s: by[s]["category"] for s in ("Xvideos", "ChaturBate", "massagerepublic.com", "RamblerDating", "Tinder", "Leaky", "Fansly")} == {
-        "Xvideos": "adult", "ChaturBate": "adult", "massagerepublic.com": "adult", "RamblerDating": "dating", "Tinder": "dating",
-        "Leaky": "adult", "Fansly": "adult"}
-    assert "adult" not in by["GitHub"] and by["GitHub"]["category"] == "coding"
+    assert set(by) == {"Xvideos", "ChaturBate", "RamblerDating", "massagerepublic.com"}
+    assert "Stray" not in by and "Gone" not in by and "GitHub" not in by
+    assert {s: (by[s]["adult"], by[s]["category"]) for s in by} == {
+        "Xvideos": (True, "adult"), "ChaturBate": (True, "adult"), "massagerepublic.com": (True, "adult"), "RamblerDating": (True, "dating")}
     # text metadata only: name, join date, follower count and a plain bio
     assert by["Xvideos"]["profile"] == {"name": "Sam Example", "created_at": "2013-07-21 00:00:00 UTC", "followers": 5224}
     assert by["ChaturBate"]["profile"] == {"name": "Sam", "bio": "Just here to chat."}
     assert by["Xvideos"]["verified"] is True and by["RamblerDating"]["verified"] is False and "profile" not in by["RamblerDating"]
-    adult_rows = [r for r in out["results"] if r.get("adult")]
-    assert media_leaks(adult_rows) == [] and "cdn.example/x" not in json.dumps(adult_rows) and "cdn.example/c" not in json.dumps(adult_rows)
-    for r in adult_rows:
+    assert media_leaks(out["results"]) == [] and "cdn.example" not in json.dumps(out["results"])
+    for r in out["results"]:
         assert set(r) <= {"site", "url", "confidence", "category", "verified", "adult", "profile"}
         assert set(r.get("profile", {})) <= {"name", "created_at", "followers", "bio"}
-    # the normal rows are untouched (the avatar matcher still needs their picture)
-    assert by["GitHub"]["profile"]["image"] == "https://cdn.example/gh.png"
 
-    assert (out["nsfw"], out["sites_checked"], out["adult_checked"]) == (True, 508 + 66, 66)
+    assert (out["nsfw"], out["sites_checked"], out["adult_checked"]) == (True, 66, 66)
     assert out["adult_errors"] == ["Livejasmin", "massagerepublic.example", "Dating.Ru"]        # a "[?] name: url" line is a similar-name hit, not an error
-    assert "adult_error" not in out and out["total"] == len(out["results"]) == 9 and out["verified"] == 3
+    assert "adult_error" not in out and "error" not in out and out["total"] == len(out["results"]) == 4 and out["verified"] == 2
 
 
-def test_a_failed_adult_pass_keeps_the_normal_pass(monkeypatch):
-    out, seen = run_maigret(monkeypatch, nsfw=True, adult_hangs=True, adult_timeout=0.2)
-    assert len(seen) == 2
-    kept = {"GitHub", "Facebook", "Tinder", "Leaky", "Fansly"}                  # everything the normal pass returned
-    assert {r["site"] for r in out["results"]} == kept and out["results"][0]["site"] == "GitHub"
-    assert (out["total"], out["verified"], out["sites_checked"], out["adult_checked"], out["adult_errors"]) == (5, 1, 508, 0, [])
-    assert (out["adult_error_code"], out["adult_error"]) == ("timeout", "Maigret ran out of time. Partial results were discarded.")
-    assert "adult_error_detail" in out and "error" not in out and "error_code" not in out and out["nsfw"] is True
+def test_the_ordinary_maigret_run_drops_adult_rows_and_keeps_the_picture_for_the_avatar_check(monkeypatch):
+    out, seen = run_maigret(monkeypatch)
+    assert len(seen) == 1 and seen[0] == mm.build_command("jdoe", option(seen[0], "--folderoutput"))
+    by = {r["site"]: r for r in out["results"]}
+    assert set(by) == {"GitHub", "Facebook"} and by["GitHub"]["profile"]["image"] == "https://cdn.example/gh.png"
 
-    out, _ = run_maigret(monkeypatch, nsfw=True, adult_missing=True)
-    assert {r["site"] for r in out["results"]} == kept
-    assert out["adult_error_code"] == "unreachable" and out["adult_error_detail"] == "OSError" and "error" not in out
+
+def test_a_failed_adult_pass_is_a_failure_of_that_pass_alone(monkeypatch):
+    ran()
+    out, seen = run_maigret(monkeypatch, adult_hangs=True, adult_timeout=0.2, **ADULT_PASS)
+    assert len(seen) == 1 and out["results"] == [] and out["nsfw"] is True
+    assert (out["total"], out["verified"], out["sites_checked"], out["adult_checked"], out["adult_errors"]) == (0, 0, 0, 0, [])
+    assert (out["error_code"], out["error"]) == (out["adult_error_code"], out["adult_error"]) == ("timeout", "Maigret ran out of time. Partial results were discarded.")
+    assert "adult_error_detail" in out
+
+    out, _ = run_maigret(monkeypatch, adult_missing=True, **ADULT_PASS)
+    assert out["results"] == [] and out["adult_error_code"] == out["error_code"] == "unreachable" and out["adult_error_detail"] == "OSError"
+
+
+def test_maigret_never_mixes_adult_sites_into_an_ordinary_run(monkeypatch):
+    async def never(*a, **k):
+        raise AssertionError("maigret was started")
+    monkeypatch.setattr(mm, "MAIGRET_AVAILABLE", True)
+    monkeypatch.setattr(mm.asyncio, "create_subprocess_exec", never)
+    ran()
+    for kwargs in ({"nsfw": True}, {"adult_only": True}, {"nsfw": True, "adult_only": "yes"}):
+        out = asyncio.run(mm.run_maigret("jdoe", **kwargs))
+        assert out["error_code"] == "adult_pass" and out["results"] == [] and out["nsfw"] is False, kwargs
+    # and the adult pass waits for the ordinary sources and for a clean profile check
+    profile_record.clear()
+    assert asyncio.run(mm.run_maigret("jdoe", **ADULT_PASS))["error_code"] == "mainstream_first"
+    ran("jdoe", BLOCKING)
+    out = asyncio.run(mm.run_maigret("jdoe", **ADULT_PASS))
+    assert out["error_code"] == "minor_guard" and (out["block_source"], out["block_snippet"]) == ("GitHub", BLOCKING)
 
 
 def test_the_adult_pass_has_its_own_time_limit_inside_the_one_tool_slot():
@@ -364,8 +426,10 @@ def test_maigret_opt_in_must_be_exactly_true_and_a_minor_handle_never_starts_it(
     async def never(*a, **k):
         raise AssertionError("maigret was started")
     monkeypatch.setattr(mm.asyncio, "create_subprocess_exec", never)
-    out = asyncio.run(mm.run_maigret("born2012", nsfw=True))
+    ran("sam_14yo")
+    out = asyncio.run(mm.run_maigret("sam_14yo", **ADULT_PASS))
     assert out["error_code"] == "minor_guard" and out["results"] == [] and out["nsfw"] is False
+    assert out["error_detail"] == adult_guard.REASONS["age"]
 
 
 def test_maigret_itself_selects_no_adult_site_for_the_normal_pass_and_only_adult_sites_for_the_adult_pass():
@@ -458,14 +522,17 @@ def spy(monkeypatch):
     return calls
 
 
-@pytest.mark.parametrize("handle", ["jake13", "born2012", "17f", "schoolgirl", "teen_16", "k1d"])
-def test_every_adult_path_answers_400_minor_guard(c, monkeypatch, handle):
+ADULT_PATHS = (("/api/recon/sherlock", ADULT_PASS), ("/api/recon/maigret", ADULT_PASS), ("/api/recon/adult-check", {}))
+
+
+@pytest.mark.parametrize("handle", ["jake_13yo", "15yo_alex", "age14jay", "x_age_16", "underage_sam", "pr3t33n"])
+def test_every_adult_path_answers_400_minor_guard_for_a_handle_token(c, monkeypatch, handle):
     calls = spy(monkeypatch)
+    ran(handle, client="testclient")                                # even with the ordinary sources on record
     reason = adult_guard.minor_indicated(handle)
-    for path, body in (("/api/recon/sherlock", {"username": handle, "nsfw": True}),
-                       ("/api/recon/maigret", {"username": handle, "nsfw": True}),
-                       ("/api/recon/adult-check", {"username": handle})):
-        r = c.post(path, json=body)
+    assert reason in (adult_guard.REASONS["age"], adult_guard.REASONS["word"])
+    for path, extra in ADULT_PATHS:
+        r = c.post(path, json={"username": handle, **extra})
         got = r.json()
         assert r.status_code == 400, path
         assert (got["error_code"], got["code"], got["error_detail"], got["reason"]) == ("minor_guard", "minor_guard", reason, reason), path
@@ -473,38 +540,128 @@ def test_every_adult_path_answers_400_minor_guard(c, monkeypatch, handle):
     assert calls == []                                              # nothing was run
 
 
-def test_without_the_opt_in_nothing_changes_for_any_handle(c, monkeypatch):
+@pytest.mark.parametrize("handle", ["gamer13", "sk8r_15", "10outof10", "err0ric17", "mike1999", "mike2010", "emma09", "user2012", "apollo13", "kidrock", "canteen"])
+def test_a_bare_number_or_an_ordinary_word_in_the_handle_no_longer_refuses_any_path(c, monkeypatch, handle):
+    calls = spy(monkeypatch)
+    ran(handle, client="testclient")
+    for path, extra in ADULT_PATHS:
+        assert c.post(path, json={"username": handle, **extra}).status_code == 200, path
+    assert [n for n, _, _ in calls] == ["sherlock", "maigret", "adult-check"]
+
+
+def test_a_direct_call_to_an_adult_path_with_nothing_on_record_is_refused_and_makes_no_request(c, monkeypatch):
     calls = spy(monkeypatch)
     no_adult_check(monkeypatch)
-    for handle in ("jake13", "torvalds"):
+    for path, extra in ADULT_PATHS:
+        r = c.post(path, json={"username": "torvalds", **extra})
+        got = r.json()
+        assert r.status_code == 409, path
+        assert got["error_code"] == got["code"] == "mainstream_first" and got["detail"] == got["error"] == adult_guard.MAINSTREAM_MESSAGE
+    assert calls == []
+
+
+def test_the_ordinary_routes_put_the_handle_on_record_and_then_the_adult_pass_runs(c, monkeypatch):
+    calls = spy(monkeypatch)
+    assert c.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 409
+    assert c.post("/api/recon/sherlock", json={"username": "Torvalds"}).status_code == 200       # the ordinary run, through the real router
+    profile_record.bind("testclient")
+    assert profile_record.completed("torvalds") == ["sherlock"]
+    # Another caller's run is not this caller's record.
+    profile_record.bind("")
+    profile_record.note("someone_elses_case", "sherlock", {"results": []})
+    assert c.post("/api/recon/adult-check", json={"username": "someone_elses_case"}).status_code == 409
+    for path, extra in ADULT_PATHS:
+        assert c.post(path, json={"username": "@torvalds", **extra}).status_code == 200, path
+    assert calls == [("sherlock", "Torvalds", {}), ("sherlock", "torvalds", ADULT_PASS), ("maigret", "torvalds", ADULT_PASS), ("adult-check", "torvalds", {})]
+    # A source that failed is not a completed run.
+    profile_record.clear()
+
+    async def failing(username, **kw):
+        return {"username": username, "results": [], "error": "x", "error_code": "timeout"}
+    monkeypatch.setattr(recon, "run_maigret", failing)
+    assert c.post("/api/recon/maigret", json={"username": "torvalds"}).status_code == 200
+    assert c.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 409
+
+
+@pytest.mark.parametrize("route,runner,answer,site", [
+    ("/api/recon/enrich", "run_enricher", {"profiles": [{"platform": "Instagram", "url": "https://www.instagram.com/river_stone/", "display_name": "River", "bio": BLOCKING}]}, "Instagram"),
+    ("/api/recon/maigret", "run_maigret", {"results": [{"site": "Gitlab", "url": "https://gitlab.com/river_stone", "verified": True, "confidence": "normal", "profile": {"name": "River", "bio": BLOCKING}}]}, "Gitlab"),
+    ("/api/recon/platform-check", "run_platform_check", {"results": [{"platform": "Reddit", "state": "found", "url": "https://www.reddit.com/user/river_stone", "display_name": "", "bio": BLOCKING}]}, "Reddit"),
+    ("/api/recon/github", "run_github", {"found": True, "profile_url": "https://github.com/river_stone", "name": "River", "bio": BLOCKING}, "GitHub"),
+])
+def test_a_direct_call_to_the_adult_pass_with_a_blocking_bio_on_record_is_refused(c, monkeypatch, route, runner, answer, site):
+    calls = spy(monkeypatch)
+    no_adult_check(monkeypatch)
+
+    async def source(username, *a, **kw):
+        return answer
+    monkeypatch.setattr(recon, runner, source)
+    assert c.post("/api/recon/sherlock", json={"username": "river_stone"}).status_code == 200
+    assert c.post(route, json={"username": "river_stone"}).status_code == 200                 # the server keeps what it returned
+    calls.clear()
+    for path, extra in ADULT_PATHS:
+        r = c.post(path, json={"username": "River_Stone", **extra})
+        got = r.json()
+        assert r.status_code == 400 and got["error_code"] == got["code"] == "minor_guard", path
+        assert (got["kind"], got["source"], got["snippet"]) == ("age", site, BLOCKING) and got["reason"] == adult_guard.CONTENT_REASONS["age"]
+        assert "river" not in got["reason"].lower() and len(got["snippet"]) <= 60
+    assert calls == []
+
+
+def test_the_owner_cases_through_the_real_routes(c, monkeypatch):
+    calls = spy(monkeypatch)
+    bio = {"text": "Go and Rust. Coffee."}
+
+    async def github(username, **kw):
+        return {"found": True, "profile_url": f"https://github.com/{username}", "name": "", "bio": bio["text"]}
+    monkeypatch.setattr(recon, "run_github", github)
+    status = lambda handle: c.post("/api/recon/adult-check", json={"username": handle}).status_code
+    # mike2010 with a clean bio runs; with "class of 2029" it blocks (a weak signal plus the year in the handle)
+    c.post("/api/recon/github", json={"username": "mike2010"})
+    assert status("mike2010") == 200
+    bio["text"] = "class of 2029"
+    c.post("/api/recon/github", json={"username": "mike2010"})
+    r = c.post("/api/recon/adult-check", json={"username": "mike2010"})
+    assert r.status_code == 400 and (r.json()["kind"], r.json()["snippet"]) == ("soft", "class of 2029")
+    # the same bio under a handle with no year runs; with a school name it blocks
+    c.post("/api/recon/github", json={"username": "river_stone"})
+    assert status("river_stone") == 200
+    bio["text"] = "class of 2029 \u00b7 Lincoln High"
+    c.post("/api/recon/github", json={"username": "river_stone"})
+    assert status("river_stone") == 400
+
+
+def test_nsfw_without_adult_only_is_refused_and_nothing_else_changes_an_ordinary_run(c, monkeypatch):
+    calls = spy(monkeypatch)
+    no_adult_check(monkeypatch)
+    ran("torvalds", client="testclient")
+    for path in ("/api/recon/sherlock", "/api/recon/maigret"):
+        for body in ({"nsfw": True}, {"adult_only": True}, {"nsfw": True, "adult_only": False}):
+            r = c.post(path, json={"username": "torvalds", **body})
+            assert r.status_code == 400 and r.json()["detail"] == adult_guard.PASS_MESSAGE, (path, body)
+    assert calls == []
+    for handle in ("jake_13yo", "torvalds"):
         assert c.post("/api/recon/sherlock", json={"username": handle}).status_code == 200
         assert c.post("/api/recon/maigret", json={"username": handle}).status_code == 200
-        assert c.post("/api/recon/maigret", json={"username": handle, "nsfw": False}).status_code == 200
-    assert [(n, u, kw) for n, u, kw in calls] == [
-        ("sherlock", "jake13", {"nsfw": False}), ("maigret", "jake13", {"nsfw": False}), ("maigret", "jake13", {"nsfw": False}),
-        ("sherlock", "torvalds", {"nsfw": False}), ("maigret", "torvalds", {"nsfw": False}), ("maigret", "torvalds", {"nsfw": False})]
-    assert not any(n == "adult-check" for n, _, _ in calls)
-
-
-def test_the_opt_in_reaches_the_tools_for_an_ordinary_handle(c, monkeypatch):
-    calls = spy(monkeypatch)
-    assert c.post("/api/recon/sherlock", json={"username": "torvalds", "nsfw": True}).status_code == 200
-    assert c.post("/api/recon/maigret", json={"username": "@torvalds", "nsfw": True}).status_code == 200
-    assert c.post("/api/recon/adult-check", json={"username": "torvalds"}).status_code == 200
-    assert calls == [("sherlock", "torvalds", {"nsfw": True}), ("maigret", "torvalds", {"nsfw": True}), ("adult-check", "torvalds", {})]
+        assert c.post("/api/recon/maigret", json={"username": handle, "nsfw": False, "adult_only": False}).status_code == 200
+    assert calls == [("sherlock", "jake_13yo", {}), ("maigret", "jake_13yo", {}), ("maigret", "jake_13yo", {}),
+                     ("sherlock", "torvalds", {}), ("maigret", "torvalds", {}), ("maigret", "torvalds", {})]
     # the handle is validated before the guard and before any tool
-    for path in ("/api/recon/sherlock", "/api/recon/maigret", "/api/recon/adult-check"):
-        assert c.post(path, json={"username": "--proxy", "nsfw": True}).status_code == 400
-        assert c.post(path, json={"username": "a b", "nsfw": True}).json().get("error_code") != "minor_guard"
-    assert len(calls) == 3
+    for path, extra in ADULT_PATHS:
+        assert c.post(path, json={"username": "--proxy", **extra}).status_code == 400
+        assert c.post(path, json={"username": "a b", **extra}).json().get("error_code") != "minor_guard"
+    assert len(calls) == 6
 
 
 def test_the_guard_cannot_be_switched_off_by_a_request(c, monkeypatch):
     calls = spy(monkeypatch)
-    for extra in ({"force": True}, {"override": True}, {"skip_guard": True}, {"adult_confirmed": True}, {"age_verified": True}):
-        for path in ("/api/recon/sherlock", "/api/recon/maigret", "/api/recon/adult-check"):
-            r = c.post(path, json={"username": "jake13", "nsfw": True, **extra}, headers={"X-Force": "1", "X-Adult-Override": "true"})
-            assert r.status_code == 400 and r.json()["error_code"] == "minor_guard", (path, extra)
+    ran("jake_13yo", client="testclient")
+    ran("river_stone", BLOCKING, client="testclient")
+    for extra in ({"force": True}, {"override": True}, {"skip_guard": True}, {"adult_confirmed": True}, {"age_verified": True}, {"mainstream": True}):
+        for path, body in ADULT_PATHS:
+            for handle, status, code in (("jake_13yo", 400, "minor_guard"), ("river_stone", 400, "minor_guard"), ("nobody_ran_this", 409, "mainstream_first")):
+                r = c.post(path, json={"username": handle, **body, **extra}, headers={"X-Force": "1", "X-Adult-Override": "true"})
+                assert r.status_code == status and r.json()["error_code"] == code, (path, extra, handle)
     assert calls == []
 
 

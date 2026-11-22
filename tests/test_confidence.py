@@ -88,22 +88,22 @@ def test_adult_sites_are_excluded_by_default(monkeypatch):
     assert "--tags" not in argv and "!nsfw" not in argv     # the old filter matched no sites at all
 
 
-def test_adult_opt_in_keeps_the_normal_pass_and_adds_a_pass_restricted_to_the_adult_tags(monkeypatch):
+def test_the_adult_pass_is_its_own_run_restricted_to_the_adult_tags(monkeypatch):
+    from core import profile_record
     sensitive = {"porn", "erotic", "webcam", "dating", "nsfw"}
     _run_maigret(monkeypatch)
-    default_argv = _LAST["all"]
-    assert len(default_argv) == 1                            # no opt-in, one command
-    _run_maigret(monkeypatch, nsfw=True)                     # explicit opt-in
-    normal, adult = _LAST["all"]
-    # the normal pass is the same command, still excluding every adult tag
-    strip = lambda argv: [a for i, a in enumerate(argv) if argv[i - 1] != "--folderoutput"]
-    assert strip(normal) == strip(default_argv[0])
+    (normal,) = _LAST["all"]                                 # the ordinary run: one command
     assert set(normal[normal.index("--exclude-tags") + 1].split(",")) == sensitive and "--tags" not in normal
     assert normal[normal.index("--top-sites") + 1] == "500" and "--all-sites" not in normal
+    profile_record.clear()
+    profile_record.note("jdoe", "maigret", {"results": []})   # the ordinary run is on record
+    _run_maigret(monkeypatch, nsfw=True, adult_only=True)    # the adult pass, after it
+    (adult,) = _LAST["all"]                                  # one command again: the normal pass is not repeated
     # the adult pass is the one restricted to those tags, over the whole site list
     assert set(adult[adult.index("--tags") + 1].split(",")) == sensitive
     assert "--exclude-tags" not in adult and "--all-sites" in adult and "--top-sites" not in adult
     assert normal[-2:] == adult[-2:] == ["--", "jdoe"]
+    profile_record.clear()
 
 
 def test_adult_sites_default_is_off_at_every_layer():

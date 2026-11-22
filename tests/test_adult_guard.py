@@ -1,173 +1,355 @@
-"""The minor guard and the text-only output rules for adult rows. No network."""
+"""The minor guard (the handle check, the content check, the gate in front of every adult pass)
+and the text-only output rules for adult rows. No network.
 
+The rules themselves are in static/v2/data/minor-rules.json; the fixtures are in
+tests/fixtures/minor and are also run through the JavaScript engine (test_minor_parity.py)."""
+
+import inspect
+import json
+import logging
 from datetime import date
+from pathlib import Path
 
 import pytest
 
 from core import adult_guard as ag
+from core import minor_rules as mr
+from core import profile_record as pr
+
+FIX = Path(__file__).parent / "fixtures" / "minor"
+HANDLES = json.loads((FIX / "handles.json").read_text(encoding="utf-8"))
+BIOS = json.loads((FIX / "bios.json").read_text(encoding="utf-8"))
+TODAY = date(2026, 11, 22)
 
 
 @pytest.fixture(autouse=True)
-def _pin_today(monkeypatch):
-    # The year rules are relative to today. Pin it so the cases below do not age.
-    monkeypatch.setattr(ag, "_today", lambda: date(2026, 11, 14))
+def _pin(monkeypatch):
+    # Everything that depends on today is relative to this date, so the cases do not age.
+    monkeypatch.setattr(ag, "_today", lambda: TODAY)
+    pr.clear()
+    yield
+    pr.clear()
 
 
-MUST_BLOCK = [
-    # a stated age next to an age word, any order, any separator
-    "13yo", "sam13yo", "15_yo", "15-yo", "jess.16.yo", "14yrs", "14yr", "16yearsold", "12_years_old", "9yo", "13y.o",
-    "age14", "aged15", "age_16", "my.age.17", "myage14", "im16", "im_15", "iam17", "i_am_13", "under18", "u18",
-    # an age next to a gender letter
-    "17f", "16m", "f15", "m16", "anna_17f", "15.f", "f_14", "m-17", "x_16m",
-    # written out
-    "sixteen", "sweet_sixteen", "thirteen", "fourteen", "fifteen", "seventeen", "s1xteen", "twelveyo", "age_eleven",
-    # a year that makes the person under 18 in 2026
-    "born2012", "2011baby", "_2010", "sam_2010", "2013", "amy2013", "2013amy", "x2009x", "kay.2008", "born_2015", "jo2020", "2020",
-    # a year from the last five blocks only next to a birth marker
-    "born2025", "born_2024", "2023baby", "2022_baby", "bday2021", "birthday.2026", "b.2024", "b_2023", "2025born", "sam_b.2022",
-    "classof2028", "class_of_2027", "co2029",
-    # two-digit birth years with a leading zero at either end (2008 and 2009 in 2026)
-    "emma09", "08emma", "liz_08", "09.sam", "kay-09",
-    # two digits next to a birth marker, whatever the year in the last 18
-    "born09", "born_08", "born19", "baby24", "bday.12", "b.09", "14born", "born26",
-    # "2k" years
-    "2k9", "2k09", "emma_2k10", "sam2k08", "2k20liz", "nba2k16",
-    # two-digit class years, this year or later
-    "classof27", "class_of_26", "co27", "c.o.30", "classof41",
-    # grades 1 to 5 and ordinals, UK school years
-    "grade_5", "5thgrade", "grade1", "1stgrade", "2nd_grade", "3rdgrader", "fifthgrade", "first_grade",
-    "year7", "year_11", "yr9", "sam.yr10", "year8girl",
-    # an age after a word that announces one, with or without a letter after it
-    "turning15", "almost16x", "only_14", "just13b", "barely17", "age15x", "im16b", "aged_14k", "i_am_13lol", "myage15z",
-    "quinceanera", "misquinceanos",
-    # a bare number from 10 to 17 at either end
-    "jake13", "15jake", "lily_10", "17.max", "emma17", "_12_", "apollo13",
-    # school and minor words
-    "minor", "im_a_minor", "underage", "preteen", "tween", "kid", "coolkid", "the_kid", "child", "wildchild",
-    "schoolgirl", "school_girl", "schoolboy", "highschool", "high.school.guy", "middleschool", "freshman", "sophomore",
-    "loli", "shota", "jailbait", "juniorhigh",
-    "grade6", "grade_12", "7thgrade", "9th_grade", "8grader", "grader10", "sixthgrade",
-    "teen", "teengirl", "teen17", "teen_16", "justateen", "teenager", "teen2019",
-    # digits used as letters, and separators inside the word
-    "k1d", "k.i.d", "m1n0r", "l0li", "l0l1", "t33n", "7een", "ch1ld", "sch00lgirl", "j41lb41t", "5hota",
-    # case and a leading @ make no difference
-    "Teen", "@Jake13", "BORN2012", "17F",
-]
+# ---- stage 1: the handle ---------------------------------------------------------------
 
-MUST_NOT_BLOCK = [
-    "torvalds", "Err0ric", "user1999", "agent47", "r2d2", "x86_64", "john1985", "route66", "studio54", "2fast", "catch22",
-    "teen19", "teen18", "teens18", "teenager19",
-    "eighteen", "nineteen", "e1ghteen",
-    "jane_doe", "a", "x", "0", "007", "h4x0r", "l33t", "neo", "max_power", "dr.who", "2pac", "50cent", "blink182", "sum41",
-    "user2007", "born1990", "1985baby", "sam_2000",
-    "user2025", "john2024", "jo2026", "2025", "sam_2021", "x2022x", "est2024", "est.2023", "since2025", "web2023", "bob2024", "b2024", "20071", "120100", "y2k", "mp3", "win95", "ps5", "area51",
-    "18f", "f18", "m21", "25m", "f1", "m3", "m4a1", "2m", "5g", "24yo", "30yrs", "age18", "age21", "im18", "im_30",
-    "page3", "stage4", "f150", "m1911", "x_16bit_x", "x_64bit",
-    "between", "inbetween", "upgrade7", "classof1999", "class_of_2005",
-    "1017", "x1700", "100", "170", "18", "19", "99", "user18", "18user",
-    "kind", "kindred", "mentor", "lola", "shot", "tennis",
-    # two-digit years that are adults: 2000 to 2007 with a zero, and anything read as an age of 18 or more
-    "emma07", "06emma", "liz_05", "00sam", "agent_07", "emma18", "emma19", "20emma", "sam_21", "liz26", "emma99", "85sam",
-    "born05", "born99", "baby85", "born_07", "b.90", "2k24", "nba2k24", "sam2k07", "2k", "y2k", "2k5",
-    "classof25", "co99", "class_of_05", "co2", "disco27", "retrograde5", "upgrade3",
-    "year2000", "year1", "year6", "newyear7", "yr2", "goodyear9",
-    "turning18", "almost21", "just1", "only2", "barely18", "quince",
-]
+# The owner's examples that must block, and the handles that must run.
+OWNER_BLOCK = ["14yo", "15y/o", "15_y_o", "age16", "16yrs", "16yrsold", "13yearsold", "15yo_alex", "age14jay"]
+OWNER_RUN = ["gamer13", "sk8r_15", "10outof10", "err0ric17", "team14", "1337", "2015ford", "mike1999", "mike2010"]
+# Handles the old rules refused and the new ones do not: a bare number, a year, a school word.
+NO_LONGER_BLOCKED = ["emma09", "user2012", "apollo13", "kidrock", "canteen", "jake13", "15jake", "anna15", "born2012", "classof2029", "2k10",
+                     "year9", "grade7", "sixteen", "teen", "minor", "kid", "schoolgirl", "f15", "m16", "im16", "turning15", "17f", "u18", "under18", "yo15", "15y", "y15"]
 
 
-@pytest.mark.parametrize("handle", MUST_BLOCK)
-def test_handles_that_suggest_a_minor_are_blocked(handle):
-    reason = ag.minor_indicated(handle)
-    assert reason in ag.REASONS.values(), handle
+@pytest.mark.parametrize("handle", OWNER_BLOCK + ["9yo", "017yo", "user15yo", "x_age_16", "aged15", "age_14", "@15yo_Alex", "AGE14JAY"])
+def test_an_explicit_age_under_18_in_the_handle_blocks(handle):
+    assert ag.minor_indicated(handle) == ag.REASONS["age"], handle
 
 
-@pytest.mark.parametrize("handle", MUST_NOT_BLOCK)
-def test_ordinary_handles_are_not_blocked(handle):
+@pytest.mark.parametrize("handle", ["underage", "preteen", "jailbait", "j41lb41t", "pr3t33n", "und3rage", "pre.teen", "under_age"])
+def test_three_words_block_with_digits_read_as_letters(handle):
+    assert ag.minor_indicated(handle) == ag.REASONS["word"], handle
+
+
+@pytest.mark.parametrize("handle", OWNER_RUN + NO_LONGER_BLOCKED + ["page14", "stage15", "image16", "18yo", "21yo", "15yoga", "15yogurt", "16years_of_code", "thunderage", "age160", "age18", "100yo"])
+def test_a_bare_number_or_an_ordinary_word_never_blocks(handle):
     assert ag.minor_indicated(handle) is None, (handle, ag.minor_indicated(handle))
 
 
-@pytest.mark.parametrize("handle,key", [
-    ("13yo", "age"), ("f15", "age"), ("under18", "age"), ("born2012", "birth_year"), ("classof2028", "class_year"),
-    ("jake13", "number"), ("schoolgirl", "word"), ("teen", "word"), ("sixteen", "word"), ("grade7", "word"),
-])
-def test_the_reason_says_which_rule_fired(handle, key):
-    assert ag.minor_indicated(handle) == ag.REASONS[key]
+@pytest.mark.parametrize("case", HANDLES["cases"], ids=lambda c: c["handle"] or "empty")
+def test_every_fixture_handle(case):
+    assert mr.load().handle_token(case["handle"]) == case["token"], case
+    assert ag.minor_indicated(case["handle"]) == (ag.REASONS[case["token"]] if case["token"] else None)
 
 
-def test_the_reason_is_a_fixed_sentence_that_never_repeats_the_handle():
-    assert {ag.minor_indicated(h) for h in MUST_BLOCK} == set(ag.REASONS.values())
-    assert all("{" not in r and "%" not in r for r in ag.REASONS.values())
-    assert "zq9" not in ag.minor_indicated("zq9_kid_zq9")
+def test_the_fixture_holds_both_directions():
+    tokens = [c["token"] for c in HANDLES["cases"]]
+    assert tokens.count("age") >= 25 and tokens.count("word") >= 8 and tokens.count(None) >= 60
 
 
-def test_the_year_rule_follows_the_calendar(monkeypatch):
-    # In 2026 someone born in 2008 may still be 17, and someone born in 2007 is an adult.
-    assert ag.minor_indicated("sam_2008") == ag.REASONS["birth_year"]
-    assert ag.minor_indicated("sam_2007") is None
-    # Nothing is hard-coded: five years on, 2012 is the last year that is blocked.
+def test_the_reason_is_a_fixed_sentence_that_never_repeats_the_handle_or_mentions_a_number_in_it():
+    assert {ag.minor_indicated(c["handle"]) for c in HANDLES["cases"] if c["token"]} == {ag.REASONS["age"], ag.REASONS["word"]}
+    for text in [*ag.REASONS.values(), *ag.CONTENT_REASONS.values(), ag.MESSAGE, ag.MAINSTREAM_MESSAGE]:
+        assert "{" not in text and "%" not in text
+        assert "number" not in text.lower() and "starts or ends" not in text and "10 to 17" not in text, text
+    assert "zq9" not in ag.minor_indicated("zq9_15yo_zq9")
+
+
+def test_the_soft_birth_year_follows_the_calendar(monkeypatch):
+    for case in HANDLES["soft"]:
+        assert ag.soft_birth_year(case["handle"]) == case["soft"], case
+    # 2026: someone born in 2008 may still be 17, and 2020 is six years back.
+    assert ag.soft_birth_year("mike2008") == 2008 and ag.soft_birth_year("mike2007") is None
+    assert ag.soft_birth_year("mike2020") == 2020 and ag.soft_birth_year("mike2021") is None
+    # It never blocks by itself.
+    assert all(ag.minor_indicated(c["handle"]) is None for c in HANDLES["soft"])
+    # Nothing is hard-coded: five years on the window has moved with the date.
     monkeypatch.setattr(ag, "_today", lambda: date(2031, 1, 1))
-    assert ag.minor_indicated("sam_2008") is None and ag.minor_indicated("sam_2012") is None
-    assert ag.minor_indicated("sam_2013") == ag.REASONS["birth_year"]
-    assert ag.minor_indicated("classof2031") == ag.REASONS["class_year"]
-    monkeypatch.setattr(ag, "_today", lambda: date(2050, 6, 1))
-    assert ag.minor_indicated("classof2028") is None and ag.minor_indicated("born2012") is None
-
-
-def test_a_recent_year_needs_a_birth_marker():
-    # 2026: ages 6 to 17 are the years 2009 to 2020, and 2008 may still be 17.
-    for year in range(2008, 2021):
-        assert ag.minor_indicated(f"sam_{year}") == ag.REASONS["birth_year"], year
-    for year in range(2021, 2027):
-        assert ag.minor_indicated(f"sam_{year}") is None and ag.minor_indicated(f"{year}sam") is None, year
-        assert ag.minor_indicated(f"born{year}") == ag.minor_indicated(f"{year}_baby") == ag.REASONS["birth_year"], year
-    assert ag.minor_indicated("born2027") is None and ag.minor_indicated("born1990") is None
-    assert ag.minor_indicated("est2024") is None and ag.minor_indicated("bob2024") is None      # "est" and a name ending in b are not markers
-
-
-def test_short_years_follow_the_calendar(monkeypatch):
-    assert ag.minor_indicated("emma09") == ag.minor_indicated("2k09") == ag.minor_indicated("born09") == ag.REASONS["birth_year"]
-    assert ag.minor_indicated("classof27") == ag.minor_indicated("co27") == ag.REASONS["class_year"]
-    assert ag.minor_indicated("year9") == ag.minor_indicated("grade_3") == ag.REASONS["word"]
-    assert ag.minor_indicated("turning15") == ag.REASONS["age"]
-    # 2030: 2009 is 21, 2008 is 22, and classof27 has passed
-    monkeypatch.setattr(ag, "_today", lambda: date(2030, 3, 1))
-    for handle in ("emma09", "08emma", "2k09", "born09", "classof27", "co27"):
-        assert ag.minor_indicated(handle) is None, handle
-    assert ag.minor_indicated("born13") == ag.minor_indicated("2k13") == ag.REASONS["birth_year"]
-    assert ag.minor_indicated("classof30") == ag.REASONS["class_year"]
-    # 2090: "born95" is 1995, not 2095
-    assert ag.minor_indicated("born95") is None
+    assert ag.soft_birth_year("mike2010") is None and ag.soft_birth_year("mike2013") == 2013 and ag.soft_birth_year("mike2025") == 2025
 
 
 def test_today_is_the_real_date_by_default(monkeypatch):
     monkeypatch.undo()
     assert ag._today() == date.today()
-    this_year = date.today().year
-    assert ag.minor_indicated(f"sam_{this_year - 10}") == ag.REASONS["birth_year"]
-    assert ag.minor_indicated(f"sam_{this_year - 2}") is None and ag.minor_indicated(f"born{this_year - 2}") == ag.REASONS["birth_year"]
-    assert ag.minor_indicated(f"sam_{this_year - 30}") is None
-
-
-def test_numbers_are_read_from_the_handle_as_written():
-    # "x86_64" must not become the number 8664, and "1_7" is not the number 17.
-    assert ag.minor_indicated("x86_64") is None and ag.minor_indicated("a1_7b") is None
-    # Leetspeak is only applied to words: "f15" stays an age, it is not read as "fis".
-    assert ag.minor_indicated("f15") == ag.REASONS["age"]
+    year = date.today().year
+    assert ag.soft_birth_year(f"sam_{year - 10}") == year - 10 and ag.soft_birth_year(f"sam_{year - 30}") is None
 
 
 def test_there_is_no_override():
-    import inspect
     assert list(inspect.signature(ag.minor_indicated).parameters) == ["username"]
     assert list(inspect.signature(ag.refusal).parameters) == ["username"]
+    assert list(inspect.signature(ag.gate).parameters) == ["username"]
     assert ag.minor_indicated("") is None and ag.minor_indicated(None) is None
 
 
 def test_refusal_carries_the_error_fields_and_the_ui_keys():
-    assert ag.refusal("torvalds") is None
-    body = ag.refusal("jake13")
-    assert body == {"detail": ag.MESSAGE, "code": "minor_guard", "reason": ag.REASONS["number"],
-                    "error": ag.MESSAGE, "error_code": "minor_guard", "error_detail": ag.REASONS["number"]}
+    assert ag.refusal("torvalds") is None and ag.refusal("jake13") is None
+    body = ag.refusal("jake_15yo")
+    assert body == {"detail": ag.MESSAGE, "code": "minor_guard", "reason": ag.REASONS["age"],
+                    "error": ag.MESSAGE, "error_code": "minor_guard", "error_detail": ag.REASONS["age"]}
     assert "jake" not in str(body).lower()
+
+
+# ---- the rules file ----------------------------------------------------------------------
+
+def test_the_rules_file_is_the_only_copy_and_both_engines_read_it():
+    root = Path(__file__).parent.parent
+    assert mr.RULES_PATH == root / "static" / "v2" / "data" / "minor-rules.json" and mr.RULES_PATH.is_file()
+    copies = [p for p in root.rglob("minor*rules*.json") if not {".venv", "node_modules", ".claude", ".git"} & set(p.relative_to(root).parts)]
+    assert copies == [mr.RULES_PATH]
+    assert "minor-rules.json" in (root / "static" / "v2" / "js" / "minorscan.js").read_text(encoding="utf-8")
+    # Neither engine holds a pattern of its own: no regex syntax for an age or a school word in the code.
+    for path in (root / "core" / "minor_rules.py", root / "core" / "adult_guard.py", root / "static" / "v2" / "js" / "minorscan.js", root / "static" / "v2" / "js" / "adult.js"):
+        code = path.read_text(encoding="utf-8")
+        for word in ("yrs?", "years?", "high ?school", "1[0-7]", "[._-]*"):
+            assert word not in code, (path.name, word)
+
+
+def test_the_rules_stay_inside_the_shared_regex_subset():
+    doc = json.loads(mr.RULES_PATH.read_text(encoding="utf-8"))
+    assert doc["version"] == 1 and doc["flags"] == "" and "regex_subset" in doc
+    patterns = [*doc["macros"].values(), *doc["handle"]["age"]["patterns"].values(), doc["handle"]["words"]["pattern"], doc["handle"]["soft_year"]["pattern"],
+                doc["content"]["birth"]["field_pattern"], doc["content"]["birth"]["age_field_pattern"],
+                *(x["pattern"] for x in doc["content"]["contexts"].values()), *(r["pattern"] for r in doc["content"]["rules"])]
+    assert len(patterns) > 50
+    for p in patterns:
+        for banned in ("\\d", "\\w", "\\s", "\\D", "\\W", "\\S", "\\p", "(?P", "(?i", "(?x", "(?<=", "\\1", "\\2", "++", "*+", "?+", "\\A", "\\Z", "\\z"):
+            assert banned not in p, (banned, p)
+        assert all(ord(ch) < 128 for ch in p), p
+
+
+@pytest.mark.parametrize("broken", [
+    lambda d: d.update(version=2),
+    lambda d: d.pop("handle"),
+    lambda d: d["content"]["rules"].append({"id": "x", "kind": "age", "strength": "strong", "fields": ["bio"], "value": "none", "pattern": "("}),
+    lambda d: d["content"]["rules"][0].update(unless=[["no_such_context", "clause"]]),
+    lambda d: d["macros"].pop("AGE"),
+])
+def test_a_rules_file_that_does_not_validate_is_refused(broken):
+    doc = json.loads(mr.RULES_PATH.read_text(encoding="utf-8"))
+    broken(doc)
+    with pytest.raises(mr.RulesError):
+        mr.Engine(doc)
+
+
+def test_without_the_rules_every_adult_pass_is_refused(monkeypatch, tmp_path):
+    with pytest.raises(mr.RulesError):
+        mr.load(tmp_path / "missing.json")
+    (tmp_path / "bad.json").write_text("{not json")
+    with pytest.raises(mr.RulesError):
+        mr.load(tmp_path / "bad.json")
+    monkeypatch.setattr(mr, "ENGINE", None)
+    pr.note("torvalds", "sherlock", {"results": []})
+    assert ag.minor_indicated("torvalds") == ag.REASONS["rules"]
+    status, body = ag.gate("torvalds")
+    assert status == 400 and body["error_code"] == "minor_guard" and body["reason"] == ag.REASONS["rules"]
+    assert ag.soft_birth_year("mike2010") is None
+
+
+# ---- stage 2: the profiles ---------------------------------------------------------------
+
+def scan(bio, handle=None, **extra):
+    return mr.load().scan([{"source": BIOS["source"], "url": "https://example.org/p", "bio": bio, **extra}], handle or BIOS["handle"], TODAY)
+
+
+def test_the_fixture_is_large_enough_and_split_three_ways():
+    assert len(BIOS["block"]) >= 40 and len(BIOS["weak"]) >= 15 and len(BIOS["clean"]) >= 60
+    assert len(BIOS["block"]) + len(BIOS["weak"]) + len(BIOS["clean"]) >= 60
+
+
+@pytest.mark.parametrize("row", BIOS["block"], ids=lambda r: r["bio"][:40])
+def test_a_strong_signal_blocks_alone(row):
+    r = scan(row["bio"])
+    assert r["blocked"] and r["kind"] == row["kind"] and r["signal"]["strength"] == "strong", (row, r["signals"])
+    assert r["signal"]["source"] == BIOS["source"] and 0 < len(r["signal"]["snippet"]) <= 60 and "\n" not in r["signal"]["snippet"]
+
+
+@pytest.mark.parametrize("row", BIOS["weak"], ids=lambda r: r["bio"][:40])
+def test_a_weak_signal_blocks_only_with_a_soft_birth_year_in_the_handle(row):
+    alone = scan(row["bio"])
+    assert not alone["blocked"] and alone["signals"] and all(s["strength"] == "weak" for s in alone["signals"]), (row, alone["signals"])
+    both = scan(row["bio"], handle="mike2010")
+    assert both["blocked"] and both["kind"] == "soft" and both["soft"] == 2010 and both["signal"]["strength"] == "weak"
+
+
+@pytest.mark.parametrize("row", BIOS["clean"], ids=lambda r: r["bio"][:40] or "empty")
+def test_ordinary_text_gives_no_signal_at_all(row):
+    for handle in (None, "mike2010"):
+        r = scan(row["bio"], handle=handle)
+        assert not r["blocked"] and r["signals"] == [], (row, r["signals"])
+
+
+@pytest.mark.parametrize("case", BIOS["cases"], ids=lambda c: c["name"][:50])
+def test_the_named_cases(case):
+    r = mr.load().scan(case["profiles"], case["handle"], TODAY)
+    assert (r["blocked"], r["kind"]) == (case["blocked"], case["kind"]), (case["name"], r["signals"])
+    for key in ("source", "snippet"):
+        if key in case:
+            assert r["signal"][key] == case[key]
+    for key in ("soft", "read"):
+        if key in case:
+            assert r[key] == case[key]
+    if r["signal"]:
+        assert len(r["signal"]["snippet"]) <= 60 and len(r["signal"]["source"]) <= 80
+
+
+def test_class_years_are_relative_to_today():
+    # Asserted against the date it is given, so it does not start failing in a later year.
+    engine = mr.load()
+    one = lambda bio, today, handle="river_stone": engine.scan([{"source": "S", "url": "", "bio": bio}], handle, today)
+    for year in (2026, 2031, 2040):
+        today = date(year, 11, 22)
+        near, far, past = f"class of {year + 3}", f"class of {year + 5}", f"class of {year - 2}"
+        assert not one(near, today)["blocked"] and one(near, today)["signals"][0]["strength"] == "weak"
+        assert one(f"{near} \u00b7 Lincoln High", today)["blocked"] and one(f"{near} | 9th grade", today)["blocked"]
+        assert one(far, today)["blocked"] and one(far, today)["kind"] == "school"
+        assert one(past, today)["signals"] == [] and one(f"class of {year + 13}", today)["signals"] == []
+        assert one(near, today, handle=f"mike{year - 16}")["kind"] == "soft"
+        # This year's class counts until the end of June.
+        assert one(f"class of {year} | high school", date(year, 6, 30))["blocked"] and one(f"class of {year} | high school", date(year, 7, 1))["kind"] != "school"
+        assert one(f"born {year - 16}", today)["kind"] == "birth" and one(f"born {year - 19}", today)["signals"] == []
+
+
+def test_adult_content_notices_do_not_cancel_a_signal():
+    assert scan("18+ only | i'm 15")["blocked"] and scan("adults only. 8th grade")["blocked"]
+    assert scan("18+")["signals"] == [] and scan("21+ | adults only")["signals"] == []
+
+
+# ---- the record of the ordinary sources ----------------------------------------------------
+
+BLOCKING = "16 | junior in high school"
+
+
+def test_nothing_on_record_means_run_the_ordinary_sources_first():
+    status, body = ag.gate("torvalds")
+    assert status == 409 and body["error_code"] == body["code"] == "mainstream_first" and body["detail"] == body["error"] == ag.MAINSTREAM_MESSAGE
+    # A follow-up source alone is not a mainstream pass, and neither is a source that failed.
+    pr.note("torvalds", "enricher", {"profiles": []})
+    pr.note("torvalds", "maigret", {"results": [], "error_code": "timeout", "error": "x"})
+    pr.note("torvalds", "handle_probe", {"results": []})
+    assert ag.gate("torvalds")[0] == 409 and pr.completed("torvalds") == ["enricher"]
+
+
+@pytest.mark.parametrize("source", pr.MAINSTREAM)
+def test_one_ordinary_source_on_record_opens_the_gate_for_a_clean_handle(source):
+    pr.note("Torvalds", source, {"results": [], "found": False})
+    assert ag.gate("torvalds") is None and ag.gate("@TORVALDS") is None      # the key ignores case and a leading @
+    assert ag.gate("someone_else")[0] == 409
+
+
+@pytest.mark.parametrize("source,answer,site", [
+    ("enricher", {"profiles": [{"platform": "Instagram", "url": "https://www.instagram.com/river_stone/", "display_name": "River", "bio": BLOCKING}]}, "Instagram"),
+    ("maigret", {"results": [{"site": "Gitlab", "url": "https://gitlab.com/river_stone", "verified": True, "confidence": "normal", "profile": {"name": "River", "bio": BLOCKING}}]}, "Gitlab"),
+    ("platform_check", {"results": [{"platform": "Reddit", "state": "found", "url": "https://www.reddit.com/user/river_stone", "display_name": "", "bio": BLOCKING}]}, "Reddit"),
+    ("github", {"found": True, "profile_url": "https://github.com/river_stone", "name": "River", "bio": BLOCKING}, "GitHub"),
+])
+def test_a_blocking_bio_on_record_refuses_the_adult_pass_with_the_source_and_the_snippet(source, answer, site):
+    pr.note("river_stone", "sherlock", {"results": []})
+    assert ag.gate("river_stone") is None
+    pr.note("river_stone", source, answer)
+    status, body = ag.gate("River_Stone")
+    assert status == 400 and body["error_code"] == body["code"] == "minor_guard" and body["detail"] == ag.MESSAGE
+    assert (body["kind"], body["source"], body["snippet"]) == ("age", site, BLOCKING) and body["reason"] == ag.CONTENT_REASONS["age"]
+    assert body["url"].startswith("https://") and "river" not in body["reason"].lower()
+    fields = ag.gate_fields((status, body))
+    assert fields["error_code"] == "minor_guard" and fields["block_source"] == site and fields["block_snippet"] == BLOCKING
+    # A later run that returns a clean bio for that source replaces the text.
+    clean = json.loads(json.dumps(answer).replace(BLOCKING, "Go and Rust"))
+    pr.note("river_stone", source, clean)
+    assert ag.gate("river_stone") is None
+
+
+def test_the_soft_year_in_the_handle_combines_with_a_weak_signal_on_record():
+    pr.note("mike2010", "github", {"found": True, "profile_url": "https://github.com/mike2010", "name": "Mike", "bio": "Go and Rust. Coffee."})
+    assert ag.gate("mike2010") is None
+    pr.note("mike2010", "github", {"found": True, "profile_url": "https://github.com/mike2010", "name": "Mike", "bio": "class of 2029"})
+    status, body = ag.gate("mike2010")
+    assert status == 400 and (body["kind"], body["source"], body["snippet"]) == ("soft", "GitHub", "class of 2029") and body["reason"] == ag.CONTENT_REASONS["soft"]
+    pr.note("river_stone", "github", {"found": True, "profile_url": "https://github.com/river_stone", "bio": "class of 2029"})
+    assert ag.gate("river_stone") is None
+
+
+def test_the_handle_check_still_runs_first():
+    pr.note("alex_15yo", "sherlock", {"results": []})
+    status, body = ag.gate("alex_15yo")
+    assert status == 400 and body["reason"] == ag.REASONS["age"] and "kind" not in body
+
+
+def test_the_record_expires_and_is_bounded(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(pr, "_now", lambda: clock[0])
+    pr.note("torvalds", "sherlock", {"results": []})
+    clock[0] += pr.TTL - 1
+    assert ag.gate("torvalds") is None
+    clock[0] += 2
+    assert ag.gate("torvalds")[0] == 409 and pr.texts("torvalds") == [] and pr.completed("torvalds") == []
+    assert pr.TTL == 30 * 60
+    # Bounded: the oldest handle goes first.
+    monkeypatch.setattr(pr, "MAX_HANDLES", 3)
+    for h in ("h1", "h2", "h3", "h4"):
+        pr.note(h, "sherlock", {"results": []})
+    assert not pr.ran("h1") and pr.ran("h2") and pr.ran("h4") and len(pr._store) == 3 and all(k.endswith(("|h2", "|h3", "|h4")) for k in pr._store)
+    # Text is clipped and only the fields the scan reads are kept.
+    pr.note("h4", "github", {"found": True, "profile_url": "https://github.com/h4", "name": "n" * 900, "bio": "b" * 5000, "email": "x@example.org", "avatar_url": "https://example.org/a.png"})
+    (entry,) = pr.texts("h4")
+    assert set(entry) == {"source", "url", "name", "bio"} and len(entry["name"]) == pr.NAME_MAX and len(entry["bio"]) == pr.BIO_MAX
+
+
+def test_the_record_belongs_to_the_caller_who_made_it():
+    # One client's run says nothing to another: not that the handle was looked up, and not what was found.
+    pr.bind("203.0.113.7")
+    pr.note("river_stone", "sherlock", {"results": []})
+    pr.note("river_stone", "github", {"found": True, "profile_url": "https://github.com/river_stone", "bio": BLOCKING})
+    assert ag.gate("river_stone")[0] == 400 and pr.ran("river_stone")
+    pr.bind("198.51.100.9")
+    assert ag.gate("river_stone")[0] == 409 and not pr.ran("river_stone") and pr.texts("river_stone") == []
+    pr.note("river_stone", "sherlock", {"results": []})
+    assert ag.gate("river_stone") is None                          # the second client's own clean run
+    pr.bind("203.0.113.7")
+    assert ag.gate("river_stone")[1]["snippet"] == BLOCKING        # and the first client's block stands
+    pr.bind("")
+
+
+def test_the_record_keeps_no_adult_site_and_no_noisy_site():
+    pr.note("jdoe", "maigret", {"results": [
+        {"site": "Pornhub", "url": "https://www.pornhub.com/users/jdoe", "verified": True, "adult": True, "profile": {"bio": "i'm 15"}},
+        {"site": "Fansly", "url": "https://fansly.com/jdoe", "verified": True, "profile": {"bio": "i'm 15"}},
+        {"site": "Noisy", "url": "https://noisy.example/jdoe", "verified": True, "confidence": "false_positive", "profile": {"bio": "i'm 15"}},
+        {"site": "Gitlab", "url": "https://gitlab.com/jdoe", "verified": True, "profile": {"name": "J Doe", "bio": "", "birthday": "2010-08-14", "age": "15"}},
+    ]})
+    assert [(e["source"], e.get("birthday"), e.get("age")) for e in pr.texts("jdoe")] == [("Gitlab", "2010-08-14", "15")]
+    assert ag.gate("jdoe")[1]["kind"] == "birth"
+
+
+def test_nothing_in_the_record_is_logged(caplog):
+    caplog.set_level(logging.DEBUG)
+    pr.note("quietperson", "github", {"found": True, "profile_url": "https://github.com/quietperson", "name": "Quiet Person", "bio": "zqsecret " + BLOCKING})
+    ag.gate("quietperson")
+    pr.texts("quietperson"), pr.ran("quietperson")
+    text = " ".join(r.getMessage() + str(r.__dict__) for r in caplog.records)
+    assert "quietperson" not in text and "zqsecret" not in text and "junior in high" not in text
+    code = (Path(__file__).parent.parent / "core" / "profile_record.py").read_text(encoding="utf-8")
+    assert "import logging" not in code and "log." not in code and "print(" not in code
 
 
 # ---- text-only output rules ------------------------------------------------------------

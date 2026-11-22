@@ -71,6 +71,11 @@ ACTIVE_TECHNIQUES_SECTION = """In the report, add a final section "## Active tec
 ADULT_SITES_SECTION = """The collected data includes a list headed ADULT AND DATING SITES. These are existence findings on adult and dating sites and nothing more. Report them only as "a handle with this name exists on X" or "X could not be checked". Do not infer or speculate about the person's sexuality, relationships, occupation, habits or character from them. Do not attribute them to the primary identity unless a strong signal listed under LINKED ties them to it; the same handle alone is not such a signal. Keep them out of the summary bullets, the profile block, the identity table and the platform footprint table. Put them in their own final section "## Adult and dating sites (existence checks only)", at most 3 sentences."""
 
 
+# Added only when the request carries adult_block, which the UI sends only for a username case
+# whose adult and dating pass the minor guard stopped.
+ADULT_BLOCK_SECTION = """The collected data includes a line headed ADULT AND DATING SITES NOT CHECKED. Those sites were deliberately not asked about this handle. Say so in one sentence under "## Gaps and next pivots", in the words of that line, and do not speculate about why beyond it, about the person's age, or about what those sites would have shown."""
+
+
 # Added only when the request carries name_candidates with at least one row, which the UI sends
 # only for a name case whose directory search returned people. It replaces the search-plan wording
 # for a name target. Without that field the prompt is exactly what it was.
@@ -409,6 +414,23 @@ def _account_lines(req) -> list[str]:
     return lines
 
 
+_BLOCK_WORDS = {
+    "age": "minor indicator on {source}", "school": "minor indicator on {source}", "birth": "minor indicator on {source}", "soft": "minor indicator on {source}",
+    "handle": "minor indicator in the handle", "word": "minor indicator in the handle", "rules": "the minor rules could not be loaded",
+    "server": "refused by the minor guard", "pivot": "opened from a case with a minor indicator",
+}
+
+
+def _adult_block_lines(req) -> list[str]:
+    """One line when the minor guard stopped the adult pass. The site's name is data: it is cut
+    to plain characters, and the profile text that triggered the guard is never sent at all."""
+    block = getattr(req, "adult_block", None)
+    if block is None or block.kind not in _BLOCK_WORDS:
+        return []
+    source = re.sub(r"[^A-Za-z0-9 ._()/-]", "", block.source or "")[:60].strip() or "a profile"
+    return [f"ADULT AND DATING SITES NOT CHECKED: adult sites not checked: {_BLOCK_WORDS[block.kind].format(source=source)}"]
+
+
 def _adult_lines(req) -> list[str]:
     """Adult and dating site rows, worded as existence checks. Empty when the field is absent."""
     rows = getattr(req, "adult_sites", None) or []
@@ -439,6 +461,12 @@ class AdultSiteEvidence(BaseModel):
     category: str = Field(default="", max_length=12)     # "adult" | "dating"
     state: str = Field(default="unknown", max_length=16)  # "read" | "reported" | "blocked" | "unknown" | "no_public_url" | "not_found"
     url_kind: str = Field(default="none", max_length=24)  # "verified_profile" | "templated_unverified" | "none"
+
+
+class AdultBlockEvidence(BaseModel):
+    """Why a case has no adult and dating rows. The quoted profile text is never part of it."""
+    kind: str = Field(max_length=12)                      # "age" | "school" | "birth" | "soft" | "handle" | "word" | "rules" | "server" | "pivot"
+    source: str = Field(default="", max_length=80)        # the site the sign was read on, for the first four
 
 
 class NameCandidate(BaseModel):
@@ -496,6 +524,8 @@ class AnalyzeRequest(BaseModel):
     accounts: Optional[list[AccountEvidence]] = Field(default=None, max_length=400)
     # Adult and dating site rows, only for a case that had that mode on. Never part of `accounts`.
     adult_sites: Optional[list[AdultSiteEvidence]] = Field(default=None, max_length=200)
+    # Set when the minor guard stopped the adult pass: which stage, and on which site. No profile text.
+    adult_block: Optional[AdultBlockEvidence] = None
     # People who share a searched name, only for a name case. Candidates, never one person.
     name_candidates: Optional[NameCandidates] = None
     # Source name -> "ok", "not found" or "failed: <reason>". Lets the model tell
@@ -532,6 +562,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
 
     prompt_parts.extend(_account_lines(req))
     prompt_parts.extend(_adult_lines(req))
+    prompt_parts.extend(_adult_block_lines(req))
     prompt_parts.extend(_name_candidate_lines(req))
     prompt_parts.extend(_status_lines(req))
 
@@ -750,6 +781,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
            else "\n" + TARGET_FOCUS[req.target_type] if req.target_type in TARGET_FOCUS else "")
         + ("\n" + ACTIVE_TECHNIQUES_SECTION if req.active_techniques else "")
         + ("\n" + ADULT_SITES_SECTION if req.adult_sites else "")
+        + ("\n" + ADULT_BLOCK_SECTION if getattr(req, "adult_block", None) else "")
         + f"\n\nTarget: {req.target}\n\nCollected data:\n{recon_data}"
     )
 

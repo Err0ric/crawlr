@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import adult_guard, validate
+from core import adult_guard, profile_record, validate
+from middleware.observability import client_ip
 from modules.adult_check import run_adult_check
 from modules.sherlock import run_sherlock
 from modules.holehe import run_holehe
@@ -28,23 +29,51 @@ SiteList = Field(default=None, max_length=1000)
 
 class SherlockRequest(BaseModel):
     username: str = Short
-    nsfw: bool = False   # adult sites are opt-in
+    nsfw: bool = False         # adult sites are opt-in
+    adult_only: bool = False   # and are always their own pass: nsfw and adult_only go together
 
 
 class MaigretRequest(BaseModel):
     username: str = Short
-    nsfw: bool = False   # adult sites are opt-in
+    nsfw: bool = False
+    adult_only: bool = False
+
+
+class UsernameRequest(BaseModel):
+    username: str = Short
 
 
 class AdultCheckRequest(BaseModel):
     username: str = Short
 
 
-def _minor_guard(username: str) -> JSONResponse | None:
-    """The 400 every adult or dating path answers with when the handle suggests a minor.
-    Nothing is run and no site is contacted. There is no way to switch this off."""
-    refusal = adult_guard.refusal(username)
-    return JSONResponse(status_code=400, content=refusal) if refusal else None
+def _adult_gate(username: str) -> JSONResponse | None:
+    """What every adult or dating path answers with when the minor guard refuses: 400
+    minor_guard (the handle, or a profile found for it), or 409 mainstream_first (no ordinary
+    source has run for the handle yet). Nothing is run and no site is contacted. There is no
+    way to switch this off."""
+    refused = adult_guard.gate(username)
+    return JSONResponse(status_code=refused[0], content=refused[1]) if refused else None
+
+
+def _adult_pass(req) -> bool:
+    """Is this the adult pass? nsfw and adult_only must be sent together: adult and dating
+    sites are never mixed into an ordinary run."""
+    if req.nsfw != req.adult_only:
+        raise HTTPException(status_code=400, detail=adult_guard.PASS_MESSAGE)
+    return req.nsfw
+
+
+def _mine(request: Request) -> None:
+    """The record of the ordinary sources is kept per caller (core.profile_record.bind)."""
+    profile_record.bind(client_ip(request))
+
+
+def _noted(username: str, source: str, answer: dict) -> dict:
+    """Keep what an ordinary source returned for the handle (core.profile_record), so the
+    adult pass can be held to the content check here as well as in the page."""
+    profile_record.note(username, source, answer)
+    return answer
 
 
 class HoleheRequest(BaseModel):
@@ -71,34 +100,31 @@ def ping():
 
 
 @router.post("/sherlock")
-async def sherlock_scan(req: SherlockRequest):
+async def sherlock_scan(req: SherlockRequest, request: Request):
+    _mine(request)
     username = validate.username(req.username)
-    if req.nsfw:
-        blocked = _minor_guard(username)
-        if blocked:
-            return blocked
-    return await run_sherlock(username, nsfw=req.nsfw)
+    if _adult_pass(req):
+        return _adult_gate(username) or await run_sherlock(username, nsfw=True, adult_only=True)
+    return _noted(username, "sherlock", await run_sherlock(username))
 
 
 @router.post("/maigret")
-async def maigret_scan(req: MaigretRequest):
+async def maigret_scan(req: MaigretRequest, request: Request):
+    _mine(request)
     username = validate.username(req.username)
-    if req.nsfw:
-        blocked = _minor_guard(username)
-        if blocked:
-            return blocked
-    return await run_maigret(username, nsfw=req.nsfw)
+    if _adult_pass(req):
+        return _adult_gate(username) or await run_maigret(username, nsfw=True, adult_only=True)
+    return _noted(username, "maigret", await run_maigret(username))
 
 
 @router.post("/adult-check")
-async def adult_check_scan(req: AdultCheckRequest):
+async def adult_check_scan(req: AdultCheckRequest, request: Request):
     """Opt-in: verified existence checks on adult and dating sites. Text metadata only.
-    The UI calls this only when the investigator switched the adult mode on."""
+    The UI calls this only when the investigator switched the adult mode on, after the
+    ordinary sources, and only when its own check of the profiles they found is clean."""
+    _mine(request)
     username = validate.username(req.username)
-    blocked = _minor_guard(username)
-    if blocked:
-        return blocked
-    return await run_adult_check(username)
+    return _adult_gate(username) or await run_adult_check(username)
 
 
 @router.post("/holehe")
@@ -125,18 +151,24 @@ async def gravatar_scan(req: HoleheRequest):
 
 
 @router.post("/github")
-async def github_scan(req: SherlockRequest):
-    return await run_github(validate.username(req.username))
+async def github_scan(req: UsernameRequest, request: Request):
+    _mine(request)
+    username = validate.username(req.username)
+    return _noted(username, "github", await run_github(username))
 
 
 @router.post("/enrich")
-async def enrich_profiles(req: EnricherRequest):
-    return await run_enricher(validate.username(req.username), req.sherlock_sites)
+async def enrich_profiles(req: EnricherRequest, request: Request):
+    _mine(request)
+    username = validate.username(req.username)
+    return _noted(username, "enricher", await run_enricher(username, req.sherlock_sites))
 
 
 @router.post("/platform-check")
-async def platform_check(req: PlatformCheckRequest):
-    return await run_platform_check(validate.username(req.username), req.sherlock_sites)
+async def platform_check(req: PlatformCheckRequest, request: Request):
+    _mine(request)
+    username = validate.username(req.username)
+    return _noted(username, "platform_check", await run_platform_check(username, req.sherlock_sites))
 
 
 @router.post("/hunter")

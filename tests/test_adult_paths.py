@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from core import adult_guard, adult_sites
+from core import profile_record
 from core import netguard as ng
 from main import app
 import middleware.rate_limit as rl
@@ -142,6 +143,17 @@ ADULT_LINKS = [
 ]
 
 
+
+@pytest.fixture(autouse=True)
+def _ordinary_sources_on_record(monkeypatch):
+    """This file tests what happens once an adult pass is allowed. The rule that the ordinary
+    sources must have run first, and the check of what they found, are tested in
+    test_adult_guard.py and test_adult_tools.py; here every handle counts as on record."""
+    profile_record.clear()
+    monkeypatch.setattr(profile_record, "ran", lambda handle: True)
+    yield
+    profile_record.clear()
+
 def verify(monkeypatch, username, links, **kw):
     calls = []
     monkeypatch.setattr(lv, "_inner_transport", lambda: httpx.MockTransport(record(calls)))
@@ -151,11 +163,11 @@ def verify(monkeypatch, username, links, **kw):
 
 def test_the_evidence_sentence_and_its_place_in_the_closed_set():
     keys = list(lv.EVIDENCE)
-    assert lv.EVIDENCE["adult_not_checked"] == "Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor."
+    assert lv.EVIDENCE["adult_not_checked"] == "Adult and dating sites are checked only when that mode is on, after the ordinary sources, and not when the handle or a profile found for it suggests a minor."
     assert keys.index("adult_not_checked") == keys.index("throttled") + 1 == keys.index("no_profile_page") - 1
 
 
-@pytest.mark.parametrize("handle", ["emma15f", "jake13", "born2012", "emma09", "schoolgirl", "year9_sam"])
+@pytest.mark.parametrize("handle", ["emma_15yo", "jake_13yo", "age14jay", "x_age_16", "underage_sam", "13yearsold"])
 def test_a_minor_handle_never_reaches_an_adult_site_through_verify_links(monkeypatch, handle):
     assert adult_guard.minor_indicated(handle)
     for adult in (False, True):                                   # the opt-in does not help
@@ -165,6 +177,24 @@ def test_a_minor_handle_never_reaches_an_adult_site_through_verify_links(monkeyp
             assert (row["state"], row["evidence"]) == ("unknown", lv.EVIDENCE["adult_not_checked"]), row
             assert row["final_url"] == "" and row["cached"] is False
         assert calls == ["github.com/" + handle]                  # the ordinary link is still checked
+
+
+def test_an_adult_link_is_not_opened_before_the_ordinary_sources_ran_or_when_a_profile_suggests_a_minor(monkeypatch):
+    links = ADULT_LINKS + [("GitHub", "https://github.com/{u}")]
+    monkeypatch.undo()                                             # the real record: nothing has run for this handle
+    profile_record.clear()
+    rows, calls = verify(monkeypatch, "torvalds", links, adult=True)
+    assert [r["evidence"] for r in rows[:-1]] == [lv.EVIDENCE["adult_not_checked"]] * len(ADULT_LINKS) and calls == ["github.com/torvalds"]
+    lv.clear_cache_for_tests()
+    profile_record.note("river_stone", "sherlock", {"results": []})
+    profile_record.note("river_stone", "enricher", {"profiles": [{"platform": "Instagram", "url": "https://www.instagram.com/river_stone/", "bio": "16 | junior in high school"}]})
+    rows, calls = verify(monkeypatch, "river_stone", links, adult=True)
+    assert all(r["state"] == "unknown" and r["evidence"] == lv.EVIDENCE["adult_not_checked"] for r in rows[:-1]) and calls == ["github.com/river_stone"]
+    # A bare number in the handle is not a reason any more.
+    lv.clear_cache_for_tests()
+    profile_record.note("gamer13", "sherlock", {"results": []})
+    rows, calls = verify(monkeypatch, "gamer13", [("Pornhub", "https://www.pornhub.com/users/{u}")], adult=True)
+    assert calls == ["www.pornhub.com/users/gamer13"] and rows[0]["evidence"] != lv.EVIDENCE["adult_not_checked"]
 
 
 def test_without_the_opt_in_no_adult_link_is_opened_for_any_handle(monkeypatch):
@@ -193,8 +223,8 @@ def test_verify_links_endpoint_takes_the_opt_in_and_keeps_the_guard(c, monkeypat
     monkeypatch.setattr(lv, "_inner_transport", lambda: httpx.MockTransport(record(calls)))
     body = lambda handle, **kw: {"username": handle, "links": [{"id": "a", "site": "Pornhub", "url": f"https://www.pornhub.com/users/{handle}"}], **kw}
     refused = lv.EVIDENCE["adult_not_checked"]
-    assert c.post("/api/recon/verify-links", json=body("emma15f")).json()["results"][0]["evidence"] == refused
-    assert c.post("/api/recon/verify-links", json=body("emma15f", adult=True)).json()["results"][0]["evidence"] == refused
+    assert c.post("/api/recon/verify-links", json=body("emma_15yo")).json()["results"][0]["evidence"] == refused
+    assert c.post("/api/recon/verify-links", json=body("emma_15yo", adult=True)).json()["results"][0]["evidence"] == refused
     assert c.post("/api/recon/verify-links", json=body("torvalds")).json()["results"][0]["evidence"] == refused
     assert calls == []
     got = c.post("/api/recon/verify-links", json=body("torvalds", adult=True)).json()["results"][0]
