@@ -1,0 +1,955 @@
+{
+ "about": "Profile text for the minor guard's content check. Invented text. Every case is run through both engines (tests/test_minor_parity.py) with today pinned.",
+ "today": "2026-11-22",
+ "handle": "sam_rivera",
+ "source": "Example",
+ "block": [
+  {
+   "bio": "16 | junior in high school",
+   "kind": "age"
+  },
+  {
+   "bio": "I'm 15",
+   "kind": "age"
+  },
+  {
+   "bio": "im 15 and i like cats",
+   "kind": "age"
+  },
+  {
+   "bio": "i am 15",
+   "kind": "age"
+  },
+  {
+   "bio": "15 y/o",
+   "kind": "age"
+  },
+  {
+   "bio": "14yo artist",
+   "kind": "age"
+  },
+  {
+   "bio": "14 years old",
+   "kind": "age"
+  },
+  {
+   "bio": "age 16",
+   "kind": "age"
+  },
+  {
+   "bio": "aged 16, from Leeds",
+   "kind": "age"
+  },
+  {
+   "bio": "16 | she/her",
+   "kind": "age"
+  },
+  {
+   "bio": "15 \u2022 artist",
+   "kind": "age"
+  },
+  {
+   "bio": "17 / UK",
+   "kind": "age"
+  },
+  {
+   "bio": "artist, 16, she/her",
+   "kind": "age"
+  },
+  {
+   "bio": "15f | bi | cat lover",
+   "kind": "age"
+  },
+  {
+   "bio": "I\u2019m 16 years old and love drawing",
+   "kind": "age"
+  },
+  {
+   "bio": "just a 15 year old trying to make music",
+   "kind": "age"
+  },
+  {
+   "bio": "turning 15 in march",
+   "kind": "age"
+  },
+  {
+   "bio": "i'm a minor",
+   "kind": "age"
+  },
+  {
+   "bio": "middle school band kid",
+   "kind": "school"
+  },
+  {
+   "bio": "sophomore in HS",
+   "kind": "school"
+  },
+  {
+   "bio": "freshman at Lincoln High School",
+   "kind": "school"
+  },
+  {
+   "bio": "high school student",
+   "kind": "school"
+  },
+  {
+   "bio": "in high school",
+   "kind": "school"
+  },
+  {
+   "bio": "8th grade",
+   "kind": "school"
+  },
+  {
+   "bio": "grade 9",
+   "kind": "school"
+  },
+  {
+   "bio": "7th grader who loves minecraft",
+   "kind": "school"
+  },
+  {
+   "bio": "year 9 student",
+   "kind": "school"
+  },
+  {
+   "bio": "Year 10 | Manchester",
+   "kind": "school"
+  },
+  {
+   "bio": "secondary school student",
+   "kind": "school"
+  },
+  {
+   "bio": "doing my GCSEs this year",
+   "kind": "school"
+  },
+  {
+   "bio": "class of 2029 \u00b7 Lincoln High",
+   "kind": "school"
+  },
+  {
+   "bio": "class of 2031",
+   "kind": "school"
+  },
+  {
+   "bio": "c/o 2029 | LHS high school",
+   "kind": "school"
+  },
+  {
+   "bio": "co '29 varsity soccer, high school",
+   "kind": "school"
+  },
+  {
+   "bio": "born 2010",
+   "kind": "birth"
+  },
+  {
+   "bio": "b. 2011",
+   "kind": "birth"
+  },
+  {
+   "bio": "DOB 03/2010",
+   "kind": "birth"
+  },
+  {
+   "bio": "2009 baby",
+   "kind": "birth"
+  },
+  {
+   "bio": "'09 baby",
+   "kind": "birth"
+  },
+  {
+   "bio": "born on 08/14/2010",
+   "kind": "birth"
+  },
+  {
+   "bio": "bday: 14 Aug 2011",
+   "kind": "birth"
+  },
+  {
+   "bio": "\ud83c\udf38 15 \ud83c\udf38 she/her \ud83c\udf38",
+   "kind": "age"
+  },
+  {
+   "bio": "line one\n15 | she/her\nline three",
+   "kind": "age"
+  },
+  {
+   "bio": "hi!! im 13 :)",
+   "kind": "age"
+  },
+  {
+   "bio": "junior high student council",
+   "kind": "school"
+  },
+  {
+   "bio": "love my mom | 8th grade",
+   "kind": "school"
+  },
+  {
+   "bio": "turning 18 soon",
+   "kind": "age"
+  },
+  {
+   "bio": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx i'm 15 and this is a very long bio yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "kind": "age"
+  },
+  {
+   "bio": "I'm 15 <img src=x onerror=alert(1)> \"quoted\" & more",
+   "kind": "age"
+  },
+  {
+   "bio": "8th grade | proud dog mom",
+   "kind": "school"
+  },
+  {
+   "bio": "in year 9 at school",
+   "kind": "school"
+  },
+  {
+   "bio": "born 2008",
+   "kind": "birth"
+  },
+  {
+   "bio": "sixth grader",
+   "kind": "school"
+  },
+  {
+   "bio": "freshman year of high school!!",
+   "kind": "school"
+  },
+  {
+   "bio": "f16 | they/them",
+   "kind": "age"
+  },
+  {
+   "bio": "16 years of age",
+   "kind": "age"
+  },
+  {
+   "bio": "im a minor so be nice",
+   "kind": "age"
+  }
+ ],
+ "weak": [
+  {
+   "bio": "class of 2029"
+  },
+  {
+   "bio": "class of 2030"
+  },
+  {
+   "bio": "c/o '28"
+  },
+  {
+   "bio": "freshman"
+  },
+  {
+   "bio": "sophomore | track"
+  },
+  {
+   "bio": "student"
+  },
+  {
+   "bio": "teen"
+  },
+  {
+   "bio": "teenager who codes"
+  },
+  {
+   "bio": "minor"
+  },
+  {
+   "bio": "under 18"
+  },
+  {
+   "bio": "13+"
+  },
+  {
+   "bio": "she/her | 16 | artist"
+  },
+  {
+   "bio": "artist | 16"
+  },
+  {
+   "bio": "high school"
+  },
+  {
+   "bio": "school is boring"
+  },
+  {
+   "bio": "junior | she/her"
+  },
+  {
+   "bio": "senior year!!"
+  },
+  {
+   "bio": "u18"
+  },
+  {
+   "bio": "Harvard class of 2029"
+  },
+  {
+   "bio": "graduating 2028"
+  },
+  {
+   "bio": "17"
+  },
+  {
+   "bio": "bi | 15f | cats"
+  },
+  {
+   "bio": "pupil"
+  }
+ ],
+ "clean": [
+  {
+   "bio": "high school teacher"
+  },
+  {
+   "bio": "HS coach"
+  },
+  {
+   "bio": "high school dropout 2009"
+  },
+  {
+   "bio": "class of 2012"
+  },
+  {
+   "bio": "taught middle school for ten years"
+  },
+  {
+   "bio": "mom of a 9th grader"
+  },
+  {
+   "bio": "8th grade teacher"
+  },
+  {
+   "bio": "Class of 2012 alumni"
+  },
+  {
+   "bio": "class of 2024 alumni"
+  },
+  {
+   "bio": "est. 2012"
+  },
+  {
+   "bio": "joined 2011"
+  },
+  {
+   "bio": "since 2010"
+  },
+  {
+   "bio": "top 16"
+  },
+  {
+   "bio": "17 repos"
+  },
+  {
+   "bio": "since 15"
+  },
+  {
+   "bio": "est. 2015"
+  },
+  {
+   "bio": "#14"
+  },
+  {
+   "bio": "level 15"
+  },
+  {
+   "bio": "15k followers"
+  },
+  {
+   "bio": "16GB RAM enjoyer"
+  },
+  {
+   "bio": "17th place"
+  },
+  {
+   "bio": "18+"
+  },
+  {
+   "bio": "18+ only, minors DNI"
+  },
+  {
+   "bio": "adults only | 21+"
+  },
+  {
+   "bio": "19 | she/her"
+  },
+  {
+   "bio": "I'm 25"
+  },
+  {
+   "bio": "i'm 15 minutes late to everything"
+  },
+  {
+   "bio": "I'm 16 weeks pregnant"
+  },
+  {
+   "bio": "I'm 12 years sober"
+  },
+  {
+   "bio": "mom of a 15 year old"
+  },
+  {
+   "bio": "my 12 year old dog is the best"
+  },
+  {
+   "bio": "at age 15 I started coding, now 30"
+  },
+  {
+   "bio": "Senior Software Engineer at Example Corp"
+  },
+  {
+   "bio": "junior developer"
+  },
+  {
+   "bio": "college sophomore"
+  },
+  {
+   "bio": "freshman at State University"
+  },
+  {
+   "bio": "PhD student in physics"
+  },
+  {
+   "bio": "grade 8 piano"
+  },
+  {
+   "bio": "10/10 would recommend"
+  },
+  {
+   "bio": "14:30 daily streams"
+  },
+  {
+   "bio": "version 1.15 released"
+  },
+  {
+   "bio": "$15 commissions open"
+  },
+  {
+   "bio": "5'10 | gym"
+  },
+  {
+   "bio": "born in 1990"
+  },
+  {
+   "bio": "born and raised in Texas"
+  },
+  {
+   "bio": "Tengo 15 a\u00f1os y me gusta el f\u00fatbol"
+  },
+  {
+   "bio": "J'ai 15 ans"
+  },
+  {
+   "bio": "Ich bin 15 Jahre alt"
+  },
+  {
+   "bio": "im 15. Jahrhundert geboren, sagen meine Freunde"
+  },
+  {
+   "bio": "Software developer. Coffee. Dogs."
+  },
+  {
+   "bio": "High School Musical fan"
+  },
+  {
+   "bio": "old school hip hop"
+  },
+  {
+   "bio": "art school dropout"
+  },
+  {
+   "bio": "minors dni"
+  },
+  {
+   "bio": "no one under 18"
+  },
+  {
+   "bio": "A minor league baseball fan"
+  },
+  {
+   "bio": "minor in philosophy"
+  },
+  {
+   "bio": "U18 national team coach"
+  },
+  {
+   "bio": "Year 10 of marriage"
+  },
+  {
+   "bio": "year 7 teacher"
+  },
+  {
+   "bio": "parent of class of 2029 grad"
+  },
+  {
+   "bio": "2019 baby mama"
+  },
+  {
+   "bio": "my son was born 2012"
+  },
+  {
+   "bio": "company born 2012 in a garage"
+  },
+  {
+   "bio": "12, 14 and 16 are my lucky numbers"
+  },
+  {
+   "bio": "16 - 2 = 14"
+  },
+  {
+   "bio": "I teach 8th grade science"
+  },
+  {
+   "bio": "school psychologist"
+  },
+  {
+   "bio": "sunday school teacher"
+  },
+  {
+   "bio": "teen mom"
+  },
+  {
+   "bio": "proud dad of two teens"
+  },
+  {
+   "bio": "jersey #14 | striker"
+  },
+  {
+   "bio": "13 reasons why fan"
+  },
+  {
+   "bio": "1337 h4x0r"
+  },
+  {
+   "bio": "mother of dragons, age 30"
+  },
+  {
+   "bio": "ages 12 and up"
+  },
+  {
+   "bio": "for ages 13-17"
+  },
+  {
+   "bio": "I'm 17 hours ahead of you"
+  },
+  {
+   "bio": "i'm 10x engineer"
+  },
+  {
+   "bio": "I'm 16th in the world"
+  },
+  {
+   "bio": ""
+  },
+  {
+   "bio": "   "
+  },
+  {
+   "bio": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+  },
+  {
+   "bio": "\u200b\u200d"
+  },
+  {
+   "bio": "class of 2026"
+  },
+  {
+   "bio": "born 2019"
+  },
+  {
+   "bio": "born 2007"
+  },
+  {
+   "bio": "my son is turning 15"
+  },
+  {
+   "bio": "middle school teacher and coach"
+  },
+  {
+   "bio": "former high school athlete"
+  },
+  {
+   "bio": "graduated high school in 2015"
+  },
+  {
+   "bio": "since 3rd grade"
+  },
+  {
+   "bio": "I have a 14 year old"
+  },
+  {
+   "bio": "30 years old"
+  },
+  {
+   "bio": "18 years old"
+  },
+  {
+   "bio": "i'm 18"
+  },
+  {
+   "bio": "\u65e5\u672c\u8a9e\u306e\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb 15\u6b73"
+  },
+  {
+   "bio": "\u041c\u043d\u0435 15 \u043b\u0435\u0442"
+  },
+  {
+   "bio": "est 2010 | band"
+  },
+  {
+   "bio": "100 | she/her"
+  },
+  {
+   "bio": "level 16 | she/her mage"
+  },
+  {
+   "bio": "Teacher | 8th grade math"
+  }
+ ],
+ "cases": [
+  {
+   "name": "owner: a clean handle whose enrichment bio says 16 | junior in high school",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "Builds things."
+    },
+    {
+     "source": "Instagram",
+     "url": "https://instagram.example/u",
+     "bio": "16 | junior in high school"
+    }
+   ],
+   "blocked": true,
+   "kind": "age",
+   "source": "Instagram",
+   "snippet": "16 | junior in high school"
+  },
+  {
+   "name": "owner: mike2010 with a clean bio runs",
+   "handle": "mike2010",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "Go and Rust. Coffee."
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft": 2010
+  },
+  {
+   "name": "owner: mike2010 with class of 2029 blocks (weak signal plus the soft birth year)",
+   "handle": "mike2010",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2029"
+    }
+   ],
+   "blocked": true,
+   "kind": "soft",
+   "source": "GitHub",
+   "snippet": "class of 2029",
+   "soft": 2010
+  },
+  {
+   "name": "owner: class of 2029 alone runs",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2029"
+    }
+   ],
+   "blocked": false,
+   "kind": ""
+  },
+  {
+   "name": "owner: class of 2029 with Lincoln High blocks",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2029 \u00b7 Lincoln High"
+    }
+   ],
+   "blocked": true,
+   "kind": "school",
+   "source": "GitHub",
+   "snippet": "class of 2029 \u00b7 Lincoln High"
+  },
+  {
+   "name": "class of 2031 alone blocks: five years ahead",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2031"
+    }
+   ],
+   "blocked": true,
+   "kind": "school",
+   "source": "GitHub",
+   "snippet": "class of 2031"
+  },
+  {
+   "name": "class of 2030 alone is weak",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2030"
+    }
+   ],
+   "blocked": false,
+   "kind": ""
+  },
+  {
+   "name": "class of 2030 with a soft year blocks",
+   "handle": "ana_2011",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2030"
+    }
+   ],
+   "blocked": true,
+   "kind": "soft",
+   "source": "GitHub",
+   "snippet": "class of 2030",
+   "soft": 2011
+  },
+  {
+   "name": "past class years do nothing, soft year or not",
+   "handle": "mike2010",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "Class of 2012"
+    },
+    {
+     "source": "X",
+     "url": "https://x.example/u",
+     "bio": "class of 2024 alumni"
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft": 2010
+  },
+  {
+   "name": "no profile text at all",
+   "handle": "river_stone",
+   "profiles": [],
+   "blocked": false,
+   "kind": "",
+   "read": 0
+  },
+  {
+   "name": "a soft year alone never blocks",
+   "handle": "user2012",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "Embedded systems engineer"
+    },
+    {
+     "source": "Reddit",
+     "url": "https://reddit.example/u",
+     "bio": ""
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft": 2012,
+   "read": 1
+  },
+  {
+   "name": "the first strong signal is the one shown",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "student"
+    },
+    {
+     "source": "Reddit",
+     "url": "https://reddit.example/u",
+     "bio": "8th grade"
+    },
+    {
+     "source": "X",
+     "url": "https://x.example/u",
+     "bio": "I'm 14"
+    }
+   ],
+   "blocked": true,
+   "kind": "school",
+   "source": "Reddit",
+   "snippet": "8th grade"
+  },
+  {
+   "name": "a display name can state an age",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Twitch",
+     "url": "https://twitch.example/u",
+     "name": "Robin, 15yo",
+     "bio": ""
+    }
+   ],
+   "blocked": true,
+   "kind": "age",
+   "source": "Twitch",
+   "snippet": "Robin, 15yo"
+  },
+  {
+   "name": "a bare number in a display name is nothing",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Twitch",
+     "url": "",
+     "name": "16 | Bit Hero",
+     "bio": ""
+    }
+   ],
+   "blocked": false,
+   "kind": ""
+  },
+  {
+   "name": "a birthday field under 18",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Example",
+     "url": "",
+     "name": "",
+     "bio": "",
+     "birthday": "2010-08-14"
+    }
+   ],
+   "blocked": true,
+   "kind": "birth",
+   "source": "Example",
+   "snippet": "birthday: 2010-08-14"
+  },
+  {
+   "name": "a birthday field: 18 since last week",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Example",
+     "url": "",
+     "birthday": "2008-11-15"
+    }
+   ],
+   "blocked": false,
+   "kind": ""
+  },
+  {
+   "name": "a birthday field: 18 next week",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Example",
+     "url": "",
+     "birthday": "2008-11-29"
+    }
+   ],
+   "blocked": true,
+   "kind": "birth",
+   "source": "Example",
+   "snippet": "birthday: 2008-11-29"
+  },
+  {
+   "name": "an age field",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Example",
+     "url": "",
+     "age": 15
+    }
+   ],
+   "blocked": true,
+   "kind": "age",
+   "source": "Example",
+   "snippet": "age: 15"
+  },
+  {
+   "name": "an adult age field",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Example",
+     "url": "",
+     "age": "34"
+    }
+   ],
+   "blocked": false,
+   "kind": ""
+  },
+  {
+   "name": "the snippet is cut at word boundaries and bounded",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Reddit",
+     "url": "https://reddit.example/u",
+     "bio": "I draw comics and post them here every single week without fail and i'm 15 years old so please be kind to me in the comments thank you very much"
+    }
+   ],
+   "blocked": true,
+   "kind": "age",
+   "source": "Reddit"
+  },
+  {
+   "name": "emoji and line breaks",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "TikTok",
+     "url": "https://tiktok.example/u",
+     "bio": "\ud83c\udf38 art account \ud83c\udf38\n15 \u2022 she/her\n\u2728 commissions closed \u2728"
+    }
+   ],
+   "blocked": true,
+   "kind": "age",
+   "source": "TikTok"
+  },
+  {
+   "name": "a long source name and markup in the text",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "<b>SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS",
+     "url": "javascript:alert(1)",
+     "bio": "<script>alert(1)</script> i am 13"
+    }
+   ],
+   "blocked": true,
+   "kind": "age"
+  }
+ ]
+}
