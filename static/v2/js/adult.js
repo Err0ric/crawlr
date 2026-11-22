@@ -8,7 +8,16 @@
 //     memory only, it stays on across handles, new cases, Clear and cases opened from History
 //     until it is switched off or the page is reloaded. Whether it applies is decided per case.
 //   - A case shows adult rows only when it recorded that the mode was on (collected.adultMode ===
-//     true), it is a username case, and the handle does not suggest a minor. There is no override.
+//     true), it is a username case, and the minor guard did not stop it. There is no override.
+//   - The minor guard has two stages. Before a run: the handle itself (an explicit age under 18,
+//     or one of three words). After the ordinary sources and before any adult request: the names
+//     and bios of the profiles they found (contentCheck in evidence.js). The rules are in
+//     data/minor-rules.json, applied by minorscan.js here and by the server, which repeats both
+//     stages on every adult request and wins if the two ever disagree.
+//   - The adult pass is its own set of requests (adultRequests), made only with a clean check in
+//     hand. Sherlock's and Maigret's adult rows are stored apart (sherlockAdult, maigretAdult).
+//     A case saved before that holds them inside sherlock and maigret, and still renders.
+//   - A case that was stopped records why (collected.adultBlock) and shows no adult row at all.
 //   - Rows from adult and dating sites never enter the ordinary flow: withoutAdult() removes them
 //     before the ledger, identity clustering, facts, leads, the avatar comparison, profile
 //     enrichment, Deep Dive and the AI payload see anything.
@@ -19,6 +28,7 @@ import { esc, link } from "./core.js";
 import { classifyLink, mdLink, mdNote, parseUrl, regHost, NO_PAGE_HINT } from "./links.js";
 import { looksBoilerplate } from "./identity.js";
 import { ADULT_SITE_HOSTS, ADULT_SITE_NAMES } from "./adult-sites.js";
+import { handleToken, rulesReady } from "./minorscan.js";
 
 export const ADULT_SWITCH = "Adult sites";
 export const ADULT_NOTICE = "Adult and dating sites are existence checks only. A match shows a handle is taken there, not who owns it.";
@@ -26,13 +36,9 @@ export const ADULT_GROUP = "Adult and dating sites";
 export const ADULT_SECTION = "Adult and dating sites (existence checks only)";
 export const ADULT_SOURCE = "Adult site check";
 // One sentence for the Sources panel, the consent gate and the acceptable-use statement.
-export const ADULT_COPY = "Adult and dating sites are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes.";
+export const ADULT_COPY = "Adult and dating sites are checked only when you switch that on: existence checks only, not for a handle that states an age under 18, not when a profile found for the handle suggests a minor, and only for lawful purposes.";
 // What the consent gate and the acceptable-use statement add about how long the switch lasts.
 export const ADULT_LASTS = "The switch is off when the page loads, and stays on until you switch it off or reload.";
-// The reason is one of the guard's fixed sentences, set inside this one.
-const asClause = (r) => { const t = String(r ?? "").trim().replace(/\.$/, ""); return t ? t[0].toLowerCase() + t.slice(1) : "the server's rule set says so"; };
-export const guardText = (reason) => `Adult and dating sites are not checked for this handle: it suggests a minor (${asClause(reason)}).`;
-
 const lc = (s) => String(s ?? "").trim().toLowerCase();
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const failed = (d) => !!(d && (d.error || d.error_code));
@@ -40,96 +46,131 @@ const fmtNum = (n) => Number(n ?? 0).toLocaleString("en-US");
 const plural = (n, one, many = one + "s") => `${fmtNum(n)} ${n === 1 ? one : many}`;
 export const handleOf = (target) => String(target ?? "").trim().replace(/^@/, "");
 
-// ---- the minor guard -----------------------------------------------------------------------
-// A port of core/adult_guard.py, so the UI can explain before any request is made. The server
-// applies its own copy to every request and wins if the two ever disagree (HTTP 400 with code
-// "minor_guard"). It is deliberately conservative: a false positive only hides the adult group
-// for that handle. tests/js/adult.test.mjs reads the Python file as text and fails if a pattern
-// or a reason here differs from the one there.
+// ---- the minor guard ---------------------------------------------------------------------------
+// Stage 1, the handle. The rules are in data/minor-rules.json and are applied by minorscan.js;
+// the server applies the same file to every request and wins if the two ever disagree (HTTP 400
+// with code "minor_guard"). Only an explicit age under 18 or one of three words blocks. A bare
+// number in a handle never does. Without the rules file everything is refused.
+// The reasons are the server's fixed sentences. None repeats the handle or mentions a number in it.
 export const GUARD_REASONS = {
   age: "The handle states an age under 18.",
-  birth_year: "The handle carries a year that would make the person under 18.",
-  class_year: "The handle carries a school class year that has not passed yet.",
-  number: "The handle starts or ends with a number from 10 to 17.",
-  word: "The handle contains a word that suggests a minor.",
+  word: "The handle contains a word that marks it as a minor's.",
+  rules: "The minor rules could not be loaded.",
 };
-const ADULT_AGE = 18, LETTER_MIN_AGE = 8, CLASS_AHEAD = 15, MIN_PLAIN_AGE = 6;   // a bare year must imply at least this age to count as a birth year
-// Named as in the Python file. Ages and numbers are matched on the handle as written (lowercase);
-// words are matched with separators removed and digits read as letters (k1d, l0li, t33n).
-export const GUARD_PATTERNS = {
-  _AGE_THEN_WORD: /(?<!\d)(\d{1,2})[._-]*(?:yo|y[._-]o|yrs?|years?|y(?![a-z]))/g,
-  _WORD_THEN_AGE: /(?<![a-z])aged?[._-]*(\d{1,2})(?!\d)/g,
-  _INNER_AGE: /aged?[._-]*(1[0-7])(?!\d)/g,
-  _IM_AGE: /(?<![a-z])i[._-]*a?m[._-]*(\d{1,2})(?!\d)/g,
-  _AGE_THEN_SEX: /(?<!\d)(\d{1,2})[._-]*[fm](?![a-z])/g,
-  _SEX_THEN_AGE: /(?<![a-z])[fm][._-]*(\d{1,2})(?!\d)/g,
-  // turning15, almost16x, only_14, just13: an age after a word that announces one
-  _NEAR_AGE: /(?:turning|turned|almost|nearly|only|just|barely)[._-]*(\d{1,2})(?!\d)/g,
-  _UNDER_18: /under[._-]*18(?!\d)|(?<![a-z])u[._-]*18(?!\d)/g,
-  _YEAR: /(?<!\d)((?:19|20)\d{2})(?!\d)/g,
-  // A year from the last few years is far more often the year an account was made than a birth
-  // year (user2025), so it only counts next to a birth marker: born2023, 2024baby, b.2022.
-  _MARKED_YEAR: /(?:(?:born|birthday|bday|baby|kid)[._-]*|(?<![a-z])b[._-]+)(20\d{2})(?!\d)|(?<!\d)(20\d{2})[._-]*(?:born|birthday|bday|baby|kid)/g,
-  _CLASS_YEAR: /(?:class[._-]*(?:of)?|(?<![a-z])c[._-]*o)[._-]*(20\d{2})(?!\d)/g,
-  // classof27, co27: a two-digit class year, read as 20xx, from this year up to CLASS_AHEAD years on
-  _CLASS_YEAR2: /(?:class[._-]*(?:of)?|(?<![a-z])c[._-]*o)[._-]*(\d{2})(?!\d)/g,
-  // emma09, 08emma, liz_08: a two-digit year with a leading zero at either end, read as 200x
-  _EDGE_YEAR2: /^(0\d)(?!\d)|(?<!\d)(0\d)$/g,
-  // born09, baby19, 12born: any two-digit year next to a birth marker
-  _MARKED_YEAR2: /(?:(?:born|birthday|bday|baby)[._-]*|(?<![a-z])b[._-]+)(\d{2})(?!\d)|(?<!\d)(\d{2})[._-]*(?:born|birthday|bday|baby)/g,
-  // 2k9, 2k09, emma_2k10: the year 2009, 2010
-  _YEAR_2K: /(?<!\d)2k(\d{1,2})(?!\d)/g,
-  // year7 to year11, yr9: UK school years
-  _SCHOOL_YEAR: /(?<![a-z])(?:year|yr)[._-]*(?:1[01]|[7-9])(?!\d)/g,
-  _EDGE_NUMBER: /^(?:1[0-7])(?!\d)|(?<!\d)(?:1[0-7])$/g,
-  _WORDS: /minor|underage|preteen|(?<!be)tween|kid|child|schoolgirl|schoolboy|highschool|middleschool|juniorhigh|jrhigh|freshman|sophomore|loli|shota|jailbait|thirteen|fourteen|fifteen|sixteen|seventeen|(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)grade|quincean|(?:ten|eleven|twelve)(?:yo|yrs?|years?)|aged?(?:ten|eleven|twelve)/g,
-  _GRADE: /(?<!up)(?<!retro)grader?(?:1[0-2]|[1-9])(?!\d)|(?<!\d)(?:1[0-2]|[1-9])(?:st|nd|rd|th)?grade/g,
-  _TEEN: /(?<!eigh)(?<!nine)(?<!e1gh)(?<!n1ne)[t7][e3][e3]n(?!(?:s|age|ager|agers)?1[89](?!\d))/g,
+export const CONTENT_REASONS = {
+  age: "A profile found for this handle states an age under 18.",
+  school: "A profile found for this handle suggests a school-age person.",
+  birth: "A profile found for this handle states a birth date under 18.",
+  soft: "A profile found for this handle suggests a minor, and the handle carries a matching birth year.",
 };
-const LEET = [{ 0: "o", 1: "i", 3: "e", 4: "a", 5: "s", 7: "t" }, { 0: "o", 1: "l", 3: "e", 4: "a", 5: "s", 7: "t" }];
-const groups = (name, text) => [...text.matchAll(GUARD_PATTERNS[name])].map((m) => m[1]);
-const hits = (name, text) => text.search(new RegExp(GUARD_PATTERNS[name].source)) >= 0;
-const minorAge = (t, floor = 1) => { const n = parseInt(t, 10); return floor <= n && n < ADULT_AGE; };
+export const RULES_UNAVAILABLE = "Adult sites cannot be switched on: the rules that keep them away from minors could not be loaded. Reload the page.";
+// { blocked, kind, reason }: kind is "age", "word" or "rules".
+export function minorGuard(target) {
+  const kind = handleToken(handleOf(target));
+  return kind ? { blocked: true, kind, reason: GUARD_REASONS[kind] } : { blocked: false, kind: "", reason: "" };
+}
+// A fixed sentence set inside another one. Anything that is not one of the sentences above (an
+// older server's wording, a case saved before this rule set) becomes one neutral clause.
+const KNOWN_REASONS = new Set([...Object.values(GUARD_REASONS), ...Object.values(CONTENT_REASONS)]);
+const asClause = (r) => { const t = String(r ?? "").trim(); return KNOWN_REASONS.has(t) ? t[0].toLowerCase() + t.slice(1, -1) : "the server refused this handle"; };
+// What the switch says for a handle that fails stage 1, before anything has run.
+export const guardText = (reason) => `Adult and dating sites are not checked for this handle: ${asClause(reason)}.`;
 
-// { blocked, reason }: reason is one of GUARD_REASONS and never repeats the handle.
-export function minorGuard(target, now = new Date()) {
-  const raw = String(target ?? "").trim().replace(/^@+/, "").toLowerCase();
-  const hit = (k) => ({ blocked: true, reason: GUARD_REASONS[k] });
-  if (!raw) return { blocked: false, reason: "" };
-  // 1. a stated age
-  if (["_AGE_THEN_WORD", "_WORD_THEN_AGE", "_INNER_AGE"].some((rx) => groups(rx, raw).some((g) => minorAge(g)))) return hit("age");
-  if (["_IM_AGE", "_AGE_THEN_SEX", "_SEX_THEN_AGE", "_NEAR_AGE"].some((rx) => groups(rx, raw).some((g) => minorAge(g, LETTER_MIN_AGE)))) return hit("age");
-  if (hits("_UNDER_18", raw)) return hit("age");
-  // 2. a year. Someone born 18 years ago may not have had this year's birthday yet.
-  const year = now.getFullYear();
-  if (groups("_CLASS_YEAR", raw).some((y) => Number(y) >= year)) return hit("class_year");
-  if (groups("_CLASS_YEAR2", raw).some((y) => year <= 2000 + Number(y) && 2000 + Number(y) <= year + CLASS_AHEAD)) return hit("class_year");
-  if (groups("_YEAR", raw).some((y) => year - ADULT_AGE <= Number(y) && Number(y) <= year - MIN_PLAIN_AGE)) return hit("birth_year");
-  if ([...raw.matchAll(GUARD_PATTERNS._MARKED_YEAR)].map((m) => Number(m[1] || m[2])).some((y) => year - MIN_PLAIN_AGE < y && y <= year)) return hit("birth_year");
-  // the same years written short: 2k09, a zero-led two digits at either end, born09
-  const plain = (y) => year - ADULT_AGE <= y && y <= year - MIN_PLAIN_AGE;
-  const either = (name, text) => [...text.matchAll(GUARD_PATTERNS[name])].map((m) => Number(m[1] || m[2]));
-  const trimmed = raw.replace(/^[._-]+|[._-]+$/g, "");
-  if (groups("_YEAR_2K", raw).some((y) => plain(2000 + Number(y)))) return hit("birth_year");
-  if (either("_EDGE_YEAR2", trimmed).some((y) => plain(2000 + y))) return hit("birth_year");
-  if (either("_MARKED_YEAR2", raw).some((yy) => { let y = 2000 + yy; if (y > year) y -= 100; return year - y <= ADULT_AGE; })) return hit("birth_year");
-  // 3. a bare number from 10 to 17 at either end
-  if (hits("_EDGE_NUMBER", trimmed)) return hit("number");
-  // 4. words
-  const joined = raw.replace(/[._-]+/g, "");
-  if (hits("_SCHOOL_YEAR", raw) || hits("_TEEN", joined) || hits("_GRADE", joined)) return hit("word");
-  if (LEET.some((table) => hits("_WORDS", joined.replace(/[013457]/g, (d) => table[d])))) return hit("word");
-  return { blocked: false, reason: "" };
+// ---- a case the guard stopped --------------------------------------------------------------------
+// collected.adultBlock records why the adult group is absent: { kind, source, snippet, url }.
+//   age, school, birth   a profile's text (source is the site, snippet the quoted text)
+//   soft                 a weaker sign in a profile together with a birth year in the handle
+//   handle, word         the handle itself          rules    the rules could not be loaded
+//   server               the server refused         pivot    opened from a case that was stopped
+// It can only ever hide the adult group. Text in it is remote: every use goes through esc or h.
+export const BLOCK_KINDS = ["age", "school", "birth", "soft", "handle", "word", "rules", "server", "pivot"];
+const CONTENT_KINDS = ["age", "school", "birth", "soft"];
+export const SNIPPET_MAX = 60, BLOCK_SOURCE_MAX = 80;
+const oneLine = (v, n) => Array.from(typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f\s]+/g, " ").trim() : "").slice(0, n).join("");
+// The stored record, checked and bounded, or null. Used for every read: a live run, History, a case file.
+export function readBlock(v) {
+  if (!isObj(v) || !BLOCK_KINDS.includes(v.kind)) return null;
+  const out = { kind: v.kind, source: "", snippet: "", url: "" };
+  if (CONTENT_KINDS.includes(v.kind)) {
+    out.source = oneLine(v.source, BLOCK_SOURCE_MAX).replace(/[<>]/g, "") || "a profile";
+    out.snippet = oneLine(v.snippet, SNIPPET_MAX);
+    const x = typeof v.url === "string" && v.url.length <= 600 ? parseUrl(v.url) : null;
+    if (x && /^https?:$/.test(x.protocol) && !x.username && !x.password && !adultHost(v.url)) out.url = v.url.trim();
+  }
+  if (v.kind === "pivot") { out.source = oneLine(v.source, 64).replace(/[<>]/g, ""); out.via = v.via === "content" ? "content" : "handle"; }
+  return out;
+}
+// A case with a block on record. Any value under the key counts, so a damaged record still hides.
+export const isBlocked = (collected) => isObj(collected) && collected.adultBlock !== undefined && collected.adultBlock !== null;
+const PIVOT_VIA = { content: "where a profile suggested a minor", handle: "whose handle states an age under 18" };
+// The reason as a clause, with no leading capital and no full stop.
+export function blockClause(block) {
+  const b = readBlock(block);
+  if (!b) return "the minor guard stopped this case";
+  if (CONTENT_KINDS.includes(b.kind)) return `${asClause(CONTENT_REASONS[b.kind])} (${b.source}: "${b.snippet}")`;
+  if (b.kind === "handle") return asClause(GUARD_REASONS.age);
+  if (b.kind === "word") return asClause(GUARD_REASONS.word);
+  if (b.kind === "rules") return asClause(GUARD_REASONS.rules);
+  if (b.kind === "pivot") return `this case was opened from ${b.source || "another case"}, ${PIVOT_VIA[b.via]}`;
+  return "the server refused this handle";
+}
+export const BLOCK_LEAD = "Adult and dating sites were not checked";
+export const blockText = (block) => `${BLOCK_LEAD}: ${blockClause(block)}.`;
+// The same sentence as markup, with the source as a link to the profile it was read on.
+export function blockHtml(block, handle = "") {
+  const b = readBlock(block);
+  if (!b || !CONTENT_KINDS.includes(b.kind) || !b.url) return esc(blockText(block));
+  const lk = classifyLink({ url: b.url, want: "verified_profile", site: b.source, subjects: [handle] });
+  return `${esc(BLOCK_LEAD)}: ${esc(asClause(CONTENT_REASONS[b.kind]))} (${lk.url ? link(lk.url, b.source, "", { kind: lk.link_kind }) : esc(b.source)}: "${esc(b.snippet)}").`;
+}
+// From the result of a content check (minorscan.js) or from the server's refusal.
+export const blockFromScan = (scan) => (scan && scan.blocked ? readBlock(scan.signal ? { kind: scan.kind, source: scan.signal.source, snippet: scan.signal.snippet, url: scan.signal.url } : { kind: "rules" }) : null);
+export const blockFromRefusal = (err) => readBlock(CONTENT_KINDS.includes(err?.block?.kind) ? err.block : { kind: err?.reason === GUARD_REASONS.age ? "handle" : err?.reason === GUARD_REASONS.word ? "word" : err?.reason === GUARD_REASONS.rules ? "rules" : "server" });
+// What the model is told: that the group was skipped and where the sign was. Never the snippet.
+export function blockForAi(collected) {
+  const b = isBlocked(collected) ? readBlock(collected.adultBlock) : null;
+  if (!b) return null;
+  return { kind: b.kind, source: CONTENT_KINDS.includes(b.kind) ? b.source.replace(/[^A-Za-z0-9 ._()\/-]/g, "").slice(0, 60) : "" };
 }
 
+// ---- the run: what is asked, and when ---------------------------------------------------------------
+// The words of the run log's one "Adult sites" row.
+export const ADULT_LOG = {
+  waiting: "Adult sites: waiting on profile check",
+  clean: (n) => `Adult sites: profile check clean (${plural(n, "profile")} read), checking`,
+  blocked: (block) => `Adult sites: not checked · ${blockClause(block)}`,
+  cancelled: "Adult sites: not run (cancelled)",
+  noSources: "Adult sites: not checked · no ordinary source answered for this handle, so there is nothing to check its profiles against",
+  mainstreamFirst: "Adult sites: not run · the server has no record of the ordinary sources for this handle. Run the case again",
+};
+export const NO_SOURCES_TEXT = `${BLOCK_LEAD}: no ordinary source answered for this handle. They are checked only after its profiles have been read.`;
+export const MAINSTREAM_FIRST_TEXT = `${BLOCK_LEAD}: the server has no record of the ordinary sources for this handle (it keeps one for 30 minutes). Run the case again.`;
+export const CANCELLED_TEXT = `${BLOCK_LEAD}: the run was cancelled before the profile check.`;
+// The requests of the adult pass. There are none without the result of a content check that
+// came back clean, so nothing can ask an adult site before the profiles have been read.
+// sources: which of Sherlock and Maigret are switched on.
+export function adultRequests(handle, scan, { sherlock = true, maigret = true } = {}) {
+  if (!scan || typeof scan !== "object" || scan.blocked !== false || !rulesReady() || minorGuard(handle).blocked) return [];
+  const body = usernameBody(handle, true);
+  return [
+    ...(sherlock ? [{ key: "sherlockAdult", label: "Sherlock · adult and dating sites", url: "/api/recon/sherlock", body }] : []),
+    ...(maigret ? [{ key: "maigretAdult", label: "Maigret · adult and dating sites", url: "/api/recon/maigret", body }] : []),
+    { key: "adultCheck", label: ADULT_SOURCE, url: "/api/recon/adult-check", body: { username: handle } },
+  ];
+}
+// Did an ordinary username source answer? The server refuses the adult pass otherwise.
+export const mainstreamAnswered = (collected) => isObj(collected) && ["sherlock", "maigret", "github", "platformCheck"].some((k) => isObj(collected[k]) && !failed(collected[k]));
+
 // ---- when the mode applies -------------------------------------------------------------------
-// May this run ask for adult sites? The switch must be on, the target a username, and the guard
-// must pass. Used by the source plan and by the request bodies, so they cannot disagree.
+// May this run plan an adult pass? The switch must be on, the target a username, and the handle
+// must pass stage 1. Whether the pass then runs is decided after the ordinary sources (stage 2).
 export const adultOn = (type, target, want) => want === true && type === "username" && !minorGuard(target).blocked;
-// May this case show adult rows? Only a case that recorded the mode, for a username the guard passes.
-export const adultAllowed = (collected, target, type = "username") => isObj(collected) && collected.adultMode === true && type === "username" && !minorGuard(target).blocked;
-// The body of a Sherlock or Maigret request. nsfw is always sent, and is true only when the mode is on.
-export const usernameBody = (handle, adult) => ({ username: handle, nsfw: adult === true });
+// May this case show adult rows? Only a case that recorded the mode and no block, for a username
+// whose handle passes stage 1.
+export const adultAllowed = (collected, target, type = "username") => isObj(collected) && collected.adultMode === true && !isBlocked(collected) && type === "username" && !minorGuard(target).blocked;
+// The body of a Sherlock or Maigret request. nsfw is always sent. The ordinary run sends false.
+// The adult pass sends true together with adult_only: the two are never one request.
+export const usernameBody = (handle, adult) => ({ username: handle, nsfw: adult === true, ...(adult === true ? { adult_only: true } : {}) });
 
 // ---- which sites are adult or dating sites ------------------------------------------------------
 // The platforms the adult site check knows, with the address of a profile there. This is the
@@ -175,11 +216,14 @@ export const isAdultRow = (r) => isObj(r) && (r.adult === true || namedAdult(r.s
 const categoryOf = (r) => (/dating/i.test(String(r?.category ?? "")) ? "dating" : "adult");
 const siteKey = (s) => lc(s).replace(/\s*\(.*\)$/, "");
 const rowsOf = (d) => (isObj(d) && Array.isArray(d.results) ? d.results : []);
+// Where the adult pass of Sherlock and of Maigret is stored. Every row under these keys is an adult row.
+export const ADULT_PASS_KEYS = ["sherlockAdult", "maigretAdult"];
 function adultSiteNames(c) {
   const out = new Set();
   for (const k of ["sherlock", "maigret"]) for (const r of rowsOf(c[k])) if (isAdultRow(r)) out.add(siteKey(r.site || r.name));
+  for (const k of ADULT_PASS_KEYS) for (const r of rowsOf(c[k])) if (isObj(r)) out.add(siteKey(r.site || r.name));
   for (const r of rowsOf(c.adultCheck)) if (isObj(r)) out.add(siteKey(r.platform));
-  for (const n of Array.isArray(c.maigret?.adult_errors) ? c.maigret.adult_errors : []) out.add(siteKey(n));
+  for (const d of [c.maigret, c.maigretAdult]) for (const n of Array.isArray(d?.adult_errors) ? d.adult_errors : []) out.add(siteKey(n));
   out.delete("");
   return out;
 }
@@ -228,7 +272,8 @@ const MAIGRET_ADULT_KEYS = ["nsfw", "adult_checked", "adult_errors", "adult_erro
 // recomputed, so nothing downstream reads "2 results" beside an empty list.
 function withoutRows(collected) {
   const c = collected, out = { ...c };
-  delete out.adultCheck; delete out.adultMode;
+  delete out.adultCheck; delete out.adultMode; delete out.adultBlock;
+  for (const k of ADULT_PASS_KEYS) delete out[k];
   const names = adultSiteNames(c);
   for (const k of ["sherlock", "maigret"]) {
     if (!isObj(c[k])) continue;
@@ -254,11 +299,34 @@ function withoutRows(collected) {
 export function withoutAdult(collected) {
   return isObj(collected) ? scrubLinks(collected, withoutRows(collected)) : {};
 }
-// What the source tally reads: the adult-free case, plus the adult site check as its own source
-// when the case had the mode on. Sherlock and Maigret are never counted for their adult rows.
+// What the source tally reads: the adult-free case, plus ONE "Adult site check" source when the
+// case had the mode on. That source is the adult site check together with the adult pass of
+// Sherlock and of Maigret, as its parts: a site a tool reported is a site that answered, a site
+// Maigret could not ask and a pass that failed are parts that did not. Sherlock and Maigret
+// themselves are never counted for adult rows, and the header never gains a second adult source.
+export function adultSource(collected) {
+  const c = collected, parts = [];
+  if (isObj(c.adultCheck)) parts.push(c.adultCheck);
+  for (const k of ADULT_PASS_KEYS) if (isObj(c[k])) parts.push(c[k]);
+  if (!parts.length) return null;
+  if (parts.every(failed)) return parts[0];
+  const check = isObj(c.adultCheck) && !failed(c.adultCheck) ? c.adultCheck : null;
+  const rows = check ? rowsOf(check).filter(isObj).map((r) => ({ platform: r.platform, state: r.state, found: r.found })) : [];
+  let checked = check && Number.isInteger(check.checked) ? check.checked : rows.filter((r) => r.state !== "no_public_url").length;
+  const part = (platform, state) => { rows.push({ platform, state, found: state === "found" ? true : null }); checked += 1; };
+  if (isObj(c.adultCheck) && failed(c.adultCheck)) part(ADULT_SOURCE, "unknown");
+  for (const [k, name] of [["sherlockAdult", "Sherlock"], ["maigretAdult", "Maigret"]]) {
+    const d = c[k];
+    if (!isObj(d)) continue;
+    if (failed(d)) { part(`${name} adult pass`, "unknown"); continue; }
+    for (const r of rowsOf(d)) if (isObj(r)) part(String(r.site || r.name || "").slice(0, 120), "found");
+    for (const n of Array.isArray(d.adult_errors) ? d.adult_errors.slice(0, 200) : []) if (typeof n === "string") part(n.slice(0, 120), "unknown");
+  }
+  return { username: check?.username, checked, total: rows.filter((r) => r.state === "found").length, results: rows };
+}
 export function tallyView(collected, target, type) {
   const out = withoutAdult(collected);
-  if (adultAllowed(collected, target, type) && isObj(collected.adultCheck)) out.adultCheck = collected.adultCheck;
+  if (adultAllowed(collected, target, type)) { const src = adultSource(collected); if (src) out.adultCheck = src; }
   return out;
 }
 
@@ -303,6 +371,11 @@ export function scrubResponse(key, data, on) {
     if (!on) return null;
     return failed(data) ? data : { ...Object.fromEntries(["username", "checked", "total", "cached"].filter((k) => k in data).map((k) => [k, data[k]])), results: rowsOf(data).filter(isObj).map((r) => cleanCheckRow(r, handleOf(data.username))) };
   }
+  // The adult pass of a tool: every row is an adult row and keeps only the whitelisted text fields.
+  if (ADULT_PASS_KEYS.includes(key)) {
+    if (!on) return null;
+    return failed(data) || !Array.isArray(data.results) ? data : { ...data, results: data.results.filter(isObj).map(cleanToolRow) };
+  }
   if (key !== "sherlock" && key !== "maigret") return data;
   if (!on) return withoutAdult({ [key]: data })[key];
   return Array.isArray(data.results) ? { ...data, results: data.results.map((r) => (isAdultRow(r) ? cleanToolRow(r) : r)) } : data;
@@ -310,16 +383,33 @@ export function scrubResponse(key, data, on) {
 // A whole case as it is kept in memory and in History.
 export function scrubCollected(collected, target, type) {
   if (!isObj(collected)) return {};
-  if (!adultAllowed(collected, target, type)) return withoutAdult(collected);
+  if (!adultAllowed(collected, target, type)) {
+    // No adult row is kept. Why the group is absent is: a block survives, checked and bounded.
+    const out = withoutAdult(collected), block = type === "username" && isBlocked(collected) ? readBlock(collected.adultBlock) || { kind: "server", source: "", snippet: "", url: "" } : null;
+    if (block) out.adultBlock = block;
+    return out;
+  }
   const out = { ...collected };
-  for (const k of ["sherlock", "maigret", "adultCheck"]) if (isObj(out[k])) out[k] = scrubResponse(k, out[k], true);
+  for (const k of ["sherlock", "maigret", "adultCheck", ...ADULT_PASS_KEYS]) if (isObj(out[k])) out[k] = scrubResponse(k, out[k], true);
   return out;
 }
 
 // ---- the group ---------------------------------------------------------------------------------
 // One row per site, from Sherlock, Maigret and the adult site check together. Order: a profile
 // was read, a tool reported it, blocked or unknown, no public page, not found.
-const RANK = { read: 0, reported: 1, blocked: 2, unknown: 2, no_public_url: 3, not_found: 4, mentioned: 5 };
+const RANK = { not_checked: -1, read: 0, reported: 1, blocked: 2, unknown: 2, no_public_url: 3, not_found: 4, mentioned: 5 };
+// The one row that stands in the group's place when the minor guard stopped the case.
+export const isBlockRow = (r) => r?.adult?.state === "not_checked";
+// The rows that are sites: everything but that one.
+export const adultFound = (rows) => (rows || []).filter((r) => !isBlockRow(r));
+export const NOT_CHECKED_BLURB = "These sites were not asked about this handle. The row below says why, with the profile text that triggered it when there is one, so it can be checked. There is no way to override it.";
+function blockRow(collected, target) {
+  const b = readBlock(collected.adultBlock) || { kind: "server", source: "", snippet: "", url: "" };
+  const clause = blockClause(b);
+  const row = { tier: "adult", what: "Not checked", url: "", link_kind: "none", key: "adult:block", glyph: "–", meta: clause[0].toUpperCase() + clause.slice(1) + ".", sources: ["Profile check"], source: "Profile check", adult: { state: "not_checked", category: "adult", block: b }, no_check: true };
+  if (b.url) { const lk = classifyLink({ url: b.url, want: "verified_profile", site: b.source, subjects: [handleOf(target)] }); if (lk.url) row.more = { url: lk.url, label: `Open the ${b.source} profile`, link_kind: lk.link_kind }; }
+  return row;
+}
 export const ADULT_WORD = { read: "profile read", reported: "reported by a tool and nothing read", blocked: "Blocked by site", unknown: "could not be checked", no_public_url: "no public page", not_found: "not found", mentioned: "linked from a profile" };
 const FROM_CHECK = { found: "read", not_found: "not_found", blocked: "blocked", unknown: "unknown", no_public_url: "no_public_url" };
 // A neutral mark beside the site name: its initials. Never an image. The CSP would allow a
@@ -342,6 +432,7 @@ export function safeToolUrl(site, url) {
   return own ? String(url).trim() : "";
 }
 export function adultRows(collected, target, type = "username") {
+  if (type === "username" && isBlocked(collected)) return [blockRow(collected, target)];
   if (!adultAllowed(collected, target, type)) return [];
   const c = collected, handle = handleOf(target);
   const sites = new Map();
@@ -358,16 +449,18 @@ export function adultRows(collected, target, type = "username") {
     if (d.noisy) s.noisy = true;
     if (state === "read") for (const [f, v] of Object.entries(d.text || {})) if (v !== "" && v !== null && v !== undefined && !(f in s.text)) s.text[f] = v;
   };
-  for (const [source, d] of [["Sherlock", c.sherlock], ["Maigret", c.maigret]]) {
+  // The adult pass of each tool, and (a case saved before the pass was its own request) the
+  // adult rows inside the tool's ordinary answer.
+  for (const [source, d, all] of [["Sherlock", c.sherlock, false], ["Maigret", c.maigret, false], ["Sherlock", c.sherlockAdult, true], ["Maigret", c.maigretAdult, true]]) {
     if (!isObj(d) || failed(d)) continue;
     for (const r of rowsOf(d)) {
-      if (!isAdultRow(r)) continue;
+      if (!isObj(r) || !(all || isAdultRow(r))) continue;
       const row = cleanToolRow(r), p = row.profile || {};
       say(row.site, source, row.verified ? "read" : "reported", { url: safeToolUrl(row.site, row.url), category: row.category, noisy: row.confidence === "false_positive", text: { name: p.name, joined: p.created_at, followers: p.followers, bio: p.bio } });
     }
   }
   // Sites Maigret's adult pass could not ask: unknown, never "not found".
-  if (isObj(c.maigret) && !failed(c.maigret)) for (const n of Array.isArray(c.maigret.adult_errors) ? c.maigret.adult_errors.slice(0, 200) : []) if (typeof n === "string" && !sites.get(siteKey(n))?.said.some((x) => x.source === "Maigret")) say(n, "Maigret", "unknown");
+  for (const mg of [c.maigret, c.maigretAdult]) if (isObj(mg) && !failed(mg)) for (const n of Array.isArray(mg.adult_errors) ? mg.adult_errors.slice(0, 200) : []) if (typeof n === "string" && !sites.get(siteKey(n))?.said.some((x) => x.source === "Maigret")) say(n, "Maigret", "unknown");
   // An older platform check listed OnlyFans as "check by hand". Nothing was asked, so it is unknown.
   if (isObj(c.platformCheck) && !failed(c.platformCheck)) for (const r of rowsOf(c.platformCheck)) if (isObj(r) && namedAdult(r.platform) && (r.manual === true || r.state === "manual")) say(str(r.platform, 120), "Platform check", "unknown", { url: platformUrl(r.platform, handle), category: "adult" });
   if (isObj(c.adultCheck) && !failed(c.adultCheck)) for (const raw0 of rowsOf(c.adultCheck)) {
@@ -418,25 +511,29 @@ export function adultRows(collected, target, type = "username") {
 }
 
 // ---- counts and wording ----------------------------------------------------------------------
-export function adultCounts(rows) {
-  const n = (st) => (rows || []).filter((r) => r.adult?.state === st).length;
+export function adultCounts(rows0) {
+  const rows = adultFound(rows0);
+  const n = (st) => rows.filter((r) => r.adult?.state === st).length;
   const c = { read: n("read"), reported: n("reported"), blocked: n("blocked"), unknown: n("unknown"), noPage: n("no_public_url"), notFound: n("not_found") };
   return { ...c, mentioned: n("mentioned"), taken: c.read + c.reported, unchecked: c.blocked + c.unknown, total: (rows || []).length };
 }
 // The one neutral line the brief gets. These rows are in no other count.
-export const adultBriefText = (rows) => { const c = adultCounts(rows); return `Adult and dating sites: ${plural(c.taken, "handle")} taken, ${fmtNum(c.unchecked)} could not be checked. Existence only.`; };
+export const adultBriefText = (rows) => { const b = (rows || []).find(isBlockRow); if (b) return blockText(b.adult.block); const c = adultCounts(rows); return `Adult and dating sites: ${plural(c.taken, "handle")} taken, ${fmtNum(c.unchecked)} could not be checked. Existence only.`; };
 // The line under the group's heading: what the count is made of.
-export const adultSummary = (rows) => { const c = adultCounts(rows); return [`${plural(c.taken, "handle")} taken (${fmtNum(c.read)} read, ${fmtNum(c.reported)} reported)`, `${fmtNum(c.unchecked)} could not be checked`, c.noPage ? `${fmtNum(c.noPage)} with no public page` : "", `${fmtNum(c.notFound)} not found`, c.mentioned ? `${fmtNum(c.mentioned)} only linked from a profile` : ""].filter(Boolean).join(" · ") + "."; };
+export const adultSummary = (rows) => { if ((rows || []).some(isBlockRow)) return ""; const c = adultCounts(rows); return [`${plural(c.taken, "handle")} taken (${fmtNum(c.read)} read, ${fmtNum(c.reported)} reported)`, `${fmtNum(c.unchecked)} could not be checked`, c.noPage ? `${fmtNum(c.noPage)} with no public page` : "", `${fmtNum(c.notFound)} not found`, c.mentioned ? `${fmtNum(c.mentioned)} only linked from a profile` : ""].filter(Boolean).join(" · ") + "."; };
 
 // What the AI is told: the site, its kind, the state and what the link is worth. No names, no
 // bios, no URLs. Sent as its own field and never inside `accounts`.
-export const adultForAi = (rows) => (rows || []).filter((r) => r.adult.state !== "mentioned").slice(0, 200).map((r) => ({ site: String(r.what).slice(0, 120), category: r.adult.category, state: r.adult.state, url_kind: r.link_kind || "none" }));
+export const adultForAi = (rows) => adultFound(rows).filter((r) => r.adult.state !== "mentioned").slice(0, 200).map((r) => ({ site: String(r.what).slice(0, 120), category: r.adult.category, state: r.adult.state, url_kind: r.link_kind || "none" }));
 
 // ---- exports ---------------------------------------------------------------------------------
-export const adultMarkdown = (rows) => (rows && rows.length ? [`## ${ADULT_SECTION} (${rows.length})`, `> ${ADULT_NOTICE}`, "", ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []);
+// Markdown that cannot open a link or a tag: the snippet in a block is text someone else wrote.
+const mdPlain = (t) => String(t).replace(/[\\`*_\[\]()<>|#!]/g, " ").replace(/\s+/g, " ").trim();
+export const adultMarkdown = (rows) => ((rows || []).some(isBlockRow) ? [`## ${ADULT_GROUP}`, `> ${mdPlain(blockText(rows.find(isBlockRow).adult.block))}`, ""] : rows && rows.length ? [`## ${ADULT_SECTION} (${rows.length})`, `> ${ADULT_NOTICE}`, "", ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []);
 // The same rows as a plain list, for the report and the source card. Text and links only.
 export function adultListHtml(rows) {
   if (!rows || !rows.length) return "";
+  if (rows.some(isBlockRow)) return `<p class="muted small">${esc(blockText(rows.find(isBlockRow).adult.block))}</p>`;
   return `<p class="muted small">${esc(ADULT_NOTICE)}</p><ul class="adult-list">${rows.map((i) => `<li><span class="site-glyph" aria-hidden="true">${esc(i.glyph)}</span>${link(i.url, i.what, "", { kind: i.link_kind })} <span class="dim small">${esc(i.meta)}</span>${i.hint ? `<span class="ev-hint"><b>How to check</b> ${esc(i.hint)}</span>` : ""}</li>`).join("")}</ul>`;
 }
 

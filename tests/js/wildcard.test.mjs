@@ -1,5 +1,6 @@
 // Wildcard DNS in Recon: a zone that answers for every name must not fill the page with
 // names the wordlist guessed. One row, one graph node, one brief line, and counts of real names.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import { readFileSync } from "node:fs";
 import { buildFindings, takeoverInput, takeoverForAi, TIERS, VIA_WILDCARD } from "../../static/v2/js/reconfindings.js";
 import { reconBrief } from "../../static/v2/js/brief.js";

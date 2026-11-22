@@ -1,4 +1,5 @@
 // The recon timeline is built from dated facts only, so every row can be checked exactly.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import { toDay, span, daysBetween, reconTimeline, domainAgeDays } from "../../static/v2/js/timeline.js";
 import { reconBrief } from "../../static/v2/js/brief.js";
 

@@ -3,6 +3,7 @@
 // the source knew: a bare homepage, a link with no link_kind, an anchor on a row with no public
 // URL, or an evidence URL that carries an email address or the username in its query.
 // Also checks the link markup, each link check result, and old saved cases. No browser, no network.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document = { addEventListener() {} };   // ai.js and report.js register delegated listeners on import

@@ -4,6 +4,7 @@
 // exports and the AI payload both ways, that nothing ever renders an image, the minor guard and
 // its drift from core/adult_guard.py, and that the switch is never stored. The switch itself is a
 // session mode: see modes.test.mjs. No browser, no network.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document = { addEventListener() {} };   // ai.js and report.js register delegated listeners on import
@@ -63,8 +64,8 @@ const noImages = (html, what) => {
   ok(!sourcePlan("username", T, { adult: "true" }).includes("adult") && !sourcePlan("username", T, { adult: 1 }).includes("adult"), "only the literal true turns it on");
   for (const t of ["email", "hash", "phone", "name"]) ok(!sourcePlan(t, t === "email" ? "jdoe_example@example.org" : T, { adult: true }).includes("adult"), `a ${t} case never plans it`);
   ok(JSON.stringify(A.usernameBody(T, false)) === JSON.stringify({ username: T, nsfw: false }) && A.usernameBody(T, undefined).nsfw === false && A.usernameBody(T, "yes").nsfw === false, "mode off sends nsfw false to Sherlock and Maigret");
-  ok(A.usernameBody(T, true).nsfw === true && A.usernameBody(T, A.adultOn("username", T, true)).nsfw === true, "mode on sends nsfw true");
-  ok(A.adultOn("username", T, true) && !A.adultOn("email", T, true) && !A.adultOn("username", T, false) && !A.adultOn("username", "anna15", true), "the mode needs the switch, a username and a handle the guard passes");
+  ok(JSON.stringify(A.usernameBody(T, true)) === JSON.stringify({ username: T, nsfw: true, adult_only: true }) && A.usernameBody(T, A.adultOn("username", T, true)).nsfw === true && !("adult_only" in A.usernameBody(T, false)), "the adult pass sends nsfw true together with adult_only, and the ordinary run sends neither");
+  ok(A.adultOn("username", T, true) && !A.adultOn("email", T, true) && !A.adultOn("username", T, false) && !A.adultOn("username", "anna_15yo", true) && A.adultOn("username", "anna15", true), "the mode needs the switch, a username and a handle that passes the handle check; a bare number passes it");
   // defence in depth: an adult row in an answer is dropped when the mode is off
   for (const k of ["sherlock", "maigret"]) {
     const off = A.scrubResponse(k, clone(C[k]), false);
@@ -264,7 +265,7 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(!names(JSON.stringify(on), [...ADULT_TEXT, "Jay"]).length && !/https?:\/\/[^"]*(?:fansly|pornhub|xhamster|onlyfans|tinder|chaturbate|royalcams|\.example\/(?!docs))/i.test(JSON.stringify(on).replace(/https:\/\/(?:github\.com|mastodon\.social|keybase\.io|avatars\.githubusercontent\.com|files\.mastodon\.social)[^"]*/g, "")) && ![...planted].some((u) => JSON.stringify(on).includes(u)), "no bio, no name, no URL and no image address is sent");
   ok(on.source_status["Adult site check"] === status["Adult site check"], "the source's status goes with it");
   for (const [label, c] of [["without the flag", OFF], ["scrubbed", A.withoutAdult(C)], ["for a handle the guard blocks", C]]) {
-    const off = aiPayloadFor(c, label.startsWith("for") ? "jdoe_example15" : T, "username", { source_status: status });
+    const off = aiPayloadFor(c, label.startsWith("for") ? "jdoe_15yo" : T, "username", { source_status: status });
     ok(!("adult_sites" in off) && !/adult|nsfw/i.test(JSON.stringify(off)) && !names(JSON.stringify(off), [...ADULT_SITES, ...ADULT_HOSTS, ...ADULT_TEXT]).length && off.accounts.length === 3, `mode off (${label}): no adult_sites field and no trace of those sites, the status row included`);
   }
   ok(!("adult_sites" in aiPayloadFor({ ...C }, "jdoe_example@example.org", "email")), "an email case sends none");
@@ -293,58 +294,35 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(sourceCoverage(fx.collected.adultCheck).total === 8 && !sourceTally(A.withoutAdult(C), NAMES).rows.some((x) => x.key === "adultCheck"), "and a case without the mode has no such source");
 }
 
-// ---- 9. the minor guard --------------------------------------------------------------------------
+// ---- 9. the minor guard: the handle ----------------------------------------------------------------
+// The rules are in static/v2/data/minor-rules.json and are applied by minorscan.js. The fixtures,
+// the content check, the ordering of the run and the parity with the server are in
+// minorscan.test.mjs and tests/test_minor_parity.py. This section pins what adult.js does with it.
 {
-  const g = (h) => A.minorGuard(h, NOW);
-  const BLOCK = { anna15: "number", "15anna": "number", apollo13: "number", "13yo_gamer": "age", "user_15_yo": "age", age14: "age", im16: "age", "17f": "age", f15: "age", m16: "age", "14yrs": "age", under18: "age", u18: "age", born2012: "birth_year", "2011baby": "birth_year", jake_2010x: "birth_year", user2008: "birth_year", class_of_2027: "class_year", co2026: "class_year", kidrock: "word", "k1d_rocker": "word", schoolgirl99: "word", highschool_dan: "word", grade7: "word", "9thgrade": "word", l0li: "word", teenwolf: "word", "t33n_queen": "word", fifteen_candles: "word", preteen_x: "word", "@minor_threat": "word", tweenie: "word" };
-  for (const [h, why] of Object.entries(BLOCK)) ok(g(h).blocked && g(h).reason === A.GUARD_REASONS[why], `blocked: ${h} (${why})`);
-  for (const h of ["jdoe_example", "torvalds", "teen18", "teens19", "eighteen_plus", "nineteen_eighty", "user2007", "jdoe1990", "m4", "f1fan", "page3", "xx_14_xx", "between_us", "upgrade7x", "anna21", "18f", "25m", "class_of_2005", "canary", ""]) ok(!g(h).blocked && g(h).reason === "", `allowed: ${h || "(empty)"}`);
-  ok(g("user2008").blocked && !A.minorGuard("user2008", new Date("2027-01-02")).blocked && A.minorGuard("user2009", new Date("2027-01-02")).blocked, "the birth year rule moves with the calendar");
-  // a bare year blocks from 18 down to 6 years ago; a more recent year only next to a birth marker
-  const Y = NOW.getFullYear();
-  for (let y = Y - 18; y <= Y - 6; y++) ok(g(`user${y}`).reason === A.GUARD_REASONS.birth_year && g(`${y}_sam`).blocked, `a bare ${y} blocks`);
-  for (let y = Y - 5; y <= Y; y++) ok(!g(`user${y}`).blocked && !g(`john_${y}`).blocked, `a bare ${y} does not: it is more often the year the account was made`);
-  ok(!g(`user${Y - 19}`).blocked && !g(`user${Y + 1}`).blocked, "nor does a year outside the range");
-  for (const h of [`born${Y - 1}`, `${Y - 3}baby`, `bday${Y - 5}`, `b.${Y - 2}`, `b_${Y}`, `${Y - 4}_kid`, `birthday${Y - 2}`, `${Y - 1}born`]) ok(g(h).reason === A.GUARD_REASONS.birth_year, `blocked next to a birth marker: ${h}`);
-  for (const h of [`user${Y - 1}`, `john${Y - 2}`, `est${Y - 2}`, `bob${Y - 2}`, `b${Y - 2}`, `club${Y - 3}`]) ok(!g(h).blocked, `allowed: ${h}`);
-  // short years, class years, school years and announced ages, from the current year
-  const yy = (y) => String(y % 100).padStart(2, "0");
-  const zero = Array.from({ length: 13 }, (_, i) => Y - 18 + i).filter((y) => y >= 2000 && y <= 2009);   // birth years written 0x
-  ok(zero.length > 0, "there are still zero-led birth years under 18 to test");
-  for (const y of zero) ok(g(`emma${yy(y)}`).reason === A.GUARD_REASONS.birth_year && g(`${yy(y)}emma`).blocked && g(`liz_${yy(y)}`).blocked && g(`born${yy(y)}`).blocked && g(`emma_2k${yy(y)}`).blocked && g(`2k${y % 100}`).blocked, `a short ${y} blocks: emma${yy(y)}, ${yy(y)}emma, liz_${yy(y)}, born${yy(y)}, 2k${y % 100}`);
-  ok(g(`2k${(Y - 16) % 100}`).blocked && g(`emma_2k${(Y - 16) % 100}`).blocked && !g(`nba2k${(Y - 2) % 100}`).blocked && !g(`2k${(Y - 20) % 100}x`).blocked, "2k years follow the bare year range");
-  for (const d of [0, 1, 5, 15]) ok(g(`classof${yy(Y + d)}`).reason === A.GUARD_REASONS.class_year && g(`co${yy(Y + d)}`).blocked, `a class year ${d} years ahead blocks, written short`);
-  ok(!g(`classof${yy(Y - 1)}`).blocked && !g(`co${yy(Y + 16)}x`).blocked, "a class year that has passed, or is too far ahead, does not");
-  ok(g(`born${yy(Y - 18)}`).blocked && g(`baby${yy(Y)}`).blocked && !g(`born${yy(Y - 19)}`).blocked && !g(`born${yy(Y - 21)}`).blocked && !g("born99").blocked, "a marked two-digit year blocks up to 18 years back, and reads a future one as the last century");
-  for (const h of ["emma09", "08emma", "liz_08", "born09", "2k9", "emma_2k10", "classof27", "co27", "grade_5", "5thgrade", "year9", "yr9", "turning15", "quinceanera", "almost16x", "only_14", "2ndgrade", "grade1", "yr_11", "firstgrade_fan"]) ok(g(h).blocked, `blocked: ${h}`);
-  for (const h of ["emma19", "born05", "born99", "year3", "nba2k24", "user2025", "retrograde9", "upgrade5", "year12x", "just20", "turning30", "emma20", "co2", "mayor9"]) ok(!g(h).blocked, `allowed: ${h}`);
-  ok(g("born2025").blocked && g("2023baby").blocked && g("bday2021").blocked && g("b.2024").blocked && !g("user2025").blocked && !g("john2024").blocked && !g("est2024").blocked && !g("bob2024").blocked, "the lead's eight examples, as of 2026");
-  ok(Object.values(BLOCK).length && !Object.keys(BLOCK).some((h) => g(h).reason.toLowerCase().includes(h.replace(/^@/, ""))), "a reason never repeats the handle");
-  ok(A.guardText(A.GUARD_REASONS.age) === "Adult and dating sites are not checked for this handle: it suggests a minor (the handle states an age under 18).", "the sentence the switch shows");
-  // nothing adult is asked for, shown or sent for such a handle, and nothing overrides that
-  ok(!sourcePlan("username", "anna15", { adult: true }).includes("adult") && A.usernameBody("anna15", A.adultOn("username", "anna15", true)).nsfw === false, "a blocked handle plans no adult check and sends nsfw false");
-  const young = buildEvidence(C, "jdoe_2012", "username");
-  ok(!adultOf(young).length && !names(JSON.stringify(young.items), ADULT_SITES).length && !A.adultAllowed(C, "jdoe_2012", "username"), "a stored case for such a handle shows no adult row even with the flag set");
-  ok(!("adultMode" in A.scrubCollected(C, "jdoe_2012", "username")) && !("adultCheck" in A.scrubCollected(C, "jdoe_2012", "username")), "and its adult data is dropped when it is opened");
+  const g = (h) => A.minorGuard(h);
+  const BLOCK = { "13yo_gamer": "age", "user_15_yo": "age", age14: "age", "14yrs": "age", "15y/o": "age", "16yrsold": "age", "13yearsold": "age", "15yo_alex": "age", age14jay: "age", preteen_x: "word", underage: "word", j41lb41t: "word" };
+  for (const [h, why] of Object.entries(BLOCK)) ok(g(h).blocked && g(h).kind === why && g(h).reason === A.GUARD_REASONS[why], `blocked: ${h} (${why})`);
+  // A bare number, a year or an ordinary word in a handle never blocks any more.
+  for (const h of ["jdoe_example", "torvalds", "gamer13", "sk8r_15", "10outof10", "err0ric17", "team14", "1337", "2015ford", "mike1999", "mike2010", "anna15", "15anna", "apollo13", "im16", "17f", "f15", "m16", "under18", "u18", "born2012", "2011baby", "user2008", "class_of_2027", "kidrock", "schoolgirl99", "grade7", "l0li", "teenwolf", "fifteen_candles", "@minor_threat", "tweenie", "emma09", "page14", "stage15", "15yoga", ""]) ok(!g(h).blocked && g(h).reason === "" && g(h).kind === "", `allowed: ${h || "(empty)"}`);
+  ok(!Object.keys(BLOCK).some((h) => g(h).reason.toLowerCase().includes(h.replace(/^@/, ""))) && ![...Object.values(A.GUARD_REASONS), ...Object.values(A.CONTENT_REASONS)].some((r) => /number|starts or ends|10 to 17/i.test(r)), "a reason never repeats the handle, and none mentions a number in it");
+  ok(A.guardText(A.GUARD_REASONS.age) === "Adult and dating sites are not checked for this handle: the handle states an age under 18." && A.guardText(A.GUARD_REASONS.word) === "Adult and dating sites are not checked for this handle: the handle contains a word that marks it as a minor's.", "the sentence the switch shows");
+  // Reasons from before this rule set (an older server, an older saved case) become one neutral clause.
+  for (const old of ["The handle starts or ends with a number from 10 to 17.", "The handle carries a year that would make the person under 18.", "The handle carries a school class year that has not passed yet.", "The handle contains a word that suggests a minor.", "", undefined, "<img src=x onerror=1>"]) ok(A.guardText(old) === "Adult and dating sites are not checked for this handle: the server refused this handle.", `an old or unknown reason maps to neutral wording: ${String(old).slice(0, 30)}`);
+  // nothing adult is planned, shown or sent for such a handle, and nothing overrides that
+  ok(!sourcePlan("username", "anna_15yo", { adult: true }).includes("adult") && A.usernameBody("anna_15yo", A.adultOn("username", "anna_15yo", true)).nsfw === false && A.adultRequests("anna_15yo", { blocked: false }).length === 0, "a blocked handle plans no adult pass, sends nsfw false and gets no adult request");
+  const young = buildEvidence(C, "jdoe_15yo", "username");
+  ok(!adultOf(young).length && !names(JSON.stringify(young.items), ADULT_SITES).length && !A.adultAllowed(C, "jdoe_15yo", "username"), "a stored case for such a handle shows no adult row even with the flag set");
+  ok(!("adultMode" in A.scrubCollected(C, "jdoe_15yo", "username")) && !("adultCheck" in A.scrubCollected(C, "jdoe_15yo", "username")), "and its adult data is dropped when it is opened");
+  // The fixture is a case saved before the adult pass was its own request: its adult rows sit inside sherlock and maigret, and it still renders.
+  ok(!("sherlockAdult" in C) && C.sherlock.results.some(A.isAdultRow) && adultOf(buildEvidence(C, T, "username")).length > 5 && adultOf(buildEvidence(C, "gamer13", "username")).length > 5, "an old saved case with adult rows inside sherlock and maigret renders as before, also under a handle with a bare number");
 
-  // drift: every pattern and reason here is the one in core/adult_guard.py, read as text
-  const py = read("../../core/adult_guard.py");
-  const SEP = (py.match(/^_SEP = r"([^"]+)"/m) || [])[1];
-  ok(SEP === "[._-]*", "the Python file's separator is the one ported");
-  const pyRx = {};
-  for (const m of py.matchAll(/^(_[A-Z_0-9]+) = re\.compile\(\s*((?:\s*r?f?r?"[^"\n]*"\s*)+)\)/gm)) {
-    pyRx[m[1]] = [...m[2].matchAll(/(r?f?r?)"([^"\n]*)"/g)].map(([, pre, body]) => (pre.includes("f") ? body.replaceAll("{_SEP}", SEP).replaceAll("{{", "{").replaceAll("}}", "}") : body)).join("");
-  }
-  const mine = Object.keys(A.GUARD_PATTERNS);
-  ok(mine.length === 20 && mine.every((k) => k in pyRx), `every guard pattern has a counterpart in the Python file (${mine.filter((k) => !(k in pyRx)).join(", ") || "all"})`);
-  for (const k of mine) ok(A.GUARD_PATTERNS[k].source === pyRx[k], `${k} matches core/adult_guard.py`);
-  const guardNames = Object.keys(pyRx).filter((k) => !["_MEDIA_KEY", "_MEDIA_VALUE", "_LINK", "_TAG"].includes(k));
-  ok(guardNames.every((k) => mine.includes(k)), `no guard pattern in the Python file is missing here (${guardNames.filter((k) => !mine.includes(k)).join(", ") || "none"})`);
-  const pyReasons = Object.fromEntries([...py.slice(py.indexOf("REASONS = {"), py.indexOf("}", py.indexOf("REASONS = {"))).matchAll(/"(\w+)": "([^"]+)"/g)].map((m) => [m[1], m[2]]));
-  ok(JSON.stringify(pyReasons) === JSON.stringify(A.GUARD_REASONS), "the reasons are the server's sentences");
-  ok(/ADULT_AGE = 18\b/.test(py) && /^MIN_PLAIN_AGE = 6\b/m.test(py) && /^CLASS_AHEAD = 15\b/m.test(py) && /CLASS_AHEAD = 15\b/.test(read(J + "adult.js")) && /MIN_PLAIN_AGE = 6\b/.test(read(J + "adult.js")) && /_LETTER_MIN_AGE = 8\b/.test(py) && /str\.maketrans\("013457", "oieast"\)/.test(py) && /str\.maketrans\("013457", "oleast"\)/.test(py) && /ERROR_CODE = "minor_guard"/.test(py), "and so are the age limits, the digit readings and the error code");
+  // one file of rules, loaded by both sides: no pattern of the guard is written in adult.js or in the Python guard
+  const py = read("../../core/adult_guard.py"), mine = read(J + "adult.js");
+  ok(!("GUARD_PATTERNS" in A) && !/re\.compile\(\s*rf/.test(py) && !/yrs\?|years\?|\(\?<!/.test(mine.slice(0, mine.indexOf("// ---- when the mode applies"))), "the pattern-for-pattern port is gone: adult.js and core/adult_guard.py hold no guard pattern");
+  ok(/from core import minor_rules, profile_record/.test(py) && /import \{ handleToken, rulesReady \} from "\.\/minorscan\.js";/.test(mine) && /"static" \/ "v2" \/ "data" \/ "minor-rules\.json"/.test(read("../../core/minor_rules.py")) && /\.\.\/data\/minor-rules\.json/.test(read(J + "minorscan.js")), "both sides load static/v2/data/minor-rules.json");
+  const reasons = (name) => Object.fromEntries([...py.slice(py.indexOf(`${name} = {`), py.indexOf("}", py.indexOf(`${name} = {`))).matchAll(/"(\w+)": "([^"]+)"/g)].map((m) => [m[1], m[2]]));
+  ok(JSON.stringify(reasons("REASONS")) === JSON.stringify(A.GUARD_REASONS) && JSON.stringify(reasons("CONTENT_REASONS")) === JSON.stringify(A.CONTENT_REASONS) && /ERROR_CODE = "minor_guard"/.test(py) && /MAINSTREAM_CODE = "mainstream_first"/.test(py), "the reasons are the server's sentences, and the error codes are the ones the page reads");
 }
-
 // ---- 10. the switch: off on every page load, never stored, on for the page session ------------------
 // The switch is a session mode now (static/v2/js/modes.js, tested in full by modes.test.mjs). What
 // this suite still pins is the adult side of it: off by default, never stored, the minor guard
@@ -364,15 +342,16 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(view(T, "email").on === true && view(T, "email").applies === false && view(T, "email").note === "Not used for this kind of target." && view(T, "username").applies === true && view("", "").applies === false, "it only applies to a username case, and stays on through any other");
   ok(M.makeSessionModes().on("adult") === false && (await import(J + "modes.js?fresh=" + n)).session.on("adult") === false, "a new page load starts with it off: the state lives in memory only");
   // the suspended state
-  const blocked = view("anna15", "username");
-  ok(blocked.on && blocked.state === "suspended" && !blocked.applies && blocked.reason === "Adult and dating sites are not checked for this handle: it suggests a minor (the handle starts or ends with a number from 10 to 17).", "a handle that suggests a minor suspends the mode for that case and says why");
-  ok(A.adultOn("username", "anna15", view("anna15", "username").applies) === false && A.adultOn("username", "anna15", true) === false && s.on("adult"), "and there is no override, while the session mode stays on");
+  const blocked = view("anna_15yo", "username");
+  ok(blocked.on && blocked.state === "suspended" && !blocked.applies && blocked.reason === "Adult and dating sites are not checked for this handle: the handle states an age under 18." && blocked.note === M.MINOR_SHORT.handle, "a handle that states an age under 18 suspends the mode for that case and says why");
+  ok(A.adultOn("username", "anna_15yo", view("anna_15yo", "username").applies) === false && A.adultOn("username", "anna_15yo", true) === false && s.on("adult"), "and there is no override, while the session mode stays on");
+  ok(view("anna15", "username").applies === true && view("gamer13", "username").state === "applies", "a bare number in the handle suspends nothing");
   // the server's guard wins when the two disagree
-  suspended.add(T, { server: true, detail: "The handle contains a word that suggests a minor." });
+  suspended.add(T, { server: true, detail: "The handle contains a word that marks it as a minor's." });
   const refused = view(T, "username");
-  ok(refused.state === "suspended" && !refused.applies && /it suggests a minor \(the handle contains a word that suggests a minor\)\.$/.test(refused.reason) && s.on("adult"), "a refusal from the server suspends the mode for that case, with its reason");
+  ok(refused.state === "suspended" && !refused.applies && refused.reason === "Adult and dating sites are not checked for this handle: the handle contains a word that marks it as a minor's." && refused.note === M.MINOR_SHORT.server && s.on("adult"), "a refusal from the server suspends the mode for that case, with its reason");
   ok(view("someone_else", "username").applies === true, "and only for that case");
-  suspended.add("other_one", { server: true }); ok(view("other_one", "username").state === "suspended" && /it suggests a minor \(/.test(view("other_one", "username").reason), "a refusal with no reason still suspends it");
+  suspended.add("other_one", { server: true }); ok(view("other_one", "username").state === "suspended" && view("other_one", "username").reason === "Adult and dating sites are not checked for this handle: the server refused this handle.", "a refusal with no reason still suspends it");
   ok(writes.length === before, "none of this wrote to storage");
 
   const strip = (f) => read(J + f).replace(/\/\/.*$/gm, "");
@@ -385,7 +364,8 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok((inv.match(/store\.set\("crawlr_v2_sources", srcState\)/g) || []).length === 1 && /const setSrc = \(id, v\) => \{ if \(!mayStore\(id\)\) return;/.test(inv) && !M.mayStore("adult") && !M.mayStore("active"), "crawlr_v2_sources is written in one place, and never with a mode");
   const fn = (name) => { const a = inv.indexOf(`export function ${name}(`); return inv.slice(a, inv.indexOf("\n}\n", a)); };
   ok(fn("loadHistory").length > 200 && fn("clearCase").length > 200 && !/session\.request|\.request\(|adultSwitch/.test(fn("loadHistory").replace(/\/\/.*$/gm, "")) && !/session\.|suspended|adultSwitch/.test(fn("clearCase")), "opening a case from History and clearing the case leave the mode alone");
-  ok(/usernameBody\(handle, state\.adultMode\)/.test(inv) && /plan\.has\("adult"\)\) jobs\.push\(runSource\(ADULT_SOURCE, "\/api\/recon\/adult-check", \{ username: handle \}/.test(inv) && (inv.match(/adult-check/g) || []).length === 1, "the run uses the tested plan and bodies, and adult-check is called from one place, behind the plan");
+  ok(/runSource\("Sherlock", "\/api\/recon\/sherlock", usernameBody\(handle, false\), \{\}, "sherlock"\)/.test(inv) && /runSource\("Maigret", "\/api\/recon\/maigret", usernameBody\(handle, false\), \{\}, "maigret"\)/.test(inv) && !/usernameBody\(handle, (?!false\))/.test(inv) && !/adult-check/.test(inv) && (read(J + "adult.js").match(/\/api\/recon\/adult-check/g) || []).length === 1, "the ordinary run sends nsfw false whatever the mode, and adult-check is asked from one place: adultRequests, which needs a clean profile check");
+  ok(/const wantAdult = handleOk && plan\.has\("adult"\);/.test(inv) && /await Promise\.all\(adultRequests\(handle, scan, \{ sherlock: on\("sherlock"\), maigret: on\("maigret"\) \}\)\.map\(\(r\) => runSource\(r\.label, r\.url, r\.body, \{\}, r\.key\)\)\);/.test(inv) && (inv.match(/adultRequests\(/g) || []).length === 1, "the adult pass is started in one place, from the tested plan and the result of the profile check");
   ok(/role="switch" id="\$\{base\}" data-session-mode="\$\{id\}"/.test(read(J + "modes.js")) && /aria-labelledby="\$\{base\}-l" aria-describedby="\$\{base\}-d"/.test(read(J + "modes.js")), "the switch is a labelled role=switch, described by its one-line description");
 }
 
@@ -409,21 +389,38 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
 
 // ---- 12. the server's answer and the copy ---------------------------------------------------------
 {
-  const body = { detail: "This handle may belong to a minor, so adult and dating sites are not checked for it.", code: "minor_guard", reason: "The handle states an age under 18.", error: "x", error_code: "minor_guard", error_detail: "The handle states an age under 18." };
+  const body = { detail: "Adult and dating sites are not checked for this handle.", code: "minor_guard", reason: "The handle states an age under 18.", error: "x", error_code: "minor_guard", error_detail: "The handle states an age under 18." };
   globalThis.fetch = async () => ({ ok: false, status: 400, headers: { get: () => null }, json: async () => body });
   let err = null;
   try { await post("/api/recon/adult-check", { username: "x" }); } catch (e) { err = e; }
-  ok(err instanceof ApiError && err.code === "minor_guard" && err.status === 400 && err.reason === "The handle states an age under 18.", "the server's 400 minor_guard answer reaches the run as its own error, with the reason");
-  globalThis.fetch = async () => ({ ok: false, status: 400, headers: { get: () => null }, json: async () => ({ detail: { error_code: "minor_guard", reason: "The handle contains a word that suggests a minor." } }) });
-  err = null; try { await post("/api/recon/sherlock", { username: "x", nsfw: true }); } catch (e) { err = e; }
-  ok(err?.code === "minor_guard" && /word that suggests a minor/.test(err.reason), "in either shape");
+  ok(err instanceof ApiError && err.code === "minor_guard" && err.status === 400 && err.reason === "The handle states an age under 18." && err.block === undefined, "the server's 400 minor_guard answer reaches the run as its own error, with the reason");
+  ok(A.blockFromRefusal(err).kind === "handle" && A.blockText(A.blockFromRefusal(err)) === "Adult and dating sites were not checked: the handle states an age under 18.", "a refusal for the handle is recorded as that");
+  globalThis.fetch = async () => ({ ok: false, status: 400, headers: { get: () => null }, json: async () => ({ detail: { error_code: "minor_guard", reason: "The handle contains a word that marks it as a minor's." } }) });
+  err = null; try { await post("/api/recon/sherlock", { username: "x", nsfw: true, adult_only: true }); } catch (e) { err = e; }
+  ok(err?.code === "minor_guard" && /word that marks it as a minor's/.test(err.reason) && A.blockFromRefusal(err).kind === "word", "in either shape");
+  // The server's own content check refused: the kind, the site and the quoted text come with it.
+  const long = "x".repeat(500);
+  globalThis.fetch = async () => ({ ok: false, status: 400, headers: { get: () => null }, json: async () => ({ ...body, reason: "A profile found for this handle states an age under 18.", kind: "age", source: "Instagram", snippet: `16 | junior in <b>high</b> school ${long}`, url: "https://www.instagram.com/river_stone/" }) });
+  err = null; try { await post("/api/recon/adult-check", { username: "river_stone" }); } catch (e) { err = e; }
+  const fromServer = A.blockFromRefusal(err);
+  ok(err.code === "minor_guard" && err.block.kind === "age" && err.block.snippet.length <= 240 && fromServer.kind === "age" && fromServer.source === "Instagram" && fromServer.snippet.length === 60 && fromServer.url === "https://www.instagram.com/river_stone/", "a content refusal carries the kind, the source and a bounded snippet");
+  ok(A.blockText(fromServer).startsWith('Adult and dating sites were not checked: a profile found for this handle states an age under 18 (Instagram: "16 | junior in <b>high</b> school') && !A.blockHtml(fromServer, "river_stone").includes("<b>") && A.blockHtml(fromServer, "river_stone").includes("&lt;b&gt;high&lt;/b&gt;"), "and is shown escaped");
+  // An unknown kind from the server is still a refusal, recorded without any of its text.
+  globalThis.fetch = async () => ({ ok: false, status: 400, headers: { get: () => null }, json: async () => ({ ...body, reason: "something new", kind: "<script>", source: "<script>", snippet: "<script>" }) });
+  err = null; try { await post("/api/recon/adult-check", { username: "x" }); } catch (e) { err = e; }
+  ok(JSON.stringify(A.blockFromRefusal(err)) === JSON.stringify({ kind: "server", source: "", snippet: "", url: "" }) && A.blockText(A.blockFromRefusal(err)) === "Adult and dating sites were not checked: the server refused this handle.", "an unknown kind is recorded as a plain refusal");
+  // 409: the server has no record of the ordinary sources for the handle.
+  globalThis.fetch = async () => ({ ok: false, status: 409, headers: { get: () => null }, json: async () => ({ detail: "Run the ordinary sources for this handle first: adult and dating sites are checked only after its profiles have been read.", code: "mainstream_first", error_code: "mainstream_first" }) });
+  err = null; try { await post("/api/recon/adult-check", { username: "x" }); } catch (e) { err = e; }
+  ok(err instanceof ApiError && err.code === "mainstream_first" && err.status === 409, "the server's 409 mainstream_first answer reaches the run with its code");
   const inv = read(J + "investigate.js");
-  ok(/err\.code === "minor_guard"\) \{ adultRefused\(err\.reason\)/.test(inv) && /d === GUARDED \? runSource\(label, url, usernameBody\(handle, false\)/.test(inv), "the run then suspends the mode for the case and asks the tool again without it");
+  ok(/err\.code === "minor_guard"\) \{ adultRefused\(err\);/.test(inv) && /err\.code === "mainstream_first"\) \{ adultNotRun\(\);/.test(inv) && /state\.collected\.adultBlock = block;/.test(inv) && /state\.adultBlocked = MAINSTREAM_FIRST_TEXT;/.test(inv) && !/GUARDED \?/.test(inv), "the run records the server's reason, drops everything adult, and tolerates the 409 as a pass that did not run");
 
   ok(A.ADULT_NOTICE === "Adult and dating sites are existence checks only. A match shows a handle is taken there, not who owns it." && A.ADULT_SWITCH === "Adult sites" && (await import(J + "modes.js")).MODE.adult.label === A.ADULT_SWITCH && A.ADULT_SECTION === "Adult and dating sites (existence checks only)", "the fixed strings");
   const app = read(J + "app.js"), html = read("../../static/v2/index.html");
   ok(app.split(A.ADULT_COPY).length === 2 && html.split(A.ADULT_COPY).length === 2, "the consent gate and the Sources panel say the one sentence");
-  ok(/<b>Adult and dating sites are opt-in\.<\/b> They are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes\./.test(app) && /existence checks only/.test(A.ADULT_COPY) && /minor/.test(A.ADULT_COPY) && /lawful/.test(A.ADULT_COPY) && /when you switch that on:/.test(A.ADULT_COPY) && !/for a case/.test(A.ADULT_COPY), "it says opt-in, existence only, not for minors, lawful purposes");
+  ok(/<b>Adult and dating sites are opt-in\.<\/b> They are checked only when you switch that on: existence checks only, not for a handle that states an age under 18, not when a profile found for the handle suggests a minor, and only for lawful purposes\./.test(app) && /existence checks only/.test(A.ADULT_COPY) && /minor/.test(A.ADULT_COPY) && /lawful/.test(A.ADULT_COPY) && /when you switch that on:/.test(A.ADULT_COPY) && !/for a case/.test(A.ADULT_COPY), "it says opt-in, existence only, not for minors, lawful purposes");
+  ok(!/handle that suggests a minor/.test(app + html + read(J + "modes.js") + read(J + "adult.js")) && !/number from 10 to 17|starts or ends with a number/.test(app + html + read(J + "modes.js") + read(J + "adult.js") + inv), "no copy says a handle 'suggests a minor' any more, and none mentions a number in the handle");
   ok(A.ADULT_LASTS === "The switch is off when the page loads, and stays on until you switch it off or reload." && app.split(A.ADULT_LASTS).length === 3 && !/off for every new case|for a case:/.test(app + html), "the consent gate and the acceptable-use statement say how long the switch lasts, and no longer say it is off for every new case");
   ok(/const TERMS_KEY = "crawlr_terms_v3";/.test(app) && !/crawlr_terms_v2/.test(app), "the gate's wording changed, so its stored key was bumped and everyone sees it once more");
   const srcs = ["modes.js", "modeui.js", "adult.js", "evidence.js", "investigate.js", "renderers.js", "report.js", "workbench.js", "brief.js", "casefile.js", "core.js", "links.js", "app.js"].map((f) => read(J + f)).join("\n") + html + read("./fixtures/adult.json");
@@ -539,7 +536,7 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   const inv = read(J + "investigate.js");
   ok(/const profileUrls = \(\) => deepDiveUrls\(state\.collected\);/.test(inv) && /pendingChecks\(buildEvidence\(state\.collected, state\.target, state\.type\)\.items, tier\)\.filter\(\(r\) => !adultHost\(r\.url\)\)/.test(inv), "the app uses that list, and filters the link check's rows by host as well");
   ok(!/adult\s*:/.test(read(J + "linkcheck.js")) && /\{ username: username\(\), links: batch \}/.test(read(J + "linkcheck.js")), "the verifier's adult field is never sent");
-  ok(L.KNOWN_EVIDENCE.includes("Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor."), "the verifier's new sentence is known");
+  ok(L.KNOWN_EVIDENCE.includes("Adult and dating sites are checked only when that mode is on, after the ordinary sources, and not when the handle or a profile found for it suggests a minor.") && L.readChecks({ "acct:x": { state: "unknown", evidence: "Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor." } })["acct:x"]?.evidence !== undefined, "the verifier sentence of cases saved before the guard read profiles is still accepted");
 }
 
 console.log(bad ? `${bad} of ${n} adult checks failed` : `${n}/${n} adult checks passed`);

@@ -144,7 +144,14 @@ export async function post(url, body, headers = {}, signal) {
     // The server's minor guard refused the adult and dating site part of a request. The reason is one
     // of the server's own short phrases; callers show it and run the rest without that part.
     const guard = [j, d].find((x) => x && typeof x === "object" && !Array.isArray(x) && (x.error_code === "minor_guard" || x.code === "minor_guard"));
-    if (guard) { const e = new ApiError(r.status, "Adult and dating sites are not checked for this handle.", { code: "minor_guard" }); e.reason = String(guard.reason || (typeof d === "string" ? d : "") || "").slice(0, 160); throw e; }
+    if (guard) {
+      const e = new ApiError(r.status, "Adult and dating sites are not checked for this handle.", { code: "minor_guard" });
+      e.reason = String(guard.reason || (typeof d === "string" ? d : "") || "").slice(0, 160);
+      // When a profile's text was the reason, the server says which site and quotes the text.
+      // Remote text: it is bounded here and again by readBlock, and only ever shown escaped.
+      if (typeof guard.kind === "string") e.block = { kind: guard.kind.slice(0, 20), source: String(guard.source ?? "").slice(0, 80), snippet: String(guard.snippet ?? "").slice(0, 240), url: String(guard.url ?? "").slice(0, 600) };
+      throw e;
+    }
     if (r.status === 429) throw new ApiError(429, typeof d === "string" ? d : "Too many requests. Try again in a minute.", { code: j?.code || "rate_limited", retryAfter });
     if (typeof d === "string" && r.status < 500) throw new ApiError(r.status, d, { code: j.code || "" });
     if (typeof d === "string" && j.code) throw new ApiError(r.status, d, { code: j.code });

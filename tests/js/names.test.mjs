@@ -2,6 +2,7 @@
 // pin the ledger groups and their wording, the three states per directory, the qualifier hits, the
 // GitHub "Show profile" merge, the handle suggestions, the outbound searches, what the AI is
 // sent, the exports, and what a saved or hostile case file may bring back. No browser, no network.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document = { addEventListener() {} };   // ai.js and report.js register delegated listeners on import

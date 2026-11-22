@@ -4,7 +4,7 @@
 import { h, raw, esc, safeUrl, link, mark } from "./core.js";
 import { UNVERIFIED_TEXT, checkText } from "./links.js";
 import { markdown, splitSections, inline } from "./ai.js";
-import { adultListHtml, splitAdultProse, ADULT_SECTION, adultHost } from "./adult.js";
+import { adultListHtml, adultFound, splitAdultProse, ADULT_SECTION, adultHost } from "./adult.js";
 import { rowCertainty, certaintyOf, mayFavicon } from "./present.js";
 import { NAME_NOTICE } from "./names.js";
 import { evWhat } from "./workbench.js";
@@ -164,7 +164,7 @@ export function reportHtml({ ai, target, items, facts, collected, type = "", imp
   // for a case that has adult rows: with the mode off nothing of them is shown at all.
   const { rest, prose } = splitAdultProse(ai.summary);
   const parts = splitSections(rest);
-  if (parts.length < 2) return dossier({ target, profile: ai.profile, facts, accounts, collected }) + `<div class="report-scroll">${markdown(rest)}${adultHtml ? `<section class="rsec adult" id="rs-adult"><h3>${esc(ADULT_SECTION)}</h3>${adultHtml}${prose ? markdown(prose) : ""}</section>` : ""}</div>`;
+  if (parts.length < 2) return dossier({ target, profile: ai.profile, facts, accounts, collected }) + `<div class="report-scroll">${markdown(rest)}${adultHtml ? `<section class="rsec adult" id="rs-adult"><h3>${esc(ADULT_SECTION)}</h3>${adultHtml}${prose && adultFound(adult).length ? markdown(prose) : ""}</section>` : ""}</div>`;
   const by = {}; const other = [];
   for (const p of parts) { const k = kind(p.title); if (k === "other" || by[k]) other.push(p); else by[k] = p.md; }
 
@@ -177,7 +177,7 @@ export function reportHtml({ ai, target, items, facts, collected, type = "", imp
   sec("gaps", by.gaps && markdown(by.gaps));
   sec("active", by.active && markdown(by.active));
   other.forEach((p, i) => sec(`x${i}`, markdown(p.md), p.title || "Notes"));
-  sec("adult", adult.length ? adultHtml + (prose ? markdown(prose) : "") : "");
+  sec("adult", adult.length ? adultHtml + (prose && adultFound(adult).length ? markdown(prose) : "") : "");
 
   const jump = `<nav class="jump" aria-label="Report sections"><span>Jump to</span>${secs.map((s) => `<a href="#rs-${s.id}" data-jump>${esc(s.title.replace(/ \(\d+\)$/, ""))}</a>`).join("")}</nav>`;
   return dossier({ target, profile: ai.profile, facts, accounts, collected })

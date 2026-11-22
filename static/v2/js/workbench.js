@@ -228,7 +228,7 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
     return h`
       <section class="tier ${t.cls} ${open ? "" : "collapsed"} ${clip ? "clipped" : ""}" data-tier="${t.id}">
         <h2 class="tier-h"><button type="button" class="tier-head" aria-expanded="${open}" aria-controls="${bodyId}">
-          <span class="tier-rail" aria-hidden="true"></span><span class="tier-title">${t.title}</span><span class="count">${fmtNum(rows.length)}</span><span class="chev" aria-hidden="true">▾</span>
+          <span class="tier-rail" aria-hidden="true"></span><span class="tier-title">${t.title}</span><span class="count">${t.count ?? fmtNum(rows.length)}</span><span class="chev" aria-hidden="true">▾</span>
         </button>${((nCheck) => (nCheck > 0 ? raw(h`<button type="button" class="btn btn-sm tier-check" data-check-tier="${t.id}" data-count="${nCheck}">Check these links (${fmtNum(nCheck)})</button>`) : ""))(opts.check ? Number(opts.check(t.id)) || 0 : 0)}</h2>
         <div class="tier-body" id="${bodyId}">
           <div class="tier-blurb">${t.blurb}</div>

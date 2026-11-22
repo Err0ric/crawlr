@@ -53,7 +53,8 @@ import { TYPE_LABEL } from "./core.js";
 import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
 import { NAME_TIERS, isNameTier, nameItems, nameForAi, nameMarkdownHead } from "./names.js";
 import { PHONE_TIERS, phoneView, phoneItems, phoneFacts, phoneForAi } from "./phone.js";
-import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultMarkdown, reportForExport, adultHost, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
+import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultFound, adultMarkdown, blockForAi, reportForExport, adultHost, handleOf, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE } from "./adult.js";
+import { scanProfiles } from "./minorscan.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 
@@ -97,8 +98,10 @@ const HANDLE_OK = /^[A-Za-z0-9._-]{1,64}$/;
 
 // Which sources run for a target type, in order. Investigate uses this list to run them,
 // so the test of the email flow and the app cannot drift apart.
-// opts.adult: the case-level switch. The adult site check is planned only for a username whose
-// handle passes the minor guard; with the switch off it is never part of a run.
+// opts.adult: the case-level switch. The adult pass is planned only for a username whose handle
+// passes the first stage of the minor guard; with the switch off it is never part of a run.
+// "adult" is always last: it starts after the other sources, and only if the check of the
+// profiles they found comes back clean (contentCheck below, adultRequests in adult.js).
 export function sourcePlan(type, target, { adult = false } = {}) {
   if (type === "hash") return ["hash"];
   if (type === "phone") return ["phone"];
@@ -110,6 +113,40 @@ export function sourcePlan(type, target, { adult = false } = {}) {
   }
   return ["sherlock", "maigret", "github", "platform", ...(adultOn(type, target, adult) ? ["adult"] : [])];
 }
+
+// ---- the profile text the minor guard reads -----------------------------------------------------
+// Every display name and bio a source returned for this handle in the ordinary run, with the
+// site it was read on. The same fields the server keeps for its own copy of the check
+// (core/profile_record.py), in the same order: Maigret, GitHub, the platform check (Reddit's
+// record included), profile enrichment, then Gravatar and a profile scrape when the case has
+// them. Sites known to answer for any name are left out, and nothing adult is ever read: the
+// case goes through withoutAdult first. Profiles the identity grouping calls a different person
+// are included on purpose: an adult-site account under this handle could be theirs, and the
+// message names the source so the investigator can judge. Addresses and handles are not scanned,
+// and a similar handle's probe is not part of this case.
+const BIRTH_KEYS = ["birthday", "birth_date", "birthdate", "born", "dob", "date_of_birth", "age"];
+export function profileTexts(collected) {
+  const c = withoutAdult(collected), out = [];
+  const text = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+  const put = (source, url, name, bio, extra) => {
+    const e = { source: text(String(source ?? ""), 80), url: text(url, 600), name: text(name, 200), bio: text(bio, 600) };
+    if (adultHost(e.url)) return;
+    for (const k of BIRTH_KEYS) { const v = extra?.[k]; if (typeof v === "string" || typeof v === "number") { const t = String(v).slice(0, 40); if (t) e[k] = t; } }
+    if (Object.entries(e).some(([k, v]) => k !== "source" && k !== "url" && v)) out.push(e);
+  };
+  const rows = (d, list = "results") => (d && !failed(d) && Array.isArray(d[list]) ? d[list].filter((r) => r && typeof r === "object") : []);
+  for (const r of rows(c.maigret)) if (r.confidence !== "false_positive" && r.profile && typeof r.profile === "object") put(r.site || r.name, r.url, r.profile.name, r.profile.bio, r.profile);
+  if (c.github?.found && !failed(c.github)) put("GitHub", c.github.profile_url, c.github.name, c.github.bio);
+  for (const r of rows(c.platformCheck)) if (r.state === "found") put(r.platform, r.url, r.display_name, r.bio, r);
+  for (const e of rows(c.enricher, "profiles")) put(e.platform, e.url, e.display_name, e.bio, e);
+  if (c.gravatar?.found && !failed(c.gravatar)) put("Gravatar", c.gravatar.profile_url, c.gravatar.name || c.gravatar.display_name, c.gravatar.about || c.gravatar.bio);
+  for (const r of rows(c.profileScrape)) if (!r.error) put(r.site || "Profile", r.url, r.display_name, r.bio, r);
+  return out;
+}
+// Stage 2 of the minor guard, for a case whose ordinary sources are in:
+// { blocked, kind, signal: { strength, kind, source, snippet, url } | null, signals, soft, read }.
+// today is a parameter so the tests can pin it.
+export const contentCheck = (collected, target, type = "username", today = new Date()) => scanProfiles(type === "username" ? profileTexts(collected) : [], handleOf(target), today);
 
 // ---- breaches ------------------------------------------------------------------------
 // Accepts the old shape (a list of names) and the new one (objects with a date and data classes).
@@ -697,6 +734,9 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
     // A name case: the candidates as the screen shows them. Absent for every other case.
     ...(type === "name" && nameForAi(c, target) ? { name_candidates: nameForAi(c, target) } : {}),
     ...(adult ? { adult_sites: adultForAi(items.filter((i) => i.tier === "adult")) } : {}),
+    // A case the minor guard stopped: the model is told that the group was skipped and on which
+    // site the sign was. The quoted text is never sent.
+    ...(type === "username" && blockForAi(collected) ? { adult_block: blockForAi(collected) } : {}),
   };
 }
 
@@ -705,7 +745,7 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
 export function aiSignature(collected, target, type) {
   const { items, facts } = buildEvidence(collected, target, type);
   return JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]),
-    adultForAi(items.filter((i) => i.tier === "adult")), type === "name" ? nameForAi(withoutAdult(collected), target) : null]);
+    adultForAi(items.filter((i) => i.tier === "adult")), type === "name" ? nameForAi(withoutAdult(collected), target) : null, ...(type === "username" && blockForAi(collected) ? [blockForAi(collected)] : [])]);
 }
 
 // The profile pages a Deep Dive may read. Built from the adult-free view, and a URL whose host is
@@ -735,7 +775,7 @@ export function caseMarkdown({ collected, target, type, ran = 0, tallyLine = "",
     ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...(isNameTier(t.id) ? [`_${t.blurb}_`] : []), ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
     ...adultMarkdown(adult),
     // A report's own sections about adult or dating sites are exported only for a case that has such rows.
-    ...(ai ? ["## AI analysis", reportForExport(ai.summary, adult.length > 0), ""] : []),
+    ...(ai ? ["## AI analysis", reportForExport(ai.summary, adultFound(adult).length > 0), ""] : []),
     ...(deep ? ["## Deep Dive", reportForExport(deep.summary, false), ""] : []),
     ...(String(notes).trim() ? ["## Notes", String(notes).trim(), ""] : []),
   ].join("\n");

@@ -1,5 +1,6 @@
 // The ledger, leads, breach and hash rows, recon findings and the source tally, checked against
 // trimmed copies of responses recorded for the audit targets (tests/js/fixtures). No browser, no network.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 const { buildEvidence, accountsFor, breachList, breachMeta, hashView, hashCoverage, collectProfiles, sourcePlan, isFreeMail, ledgerTiers, TIERS, isFinding, factsFor, avatarImages, tierCounts } = await import("../../static/v2/js/evidence.js");
