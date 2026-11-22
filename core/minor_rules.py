@@ -12,6 +12,9 @@ Three questions are answered:
                                    age under 18 or one of three words, else None
   soft_birth_year(handle, today)   a four-digit year in the handle that would make the person
                                    6 to 18 today, else None. It never blocks on its own
+  soft_bare_years(handle)          digits then "yrs" or "years" with no "old" (10yrs_exp,
+                                   12years_sober) when the number is 8 to 17, else None. The
+                                   second soft signal: it never blocks on its own either
   scan(profiles, handle, today)    reads the names and bios of the profiles found for a handle
                                    and returns the signals that suggest a minor
 
@@ -25,6 +28,7 @@ treat that as "refuse": see core.adult_guard.
 
 import json
 import re
+import unicodedata
 from datetime import date
 from pathlib import Path
 
@@ -61,6 +65,11 @@ class Engine:
             self._sep = str(n["separator"])
             self._other = str(n["other"])
             self._max_chars = int(n["max_chars"])
+            self._nfkc = n.get("nfkc") is True
+            src = doc["sources"]
+            self.profile_readers = [(str(a), str(b)) for a, b in src["profile_readers"]]
+            self.text_order = [(str(a), str(b)) for a, b in src["text_order"]]
+            self.reported_when_failed = [(str(a), str(b), str(c)) for a, b, c in src["reported_when_failed"]]
             self._delims = set(str(doc["clause"]["delimiters"]))
             self._period_word = int(doc["clause"]["period_needs_word"])
             self.snippet_max = int(doc["snippet_max"])
@@ -71,10 +80,13 @@ class Engine:
             self._handle_seps = set(str(h["separators"]))
             self._age_min, self._age_max = int(h["age"]["min"]), int(h["age"]["max"])
             self._age_rx = [self._rx(p) for p in h["age"]["patterns"].values()]
+            self._age_not_after = self._rx(h["age"]["not_after"])
             self._words_rx = self._rx(h["words"]["pattern"])
             self._leet = [{str(k): str(v) for k, v in t.items()} for t in h["words"]["leet"]]
             self._soft_rx = self._rx(h["soft_year"]["pattern"])
             self._soft_min, self._soft_max = int(h["soft_year"]["min_age"]), int(h["soft_year"]["max_age"])
+            self._years_rx = self._rx(h["soft_years"]["pattern"])
+            self._years_min, self._years_max = int(h["soft_years"]["min"]), int(h["soft_years"]["max"])
             c = doc["content"]
             self._birth = c["birth"]
             self._birth_rx = self._rx(self._birth["field_pattern"])
@@ -119,7 +131,11 @@ class Engine:
         low: list[str] = []
         cased: list[str] = []
         pending = brk = False
-        for ch in list(str(text if text is not None else ""))[: self._max_chars]:
+        raw = "".join(list(str(text if text is not None else ""))[: self._max_chars])
+        if self._nfkc:
+            # Fancy digits and letters (fullwidth, mathematical) become plain ones, on both sides.
+            raw = unicodedata.normalize("NFKC", raw)
+        for ch in list(raw)[: self._max_chars]:
             cp = ord(ch)
             if cp in self._drop:
                 continue
@@ -160,7 +176,8 @@ class Engine:
             return None
         for rx in self._age_rx:
             for m in rx.finditer(raw):
-                if self._age_min <= int(m.group(1)) <= self._age_max:
+                # An age about someone else (mom_of_16yo) is not the handle owner's.
+                if self._age_min <= int(m.group(1)) <= self._age_max and not self._age_not_after.search(raw[: m.start()]):
                     return "age"
         joined = "".join(ch for ch in raw if ch not in self._handle_seps)
         for table in [None, *self._leet]:
@@ -175,6 +192,12 @@ class Engine:
             y = int(m.group(1))
             if self._soft_min <= year - y <= self._soft_max:
                 return y
+        return None
+
+    def soft_bare_years(self, handle) -> int | None:
+        for m in self._years_rx.finditer(self._handle(handle)):
+            if self._years_min <= int(m.group(1)) <= self._years_max:
+                return int(m.group(1))
         return None
 
     # ---- profile text ----------------------------------------------------------------
@@ -305,11 +328,14 @@ class Engine:
         return out
 
     def scan(self, profiles, handle, today) -> dict:
-        """{blocked, kind, signal, signals, soft, read}. `profiles` is a list of
-        {source, url, name, bio, and any birth or age field}. A strong signal blocks alone; a
-        weak one blocks only together with a soft birth year in the handle."""
+        """{blocked, kind, signal, signals, soft, soft_years, read}. `profiles` is a list of
+        {source, url, name, bio, text, and any birth or age field}; `text` is further profile
+        text (an about line, a school, a company), read with the rules for a bio. A strong signal blocks alone; a
+        weak one blocks only together with a soft signal in the handle: a birth year (soft) or
+        bare years (soft_years)."""
         ymd = _ymd(today)
         soft = self.soft_birth_year(handle, ymd)
+        soft_years = self.soft_bare_years(handle)
         signals: list[dict] = []
         seen = set()
         read = set()
@@ -318,21 +344,27 @@ class Engine:
                 continue
             source = "".join(list(str(p.get("source") or ""))[:SOURCE_MAX])
             url = "".join(list(str(p.get("url") or ""))[:URL_MAX])
-            found = self._field_signals("name", p.get("name"), ymd) + self._field_signals("bio", p.get("bio"), ymd) + self._birth_fields(p, ymd)
-            keys = ["name", "bio", *self._birth["field_keys"], *self._birth["age_field_keys"]]
+            found = (self._field_signals("name", p.get("name"), ymd) + self._field_signals("bio", p.get("bio"), ymd)
+                     + self._field_signals("bio", p.get("text"), ymd) + self._birth_fields(p, ymd))
+            keys = ["name", "bio", "text", *self._birth["field_keys"], *self._birth["age_field_keys"]]
             if any(self.normalize(p.get(k))[1] for k in keys):
                 read.add(source)
             for s in found:
                 key = (s["strength"], s["kind"], source, s["snippet"])
-                if key in seen or len(signals) >= self.signals_max:
+                if key in seen:
                     continue
                 seen.add(key)
                 signals.append({**s, "source": source, "url": url})
         strong = next((s for s in signals if s["strength"] == "strong"), None)
-        weak = next((s for s in signals if s["strength"] == "weak"), None) if soft is not None else None
+        weak = next((s for s in signals if s["strength"] == "weak"), None) if soft is not None or soft_years is not None else None
         shown = strong or weak
+        # The decision is made over every signal. Only the list handed back is cut, and the
+        # signal that decided is always in it.
+        listed = signals[: self.signals_max]
+        if shown is not None and shown not in listed:
+            listed[-1] = shown
         return {"blocked": shown is not None, "kind": strong["kind"] if strong else "soft" if weak else "",
-                "signal": shown, "signals": signals, "soft": soft, "read": len(read)}
+                "signal": shown, "signals": listed, "soft": soft, "soft_years": soft_years, "read": len(read)}
 
 
 def load(path: str | Path | None = None) -> Engine:

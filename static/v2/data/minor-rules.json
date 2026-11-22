@@ -1,7 +1,7 @@
 {
  "version": 1,
  "about": "The one copy of the minor guard's rules. core/minor_rules.py and static/v2/js/minorscan.js load this file and hold no pattern or threshold of their own. English only.",
- "regex_subset": "Patterns are applied to text both engines normalise the same way first (see normalize): ASCII only, lowercase unless a context says cased, one space for any whitespace, | for a line break or a bullet. Allowed: literals, character classes written out ([0-9], [a-z]), groups, alternation, greedy and lazy quantifiers, lookahead, lookbehind of one fixed width, \\b, ^ and $. Not allowed: \\d \\w \\s, named groups, inline flags, Unicode classes, backreferences, possessive quantifiers, literal braces. No flags: Python compiles with re.ASCII, JavaScript with only g. {{NAME}} is replaced from macros before compiling.",
+ "regex_subset": "Patterns are applied to text both engines normalise the same way first (see normalize): ASCII only, lowercase unless a context says cased, one space for any whitespace, | for a line break or a bullet. Allowed: literals (U+0002 is the birth marker the birthday cake is normalised to), character classes written out ([0-9], [a-z]), groups, alternation, greedy and lazy quantifiers, lookahead, lookbehind of one fixed width, \\b, ^ and $. Not allowed: \\d \\w \\s, named groups, inline flags, Unicode classes, backreferences, possessive quantifiers, literal braces. No flags: Python compiles with re.ASCII, JavaScript with only g. {{NAME}} is replaced from macros before compiling.",
  "flags": "",
  "adult_age": 18,
  "normalize": {
@@ -83,7 +83,8 @@
    "\u2219": "|",
    "\uff5c": "|",
    "\u00a6": "|",
-   "\u2502": "|"
+   "\u2502": "|",
+   "\ud83c\udf82": "\u0002"
   },
   "separator_ranges": [
    [
@@ -105,7 +106,9 @@
   ],
   "separator": "|",
   "other": "\u007f",
-  "max_chars": 4000
+  "max_chars": 4000,
+  "nfkc": true,
+  "note": "Text is folded with Unicode NFKC first (fancy digits and letters become plain ones). The birthday cake maps to the control character U+0002, which patterns use as a birth marker; no other input can produce it."
  },
  "clause": {
   "delimiters": "|;!?",
@@ -122,18 +125,25 @@
   "ORD": "(?:1[0-2]|[1-9])(?:st|nd|rd|th)",
   "ORDWORD": "(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)",
   "HS": "(?:high ?school|hs)",
-  "NOTAGE": "(?![0-9])(?!%)(?![%'\\\":.,/-][0-9])(?! ?(?:st|nd|rd|th|k|x|m|am|pm|ft|feet|foot|cm|kg|lb|lbs|min|mins|minute|minutes|hour|hours|hr|hrs|day|days|week|weeks|wk|wks|month|months|mo|mos|times|level|levels|lvl|game|games|win|wins|point|points|pts|percent|mile|miles|km|inch|inches|bit|gb|mb|fps|hz)\\b)(?! ?(?:years?|yrs?)(?![ -]?old))"
+  "NOTAGE": "(?![0-9])(?!%)(?![%'\\\":.,/-][0-9])(?! ?(?:st|nd|rd|th|k|x|m|am|pm|ft|feet|foot|cm|kg|lb|lbs|min|mins|minute|minutes|hour|hours|hr|hrs|day|days|week|weeks|wk|wks|month|months|mo|mos|times|level|levels|lvl|game|games|win|wins|point|points|pts|percent|mile|miles|km|inch|inches|bit|gb|mb|fps|hz)\\b)(?! ?(?:years?|yrs?)(?![ -]?old))",
+  "WORDAGE": "(?:eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)",
+  "PRONOUN": "(?:she|he|they|xe|ze|it|any)/[a-z]+",
+  "NOTSCHOOL": "(?!(?:get|gets|getting|got|so|too|very|am|be|being|feel|feeling|flying|fly|aim|aiming|riding|ride|running|stay|staying|living|sky|mile|knee|super|ultra|really|pretty|always|still|was|is|are|im|i'm|how|this|that|on|a|an|the|of|in|at|to|and|or|junior|jr|senior|from|my|your|our|their)\\b)",
+  "BIRTHMARK": "(?:\\b(?:born|b\\.|dob|d\\.o\\.b\\.?|birthday|bday|b-day|birthdate|birth ?date|date of birth)|\u0002)"
  },
  "handle": {
   "strip": "@",
   "separators": "._-",
   "age": {
-   "min": 1,
+   "min": 8,
    "max": 17,
    "patterns": {
-    "age_then_unit": "(?<![0-9])0*([0-9]{1,2})[._-]*(?:y[._/-]*o(?:ld)?|(?:yrs?|years?)(?:[._-]*old)?)(?![a-z])(?![._-]*of(?![a-z]))",
-    "word_then_age": "(?<![a-z])(?:my[._-]*)?aged?[._-]*0*([0-9]{1,2})(?![0-9])"
-   }
+    "age_then_yo": "(?<![0-9])0*([0-9]{1,2})[._-]*y[._/-]*o(?:ld)?(?![a-z])",
+    "age_then_years_old": "(?<![0-9])0*([0-9]{1,2})[._-]*(?:yrs?|years?)[._-]*old(?![a-z])",
+    "word_then_age": "(?:^[._-]*|(?<![a-z])(?:my|im|[a-z])[._-]+|(?<![a-z])my|[0-9][._-]*)aged?[._-]*0*([0-9]{1,2})(?![0-9])"
+   },
+   "not_after": "(?:of|mom|mum|dad|son|daughter|parent|mother|father)[._-]*$",
+   "note": "An age-specific token for min to max. not_after: the token is about someone else when the handle reads like mom_of_16yo, so it does not block."
   },
   "words": {
    "pattern": "(?<!th)underage|preteen|jailbait",
@@ -159,7 +169,14 @@
   "soft_year": {
    "pattern": "(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])",
    "min_age": 6,
-   "max_age": 18
+   "max_age": 18,
+   "note": "a four-digit year that would make the person min_age to max_age today. A soft signal: it never blocks alone"
+  },
+  "soft_years": {
+   "pattern": "(?<![0-9])0*([0-9]{1,2})[._-]*(?:years|year|yrs|yr)(?![._-]*old(?![a-z]))(?!s)",
+   "min": 8,
+   "max": 17,
+   "note": "digits then yrs or years with no 'old': 10yrs_exp, 12years_sober. A soft signal like the birth year: it never blocks alone"
   }
  },
  "content": {
@@ -199,7 +216,7 @@
     "note": "someone writing about a child or relative"
    },
    "object": {
-    "pattern": "\\b(?:dog|dogs|cat|cats|pup|puppy|kitten|horse|pony|rescue|whisky|whiskey|scotch|bourbon|rum|wine|car|truck|house|company|business|startup|account|blog|channel|server|tree|marriage|married|sober|clean|veteran|vet|experience)\\b",
+    "pattern": "\\b(?:dog|dogs|cat|cats|pup|puppy|kitten|horse|pony|rescue|whisky|whiskey|scotch|bourbon|rum|wine|cheese|cask|barrel|vintage|car|truck|house|company|business|startup|account|blog|channel|server|tree|marriage|married|sober|clean|veteran|vet|experience)\\b",
     "note": "an age that belongs to a pet or a thing"
    },
    "college": {
@@ -215,9 +232,8 @@
     "note": "school-level context for a class year"
    },
    "hs_name": {
-    "pattern": "\\b[A-Z][a-z]+ High\\b",
-    "cased": true,
-    "note": "a school name such as Lincoln High; matched with capitals kept"
+    "pattern": "\\b{{NOTSCHOOL}}[a-z]+ (?:high|middle)(?: school)?\\b(?= ?'[0-9]{2}| ?[|,~]|$| (?:class|c/o|co|varsity|jv|football|soccer|band|cheer|student|sophomore|freshman|junior|senior)\\b)|\\b(?:at|@|attend|attends|attending|go to|goes to) [a-z' ]{0,20}(?:high|middle)\\b|\\b[a-z]{1,4}hs ?'[0-9]{2}",
+    "note": "a school name: the word high or middle next to a name, followed by a class marker or the end of an item"
    },
    "hs_marker": {
     "pattern": "\\b(?:freshman|sophomore|junior|senior|frosh|student|pupil|in (?:[a-z]+ )?{{HS}}|at [a-z' ]{0,30}{{HS}}|attend|attends|attending|goes to|go to|grade|class of|c/o|{{ORD}})\\b",
@@ -260,7 +276,7 @@
     "note": "teens as a subject"
    },
    "minor_other": {
-    "pattern": "\\bminor (?:in|league|leagues|issue|issues|key|chord|scale|detail|details|bug|bugs|update|character|characters|arcana|threat|inconvenience)\\b|\\b(?:[a-g]|sharp|flat|no|zero) minor\\b|\\bminor (?:dni|do not|don't|dont|will be|blocked|not allowed)\\b|\\bno minors\\b",
+    "pattern": "\\bminor (?:in|league|leagues|issue|issues|key|chord|scale|detail|details|bug|bugs|update|character|characters|arcana|threat|inconvenience)\\b|\\b(?:[a-g]|sharp|flat|no|zero|not a) minor\\b|\\bminor (?:dni|do not|don't|dont|will be|blocked|not allowed)\\b|\\bno minors\\b",
     "note": "a minor subject, key or league, or a notice to minors"
    },
    "under18_notice": {
@@ -270,6 +286,10 @@
    "school_other": {
     "pattern": "\\b(?:old|art|law|med|medical|grad|graduate|business|film|music|driving|flight|night|sunday|trade|culinary|dental|nursing|vet|pre|nursery|boarding|home|beauty|cosmetology|bible|dance|language|coding|design|drama|summer) ?-?school\\b|\\bschool (?:of|board|bus|district|psychologist|nurse|counselor|run|pickup|runs|governor|shooting|shootings)\\b",
     "note": "a school that is not a child's school, or a school as a workplace"
+   },
+   "third_party": {
+    "pattern": "\\b(?!(?:age|and|who|that|it|this|account|profile|i|ive|i've|just|finally|recently|officially|only|now|newly)\\b)[a-z]+ (?:is|just turned|turned|turns) (?:now |only |almost |nearly |turning )?(?:1[0-7]|[89])\\b",
+    "note": "an age stated about a named other: Rex is 14"
    }
   },
   "rules": [
@@ -296,7 +316,18 @@
     "value": "age",
     "min": 8,
     "max": 17,
-    "pattern": "\\bim(?: (?:only|just|turning|almost|nearly|currently|like|literally|still|a))* {{AGE}}{{NOTAGE}}(?!\\. ?[a-z])(?!\\.$)"
+    "pattern": "\\bim(?: (?:only|just|turning|almost|nearly|currently|like|literally|still|a))* {{AGE}}{{NOTAGE}}(?!\\. ?[a-z])"
+   },
+   {
+    "id": "im_age_word",
+    "kind": "age",
+    "strength": "strong",
+    "fields": [
+     "bio",
+     "name"
+    ],
+    "value": "none",
+    "pattern": "\\b(?:i'm|i am|im)(?: (?:only|just|turning|almost|nearly|currently))* {{WORDAGE}}\\b(?! ?(?:times|x|percent|minutes|hours|days|weeks|months|inch|inches|feet|foot)\\b)(?! ?(?:years?|yrs?)(?![ -]?old))"
    },
    {
     "id": "turning",
@@ -317,6 +348,36 @@
      [
       "object",
       "clause"
+     ],
+     [
+      "third_party",
+      "clause"
+     ]
+    ]
+   },
+   {
+    "id": "turned",
+    "kind": "age",
+    "strength": "strong",
+    "fields": [
+     "bio"
+    ],
+    "value": "age",
+    "min": 8,
+    "max": 17,
+    "pattern": "\\b(?:just )?turned {{AGE}}{{NOTAGE}}",
+    "unless": [
+     [
+      "family",
+      "clause"
+     ],
+     [
+      "object",
+      "clause"
+     ],
+     [
+      "third_party",
+      "clause"
      ]
     ]
    },
@@ -332,6 +393,22 @@
     "pattern": "\\b(?:i'm|i am|im)(?: still)? (?:a minor(?! league)(?! in )|underage|under ?18|u18)\\b"
    },
    {
+    "id": "minor_item",
+    "kind": "age",
+    "strength": "strong",
+    "fields": [
+     "bio"
+    ],
+    "value": "none",
+    "pattern": "{{ITEM_L}}minor(?= ?[|,~!]| [/-] |$)",
+    "unless": [
+     [
+      "minor_other",
+      "clause"
+     ]
+    ]
+   },
+   {
     "id": "age_unit",
     "kind": "age",
     "strength": "strong",
@@ -343,6 +420,35 @@
     "min": 8,
     "max": 17,
     "pattern": "(?<![0-9$#.:/-]){{AGE}} ?-?(?:y/o|y\\.o\\.?|yo|yrs?\\.? ?-?old|years? ?-?old|year-old|years of age)(?![a-z])",
+    "unless": [
+     [
+      "my_age",
+      "clause"
+     ],
+     [
+      "family",
+      "clause"
+     ],
+     [
+      "object",
+      "clause"
+     ],
+     [
+      "third_party",
+      "clause"
+     ]
+    ]
+   },
+   {
+    "id": "age_word_unit",
+    "kind": "age",
+    "strength": "strong",
+    "fields": [
+     "bio",
+     "name"
+    ],
+    "value": "none",
+    "pattern": "\\b{{WORDAGE}} ?-?(?:y/o|y\\.o\\.?|yo|yrs?\\.? ?-?old|years? ?-?old|year-old)(?![a-z])",
     "unless": [
      [
       "my_age",
@@ -378,6 +484,14 @@
      [
       "family",
       "clause"
+     ],
+     [
+      "object",
+      "clause"
+     ],
+     [
+      "third_party",
+      "clause"
      ]
     ]
    },
@@ -406,6 +520,18 @@
     "pattern": "^(?:{{TEEN}} ?[fm]|[fm] ?/? ?{{TEEN}})(?:{{SEP_AFTER}}|$)"
    },
    {
+    "id": "age_first_and",
+    "kind": "age",
+    "strength": "strong",
+    "fields": [
+     "bio"
+    ],
+    "value": "age",
+    "min": 10,
+    "max": 17,
+    "pattern": "^{{TEEN}} (?:(?:and|&) [a-z]|\\((?:almost|nearly|turning|soon) )"
+   },
+   {
     "id": "age_item_marker",
     "kind": "age",
     "strength": "strong",
@@ -416,6 +542,18 @@
     "min": 10,
     "max": 17,
     "pattern": "{{ITEM_L}}{{TEEN}}(?: ?[|,~] ?| [/-] | )(?:(?:she|he|they|xe|ze|it|any)/[a-z]|any pronouns\\b|(?:sophomore|freshman|frosh|junior|senior|student)\\b|hs\\b|high ?school|{{ORD}} grade|grade [0-9])"
+   },
+   {
+    "id": "age_after_pronoun",
+    "kind": "age",
+    "strength": "strong",
+    "fields": [
+     "bio"
+    ],
+    "value": "age",
+    "min": 8,
+    "max": 17,
+    "pattern": "\\b{{PRONOUN}}(?: ?[|,~] ?| [/-] | ){{AGE}}(?= ?[|,~]| [/-] |$)"
    },
    {
     "id": "middle_school",
@@ -469,6 +607,30 @@
      [
       "hs_past",
       "clause"
+     ],
+     [
+      "college",
+      "clause"
+     ]
+    ]
+   },
+   {
+    "id": "student_at_high",
+    "kind": "school",
+    "strength": "strong",
+    "fields": [
+     "bio"
+    ],
+    "value": "none",
+    "pattern": "\\b(?:freshman|sophomore|junior|senior|student|frosh) (?:at|@) [a-z' ]{0,25}\\bhigh\\b",
+    "unless": [
+     [
+      "occupation",
+      "text"
+     ],
+     [
+      "family",
+      "text"
      ],
      [
       "college",
@@ -605,6 +767,27 @@
     ]
    },
    {
+    "id": "school_short_year",
+    "kind": "school",
+    "strength": "strong",
+    "fields": [
+     "bio",
+     "name"
+    ],
+    "value": "class_year",
+    "pattern": "\\b{{NOTSCHOOL}}[a-z]+ (?:high|hs)(?: school)? ?'([0-9]{2})\\b|\\b[a-z]{1,4}hs ?'([0-9]{2})\\b",
+    "unless": [
+     [
+      "occupation",
+      "text"
+     ],
+     [
+      "family",
+      "text"
+     ]
+    ]
+   },
+   {
     "id": "born_year",
     "kind": "birth",
     "strength": "strong",
@@ -614,7 +797,7 @@
     ],
     "value": "birth_year",
     "year_group": 2,
-    "pattern": "\\b(?:born|b\\.|dob|d\\.o\\.b\\.?|birthday|bday|b-day|birthdate|birth ?date|date of birth)[:=]? ?(?:in |on |is |- )?([0-9a-z,/. -]{0,18}?)(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])",
+    "pattern": "{{BIRTHMARK}}[:=]? ?(?:in |on |is |- )?([0-9a-z,/. -]{0,18}?)(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])",
     "unless": [
      [
       "family",
@@ -635,7 +818,28 @@
      "name"
     ],
     "value": "birth_year",
-    "pattern": "\\b(?:born|b\\.|dob|birthday|bday)[:=]? ?(?:in )?'([0-9]{2})(?![0-9])",
+    "pattern": "{{BIRTHMARK}}[:=]? ?(?:in )?'([0-9]{2})(?![0-9])",
+    "unless": [
+     [
+      "family",
+      "clause"
+     ],
+     [
+      "not_own_birth",
+      "clause"
+     ]
+    ]
+   },
+   {
+    "id": "born_date",
+    "kind": "birth",
+    "strength": "strong",
+    "fields": [
+     "bio",
+     "name"
+    ],
+    "value": "birth_year",
+    "pattern": "{{BIRTHMARK}}[:=]? ?(?:on |is |- )?[0-9]{1,2}[/.-][0-9]{1,2}[/.-]([0-9]{2})(?![0-9])",
     "unless": [
      [
       "family",
@@ -883,6 +1087,16 @@
     "pattern": "{{ITEM_L}}(1[3-7]){{ITEM_R}}(?! [/-] [0-9=])(?! ?, ?[0-9])"
    },
    {
+    "id": "age_spelled",
+    "kind": "age",
+    "strength": "weak",
+    "fields": [
+     "bio"
+    ],
+    "value": "none",
+    "pattern": "\\b(?:thirteen|fourteen|fifteen|sixteen|seventeen)\\b"
+   },
+   {
     "id": "gender_item",
     "kind": "age",
     "strength": "weak",
@@ -894,6 +1108,44 @@
     "max": 17,
     "pattern": "(?:[|,~] ?| [/-] )(?:{{TEEN}} ?[fm]|[fm] ?{{TEEN}}){{ITEM_R}}"
    }
+  ]
+ },
+ "sources": {
+  "note": "profile_readers: the adult pass needs at least one of these to have answered without an error for the handle, on the page and on the server. text_order: the order profile text is read in. Each entry is [server name, key in the page's case].",
+  "profile_readers": [
+   [
+    "maigret",
+    "maigret"
+   ],
+   [
+    "platform_check",
+    "platformCheck"
+   ]
+  ],
+  "text_order": [
+   [
+    "maigret",
+    "maigret"
+   ],
+   [
+    "github",
+    "github"
+   ],
+   [
+    "platform_check",
+    "platformCheck"
+   ],
+   [
+    "enricher",
+    "enricher"
+   ]
+  ],
+  "reported_when_failed": [
+   [
+    "github",
+    "github",
+    "GitHub"
+   ]
   ]
  }
 }

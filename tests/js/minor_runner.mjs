@@ -8,7 +8,7 @@ const rules = JSON.parse(readFileSync(new URL("../../static/v2/data/minor-rules.
 const engine = makeEngine(rules);
 const input = JSON.parse(readFileSync(0, "utf8"));
 const out = {
-  handles: (input.handles || []).map((h) => ({ token: engine.handleToken(h) || null, soft: engine.softBirthYear(h, input.today) })),
+  handles: (input.handles || []).map((h) => ({ token: engine.handleToken(h) || null, soft: engine.softBirthYear(h, input.today), years: engine.softBareYears(h) })),
   scans: (input.scans || []).map((s) => engine.scanProfiles(s.profiles, s.handle, s.today || input.today)),
 };
 process.stdout.write(JSON.stringify(out));

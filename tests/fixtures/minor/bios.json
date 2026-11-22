@@ -231,6 +231,110 @@
   {
    "bio": "im a minor so be nice",
    "kind": "age"
+  },
+  {
+   "bio": "she/her 16",
+   "kind": "age"
+  },
+  {
+   "bio": "he/him \u2022 14 \u2022 gamer",
+   "kind": "age"
+  },
+  {
+   "bio": "they/them, 14",
+   "kind": "age"
+  },
+  {
+   "bio": "im 15.",
+   "kind": "age"
+  },
+  {
+   "bio": "i'm fifteen years old",
+   "kind": "age"
+  },
+  {
+   "bio": "fourteen y/o",
+   "kind": "age"
+  },
+  {
+   "bio": "just turned 16",
+   "kind": "age"
+  },
+  {
+   "bio": "turned 15 today",
+   "kind": "age"
+  },
+  {
+   "bio": "14 and bored",
+   "kind": "age"
+  },
+  {
+   "bio": "16 & gay",
+   "kind": "age"
+  },
+  {
+   "bio": "17 (almost 18)",
+   "kind": "age"
+  },
+  {
+   "bio": "\ud83c\udf82 5/14/2011",
+   "kind": "birth"
+  },
+  {
+   "bio": "bday 3/4/10",
+   "kind": "birth"
+  },
+  {
+   "bio": "DOB 10/05/2010",
+   "kind": "birth"
+  },
+  {
+   "bio": "born 2010-05-01",
+   "kind": "birth"
+  },
+  {
+   "bio": "minor | she/her",
+   "kind": "age"
+  },
+  {
+   "bio": "minor!! adults dni",
+   "kind": "age"
+  },
+  {
+   "bio": "i am a minor",
+   "kind": "age"
+  },
+  {
+   "bio": "Lincoln High '28",
+   "kind": "school"
+  },
+  {
+   "bio": "LHS '27 varsity cheer",
+   "kind": "school"
+  },
+  {
+   "bio": "sophomore at lincoln high",
+   "kind": "school"
+  },
+  {
+   "bio": "\ud835\udfcf\ud835\udfd3 | she/her",
+   "kind": "age"
+  },
+  {
+   "bio": "\uff11\uff15 y/o",
+   "kind": "age"
+  },
+  {
+   "bio": "she/her | 16 | artist",
+   "kind": "age"
+  },
+  {
+   "bio": "i'm \ud835\udcbb\ud835\udcbe\ud835\udcbb\ud835\udcc9\ud835\udc52\ud835\udc52\ud835\udcc3 years old",
+   "kind": "age"
+  },
+  {
+   "bio": "minor",
+   "kind": "age"
   }
  ],
  "weak": [
@@ -259,16 +363,10 @@
    "bio": "teenager who codes"
   },
   {
-   "bio": "minor"
-  },
-  {
    "bio": "under 18"
   },
   {
    "bio": "13+"
-  },
-  {
-   "bio": "she/her | 16 | artist"
   },
   {
    "bio": "artist | 16"
@@ -287,6 +385,15 @@
   },
   {
    "bio": "u18"
+  },
+  {
+   "bio": "fifteen"
+  },
+  {
+   "bio": "sweet sixteen"
+  },
+  {
+   "bio": "get high | class of 2029"
   },
   {
    "bio": "Harvard class of 2029"
@@ -610,6 +717,48 @@
   },
   {
    "bio": "Teacher | 8th grade math"
+  },
+  {
+   "bio": "not for minors"
+  },
+  {
+   "bio": "18+ no minors"
+  },
+  {
+   "bio": "Dog mom. Rex is 14 years old"
+  },
+  {
+   "bio": "my son is 15"
+  },
+  {
+   "bio": "our daughter turned 16"
+  },
+  {
+   "bio": "kids: 15, 12, 9"
+  },
+  {
+   "bio": "aged 17 years whisky"
+  },
+  {
+   "bio": "5/14/2011"
+  },
+  {
+   "bio": "2010 \u2728"
+  },
+  {
+   "bio": "so high rn '28"
+  },
+  {
+   "bio": "freshie"
+  },
+  {
+   "bio": "JV soccer"
+  },
+  {
+   "bio": "homecoming 2027"
+  },
+  {
+   "bio": "sixth form"
   }
  ],
  "cases": [
@@ -937,6 +1086,181 @@
    "blocked": true,
    "kind": "age",
    "source": "TikTok"
+  },
+  {
+   "name": "bare years in the handle with a weak sign block",
+   "handle": "sam_16yrs",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "student"
+    }
+   ],
+   "blocked": true,
+   "kind": "soft",
+   "source": "GitHub",
+   "snippet": "student",
+   "soft_years": 16
+  },
+  {
+   "name": "bare years in the handle with a clean bio run",
+   "handle": "sam_16yrs",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "Go and Rust. Coffee."
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft_years": 16
+  },
+  {
+   "name": "years of experience in the handle with a clean bio run",
+   "handle": "10yrs_exp",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "Security engineer"
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft_years": 10
+  },
+  {
+   "name": "a strong signal behind forty weak ones still blocks",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "Site 0",
+     "url": "https://site0.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 1",
+     "url": "https://site1.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 2",
+     "url": "https://site2.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 3",
+     "url": "https://site3.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 4",
+     "url": "https://site4.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 5",
+     "url": "https://site5.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 6",
+     "url": "https://site6.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 7",
+     "url": "https://site7.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 8",
+     "url": "https://site8.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 9",
+     "url": "https://site9.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 10",
+     "url": "https://site10.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 11",
+     "url": "https://site11.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 12",
+     "url": "https://site12.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 13",
+     "url": "https://site13.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 14",
+     "url": "https://site14.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 15",
+     "url": "https://site15.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 16",
+     "url": "https://site16.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 17",
+     "url": "https://site17.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 18",
+     "url": "https://site18.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Site 19",
+     "url": "https://site19.example/u",
+     "bio": "student, teen"
+    },
+    {
+     "source": "Instagram",
+     "url": "https://instagram.example/u",
+     "bio": "I'm 15"
+    }
+   ],
+   "blocked": true,
+   "kind": "age",
+   "source": "Instagram",
+   "snippet": "I'm 15"
+  },
+  {
+   "name": "further profile text is read like a bio",
+   "handle": "river_stone",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "name": "",
+     "bio": "Builds things.",
+     "text": "Lincoln High School\n9th grade"
+    }
+   ],
+   "blocked": true,
+   "kind": "school",
+   "source": "GitHub"
   },
   {
    "name": "a long source name and markup in the text",

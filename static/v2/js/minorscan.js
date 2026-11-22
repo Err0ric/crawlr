@@ -10,9 +10,11 @@
 //                                   under 18 or one of three words, else ""
 //   softBirthYear(handle, today)    a four-digit year in the handle that would make the person 6
 //                                   to 18 today, else null. It never blocks on its own
+//   softBareYears(handle)           digits then "yrs" or "years" with no "old" (10yrs_exp), for
+//                                   8 to 17, else null. The second soft signal, the same way
 //   scanProfiles(profiles, handle, today)
 //                                   reads the names and bios of the profiles found for a handle:
-//                                   { blocked, kind, signal, signals, soft, read }
+//                                   { blocked, kind, signal, signals, soft, soft_years, read }
 //
 // Fail closed: until setRules() has accepted a rules file, rulesReady() is false, handleToken()
 // answers "rules" and scanProfiles() answers blocked. The adult mode cannot be switched on then.
@@ -47,13 +49,16 @@ export function makeEngine(doc) {
   };
   const ws = n.whitespace.map(([a, b]) => [int(a), int(b)]), breaks = new Set(n.line_break.map(int)), drop = new Set(n.drop.map(int));
   const map = new Map(Object.entries(n.map).map(([k, v]) => [k, str(v)])), sepRanges = n.separator_ranges.map(([a, b]) => [int(a), int(b)]);
-  const SEP = str(n.separator), OTHER = str(n.other), MAX_CHARS = int(n.max_chars);
+  const SEP = str(n.separator), OTHER = str(n.other), MAX_CHARS = int(n.max_chars), NFKC = n.nfkc === true;
+  const pairs = (list, size) => list.map((x) => { if (!Array.isArray(x) || x.length !== size) throw new Error("sources"); return x.map(str); });
+  const sources = { profileReaders: pairs(doc.sources.profile_readers, 2), textOrder: pairs(doc.sources.text_order, 2), reportedWhenFailed: pairs(doc.sources.reported_when_failed, 3) };
   const delimSet = new Set(str(doc.clause.delimiters)), periodWord = int(doc.clause.period_needs_word);
   const snippetMax = int(doc.snippet_max), signalsMax = int(doc.signals_max), adultAge = int(doc.adult_age);
   const h = doc.handle, strip = str(h.strip), handleSeps = new Set(str(h.separators));
-  const ageMin = int(h.age.min), ageMax = int(h.age.max), ageRx = Object.values(h.age.patterns).map((p) => rx(p, "g"));
+  const ageMin = int(h.age.min), ageMax = int(h.age.max), ageRx = Object.values(h.age.patterns).map((p) => rx(p, "g")), ageNotAfter = rx(h.age.not_after);
   const wordsRx = rx(h.words.pattern), leet = h.words.leet.map((t) => new Map(Object.entries(t).map(([k, v]) => [k, str(v)])));
   const softRx = rx(h.soft_year.pattern, "g"), softMin = int(h.soft_year.min_age), softMax = int(h.soft_year.max_age);
+  const yearsRx = rx(h.soft_years.pattern, "g"), yearsMin = int(h.soft_years.min), yearsMax = int(h.soft_years.max);
   const c = doc.content, birth = c.birth, cls = c.class_year;
   const birthRx = rx(birth.field_pattern), ageFieldRx = rx(birth.age_field_pattern);
   for (const k of ["min_age", "year_only_max_age", "two_digit_base", "age_min", "age_max"]) int(birth[k]);
@@ -70,7 +75,10 @@ export function makeEngine(doc) {
   function normalize(text) {
     const orig = [], low = [], cased = [];
     let pending = false, brk = false;
-    for (const ch of cps(text).slice(0, MAX_CHARS)) {
+    // Fancy digits and letters (fullwidth, mathematical) become plain ones, on both sides.
+    let raw = cps(text).slice(0, MAX_CHARS).join("");
+    if (NFKC) raw = raw.normalize("NFKC");
+    for (const ch of cps(raw).slice(0, MAX_CHARS)) {
       const cp = ch.codePointAt(0);
       if (drop.has(cp)) continue;
       if (inRange(ws, cp)) { pending = true; brk = brk || breaks.has(cp); continue; }
@@ -93,7 +101,8 @@ export function makeEngine(doc) {
   function handleToken(handle) {
     const raw = handleOf(handle);
     if (!raw) return "";
-    for (const r of ageRx) for (const m of raw.matchAll(r)) { const v = parseInt(m[1], 10); if (ageMin <= v && v <= ageMax) return "age"; }
+    // An age about someone else (mom_of_16yo) is not the handle owner's.
+    for (const r of ageRx) for (const m of raw.matchAll(r)) { const v = parseInt(m[1], 10); if (ageMin <= v && v <= ageMax && !ageNotAfter.test(raw.slice(0, m.index))) return "age"; }
     const joined = [...raw].filter((ch) => !handleSeps.has(ch)).join("");
     for (const table of [null, ...leet]) if (wordsRx.test(table ? [...joined].map((ch) => table.get(ch) ?? ch).join("") : joined)) return "word";
     return "";
@@ -101,6 +110,10 @@ export function makeEngine(doc) {
   function softBirthYear(handle, today) {
     const year = ymd(today)[0];
     for (const m of handleOf(handle).matchAll(softRx)) { const y = parseInt(m[1], 10); if (softMin <= year - y && year - y <= softMax) return y; }
+    return null;
+  }
+  function softBareYears(handle) {
+    for (const m of handleOf(handle).matchAll(yearsRx)) { const v = parseInt(m[1], 10); if (yearsMin <= v && v <= yearsMax) return v; }
     return null;
   }
 
@@ -181,29 +194,34 @@ export function makeEngine(doc) {
     }
     return out;
   }
-  // A strong signal blocks alone; a weak one blocks only together with a soft birth year in the handle.
+  // A strong signal blocks alone; a weak one blocks only together with a soft signal in the
+  // handle: a birth year (soft) or bare years (soft_years).
   function scanProfiles(profiles, handle, today) {
-    const t = ymd(today), soft = softBirthYear(handle, t);
+    const t = ymd(today), soft = softBirthYear(handle, t), softYears = softBareYears(handle);
     const signals = [], seen = new Set(), read = new Set();
-    const keys = ["name", "bio", ...birth.field_keys, ...birth.age_field_keys];
+    const keys = ["name", "bio", "text", ...birth.field_keys, ...birth.age_field_keys];
     for (const p of Array.isArray(profiles) ? profiles : []) {
       if (!p || typeof p !== "object" || Array.isArray(p)) continue;
       const source = clip(p.source || "", SOURCE_MAX), url = clip(p.url || "", URL_MAX);
-      const found = [...fieldSignals("name", p.name, t), ...fieldSignals("bio", p.bio, t), ...birthFields(p, t)];
+      const found = [...fieldSignals("name", p.name, t), ...fieldSignals("bio", p.bio, t), ...fieldSignals("bio", p.text, t), ...birthFields(p, t)];
       if (keys.some((k) => normalize(p[k]).low)) read.add(source);
       for (const s of found) {
         const key = JSON.stringify([s.strength, s.kind, source, s.snippet]);
-        if (seen.has(key) || signals.length >= signalsMax) continue;
+        if (seen.has(key)) continue;
         seen.add(key);
         signals.push({ ...s, source, url });
       }
     }
     const strong = signals.find((s) => s.strength === "strong") || null;
-    const weak = soft !== null ? signals.find((s) => s.strength === "weak") || null : null;
+    const weak = soft !== null || softYears !== null ? signals.find((s) => s.strength === "weak") || null : null;
     const shown = strong || weak;
-    return { blocked: !!shown, kind: strong ? strong.kind : weak ? "soft" : "", signal: shown, signals, soft, read: read.size };
+    // The decision is made over every signal. Only the list handed back is cut, and the signal
+    // that decided is always in it.
+    const listed = signals.slice(0, signalsMax);
+    if (shown && !listed.includes(shown)) listed[listed.length - 1] = shown;
+    return { blocked: !!shown, kind: strong ? strong.kind : weak ? "soft" : "", signal: shown, signals: listed, soft, soft_years: softYears, read: read.size };
   }
-  return { normalize, handleToken, softBirthYear, scanProfiles, snippetMax };
+  return { normalize, handleToken, softBirthYear, softBareYears, scanProfiles, snippetMax, sources };
 }
 
 // ---- the rules this page runs on ------------------------------------------------------------
@@ -226,6 +244,10 @@ export async function loadRules(fetchFn = globalThis.fetch, url = RULES_URL) {
 // "age", "word", "" or, with no rules loaded, "rules".
 export const handleToken = (handle) => (engine ? engine.handleToken(handle) : "rules");
 export const softBirthYear = (handle, today = new Date()) => (engine ? engine.softBirthYear(handle, today) : null);
+export const softBareYears = (handle) => (engine ? engine.softBareYears(handle) : null);
 export const scanProfiles = (profiles, handle, today = new Date()) => (engine ? engine.scanProfiles(profiles, handle, today)
-  : { blocked: true, kind: "rules", signal: null, signals: [], soft: null, read: 0 });
+  : { blocked: true, kind: "rules", signal: null, signals: [], soft: null, soft_years: null, read: 0 });
 export const snippetMax = () => (engine ? engine.snippetMax : 60);
+// Which sources read profiles, and the order their text is read in (the rules file's `sources`).
+// Empty without rules: then no source counts and no adult pass can be planned.
+export const sourceRoles = () => (engine ? engine.sources : { profileReaders: [], textOrder: [], reportedWhenFailed: [] });
