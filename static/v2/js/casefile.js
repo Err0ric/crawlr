@@ -7,6 +7,7 @@ import { scrubNames } from "./names.js";
 import { boundAvatarHash } from "./present.js";
 import { readPhone, readRegion } from "./phone.js";
 import { importSimilar } from "./evidence.js";
+import { readBlock } from "./adult.js";
 
 export const CASE_VERSION = 1;
 export const MAX_CASE_BYTES = 3 * 1024 * 1024;   // browser storage holds about 5 MB for the whole history
@@ -61,6 +62,12 @@ export function parseCaseFile(text) {
     // The one flag among the results: this case had adult and dating sites switched on. Only the
     // literal true is kept. Without it the rows from those sites are never shown (see adult.js).
     if (k === "adultMode") { if (v === true) results.adultMode = true; continue; }
+    // Why a case has no adult group: the minor guard stopped it. Kept in its checked, bounded
+    // shape (a known kind, a short source name, a snippet of at most 60 characters, an http(s)
+    // address). It can only hide the group: a file that carries one shows no adult row, and a
+    // value that cannot be read still hides them. Leaving it out un-blocks nothing in this
+    // session, which keeps its own list of suspended handles in memory.
+    if (k === "adultBlock") { if (v !== null && v !== undefined) results.adultBlock = readBlock(v) || { kind: "server", source: "", snippet: "", url: "" }; continue; }
     // Sources return objects. Two client-side values are plain strings: the searched name and an image URL.
     if (v === null || typeof v === "object" || (TEXT_KEYS.has(k) && typeof v === "string" && v.length <= 2000)) results[k] = v;
   }
@@ -86,7 +93,7 @@ export function parseCaseFile(text) {
   // is marked as coming from the file until it is checked in this browser.
   if ("similar" in results) { const sm = importSimilar(results, target, kind); if (Object.keys(sm).length) results.similar = sm; else delete results.similar; }
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
-  if (!Object.keys(results).filter((k) => k !== "adultMode" && k !== "phoneRegion").length) return fail("The case file holds no results.");
+  if (!Object.keys(results).filter((k) => k !== "adultMode" && k !== "adultBlock" && k !== "phoneRegion").length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();
   const ai = report(j.ai), deep = report(j.deep);
   const entry = {

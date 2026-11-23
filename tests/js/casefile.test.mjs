@@ -1,4 +1,5 @@
 // Case files are outside data. These checks pin what is accepted, what is dropped and what is refused.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 globalThis.location = { origin: "https://crawlr.lol" };
 const { buildCaseFile, parseCaseFile, MAX_CASE_BYTES } = await import("../../static/v2/js/casefile.js");
 

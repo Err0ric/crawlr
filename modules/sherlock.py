@@ -82,8 +82,10 @@ SORT_ORDER = {"major_platform": 0, "normal": 1, "false_positive": 2}
 # was built from, and unflagged adult sites (RoyalCams, datingRU) are queried on every run.
 # So CrawlR hands Sherlock a site file of its own, written from the installed data:
 #
-#   without the opt-in   every site core.adult_sites lists is left out of the file
-#   with the opt-in      the whole installed list, plus --nsfw so Sherlock keeps its flagged ones
+#   the ordinary run   every site core.adult_sites lists is left out of the file
+#   the adult pass     only the sites core.adult_sites lists, plus --nsfw so Sherlock keeps
+#                      its flagged ones. It is its own run, made after the ordinary sources
+#                      (core.adult_guard.gate): the two are never mixed, so no site is asked twice
 #
 # The price: site definitions change only when the sherlock-project package is upgraded.
 # --------------------------------------------------------------------------------------
@@ -127,11 +129,11 @@ def is_adult_site(site: str, url: str = "") -> bool:
 
 
 def site_data(nsfw: bool = False, path: str | None = None) -> dict:
-    """The site list Sherlock is run against. Without the opt-in it holds no adult or dating site."""
+    """The site list Sherlock is run against. The ordinary run holds no adult or dating site;
+    the adult pass (nsfw exactly True) holds nothing else."""
     data = _installed_sites(path)
-    if nsfw is True:
-        return data
-    return {name: entry for name, entry in data.items() if not _entry_is_adult(name, entry)}
+    adult_pass = nsfw is True
+    return {name: entry for name, entry in data.items() if _entry_is_adult(name, entry) == adult_pass}
 
 
 def write_site_file(directory: str, nsfw: bool = False) -> str:
@@ -163,16 +165,20 @@ def _classify_site(site_name: str) -> str:
     return "normal"
 
 
-async def _run_sherlock_impl(username: str, nsfw: bool = False, timeout: int = 300) -> dict:
-    nsfw = nsfw is True
+async def _run_sherlock_impl(username: str, nsfw: bool = False, adult_only: bool = False, timeout: int = 300) -> dict:
+    nsfw, adult_only = nsfw is True, adult_only is True
+    off = {"username": username, "results": [], "total": 0, "possible": 0, "nsfw": False, "adult_checked": 0}
+    if nsfw != adult_only:
+        # Adult and dating sites are only ever their own pass. Mixing them into an ordinary run
+        # would ask them before any profile has been read.
+        return {**off, **error_fields(code="adult_pass", message=adult_guard.PASS_MESSAGE)}
     # What every answer says about the adult mode, failures included.
     mode = {"nsfw": nsfw, "adult_checked": len(NSFW_SITES) if nsfw else 0}
     if nsfw:
-        reason = adult_guard.minor_indicated(username)
-        if reason:
-            # The router answers 400 before this point. This is the second lock on the door.
-            return {"username": username, "results": [], "total": 0, "possible": 0, "nsfw": False, "adult_checked": 0,
-                    **error_fields(code=adult_guard.ERROR_CODE, message=adult_guard.MESSAGE, detail=reason)}
+        refused = adult_guard.gate(username)
+        if refused:
+            # The router answers before this point. This is the second lock on the door.
+            return {**off, **adult_guard.gate_fields(refused)}
     if not site_data(nsfw):
         # Without the installed site list there is no way to know what would be queried.
         return {"username": username, "results": [], "total": 0, "possible": 0, **mode, **error_fields(code="not_installed")}
@@ -210,9 +216,9 @@ async def _run_sherlock_impl(username: str, nsfw: bool = False, timeout: int = 3
                             if fallback_key in URL_FALLBACKS:
                                 url = URL_FALLBACKS[fallback_key].format(username=username)
                         adult = is_adult_site(site, url)
-                        if adult and not nsfw:
-                            # Sherlock leaves these sites out without --nsfw. If one shows
-                            # up anyway, it is not reported.
+                        if adult != nsfw:
+                            # The ordinary run reports no adult site and the adult pass
+                            # reports nothing else, whatever the tool printed.
                             continue
                         confidence = _classify_site(site)
                         item = {
@@ -238,12 +244,14 @@ async def _run_sherlock_impl(username: str, nsfw: bool = False, timeout: int = 3
         }
 
 
-async def run_sherlock(username: str, nsfw: bool = False, timeout: int = 300) -> dict:
+async def run_sherlock(username: str, nsfw: bool = False, adult_only: bool = False, timeout: int = 300) -> dict:
     """Guarded entry point: bounded by the global tool concurrency limit.
 
-    `nsfw` is the adult site opt-in. It is off unless the caller passes exactly True."""
+    `nsfw` with `adult_only` (both exactly True) is the adult pass: only the adult and dating
+    sites, and only when core.adult_guard.gate allows it for this handle. Anything else is the
+    ordinary run, which holds no such site."""
     try:
         async with tool_slot("sherlock"):
-            return log_result("sherlock", await _run_sherlock_impl(username=username, nsfw=nsfw, timeout=timeout))
+            return log_result("sherlock", await _run_sherlock_impl(username=username, nsfw=nsfw, adult_only=adult_only, timeout=timeout))
     except ToolBusy:
         return busy_result(username=username, results=[], nsfw=nsfw is True, adult_checked=0)

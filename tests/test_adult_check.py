@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from core import adult_guard
+from core import profile_record
 from main import app
 import middleware.rate_limit as rl
 from middleware.rate_limit import match_limit
@@ -294,6 +295,17 @@ def fake_sites(monkeypatch, pages: dict, calls: list | None = None, default=None
     monkeypatch.setattr(ac, "_client", lambda timeout: httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=timeout, follow_redirects=False))
 
 
+
+@pytest.fixture(autouse=True)
+def _ordinary_sources_on_record(monkeypatch):
+    """This file tests what happens once an adult pass is allowed. The rule that the ordinary
+    sources must have run first, and the check of what they found, are tested in
+    test_adult_guard.py and test_adult_tools.py; here every handle counts as on record."""
+    profile_record.clear()
+    monkeypatch.setattr(profile_record, "ran", lambda handle: True)
+    yield
+    profile_record.clear()
+
 def run(username, **kw):
     return asyncio.run(ac.run_adult_check(username, **kw))
 
@@ -517,12 +529,25 @@ def no_network(monkeypatch):
 
 def test_the_module_refuses_a_handle_that_suggests_a_minor_before_any_request(monkeypatch):
     no_network(monkeypatch)
-    out = run("jake13")
+    out = run("jake_13yo")
     assert out["results"] == [] and out["checked"] == 0 and out["error_code"] == "minor_guard"
-    assert out["error_detail"] == adult_guard.REASONS["number"]
+    assert out["error_detail"] == adult_guard.REASONS["age"]
+    # and for a clean handle whose profiles suggest a minor
+    profile_record.note("river_stone", "github", {"found": True, "profile_url": "https://github.com/river_stone", "bio": "16 | junior in high school"})
+    out = run("river_stone")
+    assert out["results"] == [] and out["error_code"] == "minor_guard" and out["block_snippet"] == "16 | junior in high school"
 
 
-@pytest.mark.parametrize("handle", ["jake13", "born2012", "f15", "schoolgirl", "teen_17", "13yo"])
+def test_the_module_refuses_until_an_ordinary_source_has_run(monkeypatch):
+    no_network(monkeypatch)
+    monkeypatch.undo()
+    no_network(monkeypatch)
+    profile_record.clear()
+    out = run("torvalds")
+    assert out["results"] == [] and out["checked"] == 0 and out["error_code"] == "mainstream_first"
+
+
+@pytest.mark.parametrize("handle", ["jake_13yo", "age14jay", "15yo_alex", "underage_x", "pr3teen", "13yo"])
 def test_endpoint_answers_400_minor_guard_and_contacts_nothing(c, monkeypatch, handle):
     no_network(monkeypatch)
     r = c.post("/api/recon/adult-check", json={"username": handle})
@@ -535,7 +560,7 @@ def test_endpoint_answers_400_minor_guard_and_contacts_nothing(c, monkeypatch, h
 def test_endpoint_has_no_way_around_the_guard(c, monkeypatch):
     no_network(monkeypatch)
     for extra in ({"force": True}, {"override": True}, {"nsfw": True}, {"adult": True}, {"confirm_adult": True}):
-        r = c.post("/api/recon/adult-check", json={"username": "jake13", **extra}, headers={"X-Override": "1"})
+        r = c.post("/api/recon/adult-check", json={"username": "jake_13yo", **extra}, headers={"X-Override": "1"})
         assert r.status_code == 400 and r.json()["error_code"] == "minor_guard"
 
 
@@ -562,7 +587,7 @@ def test_no_target_value_is_logged(c, monkeypatch, caplog):
     fake_sites(monkeypatch, FULL_RUN)
     with caplog.at_level("DEBUG"):
         run("torvalds")
-        asyncio.run(ac.run_adult_check("jake13"))
-    assert "torvalds" not in caplog.text and "jake13" not in caplog.text
+        asyncio.run(ac.run_adult_check("jake_13yo"))
+    assert "torvalds" not in caplog.text and "jake_13yo" not in caplog.text
     src = (Path(__file__).parent.parent / "modules" / "adult_check.py").read_text()
     assert "log." not in src and "print(" not in src

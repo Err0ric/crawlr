@@ -13,6 +13,7 @@ from core.house_key import quota_status
 from core.logging import configure_logging, get_logger
 from middleware.observability import BodyLimitMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware, client_ip
 from middleware.rate_limit import RateLimitMiddleware
+from middleware.run_session import RunSessionMiddleware
 from modules import phone_lookup
 from modules.ai_provider import AIError
 from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, recon_identity, recon_people
@@ -50,6 +51,7 @@ app = FastAPI(
 # Middleware runs in reverse registration order on the way in, so the request context
 # (request id + access log) is registered last to wrap everything, and gzip sits just
 # inside it so every response body can be compressed.
+app.add_middleware(RunSessionMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(BodyLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)

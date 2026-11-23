@@ -1,4 +1,5 @@
 // The "At a glance" brief is built from rules, so its statements can be checked exactly.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import { investigateBrief, reconBrief } from "../../static/v2/js/brief.js";
 import { buildEvidence } from "../../static/v2/js/evidence.js";
 

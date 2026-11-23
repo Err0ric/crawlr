@@ -35,7 +35,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 |---|---|---|
 | Sherlock | Username across 450+ sites, from the site list that ships with the installed package. Adult and dating sites are left out unless you switch them on for the case | None |
 | Maigret | Username across the top 500 sites. Reads profile data where it can, which is what lets an account be compared with the others. Adult and dating sites are left out unless you switch them on for the case; then a second pass covers every site with those tags | None |
-| Adult site check | Opt-in, off on every page load and never stored; once switched on it stays on until you switch it off or reload. Existence checks on named adult and dating platforms, decided from page content. Text only: no picture or post is ever loaded. Refused for a handle that suggests a minor | None |
+| Adult site check | Opt-in, off on every page load and never stored; once switched on it stays on until you switch it off or reload. Existence checks on named adult and dating platforms, decided from page content. Text only: no picture or post is ever loaded. Asked only after the ordinary sources, and refused when the handle states an age under 18 or a profile found for it suggests a minor (the page and the server both check; the server keeps the profile text for 30 minutes, in memory and per caller, to do so) | None |
 | Holehe | Which services an email is registered with | None |
 | Domain harvest | Hosts and addresses on an email's domain (crt.sh, CertSpotter, HackerTarget, RapidDNS, urlscan, OTX, Anubis, Wayback) | None |
 | Breaches | Known breaches for an email (XposedOrNot), with date, data classes, record count and a link, newest first | None |
@@ -137,7 +137,8 @@ FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and 
 - Investigation history and notes stay in your browser. Exports (Markdown, HTML, print to PDF and a JSON case file) are built in the browser too.
 - A case file opens on another machine from History. It is read in the browser and never uploaded.
 - Each case has an optional purpose line that is saved with it and printed on every export.
-- The server keeps no record of what you look up: targets are not written to its logs. Short-lived in-memory caches (AI answers, GitHub profiles) are lost on restart.
+- The server keeps no record of what you look up: targets are not written to its logs. Short-lived in-memory caches (AI answers, GitHub profiles, and for 30 minutes the profile text a username run returned, which the minor check reads) are lost on restart.
+- One random session cookie keeps the minor check tied to your own run. It identifies nothing about you and ends with the browser session.
 - Active techniques that connect to the target's own systems (the port scan, profile scraping for deep dive) are off on every page load, never stored, and labeled.
 
 ## Responsible use

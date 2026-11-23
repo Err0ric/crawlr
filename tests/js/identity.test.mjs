@@ -1,5 +1,6 @@
 // Identity clusters are rules, so every join and every refusal to join can be checked exactly.
 // Data: trimmed copies of responses recorded for the audit targets (tests/js/fixtures).
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 import { clusterIdentities, compareNames, meaningfulName, nameTokens, hamming, popcount, lowInformation, standing, linkParts, looksBoilerplate, NO_PRIMARY } from "../../static/v2/js/identity.js";
 import { collectProfiles } from "../../static/v2/js/evidence.js";

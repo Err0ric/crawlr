@@ -132,7 +132,7 @@ EVIDENCE = {
     "handle_not_in_url": "This link does not name this handle, so it was not checked.",
     "bad_link": "This link is not a plain http or https address, so it was not checked.",
     "throttled": "CrawlR has checked this site many times in the last minute, so this link was not checked this time.",
-    "adult_not_checked": "Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor.",
+    "adult_not_checked": "Adult and dating sites are checked only when that mode is on, after the ordinary sources, and not when the handle or a profile found for it suggests a minor.",
     # no_public_url
     "no_profile_page": "This site has no public profile page to check.",
     "homepage_link": "This link points at the site's homepage, not at a profile.",
@@ -1000,17 +1000,20 @@ async def _one(client: httpx.AsyncClient, sem: asyncio.Semaphore, site_sems: dic
 
 def adult_refused(username: str, url: str, adult: bool = False) -> bool:
     """Must this link be left unopened because it is on an adult or dating site? Yes unless the
-    investigator opted in (`adult` is exactly True) and the handle does not suggest a minor."""
+    investigator opted in (`adult` is exactly True) and the minor guard allows an adult pass
+    for this handle: the handle check, a record of the ordinary sources, and the check of the
+    profiles they found (core.adult_guard.gate)."""
     if not adult_sites.is_adult_site(url=url):
         return False
-    return adult is not True or adult_guard.minor_indicated(username) is not None
+    return adult is not True or adult_guard.gate(username) is not None
 
 
 async def run_link_verify(username: str, links: list[dict], adult: bool = False) -> dict:
     """links: [{id, site, url}] -> {"results": [{id, state, final_url, evidence, cached}]}.
 
-    A link on an adult or dating site is opened only with `adult=True` (the opt-in), and never
-    for a handle that suggests a minor. Otherwise it is `unknown` with no request.
+    A link on an adult or dating site is opened only with `adult=True` (the opt-in), and only
+    when the minor guard allows an adult pass for the handle. Otherwise it is `unknown` with
+    no request.
 
     `username` has been through core.validate.username. A link with nothing to open gets
     `no_public_url` and a `hint`. A link on a site the tools do not know, one that does not
@@ -1020,11 +1023,19 @@ async def run_link_verify(username: str, links: list[dict], adult: bool = False)
              for i in (links or [])[:MAX_LINKS]]
     fixed: dict[int, dict] = {}
     todo: dict[str, str] = {}             # url -> site name, first seen
+    verdict: list[bool] = []
+
+    def adult_allowed() -> bool:
+        # The minor guard is asked once per request, not once per link.
+        if not verdict:
+            verdict.append(adult is True and adult_guard.gate(username) is None)
+        return verdict[0]
+
     for n, (_id, site, url) in enumerate(items):
         why = refusal(username, url)
         if why == "bad_link":
             fixed[n] = _plain("bad_link")
-        elif adult_refused(username, url, adult):
+        elif adult_sites.is_adult_site(url=url) and not adult_allowed():
             fixed[n] = _plain("adult_not_checked")
         elif not has_public_profile_url(site, url, username):
             kind = _no_profile_kind(site, url)

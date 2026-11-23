@@ -3,10 +3,10 @@ hashes, and a check that an account link really leads to a profile."""
 
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from core import validate
+from core import profile_record, validate
 from modules.avatar_hash import MAX_IMAGES, run_avatar_hash
 from modules.github import run_github_deep
 from modules.handle_probe import run_handle_probe
@@ -63,7 +63,8 @@ async def avatar_hash(req: AvatarHashRequest):
 
 
 @router.post("/verify-links")
-async def verify_links(req: VerifyLinksRequest):
+async def verify_links(req: VerifyLinksRequest, request: Request):
+    profile_record.bind(getattr(request.state, "run_session", ""))      # the minor guard reads this visitor's record
     username = validate.username(req.username)
     links = []
     for link in req.links:
@@ -81,6 +82,6 @@ async def verify_links(req: VerifyLinksRequest):
         links.append({"id": link.id, "site": link.site, "url": url})
     # The module only opens links on sites the username tools know and that name this handle,
     # and each one is vetted by core.netguard hop by hop.
-    # A link on an adult or dating site is opened only with the opt-in, and never for a handle
-    # that suggests a minor (core.adult_guard, inside the module).
+    # A link on an adult or dating site is opened only with the opt-in, and only when the minor
+    # guard allows an adult pass for the handle (core.adult_guard.gate, inside the module).
     return await run_link_verify(username, links, adult=req.adult)

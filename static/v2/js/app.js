@@ -1,7 +1,7 @@
 // Entry point: navigation, landing, settings, history drawer, AI pill, theme, terms.
 import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, plural, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
 import { openModal, closeModal, openDrawer, closeDrawer, openSheet, closeSheet } from "./ui.js";
-import { run, cancel, renderSources, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
+import { run, cancel, renderSources, refreshModes, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
 import { parseCaseFile, MAX_CASE_BYTES } from "./casefile.js";
@@ -11,6 +11,7 @@ import { buildFindings } from "./reconfindings.js";
 import { scrubCollected } from "./adult.js";
 import { scrubNames } from "./names.js";
 import "./modeui.js";
+import { loadRules } from "./minorscan.js";
 
 // ---- theme ---------------------------------------------------------------------
 // The stylesheet follows the system setting on its own. This only applies an explicit choice.
@@ -148,7 +149,7 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-pivot]"); if (!b) return;
   const v = b.dataset.value; if (!v) return;
   // Where the button was: a pivot from the Investigate case on screen carries that case's standing
-  // with the minor guard into the new case. A Recon run started here is a pivot, so it never scans.
+  // with the minor guard into the new case (its handle, or what its profiles said). A Recon run started here is a pivot, so it never scans.
   const from = current === "investigate" ? "case" : "other";
   const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v, b.dataset.pivotType || "", { pivot: true, from }); };
   if (state.running || recon.state.running) {
@@ -392,9 +393,9 @@ const USE_HTML = `<div class="terms">
   <p><b>CrawlR is for</b> security work on systems you own or are authorized to test, checking your own exposure, research, journalism, incident response and training exercises such as CTFs.</p>
   <p><b>Do not use it to</b> harass, stalk, dox or locate a private individual, to scan or probe systems without permission, or to try credentials found in breaches. CrawlR never logs in to anything, never triggers a password reset and never contacts a person.</p>
   <p><b>Passive by default.</b> Most sources ask third parties what they already know. The two active techniques (the port scan and profile scraping for Deep Dive) connect to the target's own systems, are labelled, and are off whenever the page loads. Each has its own switch: Port scan in Recon, Active techniques in Investigate. Once you switch one on it stays on for every case until you switch it off or reload, it is never saved, and it does not switch the other on.</p>
-  <p><b>Adult and dating sites are opt-in.</b> They are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload. It is never saved, and no picture or post from those sites is ever loaded.</p>
+  <p><b>Adult and dating sites are opt-in.</b> They are checked only when you switch that on: existence checks only, not for a handle that states an age under 18, not when a profile found for the handle suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload. It is never saved, and no picture or post from those sites is ever loaded.</p>
   <p><b>Leads, not proof.</b> Results come from third parties and can be wrong or out of date. "Linked" means a strong signal ties an account to the primary identity. "Exists" means a profile was read, which shows the handle is taken there, not who owns it. "Unverified" means a tool reported it and nothing was read. A source that failed says nothing either way.</p>
-  <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
+  <p><b>What is kept.</b> Your cases, notes and keys stay in this browser. The server does not write the targets you look up to its logs and has no database. One random session cookie keeps the minor check tied to your own run. It identifies nothing about you and ends with the browser session. AI reports are only requested when you ask, and are sent to the provider you chose.</p>
   <p><b>Collect only what your purpose needs.</b> Public does not mean harmless: separate public facts can identify someone once combined. You are responsible for how you use what you find, under the law where you are and where the target is.</p>
   <p><b>A name is not a person.</b> A name search asks five public directories (Wikidata, GitHub, ORCID, OpenAlex and Bluesky) who shares the name and lists them as candidates. It never decides which one you mean, and nothing about a candidate is fetched until you click. CrawlR does not query people-search sites: those links, and the phone lookup links, only open for you to search by hand.</p>
 </div>`;
@@ -418,7 +419,7 @@ function termsIfNeeded() {
       <p>CrawlR queries public sources about the target you enter. Use it only for lawful purposes: your own accounts, authorized assessments, research, or investigations you're entitled to run.</p>
       <p>Results come from third parties and can be wrong. "Unverified" findings are leads to check, not facts, and a profile that exists shows that a handle is taken, not who owns it.</p>
       <p>Active techniques (the port scan in Recon, profile scraping for Deep Dive) connect to the target's own systems and may be logged there. They are labelled, each has its own switch, and both are off when the page loads; once you switch one on it stays on for every case until you switch it off or reload. Only scan hosts you own or are authorized to test.</p>
-      <p>Adult and dating sites are checked only when you switch that on: existence checks only, never for a handle that suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload.</p>
+      <p>Adult and dating sites are checked only when you switch that on: existence checks only, not for a handle that states an age under 18, not when a profile found for the handle suggests a minor, and only for lawful purposes. The switch is off when the page loads, and stays on until you switch it off or reload.</p>
       <p>A name search asks public directories (Wikidata, GitHub, ORCID, OpenAlex and Bluesky) who shares a name and lists them as candidates. It does not tell you which of them is the person you mean.</p>
       <p>Your cases and notes stay in this browser. Don't collect more about a person than your purpose needs.</p>
       <p>The full acceptable-use statement is always under Settings.</p>
@@ -432,6 +433,9 @@ function termsIfNeeded() {
 
 // ---- boot -------------------------------------------------------------------------------------
 (async function boot() {
+  // The minor guard's rules, the same file the server reads. Until they are in (and if they
+  // cannot be loaded) the adult mode cannot be switched on: the guard fails closed.
+  loadRules().then(refreshModes);
   renderSources("");
   const v = location.hash.slice(1);
   show(VIEWS.includes(v) ? v : "landing", { focus: false });

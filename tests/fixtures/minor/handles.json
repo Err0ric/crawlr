@@ -1,0 +1,844 @@
+{
+ "about": "Handles for the minor guard's handle check. token is what the handle check answers: age, word or null (runs). years is the weak 'bare years' signal (16yrs, 10yrs_exp), which never blocks alone. soft is the soft birth year with today pinned.",
+ "today": "2026-11-22",
+ "cases": [
+  {
+   "handle": "14yo",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "15y/o",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "15_y_o",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "age16",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "16yrsold",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "13yearsold",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "9yo",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "8yo",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "017yo",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "user15yo",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "15yo_alex",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "age14jay",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "x_age_16",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "aged15",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "age_14",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "myage14",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "my_age_15",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "17years_old",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "17_years_old",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "17.years.old",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "13y.o",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "16-y-o",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "x15yo9",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "@15yo_Alex",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "AGE14JAY",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "12_years_old",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "sam13yo",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "jess.16.yo",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "15yold",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "16yr_old",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "16yrold",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "16yearold",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "im_age15",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "_age16",
+   "token": "age",
+   "years": null
+  },
+  {
+   "handle": "underage",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "preteen",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "jailbait",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "j41lb41t",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "pr3t33n",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "und3rage",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "im_underage",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "pre.teen",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "under_age",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "Jailbait99",
+   "token": "word",
+   "years": null
+  },
+  {
+   "handle": "16yrs",
+   "token": null,
+   "years": 16
+  },
+  {
+   "handle": "15yrs_x",
+   "token": null,
+   "years": 15
+  },
+  {
+   "handle": "12years",
+   "token": null,
+   "years": 12
+  },
+  {
+   "handle": "10yrs_exp",
+   "token": null,
+   "years": 10
+  },
+  {
+   "handle": "12years_sober",
+   "token": null,
+   "years": 12
+  },
+  {
+   "handle": "15yrsInfosec",
+   "token": null,
+   "years": 15
+  },
+  {
+   "handle": "15_years",
+   "token": null,
+   "years": 15
+  },
+  {
+   "handle": "john15yrs",
+   "token": null,
+   "years": 15
+  },
+  {
+   "handle": "16yr",
+   "token": null,
+   "years": 16
+  },
+  {
+   "handle": "16years_of_code",
+   "token": null,
+   "years": 16
+  },
+  {
+   "handle": "gamer13",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "sk8r_15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "10outof10",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "err0ric17",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "team14",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "1337",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "2015ford",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "mike1999",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "mike2010",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "emma09",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "user2012",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "apollo13",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "kidrock",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "canteen",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "2yrs_sober",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "5years",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "7yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "3yo_dad",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "1year",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "1yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "age5",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "age7",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "mom_of_16yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "dad_of_15yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "l5yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "stone_age_12",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "new_age_17",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "ice.age.9",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "golden_age16",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "sage16",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "mage17",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "teenage16",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "average15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "page14",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "stage15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "image16",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "18yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "21yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "yo15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "15y",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "y15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "f15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "m16",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "im16",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "turning15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "15yoga",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "15yogurt",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "thunderage",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "age160",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "age18",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "100yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "118yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "teen",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "minor",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "kid",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "child",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "schoolgirl",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "highschool",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "classof2029",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "born2012",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "2k10",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "year9",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "grade7",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "sixteen",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "17f",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "u18",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "under18",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "torvalds",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "Err0ric",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "user1999",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "agent47",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "r2d2",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "x86_64",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "jake13",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "15jake",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "anna15",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "emma17",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "_12_",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "2013",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "sam_2010",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "loli",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "tween",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "quinceanera",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "freshman",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "a",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "0",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "007",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "age",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "years",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "30yrs",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "24yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "age21",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "20yearsold",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "18yrsold",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "x_18_yo",
+   "token": null,
+   "years": null
+  },
+  {
+   "handle": "\u0430ge14",
+   "token": null,
+   "years": null
+  }
+ ],
+ "soft": [
+  {
+   "handle": "mike2010",
+   "soft": 2010
+  },
+  {
+   "handle": "user2012",
+   "soft": 2012
+  },
+  {
+   "handle": "2015ford",
+   "soft": 2015
+  },
+  {
+   "handle": "mike2008",
+   "soft": 2008
+  },
+  {
+   "handle": "mike2020",
+   "soft": 2020
+  },
+  {
+   "handle": "sam_2016",
+   "soft": 2016
+  },
+  {
+   "handle": "a2009b",
+   "soft": 2009
+  },
+  {
+   "handle": "born2012",
+   "soft": 2012
+  },
+  {
+   "handle": "2013",
+   "soft": 2013
+  },
+  {
+   "handle": "classof2029",
+   "soft": null
+  },
+  {
+   "handle": "mike2021",
+   "soft": null
+  },
+  {
+   "handle": "mike2007",
+   "soft": null
+  },
+  {
+   "handle": "mike1999",
+   "soft": null
+  },
+  {
+   "handle": "12009",
+   "soft": null
+  },
+  {
+   "handle": "20091",
+   "soft": null
+  },
+  {
+   "handle": "gamer13",
+   "soft": null
+  },
+  {
+   "handle": "emma09",
+   "soft": null
+  },
+  {
+   "handle": "x2022_2011",
+   "soft": 2011
+  },
+  {
+   "handle": "2k10",
+   "soft": null
+  }
+ ]
+}

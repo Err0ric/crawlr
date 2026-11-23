@@ -1,6 +1,6 @@
 // The session mode switches on the page: the first-use confirmation, the "Turn off" control, and
 // keeping every copy of a switch in step. The state itself lives in modes.js, in memory only.
-import { $, $$ } from "./core.js";
+import { $, $$, toast } from "./core.js";
 import { openModal, closeModal } from "./ui.js";
 import { session, MODE, MODE_IDS, confirmHtml, syncSwitches, barSwitchHtml, statusHtml } from "./modes.js";
 
@@ -38,6 +38,8 @@ function ask(id) {
 document.addEventListener("change", (e) => {
   const id = e.target?.dataset?.sessionMode;
   if (!MODE_IDS.includes(id)) return;
+  // A mode that cannot be switched on right now says why (the adult mode without its minor rules).
+  if (e.target.checked === true && session.blocked(id)) toast(session.blocked(id), 7000);
   session.request(id, e.target.checked === true, ask(id));
   // Whatever happened, every copy of the switch shows the state: a switch that was moved before the
   // confirmation was answered goes back to off.

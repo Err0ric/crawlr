@@ -3,7 +3,7 @@ import { h, raw, esc, link, fmtNum, plural, sourceOutcome } from "./core.js";
 import { breachList, hashView, detectionText, TEST_FILE_TEXT, canonSite } from "./evidence.js";
 import { classifyLink, applyCheck, evidenceUrl, CHECK_TEXT } from "./links.js";
 import { readNameResult, DIRECTORIES, NAME_NOTICE, NAME_SOURCE } from "./names.js";
-import { isAdultRow, adultListHtml, adultCounts, adultCheckText, ADULT_SOURCE } from "./adult.js";
+import { isAdultRow, adultListHtml, adultCounts, adultCheckText, adultFound, ADULT_SOURCE } from "./adult.js";
 import { phoneView, phoneSourceRows, PHONE_SOURCE, OWNER_NOTE, AREA_NOTE, PORTED_NOTE } from "./phone.js";
 
 // A profile link in a card carries the same link kind as its ledger row: a URL the source read
@@ -87,9 +87,13 @@ const CARDS = {
     return card("Platform check", tag(`${fmtNum(found.length)} unverified`), (rows.length ? list(rows) : none("Answered, nothing found: no profile URLs answered.")) + h`<p class="muted small">A profile URL that answers is a weak signal. These sites often answer for any name.</p>`);
   },
   // rows: the ledger's adult group (adultRows), so the card and the group say the same thing.
-  // Text and links only: no picture, no favicon, no preview.
-  adultCheck: (d, rows) => {
-    const mine = (rows || []).filter((r) => (r.sources || []).includes(ADULT_SOURCE));
+  // d is the one "Adult site check" source: the check itself with the adult pass of Sherlock and
+  // of Maigret as its parts (adultSource in adult.js). Text and links only: no picture, no
+  // favicon, no preview.
+  // opts.parts: the case ran the adult pass of the tools as parts of this source, so their rows
+  // are listed too. A case saved before that lists the check's own sites, as it always did.
+  adultCheck: (d, rows, opts = {}) => {
+    const mine = adultFound(rows).filter((r) => (opts.parts ? r.adult?.state !== "mentioned" : (r.sources || []).includes(ADULT_SOURCE)));
     const c = adultCounts(mine);
     return card(ADULT_SOURCE, tag(`${fmtNum(c.read)} read`, c.read ? "ok" : "") + (c.blocked ? " " + tag(`${fmtNum(c.blocked)} blocked`, "warn") : "") + " " + tag("existence only"),
       h`<p class="muted">${adultCheckText(d)}.</p>` + (mine.length ? adultListHtml(mine) : none("No adult or dating site was checked."))
@@ -242,4 +246,4 @@ function githubDeepBody(dp) {
 }
 
 const TITLES = { nameResult: NAME_SOURCE, adultCheck: ADULT_SOURCE, linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
-export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d, extra) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d, extra))]));
+export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d, extra, opts) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d, extra, opts))]));

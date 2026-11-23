@@ -2,6 +2,7 @@
 // checks as outside data, how an added profile enters and leaves the ledger, and what the AI is
 // told. No browser, no network. Names of people here are invented.
 // Run: node tests/js/similar.test.mjs
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document ??= { addEventListener() {} };

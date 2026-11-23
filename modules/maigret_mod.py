@@ -48,6 +48,8 @@ ADULT_HOSTS = frozenset(adult_sites.HOSTS)
 
 _ID_KEYS = {"uid", "username", "account_id", "gaia_id"}
 _NAME_KEYS = ("fullname", "name", "nickname")
+_BIRTH_KEYS = ("birthday", "birth_date", "birthdate", "born", "dob", "date_of_birth")
+_TEXT_KEYS = ("about", "status", "headline", "description", "school", "occupation", "education", "job")
 
 
 def profile_signal(ids: dict | None, site: str = "", username: str = "") -> dict | None:
@@ -76,6 +78,18 @@ def profile_signal(ids: dict | None, site: str = "", username: str = "") -> dict
         "image": fields.get("image", "")[:500],
         "extractor": str(ids.get("_extractor", ""))[:60],
     }
+    # Guard-only: what the minor guard's content check reads and nothing else uses. The whole bio
+    # (the row shows 300 characters), the other text fields an extractor returns, a birth date
+    # and an age. The server scans it (core.profile_record) and so does the page, which removes
+    # `guard` before the case is stored, exported or sent to the AI.
+    age = fields.get("age", "")
+    guard = {
+        "bio": bio[:2000] if len(bio) > 300 else "",
+        "text": "\n".join(fields[k][:300] for k in _TEXT_KEYS if fields.get(k) and fields[k] != raw_bio)[:1000],
+        "birthday": next((fields[k] for k in _BIRTH_KEYS if fields.get(k)), "")[:40],
+        "age": age if age.isdigit() and len(age) <= 3 else "",
+    }
+    out["guard"] = {k: v for k, v in guard.items() if v}
     return {k: v for k, v in out.items() if v}
 
 
@@ -89,7 +103,9 @@ def profile_signal(ids: dict | None, site: str = "", username: str = "") -> dict
 #
 #   normal pass   a copy of the installed database with every site core.adult_sites lists
 #                 taken out, so no option or ranking can select one
-#   adult pass    the installed database itself, restricted to the adult tags
+#   adult pass    the installed database itself, restricted to the adult tags. It is its own
+#                 run (nsfw and adult_only), made after the ordinary sources and only when
+#                 core.adult_guard.gate allows it: the two passes are never one request
 #
 # The price: site definitions change only when the maigret package is upgraded.
 # --------------------------------------------------------------------------------------
@@ -313,49 +329,48 @@ def _rows(raw: dict | None, username: str, nsfw: bool) -> list[dict]:
     return results
 
 
-async def _run_maigret_impl(username: str, nsfw: bool = False, timeout: int = 180, adult_timeout: int = ADULT_TIMEOUT) -> dict:
-    nsfw = nsfw is True
+async def _run_maigret_impl(username: str, nsfw: bool = False, adult_only: bool = False, timeout: int = 180, adult_timeout: int = ADULT_TIMEOUT) -> dict:
+    nsfw, adult_only = nsfw is True, adult_only is True
     empty = {"username": username, "results": [], "total": 0, "possible": 0, "verified": 0,
              "nsfw": nsfw, "sites_checked": 0, "adult_checked": 0, "adult_errors": []}
+    if nsfw != adult_only:
+        # Adult and dating sites are only ever their own pass. Mixing them into an ordinary run
+        # would ask them before any profile has been read.
+        return {**empty, "nsfw": False, **error_fields(code="adult_pass", message=adult_guard.PASS_MESSAGE)}
     if nsfw:
-        reason = adult_guard.minor_indicated(username)
-        if reason:
-            # The router answers 400 before this point. This is the second lock on the door.
-            return {**empty, "nsfw": False, **error_fields(code=adult_guard.ERROR_CODE, message=adult_guard.MESSAGE, detail=reason)}
-    if not MAIGRET_AVAILABLE or not normal_db_file() or (nsfw and not adult_db_file()):
+        refused = adult_guard.gate(username)
+        if refused:
+            # The router answers before this point. This is the second lock on the door.
+            return {**empty, "nsfw": False, **adult_guard.gate_fields(refused)}
+    if not MAIGRET_AVAILABLE or not (adult_db_file() if nsfw else normal_db_file()):
         # Without the installed database there is no way to know what would be queried.
         return {**empty, **error_fields(code="not_installed")}
 
-    # Adult and dating sites are excluded unless the investigator explicitly opts in.
-    # (The old filter passed "--tags !nsfw", which is not a tag Maigret knows, so with the
-    # box unticked it matched no sites at all.)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        raw, stdout, failed = await _run_pass(build_command(username, tmpdir), tmpdir, timeout)
-    if failed:
-        return {**empty, **failed}
-    results = _rows(raw, username, nsfw)
-    sites_checked = _sites_checked(stdout)
-
-    # The opt-in adds a second pass over the adult and dating tags only. It has its own time
-    # limit, and when it fails the normal pass above is still returned.
-    adult = {"adult_checked": 0, "adult_errors": []}
-    if nsfw:
+    if not nsfw:
+        # The ordinary run: one pass over a database that holds no adult or dating site.
+        # (The old filter passed "--tags !nsfw", which is not a tag Maigret knows, so with the
+        # box unticked it matched no sites at all.)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw, stdout, failed = await _run_pass(build_command(username, tmpdir), tmpdir, timeout)
+        if failed:
+            return {**empty, **failed}
+        results = _rows(raw, username, False)
+        sites_checked = _sites_checked(stdout)
+        adult = {"adult_checked": 0, "adult_errors": []}
+    else:
+        # The adult pass: the adult and dating tags only, with its own time limit. A failure is
+        # returned both as this answer's error and under the adult_ keys the page reads.
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 raw, stdout, failed = await _run_pass(build_adult_command(username, tmpdir), tmpdir, adult_timeout)
-        except Exception as e:  # noqa: BLE001 - the adult pass must never take the normal pass down
+        except Exception as e:  # noqa: BLE001 - reported as a failed pass, never raised
             raw, stdout, failed = None, "", error_fields(e, detail=type(e).__name__)
         if failed:
-            adult.update({f"adult_{k}": v for k, v in failed.items()})
-        else:
-            seen = {r["site"] for r in results}
-            # Only adult and dating rows are taken from this pass, whatever it returned.
-            results.extend(r for r in _rows(raw, username, True) if r.get("adult") and r["site"] not in seen)
-            checked = _sites_checked(stdout)
-            adult["adult_checked"] = checked or 0
-            adult["adult_errors"] = _errored_sites(stdout)
-            if sites_checked is not None and checked is not None:
-                sites_checked += checked
+            return {**empty, **failed, **{f"adult_{k}": v for k, v in failed.items()}}
+        # Only adult and dating rows are taken from this pass, whatever it returned.
+        results = [r for r in _rows(raw, username, True) if r.get("adult")]
+        sites_checked = _sites_checked(stdout)
+        adult = {"adult_checked": sites_checked or 0, "adult_errors": _errored_sites(stdout)}
 
     results.sort(key=lambda r: (not r["verified"], SORT_ORDER.get(r["confidence"], 1)))
     possible = sum(1 for r in results if r["confidence"] != "false_positive")
@@ -372,13 +387,14 @@ async def _run_maigret_impl(username: str, nsfw: bool = False, timeout: int = 18
     }
 
 
-async def run_maigret(username: str, nsfw: bool = False, timeout: int = 180) -> dict:
-    """Guarded entry point: bounded by the global tool concurrency limit. Both passes run
-    inside one tool slot, one after the other.
+async def run_maigret(username: str, nsfw: bool = False, adult_only: bool = False, timeout: int = 180) -> dict:
+    """Guarded entry point: bounded by the global tool concurrency limit.
 
-    `nsfw` is the adult and dating site opt-in. It is off unless the caller passes exactly True."""
+    `nsfw` with `adult_only` (both exactly True) is the adult pass: only the adult and dating
+    tags, and only when core.adult_guard.gate allows it for this handle. Anything else is the
+    ordinary run, which holds no such site."""
     try:
         async with tool_slot("maigret"):
-            return log_result("maigret", await _run_maigret_impl(username=username, nsfw=nsfw, timeout=timeout))
+            return log_result("maigret", await _run_maigret_impl(username=username, nsfw=nsfw, adult_only=adult_only, timeout=timeout))
     except ToolBusy:
         return busy_result(username=username, results=[], total=0, possible=0, verified=0)

@@ -1,6 +1,7 @@
 // The presentation rules of the design pass: verdict tiles, History grouped by target, what an
 // evidence card may say, thumbnails, and the certainty grammar (solid = read, dashed = reported).
 // Run: node tests/js/design.test.mjs
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 import { CERTAINTY, certaintyOf, rowCertainty, iconDomain, mayFavicon, withoutThumbs, writeHistory, safeThumb, boundAvatarHash, THUMB_MAX_CHARS, joinedYear, cardSnippet, investigateTiles, reconTiles, groupHistory, lastRunDiff, diffText } from "../../static/v2/js/present.js";
 import { investigateBrief } from "../../static/v2/js/brief.js";

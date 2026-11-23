@@ -2,6 +2,7 @@
 // source tally, exports, the AI field and case files. The fixture (tests/js/fixtures/phone.json)
 // is what modules/phone_lookup.py returns for each number, with the NPA-NXX answers recorded on
 // 2026-11-14, plus two answers in the shape the endpoint had before. No browser, no network.
+import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
 const { detect, looksLikePhone, sourceTally, sourceCoverage, sourceHasResults, statusForAi } = await import("../../static/v2/js/core.js");

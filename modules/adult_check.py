@@ -3,8 +3,9 @@ Adult and dating site check: is there a public profile for this handle on the si
 matter in sextortion, romance-scam and catfish cases, and for people checking their own
 exposure?
 
-This only runs when the investigator opts in, and never for a handle that suggests a minor
-(core.adult_guard runs first, here and in the router). It reports that a profile exists and a
+This only runs when the investigator opts in, after the ordinary sources, and never when the
+handle states an age under 18 or a profile found for it suggests a minor (core.adult_guard.gate
+runs first, here and in the router). It reports that a profile exists and a
 little text the page states about it. It never fetches, stores or returns an image, a
 thumbnail, a media address or post content.
 
@@ -543,12 +544,12 @@ async def _check(client: httpx.AsyncClient, sem: asyncio.Semaphore, rule: dict, 
 
 
 async def run_adult_check(username: str, timeout: float = TIMEOUT) -> dict:
-    """Check every platform in RULES for `username`. The minor guard runs before anything else."""
-    reason = adult_guard.minor_indicated(username)
-    if reason:
-        # The router answers 400 before this point. This is the second lock on the door.
-        return {"username": username, "checked": 0, "total": 0, "results": [],
-                **error_fields(code=adult_guard.ERROR_CODE, message=adult_guard.MESSAGE, detail=reason)}
+    """Check every platform in RULES for `username`. The minor guard runs before anything else:
+    the handle check, then the check of the profiles the ordinary sources found."""
+    refused = adult_guard.gate(username)
+    if refused:
+        # The router answers before this point. This is the second lock on the door.
+        return {"username": username, "checked": 0, "total": 0, "results": [], **adult_guard.gate_fields(refused)}
 
     sem = asyncio.Semaphore(CONCURRENCY)
     async with _client(timeout) as client:

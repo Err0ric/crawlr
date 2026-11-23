@@ -231,11 +231,12 @@ export const KNOWN_EVIDENCE = [
   "This link does not name this handle, so it was not checked.",
   "This link is not a plain http or https address, so it was not checked.",
   "CrawlR has checked this site many times in the last minute, so this link was not checked this time.",
-  "Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor.",
+  "Adult and dating sites are checked only when that mode is on, after the ordinary sources, and not when the handle or a profile found for it suggests a minor.",
   "This site has no public profile page to check.",
   "This link points at the site's homepage, not at a profile.",
 ];
-const EVIDENCE_OK = new Set(KNOWN_EVIDENCE);
+// Also accepted: the wording of cases saved before the minor guard read profiles.
+const EVIDENCE_OK = new Set([...KNOWN_EVIDENCE, "Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor."]);
 // "Not checked this time" is not a result: the row stays open for a later check and is not stored.
 export const THROTTLED_EVIDENCE = "CrawlR has checked this site many times in the last minute, so this link was not checked this time.";
 export const isTransient = (r) => !!r && r.state === "unknown" && r.evidence === THROTTLED_EVIDENCE;
