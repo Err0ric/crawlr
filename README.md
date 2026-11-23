@@ -137,7 +137,7 @@ FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and 
 - Investigation history and notes stay in your browser. Exports (Markdown, HTML, print to PDF and a JSON case file) are built in the browser too.
 - A case file opens on another machine from History. It is read in the browser and never uploaded.
 - Each case has an optional purpose line that is saved with it and printed on every export.
-- The server keeps no record of what you look up: targets are not written to its logs. Short-lived in-memory caches (AI answers, GitHub profiles, and for 30 minutes the profile text a username run returned, which the minor check reads) are lost on restart.
+- The server keeps no record of what you look up: targets are not written to its logs. When the minor check blocks, one log line names the rule that fired and nothing about the target. Short-lived in-memory caches (AI answers, GitHub profiles, and for 30 minutes the profile text a username run returned, which the minor check reads) are lost on restart.
 - One random session cookie keeps the minor check tied to your own run. It identifies nothing about you and ends with the browser session.
 - Active techniques that connect to the target's own systems (the port scan, profile scraping for deep dive) are off on every page load, never stored, and labeled.
 

@@ -18,6 +18,7 @@ from core import profile_record as pr
 
 FIX = Path(__file__).parent / "fixtures" / "minor"
 HANDLES = json.loads((FIX / "handles.json").read_text(encoding="utf-8"))
+RULES = json.loads(mr.RULES_PATH.read_text(encoding="utf-8"))
 BIOS = json.loads((FIX / "bios.json").read_text(encoding="utf-8"))
 TODAY = date(2026, 11, 22)
 
@@ -79,16 +80,16 @@ def test_bare_years_in_a_handle_are_weak_they_run_alone_and_block_with_a_sign_in
     engine = mr.load()
     assert engine.handle_token(handle) is None and 8 <= engine.soft_bare_years(handle) <= 17
     one = lambda bio: engine.scan([{"source": "GitHub", "url": "", "bio": bio}], handle, TODAY)
-    clean, weak = one("Go and Rust. Coffee."), one("student")
+    clean, weak = one("Go and Rust. Coffee."), one("freshman")
     assert not clean["blocked"] and clean["soft_years"] == engine.soft_bare_years(handle) and clean["soft"] is None
-    assert weak["blocked"] and weak["kind"] == "soft" and weak["signal"]["snippet"] == "student"
+    assert weak["blocked"] and weak["kind"] == "soft" and weak["signal"]["snippet"] == "freshman"
     for under_floor in ("2yrs_sober", "5years", "7yo", "1year"):
-        assert engine.soft_bare_years(under_floor) is None and not engine.scan([{"source": "S", "bio": "student"}], under_floor, TODAY)["blocked"]
+        assert engine.soft_bare_years(under_floor) is None and not engine.scan([{"source": "S", "bio": "freshman"}], under_floor, TODAY)["blocked"]
 
 
 def test_a_strong_signal_is_never_lost_behind_the_cap():
     engine = mr.load()
-    many = [{"source": f"Site {i}", "url": "", "bio": "student, teen"} for i in range(20)] + [{"source": "Instagram", "url": "", "bio": "I'm 15"}]
+    many = [{"source": f"Site {i}", "url": "", "bio": "freshman, fifteen"} for i in range(20)] + [{"source": "Instagram", "url": "", "bio": "I'm 15"}]
     r = engine.scan(many, "river_stone", TODAY)
     assert r["blocked"] and r["kind"] == "age" and r["signal"]["source"] == "Instagram"
     assert len(r["signals"]) == engine.signals_max and r["signal"] in r["signals"]
@@ -105,14 +106,14 @@ def test_the_reason_is_a_fixed_sentence_that_never_repeats_the_handle_or_mention
 def test_the_soft_birth_year_follows_the_calendar(monkeypatch):
     for case in HANDLES["soft"]:
         assert ag.soft_birth_year(case["handle"]) == case["soft"], case
-    # 2026: someone born in 2008 may still be 17, and 2020 is six years back.
-    assert ag.soft_birth_year("mike2008") == 2008 and ag.soft_birth_year("mike2007") is None
+    # 2026: only a year that makes the person under 18 today counts (2009 on), and 2020 is six years back.
+    assert ag.soft_birth_year("mike2009") == 2009 and ag.soft_birth_year("mike2008") is None
     assert ag.soft_birth_year("mike2020") == 2020 and ag.soft_birth_year("mike2021") is None
     # It never blocks by itself.
     assert all(ag.minor_indicated(c["handle"]) is None for c in HANDLES["soft"])
     # Nothing is hard-coded: five years on the window has moved with the date.
     monkeypatch.setattr(ag, "_today", lambda: date(2031, 1, 1))
-    assert ag.soft_birth_year("mike2010") is None and ag.soft_birth_year("mike2013") == 2013 and ag.soft_birth_year("mike2025") == 2025
+    assert ag.soft_birth_year("mike2010") is None and ag.soft_birth_year("mike2013") is None and ag.soft_birth_year("mike2014") == 2014 and ag.soft_birth_year("mike2025") == 2025
 
 
 def test_today_is_the_real_date_by_default(monkeypatch):
@@ -392,7 +393,7 @@ def test_the_soft_signals_in_the_handle_combine_with_a_weak_signal_on_record():
     status, body = ag.gate("mike2010")
     assert status == 400 and (body["kind"], body["source"], body["snippet"]) == ("soft", "GitHub", "class of 2029") and body["reason"] == ag.CONTENT_REASONS["soft"]
     assert body["reason"] == "A profile found for this handle suggests a minor, and the handle carries a matching age or birth year."
-    gh("sam_16yrs", "student")
+    gh("sam_16yrs", "freshman")
     assert ag.gate("sam_16yrs")[1]["kind"] == "soft"                # bare years in the handle are the other soft signal
     gh("river_stone", "class of 2029")
     assert ag.gate("river_stone") is None
@@ -494,6 +495,64 @@ def test_maigret_hands_the_guard_the_whole_bio_and_the_other_text_fields():
     assert "guard" not in mm.profile_signal({"uid": "1", "fullname": "A Person", "bio": "short"}, site="Example", username="jdoe")
     # An adult row never carries it.
     assert "guard" not in (mm.adult_profile({"uid": "1", "fullname": "A Person", "bio": bio, "age": "15"}, site="Example", username="jdoe") or {})
+
+
+def _blocks(caplog):
+    return [r for r in caplog.records if r.getMessage() == "minor guard block"]
+
+
+def test_every_block_is_logged_with_its_rule_id_and_nothing_about_the_target(caplog):
+    caplog.set_level(logging.INFO)
+    # the handle check: the pattern that fired
+    for handle, rule, kind in (("zq15yo_alex", "handle.age_then_yo", "age"), ("zq16yrsold", "handle.age_then_years_old", "age"),
+                               ("age14zqjay", "handle.word_then_age", "age"), ("zqjailbait", "handle.words", "word")):
+        caplog.clear()
+        assert ag.gate(handle)[0] == 400
+        (line,) = _blocks(caplog)
+        assert (line.stage, line.rule, line.kind) == ("handle", rule, kind), handle
+    # the content check: a strong rule, then a weak rule with the soft signal it needed
+    caplog.clear()
+    pr.note("zqriver", "maigret", OK)
+    pr.note("zqriver", "github", {"found": True, "profile_url": "https://github.com/zqriver", "name": "Zq", "bio": "zqsecret high school student"})
+    pr.note("zq2012", "maigret", OK)
+    pr.note("zq2012", "github", {"found": True, "profile_url": "https://github.com/zq2012", "name": "Zq", "bio": "zqsecret class of 2029"})
+    pr.note("sam_16yrs", "maigret", OK)
+    pr.note("sam_16yrs", "github", {"found": True, "profile_url": "https://github.com/sam_16yrs", "name": "Zq", "bio": "freshman"})
+    for handle in ("zqriver", "zq2012", "sam_16yrs", "zqriver", "zqriver"):      # a block is one line, however often it then refuses
+        assert ag.gate(handle)[0] == 400
+    lines = _blocks(caplog)
+    assert [(r.stage, r.rule, r.kind, r.strength, getattr(r, "with", None)) for r in lines] == [
+        ("content", "high_school_student", "school", "strong", None),
+        ("content", "class_year", "soft", "weak", "soft_year"),
+        ("content", "class_word", "soft", "weak", "soft_years"),
+    ]
+    # a pass that runs, and a pass refused because nothing is on record, are not blocks
+    caplog.clear()
+    pr.note("zqclean", "maigret", OK)
+    assert ag.gate("zqclean") is None and ag.gate("zqnobody")[0] == 409 and _blocks(caplog) == []
+    # every rule ID is a name from the rules file
+    names = {r["id"] for r in RULES["content"]["rules"]} | {"birth_field", "age_field"} | {f"handle.{n}" for n in RULES["handle"]["age"]["patterns"]} | {"handle.words"}
+    assert {"high_school_student", "class_year", "class_word", "handle.age_then_yo", "handle.words"} <= names
+
+
+def test_a_block_line_holds_no_handle_snippet_site_or_address(caplog):
+    caplog.set_level(logging.DEBUG)
+    pr.note("zqriver", "maigret", OK)
+    pr.note("zqriver", "github", {"found": True, "profile_url": "https://github.com/zqriver", "name": "Zq", "bio": "zqsecret high school student"})
+    ag.gate("zqriver"), ag.gate("zq15yo_alex")
+    lines = _blocks(caplog)
+    assert len(lines) == 2
+    text = " ".join(r.getMessage() + str(r.__dict__) for r in caplog.records).lower()
+    for word in ("zqriver", "zq15yo", "zqsecret", "student\"", "github"):
+        assert word not in text.replace("high_school_student", ""), word
+
+
+def test_without_the_rules_the_refusal_is_logged_as_that(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(mr, "ENGINE", None)
+    assert ag.gate("zqanyone")[0] == 400
+    (line,) = _blocks(caplog)
+    assert (line.stage, line.rule, line.kind) == ("handle", "rules_unavailable", "rules")
 
 
 def test_nothing_in_the_record_is_logged(caplog):

@@ -154,6 +154,9 @@ export function blockForAi(collected) {
 
 // ---- the run: what is asked, and when ---------------------------------------------------------------
 // The words of the run log's one "Adult sites" row.
+// The server's verdict for a handle, with no site contacted: asked only to have a block the
+// page made counted on the server (routers/recon.py, /minor-guard).
+export const GUARD_VERDICT = { url: "/api/recon/minor-guard", body: (handle) => ({ username: handleOf(handle) }) };
 export const ADULT_LOG = {
   waiting: "Adult sites: waiting on profile check",
   // silent: sources whose failure is worth saying though the check could go ahead (GitHub).

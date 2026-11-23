@@ -127,6 +127,16 @@ async def adult_check_scan(req: AdultCheckRequest, request: Request):
     return _adult_gate(username) or await run_adult_check(username)
 
 
+@router.post("/minor-guard")
+async def minor_guard_verdict(req: AdultCheckRequest, request: Request):
+    """The guard's answer for a handle and nothing else: no site is contacted. The page asks
+    when its own check has blocked the adult pass, so the block is decided (and logged, by
+    rule ID only) on the server as well. 200 allowed, or the same 400 and 409 as the adult pass."""
+    _mine(request)
+    username = validate.username(req.username)
+    return _adult_gate(username) or {"allowed": True}
+
+
 @router.post("/holehe")
 async def holehe_scan(req: HoleheRequest):
     return await run_holehe(validate.email(req.email))

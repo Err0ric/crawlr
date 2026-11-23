@@ -539,5 +539,13 @@ const OFF = (() => { const c = clone(C); delete c.adultMode; return c; })();   /
   ok(L.KNOWN_EVIDENCE.includes("Adult and dating sites are checked only when that mode is on, after the ordinary sources, and not when the handle or a profile found for it suggests a minor.") && L.readChecks({ "acct:x": { state: "unknown", evidence: "Adult and dating sites are checked only when that mode is on, and never for a handle that suggests a minor." } })["acct:x"]?.evidence !== undefined, "the verifier sentence of cases saved before the guard read profiles is still accepted");
 }
 
+// A block the page makes is reported to the server's verdict route, which contacts no site.
+{
+  ok(A.GUARD_VERDICT.url === "/api/recon/minor-guard" && JSON.stringify(A.GUARD_VERDICT.body("@River_Stone")) === JSON.stringify({ username: A.handleOf("@River_Stone") }), "the verdict request is the handle and nothing else");
+  const page = fs.readFileSync(new URL("../../static/v2/js/investigate.js", import.meta.url), "utf8");
+  ok((page.match(/reportBlock\(handle\)/g) || []).length === 2 && /mode\.minor\.kind === "guard"\) reportBlock\(handle\)/.test(page) && /pass\.state === "blocked"\) \{[^}]*reportBlock\(handle\)/.test(page), "the run reports a handle block and a content block, and nothing else");
+  ok(!/await reportBlock|reportBlock\([^)]*\)\.then/.test(page) && /post\(GUARD_VERDICT\.url, GUARD_VERDICT\.body\(handle\)\)\.catch\(\(\) => \{\}\)/.test(page), "the answer is not waited for and changes nothing in the page");
+}
+
 console.log(bad ? `${bad} of ${n} adult checks failed` : `${n}/${n} adult checks passed`);
 process.exit(bad ? 1 : 0);

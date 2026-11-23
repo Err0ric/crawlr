@@ -1,7 +1,7 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, partialGaps, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
 import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal } from "./evidence.js";
-import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, handleOf, readiness, stripGuard, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, NOT_RUN_KINDS, NOT_CHECKED_BLURB, NOT_RUN_BLURB } from "./adult.js";
+import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, handleOf, readiness, stripGuard, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, GUARD_VERDICT, NOT_RUN_KINDS, NOT_CHECKED_BLURB, NOT_RUN_BLURB } from "./adult.js";
 import { session, MODE, normHandle, adultFor, startAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
 import { paintBar, paintStatus } from "./modeui.js";
 import { sourceCards } from "./renderers.js";
@@ -557,6 +557,10 @@ function dropAdult() {
 // What the run does with a refusal is decided in evidence.js (adultRefusal): what the case
 // records, and the words. Here it is applied to the page.
 let adultRow = null;      // the run log's one "Adult sites" row, for the run in flight
+// The page's own check blocked the adult pass, so no adult request goes out and the server
+// would never hear of it. This asks the server for its verdict (it contacts no site), so the
+// block is counted there by rule ID. The answer changes nothing here: the page's block stands.
+const reportBlock = (handle) => { post(GUARD_VERDICT.url, GUARD_VERDICT.body(handle)).catch(() => {}); };
 function adultRefused(err) {
   const out = adultRefusal(err);
   if (!out) return false;
@@ -718,6 +722,7 @@ export async function run(targetRaw, typeOverride, opts = {}) {
     const wantAdult = handleOk && plan.has("adult");
     adultRow = wantAdult ? log.add(ADULT_LOG.waiting) : null;
     if (block0) log.add(ADULT_LOG.blocked(block0), "skip");
+    if (block0 && handleOk && mode.minor.kind === "guard") reportBlock(handle);
     if (handleOk && on("github")) jobs.push(runSource("GitHub", "/api/recon/github", { username: handle }, {}, "github"));
     if (on("holehe")) jobs.push(runSource("Holehe", "/api/recon/holehe", { email: target }, {}, "holehe"));
     if (on("hibp")) jobs.push(runSource("Breaches", "/api/recon/hibp", { email: target }, {}, "hibp"));
@@ -755,7 +760,7 @@ export async function run(targetRaw, typeOverride, opts = {}) {
       if (pass.state === "cancelled") { state.adultBlocked = pass.notice; return; }
       if (pass.block) {
         c.adultBlock = pass.block;
-        if (pass.state === "blocked") state.minor = suspendContent(suspended, target, pass.block);
+        if (pass.state === "blocked") { state.minor = suspendContent(suspended, target, pass.block); reportBlock(handle); }
         renderSources(type); renderLedger();
         return;
       }

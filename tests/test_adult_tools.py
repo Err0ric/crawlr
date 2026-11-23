@@ -7,6 +7,7 @@ import asyncio
 import csv
 import io
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -762,3 +763,37 @@ def test_the_ai_is_told_that_the_adult_group_was_skipped_and_never_the_quoted_te
     prompt = an.investigation_prompt(an.AnalyzeRequest(target="river_stone", target_type="username", adult_block=an.AdultBlockEvidence(kind="fresh")))
     assert "adult sites not run: a fresh run was needed" in prompt and an.ADULT_BLOCK_SECTION in prompt
     assert an.ADULT_BLOCK_SECTION not in an.investigation_prompt(an.AnalyzeRequest(target="river_stone", target_type="username"))
+
+
+# ---- the verdict route: a block the page made is counted on the server ------------------------
+
+def test_the_verdict_route_answers_like_the_adult_pass_runs_nothing_and_logs_the_rule(c, monkeypatch, caplog):
+    calls = spy(monkeypatch)
+    no_adult_check(monkeypatch)
+    bio = {"text": "CS student"}
+
+    async def github(username, **kw):
+        return {"found": True, "profile_url": f"https://github.com/{username}", "name": "", "bio": bio["text"]}
+    monkeypatch.setattr(recon, "run_github", github)
+    verdict = lambda handle: c.post("/api/recon/minor-guard", json={"username": handle})
+    assert verdict("x2012").status_code == 409                                  # nothing on record yet
+    assert c.post("/api/recon/maigret", json={"username": "x2012"}).status_code == 200
+    assert c.post("/api/recon/github", json={"username": "x2012"}).status_code == 200
+    calls.clear()
+    caplog.set_level(logging.INFO)
+    r = verdict("x2012")                                                        # the owner's case: a birth year and "CS student" runs
+    assert r.status_code == 200 and r.json() == {"allowed": True}
+    assert [x for x in caplog.records if x.getMessage() == "minor guard block"] == []
+    bio["text"] = "high school student"                                         # and "high school student" blocks
+    assert c.post("/api/recon/github", json={"username": "x2012"}).status_code == 200
+    calls.clear()
+    r = verdict("X2012")
+    got = r.json()
+    assert r.status_code == 400 and got["code"] == "minor_guard" and (got["kind"], got["source"], got["snippet"]) == ("school", "GitHub", "high school student")
+    assert verdict("15yo_alex").status_code == 400
+    lines = [(x.stage, x.rule) for x in caplog.records if x.getMessage() == "minor guard block"]
+    assert lines == [("content", "high_school_student"), ("handle", "handle.age_then_yo")]
+    text = " ".join(x.getMessage() + str(x.__dict__) for x in caplog.records if x.name == "core.adult_guard").lower()
+    assert "x2012" not in text and "alex" not in text and "github" not in text
+    assert calls == []                                                          # the route runs no tool and contacts no site
+    assert c.post("/api/recon/minor-guard", json={"username": "not a handle!"}).status_code in (400, 422)
