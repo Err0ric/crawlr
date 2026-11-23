@@ -169,8 +169,8 @@
   "soft_year": {
    "pattern": "(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])",
    "min_age": 6,
-   "max_age": 18,
-   "note": "a four-digit year that would make the person min_age to max_age today. A soft signal: it never blocks alone"
+   "max_age": 17,
+   "note": "a four-digit year that would make the person min_age to max_age today, so under 18. A soft signal: it never blocks alone"
   },
   "soft_years": {
    "pattern": "(?<![0-9])0*([0-9]{1,2})[._-]*(?:years|year|yrs|yr)(?![._-]*old(?![a-z]))(?!s)",
@@ -266,14 +266,6 @@
    "age_prep": {
     "pattern": "\\b(?:at|by|since|from|until|till|before|after|around|about|of|the|any|average|was|when|under|over|your|what|for|reading|mental|drinking|voting) aged? ?:? ?[0-9]",
     "note": "an age in a story or a rule, not the writer's own"
-   },
-   "student_other": {
-    "pattern": "\\b(?:lifelong|life-long|eternal|forever|perpetual|phd|grad|graduate|doctoral|med|medical|law|nursing|dental|mba|masters|engineering|cs|art|film|music|flight|driving|mature|adult) student\\b|\\bstudent (?:of life|pilot|loan|loans|debt|nurse|teacher|athlete|affairs|services|ministry)\\b",
-    "note": "an adult student"
-   },
-   "teen_other": {
-    "pattern": "\\bteen (?:mom|wolf|titans|vogue|choice|spirit|drama|fiction|librarian|services|ministry)\\b|\\b(?:my|our|of|two|three|raising|for|with|as a|was a|since my|in my|late|early) (?:teen|teens|teenager|teenagers|teenage)\\b|\\bteenage (?:mutant|dream|dirtbag|kicks|years|son|daughter|kid|kids)\\b",
-    "note": "teens as a subject"
    },
    "minor_other": {
     "pattern": "\\bminor (?:in|league|leagues|issue|issues|key|chord|scale|detail|details|bug|bugs|update|character|characters|arcana|threat|inconvenience)\\b|\\b(?:[a-g]|sharp|flat|no|zero|not a) minor\\b|\\bminor (?:dni|do not|don't|dont|will be|blocked|not allowed)\\b|\\bno minors\\b",
@@ -921,14 +913,14 @@
     ]
    },
    {
-    "id": "student",
+    "id": "pupil",
     "kind": "school",
     "strength": "weak",
     "fields": [
      "bio"
     ],
     "value": "none",
-    "pattern": "\\b(?:student|pupil)\\b",
+    "pattern": "\\bpupil\\b",
     "unless": [
      [
       "college",
@@ -941,10 +933,6 @@
      [
       "family",
       "text"
-     ],
-     [
-      "student_other",
-      "clause"
      ]
     ]
    },
@@ -1005,30 +993,6 @@
      [
       "hs_past",
       "clause"
-     ]
-    ]
-   },
-   {
-    "id": "teen",
-    "kind": "age",
-    "strength": "weak",
-    "fields": [
-     "bio"
-    ],
-    "value": "none",
-    "pattern": "\\b(?:teen|teens|teenager|teenage)\\b",
-    "unless": [
-     [
-      "teen_other",
-      "clause"
-     ],
-     [
-      "occupation",
-      "text"
-     ],
-     [
-      "family",
-      "text"
      ]
     ]
    },

@@ -11,7 +11,7 @@ Three questions are answered:
   handle_token(handle)             "age" or "word" when the handle itself carries an explicit
                                    age under 18 or one of three words, else None
   soft_birth_year(handle, today)   a four-digit year in the handle that would make the person
-                                   6 to 18 today, else None. It never blocks on its own
+                                   under 18 today (6 to 17), else None. It never blocks on its own
   soft_bare_years(handle)          digits then "yrs" or "years" with no "old" (10yrs_exp,
                                    12years_sober) when the number is 8 to 17, else None. The
                                    second soft signal: it never blocks on its own either
@@ -79,7 +79,7 @@ class Engine:
             self._strip = str(h["strip"])
             self._handle_seps = set(str(h["separators"]))
             self._age_min, self._age_max = int(h["age"]["min"]), int(h["age"]["max"])
-            self._age_rx = [self._rx(p) for p in h["age"]["patterns"].values()]
+            self._age_rx = [(str(name), self._rx(p)) for name, p in h["age"]["patterns"].items()]
             self._age_not_after = self._rx(h["age"]["not_after"])
             self._words_rx = self._rx(h["words"]["pattern"])
             self._leet = [{str(k): str(v) for k, v in t.items()} for t in h["words"]["leet"]]
@@ -170,21 +170,27 @@ class Engine:
     def _handle(self, handle) -> str:
         return self.normalize(handle)[1].lstrip(self._strip)
 
-    def handle_token(self, handle) -> str | None:
+    def handle_hit(self, handle) -> tuple[str, str] | None:
+        """(token, rule ID) for a handle that fails the handle check, else None. The rule ID is
+        the name of the pattern in the rules file ("handle.age_then_yo", "handle.words")."""
         raw = self._handle(handle)
         if not raw:
             return None
-        for rx in self._age_rx:
+        for name, rx in self._age_rx:
             for m in rx.finditer(raw):
                 # An age about someone else (mom_of_16yo) is not the handle owner's.
                 if self._age_min <= int(m.group(1)) <= self._age_max and not self._age_not_after.search(raw[: m.start()]):
-                    return "age"
+                    return "age", f"handle.{name}"
         joined = "".join(ch for ch in raw if ch not in self._handle_seps)
         for table in [None, *self._leet]:
             text = joined if table is None else "".join(table.get(ch, ch) for ch in joined)
             if self._words_rx.search(text):
-                return "word"
+                return "word", "handle.words"
         return None
+
+    def handle_token(self, handle) -> str | None:
+        hit = self.handle_hit(handle)
+        return hit[0] if hit else None
 
     def soft_birth_year(self, handle, today) -> int | None:
         year = _ymd(today)[0]

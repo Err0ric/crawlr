@@ -8,8 +8,8 @@
 //
 //   handleToken(handle)             "age" or "word" when the handle itself carries an explicit age
 //                                   under 18 or one of three words, else ""
-//   softBirthYear(handle, today)    a four-digit year in the handle that would make the person 6
-//                                   to 18 today, else null. It never blocks on its own
+//   softBirthYear(handle, today)    a four-digit year in the handle that would make the person
+//                                   under 18 today (6 to 17), else null. It never blocks on its own
 //   softBareYears(handle)           digits then "yrs" or "years" with no "old" (10yrs_exp), for
 //                                   8 to 17, else null. The second soft signal, the same way
 //   scanProfiles(profiles, handle, today)

@@ -45,7 +45,7 @@ const scan = (bio, handle = BIOS.handle, extra = {}) => S.scanProfiles([{ source
   for (const h of ["x_age_16", "my_age_14", "myage14", "age14jay", "im_age15"]) ok(S.handleToken(h) === "age", `still blocks: ${h}`);
   // A birth-year-looking number is a soft signal only, and moves with the date.
   ok(S.softBirthYear("mike2010", TODAY) === 2010 && S.handleToken("mike2010") === "" && S.softBirthYear("mike1999", TODAY) === null, "a year in the handle is soft: it is reported and blocks nothing");
-  ok(S.softBirthYear(`sam_${YEAR - 18}`, TODAY) === YEAR - 18 && S.softBirthYear(`sam_${YEAR - 19}`, TODAY) === null && S.softBirthYear(`sam_${YEAR - 6}`, TODAY) === YEAR - 6 && S.softBirthYear(`sam_${YEAR - 5}`, TODAY) === null, "the soft range is 6 to 18 years back from today");
+  ok(S.softBirthYear(`sam_${YEAR - 17}`, TODAY) === YEAR - 17 && S.softBirthYear(`sam_${YEAR - 18}`, TODAY) === null && S.softBirthYear(`sam_${YEAR - 6}`, TODAY) === YEAR - 6 && S.softBirthYear(`sam_${YEAR - 5}`, TODAY) === null, "the soft range is 6 to 17 years back from today: under 18");
   ok(S.softBirthYear("mike2010", "2031-01-01") === null && S.softBirthYear("mike2010", new Date(2026, 0, 5)) === 2010 && S.softBirthYear("mike2010", [2026, 1, 5]) === 2010, "today is a parameter: a Date, a date string or three numbers");
 }
 
@@ -88,7 +88,7 @@ const scan = (bio, handle = BIOS.handle, extra = {}) => S.scanProfiles([{ source
   const many = S.scanProfiles(Array.from({ length: 300 }, (_, i) => ({ source: `Site ${i}`, bio: `i'm 15 and this is profile ${i}` })), "x", TODAY);
   ok(many.signals.length === RULES.signals_max && many.read === 300, "the list of signals is bounded");
   // The decision is made before the cut: a strong signal behind forty weak ones still blocks.
-  const buried = S.scanProfiles([...Array.from({ length: 20 }, (_, i) => ({ source: `Site ${i}`, bio: "student, teen" })), { source: "Instagram", bio: "I'm 15" }], "river_stone", TODAY);
+  const buried = S.scanProfiles([...Array.from({ length: 20 }, (_, i) => ({ source: `Site ${i}`, bio: "freshman, fifteen" })), { source: "Instagram", bio: "I'm 15" }], "river_stone", TODAY);
   ok(buried.blocked && buried.kind === "age" && buried.signal.source === "Instagram" && buried.signals.length === RULES.signals_max && buried.signals.includes(buried.signal), "a strong signal is never lost behind the cap, and is in the list that is returned");
   // Fancy digits and letters are folded to plain ones before matching.
   ok(scan("\ud835\udfcf\ud835\udfd3 | she/her").blocked && scan("\uff11\uff15 y/o").signal.snippet === "15 y/o" && scan("i'm \ud835\udcbb\ud835\udcbe\ud835\udcbb\ud835\udcc9\ud835\udc52\ud835\udc52\ud835\udcc3 years old").blocked, "mathematical and fullwidth digits and letters are read as plain ones");
@@ -201,9 +201,9 @@ const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
   }
   // Bare years in the handle are weak: with a weak sign in a bio they block, with a clean bio they ran (above).
   for (const h of ["16yrs", "15yrs_x", "12years"]) {
-    const run = simulate(h, withBio("student", forHandle(h)));
-    ok(run.pass.state === "blocked" && run.scan.kind === "soft" && run.scan.soft_years !== null && run.adult.length === 0, `${h} with the bio "student": blocked`);
-    ok(run.message === 'Adult and dating sites were not checked: a profile found for this handle suggests a minor, and the handle carries a matching age or birth year (Instagram: "student").' && !/1[0-9]/.test(run.message), `${h}: the message names no digit of the handle`);
+    const run = simulate(h, withBio("freshman", forHandle(h)));
+    ok(run.pass.state === "blocked" && run.scan.kind === "soft" && run.scan.soft_years !== null && run.adult.length === 0, `${h} with the bio "freshman": blocked`);
+    ok(run.message === 'Adult and dating sites were not checked: a profile found for this handle suggests a minor, and the handle carries a matching age or birth year (Instagram: "freshman").' && !/1[0-9]/.test(run.message), `${h}: the message names no digit of the handle`);
   }
   // A clean handle whose fixture bio says "16 | junior in high school": blocked after the mainstream run.
   {

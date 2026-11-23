@@ -35,6 +35,9 @@ from datetime import date
 
 from core import minor_rules, profile_record
 from core.errors import error_fields
+from core.logging import get_logger
+
+log = get_logger(__name__)
 
 ERROR_CODE = "minor_guard"
 MESSAGE = "Adult and dating sites are not checked for this handle."
@@ -71,10 +74,16 @@ def minor_indicated(username: str) -> str | None:
 
 
 def soft_birth_year(username: str) -> int | None:
-    """A four-digit year in the handle that would make the person 6 to 18 today, else None.
+    """A four-digit year in the handle that would make the person under 18 today (6 to 17), else None.
     A soft signal: it never blocks on its own."""
     engine = minor_rules.ENGINE
     return engine.soft_birth_year(username, _today()) if engine else None
+
+
+def _log_block(stage: str, rule: str, kind: str, **more) -> None:
+    """One line per block, for tuning the rules from real use. It names the rule that fired and
+    nothing about the target: no handle, no snippet, no site, no address."""
+    log.info("minor guard block", extra={"stage": stage, "rule": rule, "kind": kind, **more})
 
 
 def _body(reason: str, **extra) -> dict:
@@ -107,6 +116,9 @@ def gate(username: str) -> tuple[int, dict] | None:
     """
     first = refusal(username)
     if first:
+        engine = minor_rules.ENGINE
+        hit = engine.handle_hit(username) if engine else None
+        _log_block("handle", hit[1] if hit else "rules_unavailable", hit[0] if hit else "rules")
         return 400, first
     if not profile_record.ran(username):
         return 409, {"detail": MAINSTREAM_MESSAGE, "code": MAINSTREAM_CODE,
@@ -124,6 +136,10 @@ def _content_block(username: str) -> dict | None:
     if not found["blocked"]:
         return None
     s = found["signal"]
+    # Logged here, not in gate: the verdict is kept with the record, so a block is one line
+    # however many requests it then refuses.
+    more = {} if s["strength"] == "strong" else {"with": "soft_year" if found["soft"] is not None else "soft_years"}
+    _log_block("content", s["rule"], found["kind"], strength=s["strength"], **more)
     return {"kind": found["kind"], "source": s["source"], "snippet": s["snippet"], "url": s["url"]}
 
 

@@ -354,15 +354,6 @@
    "bio": "sophomore | track"
   },
   {
-   "bio": "student"
-  },
-  {
-   "bio": "teen"
-  },
-  {
-   "bio": "teenager who codes"
-  },
-  {
    "bio": "under 18"
   },
   {
@@ -759,6 +750,24 @@
   },
   {
    "bio": "sixth form"
+  },
+  {
+   "bio": "student"
+  },
+  {
+   "bio": "teen"
+  },
+  {
+   "bio": "teenager who codes"
+  },
+  {
+   "bio": "CS student"
+  },
+  {
+   "bio": "student of design"
+  },
+  {
+   "bio": "teenage dreams"
   }
  ],
  "cases": [
@@ -938,7 +947,7 @@
     {
      "source": "GitHub",
      "url": "https://github.example/u",
-     "bio": "student"
+     "bio": "freshman"
     },
     {
      "source": "Reddit",
@@ -1094,13 +1103,13 @@
     {
      "source": "GitHub",
      "url": "https://github.example/u",
-     "bio": "student"
+     "bio": "freshman"
     }
    ],
    "blocked": true,
    "kind": "soft",
    "source": "GitHub",
-   "snippet": "student",
+   "snippet": "freshman",
    "soft_years": 16
   },
   {
@@ -1138,102 +1147,102 @@
     {
      "source": "Site 0",
      "url": "https://site0.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 1",
      "url": "https://site1.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 2",
      "url": "https://site2.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 3",
      "url": "https://site3.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 4",
      "url": "https://site4.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 5",
      "url": "https://site5.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 6",
      "url": "https://site6.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 7",
      "url": "https://site7.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 8",
      "url": "https://site8.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 9",
      "url": "https://site9.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 10",
      "url": "https://site10.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 11",
      "url": "https://site11.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 12",
      "url": "https://site12.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 13",
      "url": "https://site13.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 14",
      "url": "https://site14.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 15",
      "url": "https://site15.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 16",
      "url": "https://site16.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 17",
      "url": "https://site17.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 18",
      "url": "https://site18.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Site 19",
      "url": "https://site19.example/u",
-     "bio": "student, teen"
+     "bio": "freshman, fifteen"
     },
     {
      "source": "Instagram",
@@ -1274,6 +1283,109 @@
    ],
    "blocked": true,
    "kind": "age"
+  },
+  {
+   "name": "owner: a birth year in the handle and CS student runs",
+   "handle": "x2012",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "CS student"
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft": 2012
+  },
+  {
+   "name": "owner: a birth year in the handle and high school student blocks",
+   "handle": "x2012",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "high school student"
+    }
+   ],
+   "blocked": true,
+   "kind": "school",
+   "source": "GitHub",
+   "snippet": "high school student",
+   "soft": 2012
+  },
+  {
+   "name": "a birth year in the handle and a bare student runs",
+   "handle": "x2012",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "student"
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft": 2012
+  },
+  {
+   "name": "a birth year in the handle and a bare teen runs",
+   "handle": "x2012",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "teen, gamer"
+    }
+   ],
+   "blocked": false,
+   "kind": "",
+   "soft": 2012
+  },
+  {
+   "name": "a birth year in the handle and a grade level blocks",
+   "handle": "x2012",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "8th grade"
+    }
+   ],
+   "blocked": true,
+   "kind": "school",
+   "source": "GitHub",
+   "snippet": "8th grade",
+   "soft": 2012
+  },
+  {
+   "name": "a year that makes the person 18 this year is not a soft signal",
+   "handle": "mike2008",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2029"
+    }
+   ],
+   "blocked": false,
+   "kind": ""
+  },
+  {
+   "name": "the newest year that is still under 18 is a soft signal",
+   "handle": "mike2009",
+   "profiles": [
+    {
+     "source": "GitHub",
+     "url": "https://github.example/u",
+     "bio": "class of 2029"
+    }
+   ],
+   "blocked": true,
+   "kind": "soft",
+   "source": "GitHub",
+   "snippet": "class of 2029",
+   "soft": 2009
   }
  ]
 }
