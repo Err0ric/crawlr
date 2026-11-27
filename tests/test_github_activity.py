@@ -100,8 +100,9 @@ def test_full_result(monkeypatch):
 
     est = out["estimate"]
     assert out["estimate_reason"] is None
-    assert set(est) == {"utc_offset_from", "utc_offset_to", "utc_offsets", "label", "quiet_start_hour", "quiet_end_hour",
-                        "quiet_hours", "quiet_events", "basis", "assumption", "caveat"}
+    assert set(est) == {"utc_offset_from", "utc_offset_to", "utc_offsets", "crosses_date_line", "label", "quiet_start_hour",
+                        "quiet_end_hour", "quiet_hours", "quiet_events", "basis", "assumption", "caveat"}
+    assert est["crosses_date_line"] is False
     assert (est["quiet_start_hour"], est["quiet_end_hour"], est["quiet_hours"], est["quiet_events"]) == (22, 6, 8, 0)
     assert est["utc_offsets"] == [-1, 0, 1, 2, 3, 4] and est["label"] == "UTC-1 to UTC+4"
     assert est["basis"] == ("Based on 137 public events over 44 days (42 with activity). "
@@ -167,7 +168,7 @@ def test_enough_data_and_a_clear_quiet_stretch_gives_a_range():
 @pytest.mark.parametrize("start,length,expected", [
     (22, 8, [-1, 0, 1, 2, 3, 4]),               # asleep around 02:00 UTC
     (6, 8, [-9, -8, -7, -6, -5, -4]),           # asleep around 10:00 UTC
-    (14, 6, [9, 10, 11, -12]),                  # the range may cross the date line
+    (14, 6, [9, 10, 11, 12]),                   # up to the date line: +12, never -12
     (0, 12, [-7, -6, -5, -4, -3, -2, -1, 0, 1, 2]),
 ])
 def test_offset_range_follows_the_quiet_stretch(start, length, expected):
@@ -176,7 +177,7 @@ def test_offset_range_follows_the_quiet_stretch(start, length, expected):
     est, reason = ga.estimate_offset(hours, sum(hours), 30, 40)
     assert reason is None and est["utc_offsets"] == expected and est["quiet_hours"] == length
     assert len(expected) == length - 2
-    assert all(-12 <= o <= 14 for o in est["utc_offsets"])
+    assert all(-11 <= o <= 12 for o in est["utc_offsets"])
 
 
 def test_a_few_stray_events_in_the_night_do_not_break_the_stretch():
@@ -261,8 +262,10 @@ def test_rate_limit_is_never_no_activity(monkeypatch, status, headers):
     out = run()
     assert out["state"] == "rate_limited" and out["found"] is None and out["error_code"] == "rate_limited"
     assert out["retry_after"] >= 1 and "events" not in out and "203.0.113.9" not in json.dumps(out)
-    run()
-    assert len(calls) == 2                       # a rate limited answer is not cached
+    again = run()
+    # A rate limited answer is not cached. When GitHub said how long to wait, it is not asked
+    # again inside that time; when it named no time, the next call asks.
+    assert again["state"] == "rate_limited" and len(calls) == (1 if headers.get("retry-after") else 2)
 
 
 def test_failures_are_failed(monkeypatch):
@@ -391,10 +394,15 @@ def test_endpoint_validation_errors_reach_no_source(monkeypatch, no_limit, body,
 
 
 def test_rate_limit_entry():
-    assert match_limit("/api/recon/github-activity") == ("/api/recon/github-activity", 10, 60)
+    group, limit, window = match_limit("/api/recon/github-activity")
+    assert (group, limit, window) == ("/api/recon/github-activity", 10, 3600)
+    # One visitor at the limit spends at most half of the 60 calls an hour the server has without a token.
+    assert limit * ga.MAX_PAGES * (3600 // window) <= 30
     mw = rate_limit.RateLimitMiddleware(app=None)
     assert [mw.check("203.0.113.9", "/api/recon/github-activity", now=100.0 + i) for i in range(10)] == [None] * 10
-    assert mw.check("203.0.113.9", "/api/recon/github-activity", now=111.0) is not None
+    assert mw.check("203.0.113.9", "/api/recon/github-activity", now=1000.0) is not None
+    assert mw.check("203.0.113.9", "/api/recon/github-activity", now=3701.0) is None
+    assert rate_limit.LONGEST_WINDOW >= 3600
 
 
 # ---- logging -----------------------------------------------------------------------
@@ -421,3 +429,130 @@ def test_nothing_sensitive_is_logged(monkeypatch, no_limit, caplog):
         text = record.getMessage().lower()
         for secret in secrets:
             assert secret not in fields and secret not in text, record
+
+
+# ---- a handle GitHub cannot hold ---------------------------------------------------
+
+@pytest.mark.parametrize("handle", ["..", ".", "a.b", "x_y", "-lead", "a" * 40, "..%2f", "mara.lind", "caf\u00e9"])
+def test_a_handle_github_cannot_hold_is_answered_without_a_request(monkeypatch, handle):
+    calls = []
+    replay(monkeypatch, calls=calls)
+    out = run(handle)
+    assert out == {"username": handle, "found": False, "state": "not_found", "cached": False, "note": ga.NOT_A_LOGIN}
+    assert calls == []
+
+
+def test_the_endpoint_never_asks_github_for_a_dot_segment(monkeypatch, no_limit):
+    calls = []
+    replay(monkeypatch, calls=calls)
+    with TestClient(app) as client:
+        for handle in ("..", ".", "a.b", "x_y"):
+            body = client.post("/api/recon/github-activity", json={"username": handle}).json()
+            assert body["state"] == "not_found" and body["found"] is False and "cannot hold" in body["note"], handle
+        assert client.post("/api/recon/github-activity", json={"username": LOGIN}).json()["state"] == "ok"
+    assert {c.url.path for c in calls} == {f"/users/{LOGIN}/events/public"}
+
+
+# ---- nothing unexpected leaves as an exception -------------------------------------
+
+@pytest.mark.parametrize("stamp", ["0001-01-01T00:00:00+05:00", "9999-12-31T23:59:59-05:00", "0001-01-01T00:00:00Z", "9999-12-31T23:59:59Z"])
+def test_a_date_at_the_edge_of_the_calendar_is_dropped_or_counted_and_never_raises(monkeypatch, stamp, no_limit):
+    assert ga._when(stamp) is None or ga._when(stamp).tzinfo is timezone.utc
+    odd = [{"id": "1", "type": "PushEvent", "repo": {"name": "mara-lind/tidepool"}, "created_at": stamp}]
+    assert ga.summarize(odd)["events"] in (0, 1)
+    replay(monkeypatch, pages=[odd + DATA["pages"][0][:5]])
+    with TestClient(app) as client:
+        resp = client.post("/api/recon/github-activity", json={"username": LOGIN})
+    assert resp.status_code == 200 and resp.json()["state"] == "ok" and resp.json()["events"] in (5, 6)
+
+
+def test_anything_unexpected_in_the_counting_is_failed_with_error_fields(monkeypatch, no_limit):
+    replay(monkeypatch)
+
+    def boom(events):
+        raise OverflowError(f"date value out of range for {LOGIN}")
+    monkeypatch.setattr(ga, "summarize", boom)
+    out = run()
+    assert out["state"] == "failed" and out["found"] is None and out["error"] and out["error_detail"] == "OverflowError"
+    assert LOGIN not in json.dumps({k: v for k, v in out.items() if k != "username"})
+    with TestClient(app) as client:
+        resp = client.post("/api/recon/github-activity", json={"username": LOGIN})
+    assert resp.status_code == 200 and resp.json()["state"] == "failed"
+    ga.clear_cache_for_tests()
+    monkeypatch.setattr(ga, "_cache_get", lambda key: 1 / 0)
+    assert run()["state"] == "failed"
+
+
+# ---- offsets around the date line --------------------------------------------------
+
+def sleeper(offset: int, bed: int = 23, hours_asleep: int = 8) -> list[int]:
+    """Events per UTC hour for one person at `offset` who is quiet from `bed` local time."""
+    quiet = {(bed - offset + i) % 24 for i in range(hours_asleep)}
+    return [0 if h in quiet else 6 for h in range(24)]
+
+
+def test_an_ordinary_range_is_one_run():
+    est, _ = ga.estimate_offset(sleeper(1), 96, 30, 40)
+    assert est["utc_offsets"] == [-1, 0, 1, 2, 3, 4] and est["label"] == "UTC-1 to UTC+4"
+    assert (est["utc_offset_from"], est["utc_offset_to"], est["crosses_date_line"]) == (-1, 4, False)
+
+
+@pytest.mark.parametrize("offset,offsets,label", [
+    (12, [10, 11, 12, -11, -10, -9], "UTC+10 to UTC+12 or UTC-11 to UTC-9"),
+    (-11, [11, 12, -11, -10, -9, -8], "UTC+11 to UTC+12 or UTC-11 to UTC-8"),
+    (-9, [-11, -10, -9, -8, -7, -6], "UTC-11 to UTC-6"),
+    (9, [7, 8, 9, 10, 11, 12], "UTC+7 to UTC+12"),
+])
+def test_a_range_across_the_date_line_is_two_runs_and_never_a_twenty_hour_span(offset, offsets, label):
+    est, reason = ga.estimate_offset(sleeper(offset), 96, 30, 40)
+    assert reason is None and est["utc_offsets"] == offsets and est["label"] == label
+    assert offset in est["utc_offsets"] and all(-11 <= o <= 12 for o in offsets) and len(set(offsets)) == len(offsets)
+    assert (est["utc_offset_from"], est["utc_offset_to"]) == (offsets[0], offsets[-1])
+    assert est["crosses_date_line"] is (offsets[0] > offsets[-1]) is (" or " in label)
+    # going east one hour at a time, on the clock
+    assert all((b - a) % 24 == 1 for a, b in zip(offsets, offsets[1:]))
+
+
+def test_offset_labels():
+    assert ga.offsets_label([0]) == "UTC" and ga.offsets_label([-1, 0, 1]) == "UTC-1 to UTC+1"
+    assert ga.offsets_label([12, -11]) == "UTC+12 or UTC-11" and ga.offsets_label([11, 12, -11]) == "UTC+11 to UTC+12 or UTC-11"
+    assert [ga._name(o) for o in (-13, -12, -11, 0, 12, 13, 14, 36)] == [11, 12, -11, 0, 12, -11, -10, 12]
+
+
+# ---- the allowance GitHub reported as spent ----------------------------------------
+
+def test_a_spent_allowance_is_remembered_until_it_resets(monkeypatch):
+    calls = []
+    reset = int(ga.time.time()) + 900
+    replay(monkeypatch, calls=calls, override=lambda p, r: httpx.Response(403, json=RATE_BODY, headers={
+        "x-ratelimit-remaining": "0", "x-ratelimit-reset": str(reset), "x-ratelimit-resource": "core"}))
+    assert run()["state"] == "rate_limited" and len(calls) == 1
+    out = run("someone-else")                    # another account, moments later: no request at all
+    assert len(calls) == 1 and out["state"] == "rate_limited" and out["found"] is None and out["error_code"] == "rate_limited"
+    assert 0 < out["retry_after"] <= 900 and "about 15 minutes" in out["error"] and "someone-else" not in json.dumps({k: v for k, v in out.items() if k != "username"})
+    now = ga.time.time()
+    monkeypatch.setattr(ga.github.time, "time", lambda: now + 901)
+    replay(monkeypatch, calls=calls)
+    assert run()["state"] == "ok" and len(calls) == 3
+
+
+def test_the_last_served_request_is_not_followed_by_one_that_will_be_refused(monkeypatch):
+    full = [dict(e, id=str(i)) for i, e in enumerate(DATA["pages"][0] * 2)]
+    calls = []
+    reset = str(int(ga.time.time()) + 600)
+    replay(monkeypatch, pages=[full[:100], full[100:200]], calls=calls,
+           override=lambda p, r: httpx.Response(200, json=full[:100], headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": reset}))
+    out = run()
+    assert len(calls) == 1 and out["state"] == "ok" and out["events"] == 100
+    assert out["complete"] is False and out["later_pages"] == "rate_limited"
+
+
+def test_an_allowance_with_requests_left_or_no_reset_time_is_not_remembered(monkeypatch):
+    calls = []
+    replay(monkeypatch, calls=calls, override=lambda p, r: httpx.Response(403, json=RATE_BODY, headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": "soon"}))
+    run()
+    run("someone-else")
+    assert len(calls) == 2 and ga.github.quota_wait("core") == 0
+    replay(monkeypatch, calls=calls, override=lambda p, r: httpx.Response(200, json=[], headers={"x-ratelimit-remaining": "41", "x-ratelimit-reset": str(int(ga.time.time()) + 600)}))
+    run("third-one")
+    assert ga.github.quota_wait("core") == 0 and ga.github.quota_wait("search") == 0

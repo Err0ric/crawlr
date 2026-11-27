@@ -109,7 +109,9 @@ def test_none_is_the_archive_saying_it_holds_nothing(monkeypatch):
     serve(monkeypatch, (200, NONE_BODY))
     got = run(URL)
     assert got == {"url": URL, "state": "none", "count": 0, "first": None, "last": None, "snapshots": [],
-                   "distinct_versions": 0, "truncated": False, "cached": False}
+                   "distinct_versions": 0, "truncated": False, "cached": False, "note": pa.NONE_NOTE}
+    # only captures of the page itself are asked for, and the note says so
+    assert "no capture of the page itself" in got["note"] and "redirect" in got["note"]
 
 
 def test_a_header_with_no_rows_is_none(monkeypatch):
@@ -397,3 +399,31 @@ def test_rate_limit_entry():
 def test_no_em_dash_in_the_module_or_its_copy():
     text = Path(pa.__file__).read_text(encoding="utf-8")
     assert chr(0x2014) not in text
+
+
+# --------------------------------------------------------------------------------------
+# A body larger than the cap, a prefix query
+# --------------------------------------------------------------------------------------
+def test_a_body_past_the_cap_is_dropped_while_it_streams(monkeypatch):
+    monkeypatch.setattr(pa, "MAX_BODY", 1000)
+    served = []
+
+    class Endless(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(10_000):
+                served.append(1)
+                yield b"x" * 500
+
+    serve(monkeypatch, lambda request: httpx.Response(200, stream=Endless()))
+    got = run(URL)
+    assert got["state"] == "failed" and got["error_code"] == "bad_response"
+    assert len(served) <= 4                    # reading stopped at the cap: the rest was never taken
+
+
+@pytest.mark.parametrize("url", ["https://github.com/sam*", "https://github.com/*", "https://github.com/sam/*", "https://*.github.com/sam", "https://github.com/sam?tab=*"])
+def test_a_url_with_a_star_is_refused_before_any_request(monkeypatch, url):
+    calls = []
+    serve(monkeypatch, (200, OK_BODY), calls)
+    got = run(url)
+    assert got["state"] == "refused" and got["reason"] in ("bad_url", "not_public_host") and calls == []
+    assert pa.check_url("https://github.com/sam*") == ("", "bad_url")

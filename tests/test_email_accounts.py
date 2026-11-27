@@ -12,6 +12,7 @@ import base64
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -133,7 +134,8 @@ def test_full_result(monkeypatch):
     assert {k: v["state"] for k, v in out["sources"].items()} == {"github_commits": "ok", "github_users": "ok", "openpgp": "ok"}
 
     mara, org = out["accounts"]
-    assert set(mara) == {"login", "url", "how", "hows", "account_type", "commits_seen", "own_repo_commits", "names",
+    assert mara["confirmed"] is True
+    assert set(mara) == {"login", "url", "how", "hows", "confirmed", "account_type", "commits_seen", "own_repo_commits", "names",
                          "first_commit", "last_commit", "dates_ignored", "commit_utc_offsets", "evidence"}
     assert mara["login"] == "mara-lind" and mara["url"] == "https://github.com/mara-lind"
     assert mara["how"] == "commit_author" and mara["account_type"] == "User"
@@ -150,8 +152,10 @@ def test_full_result(monkeypatch):
     assert mara["evidence"][0].startswith("https://github.com/mara-lind/")          # own repository first
     assert len({u.split("/commit/")[0] for u in mara["evidence"]}) == 3              # one per repository
 
+    # A user search hit carries no address: it is a search match, and it says so.
     assert org == {"login": "tidepool-lab", "url": "https://github.com/tidepool-lab", "how": "public_profile_email",
-                   "hows": ["public_profile_email"], "account_type": "Organization"}
+                   "hows": ["public_profile_email"], "confirmed": False, "how_note": ge.SEARCH_MATCH, "account_type": "Organization"}
+    assert "search matched this address" in org["how_note"] and "shows" not in org["how_note"]
 
     assert out["sources"]["github_commits"] == {"state": "ok", "total": 10, "seen": 8, "incomplete": False, "skipped": 2}
     assert out["sources"]["github_users"] == {"state": "ok", "total": 2, "seen": 2}
@@ -264,7 +268,9 @@ def test_github_rate_limit_is_rate_limited_never_none(monkeypatch, source, statu
     assert src["state"] == "rate_limited" and src["error_code"] == "rate_limited" and src["retry_after"] >= 1
     assert "203.0.113.9" not in json.dumps(src)                    # GitHub's message is not passed on
     other = "github_users" if source == "github_commits" else "github_commits"
-    assert out["sources"][other]["state"] == "ok" and out["sources"]["openpgp"]["state"] == "ok"
+    # The two searches share one allowance. When GitHub says in numbers how long to wait, a
+    # search that had not been sent yet is not sent: it is rate limited too, never "none".
+    assert out["sources"][other]["state"] in (("ok", "rate_limited") if status == 429 else ("ok",)) and out["sources"]["openpgp"]["state"] == "ok"
     if status == 429:
         assert src["retry_after"] == 30
 
@@ -522,9 +528,13 @@ def test_endpoint_validation_errors_reach_no_source(monkeypatch, no_limit, body,
 
 
 def test_rate_limit_entry():
-    assert match_limit("/api/recon/email-accounts") == ("/api/recon/email-accounts", 5, 60)
+    group, limit, window = match_limit("/api/recon/email-accounts")
+    assert (group, limit, window) == ("/api/recon/email-accounts", 3, 60)
+    # Two GitHub searches a call, and the server has 10 a minute without a token: one visitor
+    # at the limit leaves some for everyone else.
+    assert limit * 2 * (60 // window) < 10
     mw = rate_limit.RateLimitMiddleware(app=None)
-    assert [mw.check("203.0.113.9", "/api/recon/email-accounts", now=100.0 + i) for i in range(5)] == [None] * 5
+    assert [mw.check("203.0.113.9", "/api/recon/email-accounts", now=100.0 + i) for i in range(3)] == [None] * 3
     assert mw.check("203.0.113.9", "/api/recon/email-accounts", now=106.0) is not None
 
 
@@ -565,3 +575,100 @@ def test_read_commits_alone_takes_a_fixed_clock():
     read = ge.read_commits(DATA["commits"], EMAIL, now=datetime(2024, 1, 1, tzinfo=timezone.utc))
     # with the clock in 2024 the two later commits are in the future too
     assert read["accounts"][0]["dates_ignored"] == 3 and read["accounts"][0]["last_commit"] == "2023-04-02T19:10:05Z"
+
+
+# ---- "none" because every hit was set aside ----------------------------------------
+
+def test_only_skipped_rows_is_not_the_same_none_as_no_rows(monkeypatch):
+    bots = {"total_count": 2, "incomplete_results": False, "items": [
+        {"commit": {"author": {"name": "tidy[bot]", "email": EMAIL, "date": "2025-01-01T00:00:00Z"}}, "author": {"login": "tidy[bot]", "type": "Bot"}},
+        {"commit": {"author": {"name": "Other", "email": "someone@else.example", "date": "2025-01-01T00:00:00Z"}}, "author": None},
+    ]}
+    replay(monkeypatch, commits=bots, users={"total_count": 0, "items": []})
+    src = run()["sources"]["github_commits"]
+    assert src["state"] == "none" and src["skipped"] == 2 and src["seen"] == 0 and src["only_skipped"] is True
+    assert src["note"] == ge.ONLY_SKIPPED.format(n=2, s="s") and EMAIL not in src["note"]
+    ea.clear_cache_for_tests()
+    replay(monkeypatch, commits={"total_count": 0, "incomplete_results": False, "items": []}, users={"total_count": 0, "items": []})
+    assert run()["sources"]["github_commits"] == {"state": "none", "total": 0, "seen": 0, "incomplete": False, "skipped": 0}
+
+
+def test_an_account_found_both_ways_stays_confirmed_by_its_commits(monkeypatch):
+    users = {"total_count": 1, "items": [{"login": "mara-lind", "type": "User"}]}
+    replay(monkeypatch, users=users)
+    mara = run()["accounts"][0]
+    assert mara["hows"] == ["commit_author", "public_profile_email"] and mara["how"] == "commit_author" and mara["confirmed"] is True
+    assert "how_note" not in mara
+
+
+# ---- the search allowance GitHub reported as spent ---------------------------------
+
+def test_a_spent_search_allowance_is_not_asked_again_until_it_resets(monkeypatch):
+    calls = []
+    reset = str(int(time.time()) + 40)
+
+    def spent(s, r):
+        if s != "openpgp":
+            return httpx.Response(403, json=DATA["rate_limit_body"], headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": reset, "x-ratelimit-resource": "search"})
+    replay(monkeypatch, calls=calls, override=spent)
+    first = run()
+    assert first["sources"]["github_commits"]["state"] == "rate_limited" and first["sources"]["github_users"]["state"] == "rate_limited"
+    assert sum(1 for s, _ in calls if s != "openpgp") == 1          # the second search was never sent
+    del calls[:]
+    out = run("someone@else.example")
+    assert [s for s, _ in calls] == ["openpgp"]                     # the key server is another host and is still asked
+    for name in ("github_commits", "github_users"):
+        src = out["sources"][name]
+        assert src["state"] == "rate_limited" and src["error_code"] == "rate_limited" and 0 < src["retry_after"] <= 40
+        assert "else.example" not in json.dumps(src)
+    assert out["accounts"] == []
+
+
+def test_the_last_served_search_stops_the_next_one(monkeypatch):
+    calls = []
+    reset = str(int(time.time()) + 40)
+
+    def last(s, r):
+        if s == "github_commits":
+            return httpx.Response(200, json=DATA["commits"], headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": reset})
+    replay(monkeypatch, calls=calls, override=last)
+    out = run()
+    states = {k: v["state"] for k, v in out["sources"].items()}
+    assert states["github_commits"] == "ok" and states["github_users"] in ("ok", "rate_limited")
+    del calls[:]
+    again = run("someone@else.example")
+    assert [s for s, _ in calls] == ["openpgp"] and again["sources"]["github_users"]["state"] == "rate_limited"
+
+
+# ---- a key built to break the reader ------------------------------------------------
+
+def test_a_version_4_key_packet_too_large_for_a_fingerprint_is_unread_and_never_raises(monkeypatch):
+    huge = KEY_BODY + bytes(70_000)
+    assert len(huge) > 0xFFFF
+    facts = pgp._key_facts(huge)
+    assert facts["parsed"] is False and facts["version"] == 4 and "fingerprint" not in facts and "too large" in facts["reason"]
+    keys = pgp.parse_keys(armor(packet(6, huge) + packet(13, UID)))
+    assert keys[0]["parsed"] is False and keys[0]["user_ids"][0]["name"] == "Mara Lindqvist"
+    replay(monkeypatch, key=armor(packet(6, huge) + packet(13, UID)))
+    out = run()
+    assert out["sources"]["openpgp"]["state"] == "ok" and out["keys"][0]["parsed"] is False
+    assert pgp._key_facts(KEY_BODY + bytes(0xFFFF - len(KEY_BODY)))["parsed"] is True     # the largest body that has one
+
+
+def test_the_key_lookup_never_raises_whatever_the_reader_meets(monkeypatch):
+    def boom(armored):
+        raise OverflowError(f"int too big to convert for {EMAIL}")
+    monkeypatch.setattr(pgp, "parse_keys", boom)
+    replay(monkeypatch, key=MARA_KEY)
+
+    async def direct():
+        async with httpx.AsyncClient() as client:
+            return await pgp.lookup(client, EMAIL)
+    out = asyncio.run(direct())
+    assert out["state"] == "failed" and out["keys"] == [] and out["error_code"] == "bad_response" and EMAIL not in json.dumps(out)
+
+    async def worse(client, email):
+        raise RecursionError(f"while reading {email}")
+    monkeypatch.setattr(pgp, "_lookup", worse)
+    out = asyncio.run(direct())
+    assert out["state"] == "failed" and out["error_detail"] == "RecursionError" and EMAIL not in json.dumps(out)
