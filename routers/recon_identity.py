@@ -11,6 +11,7 @@ from modules.avatar_hash import MAX_IMAGES, run_avatar_hash
 from modules.github import run_github_deep
 from modules.handle_probe import run_handle_probe
 from modules.link_verify import MAX_LINKS, run_link_verify
+from modules.profile_archive import MAX_URL as ARCHIVE_MAX_URL, run_profile_archive
 from modules.profiles import run_profiles
 
 router = APIRouter()
@@ -47,6 +48,10 @@ class VerifyLinksRequest(BaseModel):
     username: str = Field(max_length=320)
     links: list[VerifyLink] = Field(min_length=1, max_length=MAX_LINKS)
     adult: bool = False   # the adult and dating opt-in: without it no link on such a site is opened
+
+
+class ProfileArchiveRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=ARCHIVE_MAX_URL)
 
 
 @router.post("/github-deep")
@@ -103,3 +108,12 @@ async def verify_links(req: VerifyLinksRequest, request: Request):
     # A link on an adult or dating site is opened only with the opt-in, and only when the minor
     # guard allows an adult pass for the handle (core.adult_guard.gate, inside the module).
     return await run_link_verify(username, links, adult=req.adult)
+
+
+@router.post("/profile-archive")
+async def profile_archive(req: ProfileArchiveRequest):
+    """Which copies of one profile page the Internet Archive holds, on a click. One request to
+    the archive's index; the archived page and the profile's own host are never fetched. The
+    module checks the URL and refuses adult and dating sites before any request, with the
+    state `refused` (there is no opt-in on this route)."""
+    return await run_profile_archive(req.url)

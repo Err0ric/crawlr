@@ -47,6 +47,7 @@ RATE_LIMITS = {
     "/api/recon/name-search": (6, 60),       # 6 requests to 5 public APIs per call; GitHub search allows 10 a minute
     "/api/recon/email-accounts": (5, 60),    # 3 requests per call, 2 of them GitHub searches (10 a minute without a token); cached for a day
     "/api/recon/github-activity": (10, 60),  # 1 to 3 GitHub API calls per uncached account, cached for a day
+    "/api/recon/profile-archive": (10, 60),  # 1 request to the Wayback CDX index per uncached profile URL, cached for a day
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),
