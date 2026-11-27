@@ -17,6 +17,9 @@ import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
 import { readPhone, phoneTileExtra, readRegion, needsCountry, defaultRegion, PHONE_REGIONS, PHONE_SOURCE, PHONE_SOURCE_DESC, PHONE_NOT_USABLE } from "./phone.js";
 import { buildCaseFile } from "./casefile.js";
 import { readSimilar, readProbe, similarBase, probeStatus, similarBlurb } from "./similar.js";
+import { readDeep, profileSourcesText, emailAccountsText, activityView, DEEP_READERS, PROFILE_SOURCE, PROFILE_SOURCE_DESC, EMAIL_ACCOUNTS_SOURCE, EMAIL_ACCOUNTS_DESC, ACTIVITY_SOURCE } from "./deep.js";
+import { personTimeline } from "./timeline.js";
+import { activityHtml } from "./renderers.js";
 
 // ---- sources ---------------------------------------------------------------
 // AI analysis is not in this list on purpose: it never runs on its own. The investigator
@@ -25,10 +28,12 @@ export const SOURCES = [
   { id: "sherlock", how: "guess",  name: "Sherlock",        desc: "username across 400+ sites",            types: ["username"],          on: true },
   { id: "maigret", how: "guess",   name: "Maigret",         desc: "username across 500 top sites, reads profile data where it can", types: ["username"], on: true },
   { id: "github", how: "record",    name: "GitHub",          desc: "profile, organisations, repos, linked accounts and commit emails", types: ["username"], on: true },
+  { id: "profiles", how: "record", name: PROFILE_SOURCE,     desc: PROFILE_SOURCE_DESC,                      types: ["username"],          on: true },
   { id: "platform", how: "guess",  name: "Platform check",  desc: "reads the profile page on major platforms, asks Reddit and Discord directly, and says when a site blocks the check", types: ["username"], on: true },
   { id: "holehe", how: "guess",    name: "Holehe",          desc: "accounts registered to this email",     types: ["email"],             on: true },
   { id: "hibp", how: "index",      name: "Breaches",        desc: "known credential exposures",            types: ["email"],             on: true },
   { id: "gravatar", how: "record",  name: "Gravatar",        desc: "avatar profile for this email",         types: ["email"],             on: true },
+  { id: "emailaccounts", how: "record", name: EMAIL_ACCOUNTS_SOURCE, desc: EMAIL_ACCOUNTS_DESC,              types: ["email"],             on: true },
   { id: "hunter", how: "index",    name: "Hunter.io",       desc: "addresses on the email's domain",       types: ["email"],             on: false, pro: "hunter" },
   { id: "harvester", how: "index", name: "Domain harvest",  desc: "hosts and other addresses on this email's domain, from 8 public sources. Skipped for mail providers such as gmail.com", types: ["email"], on: true },
   { id: "hash", how: "index",      name: "Hash lookup",     desc: "MalwareBazaar, CIRCL, OTX, ThreatFox",  types: ["hash"],              on: true },
@@ -160,7 +165,7 @@ export const state = { nameInvalid: "", target: "", type: "", collected: {}, ai:
 const checkKey = () => `crawlr_checked_${state.target}`;
 const checked = () => new Set(store.get(checkKey(), []));
 
-const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: PHONE_SOURCE, nameResult: NAME_SOURCE, enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", avatarHash: "Avatar comparison", adultCheck: ADULT_SOURCE, linkCheck: "Link check" };
+const SRC_NAME = { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", hunter: "Hunter.io", harvester: "Domain harvest", hash: "Hash lookup", phone: PHONE_SOURCE, nameResult: NAME_SOURCE, enricher: "Profile enrichment", platformCheck: "Platform check", profileScrape: "Profile scrape", githubDeep: "GitHub details", profiles: PROFILE_SOURCE, emailAccounts: EMAIL_ACCOUNTS_SOURCE, githubActivity: ACTIVITY_SOURCE, avatarHash: "Avatar comparison", adultCheck: ADULT_SOURCE, linkCheck: "Link check" };
 // Every count of sources on this page comes from this one tally. The link check is a source like
 // any other: its row is built from the stored results, or from the error if the verifier failed.
 // Counted over the adult-free view: Sherlock and Maigret are never "with results" for rows on
@@ -225,6 +230,7 @@ function renderLedger(opts = {}) {
   const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? (stopped ? { ...t, open: true, count: "not checked", blurb: NOT_RUN_KINDS.includes(readBlock(state.collected.adultBlock)?.kind) ? NOT_RUN_BLURB : NOT_CHECKED_BLURB } : { ...t, note: adultSummary(adultItems(items)) }) : t.id === "similar" ? { ...t, blurb: similarBlurb(items) } : t)), items);
   renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [], imported: state.imported, handle: state.type === "username" ? state.target.replace(/^@/, "") : "", open });
   paintSummary(ev);
+  renderTimeline();
   checker.watch();
 }
 // What sits beside and above the rows: "What we know", the tab count and the brief. Drawn with the
@@ -256,6 +262,33 @@ function paintSummary(ev) {
   renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed").map((r) => r.name), ...partialGaps(rows).map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine }));
 }
 bindLedger($("#ledger"), checkKey);
+// ---- timeline -----------------------------------------------------------------------------------
+// A username or an email case: every dated fact the sources returned, oldest first, each with its
+// source and with whether the date is a record or self-declared. Under it, when GitHub's public
+// events were read, the hours and weekdays they fall on. Nothing here is inferred.
+const person = () => (state.type === "username" || state.type === "email") && !state.nameInvalid;
+const timeline = () => (person() ? personTimeline(state.collected, state.target, state.type) : { events: [], today: "" });
+function renderTimeline() {
+  const tab = $("#tabTimeline"), box = $("#timelineBody"), act = $("#activityBox");
+  const show = person() && !!state.target;
+  tab.hidden = !show; tab.disabled = !show;
+  if (!show) { if (tabs.get() === "timeline") tabs.set("findings"); box.innerHTML = ""; act.hidden = true; act.innerHTML = ""; setTabCount(tab, "Timeline", 0); return; }
+  const { events, today } = timeline();
+  setTabCount(tab, "Timeline", events.length);
+  const row = (e, i, all) => h`<li class="tl-ev ${e.future ? "future" : ""} ${e.basis === "self" ? "self" : ""}">
+      <span class="tl-year">${i === 0 || all[i - 1].date.slice(0, 4) !== e.date.slice(0, 4) ? e.date.slice(0, 4) : ""}</span>
+      <time datetime="${e.date}">${e.date}</time>
+      <div class="tl-what"><b>${raw(link(e.url, e.title, "", { kind: e.link_kind || "" }))}</b>${e.detail ? raw(h`<span>${e.detail}</span>`) : ""}</div>
+      <span class="tl-meta"><span class="tl-when">${e.when}</span><span class="tl-src">${e.source}</span><span class="tl-basis ${e.basis}">${e.basis_text}</span></span>
+    </li>`;
+  const past = events.filter((e) => !e.future), future = events.filter((e) => e.future);
+  box.innerHTML = events.length ? `<p class="tl-note">Every date below was reported by a source in this run, for an account the findings file as Linked or Exists (matches). "Site record" means the site or the index wrote the date. "Self-declared" means the account holder, a commit or a key says so, and it can be false. A source that failed leaves a gap, not a clean record.</p>
+    <ol class="tl">${past.map(row).join("")}<li class="tl-now"><span class="tl-year"></span><time datetime="${esc(today)}">${esc(today)}</time><b>Today</b></li>${future.map((e, i, all) => row(e, i, all)).join("")}</ol>`
+    : `<p class="empty flat">${state.running ? "Collecting…" : "No dated facts in this case. Profiles that state when they were made, commits, keys and breaches supply them."}</p>`;
+  const a = state.type === "username" ? activityHtml(withoutAdult(state.collected).githubActivity) : "";
+  act.hidden = !a;
+  act.innerHTML = a ? h`<h3 class="act-h">When the GitHub account is active</h3>${raw(a)}` : "";
+}
 // What the tiles of a hash, phone or name case show, from the same functions the cards use.
 function tileExtra() {
   const c = state.collected;
@@ -342,7 +375,8 @@ function renderSourceCards() {
   // Every source that ran gets a card: with results, "answered, nothing found", or failed.
   const push = (id, d, extra) => { if (d !== undefined && d !== null && !d.skipped && sourceCards[id]) { const html = sourceCards[id](d, extra); if (html) cards.push(html); } };
   push("hash", c.hash); push("phone", c.phone);
-  push("hibp", c.hibp); push("holehe", c.holehe); push("github", c.github, c.githubDeep); push("githubDeep", c.githubDeep, c.github); push("gravatar", c.gravatar);
+  push("hibp", c.hibp); push("emailAccounts", c.emailAccounts); push("holehe", c.holehe); push("github", c.github, c.githubDeep); push("githubDeep", c.githubDeep, c.github); push("githubActivity", c.githubActivity); push("gravatar", c.gravatar);
+  push("profiles", c.profiles);
   push("sherlock", c.sherlock, c.linkChecks); push("maigret", c.maigret, c.linkChecks); push("platformCheck", c.platformCheck, c.linkChecks);
   // Its rows are the ledger's adult group, so the card and the group cannot disagree.
   // One card for the one source: the check with the adult pass of Sherlock and of Maigret as its parts.
@@ -531,6 +565,9 @@ function resultText(key, data) {
   // The adult pass of a tool: every row is a site that reported the handle.
   if (ADULT_PASS_KEYS.includes(key)) { const n = (data.results || []).length; return n ? `${plural(n, "site")} reported, listed in their own group` : ""; }
   if (key === "githubDeep") return "";
+  if (key === "profiles") return profileSourcesText(data);
+  if (key === "emailAccounts") return emailAccountsText(data);
+  if (key === "githubActivity") { const v = activityView(data); return v && v.state === "ok" ? `${plural(v.events, "public event")}${v.estimate ? `, offset estimate ${v.estimate.label}` : ""}` : ""; }
   // "Wikidata 1 · GitHub 8 · ORCID none · OpenAlex rate limited · Bluesky 1"
   if (key === "nameResult") return directoryText(data);
   if (key === "avatarHash") { const r = data?.results || [], n = r.filter((x) => x.hash && !x.error).length; return n === r.length ? `${plural(n, "image")} compared` : ""; }
@@ -724,6 +761,10 @@ export async function run(targetRaw, typeOverride, opts = {}) {
     if (block0) log.add(ADULT_LOG.blocked(block0), "skip");
     if (block0 && handleOk && mode.minor.kind === "guard") reportBlock(handle);
     if (handleOk && on("github")) jobs.push(runSource("GitHub", "/api/recon/github", { username: handle }, {}, "github"));
+    // The handle's own record on sites with an open API. One request to CrawlR; never an adult site.
+    if (handleOk && on("profiles")) jobs.push(runSource(PROFILE_SOURCE, "/api/recon/profiles", { username: handle }, {}, "profiles"));
+    // The address itself: the GitHub account that commits with it, and keys published for it.
+    if (isEmail && on("emailaccounts")) jobs.push(runSource(EMAIL_ACCOUNTS_SOURCE, "/api/recon/email-accounts", { email: target }, {}, "emailAccounts"));
     if (on("holehe")) jobs.push(runSource("Holehe", "/api/recon/holehe", { email: target }, {}, "holehe"));
     if (on("hibp")) jobs.push(runSource("Breaches", "/api/recon/hibp", { email: target }, {}, "hibp"));
     if (on("gravatar")) jobs.push(runSource("Gravatar", "/api/recon/gravatar", { email: target }, {}, "gravatar"));
@@ -744,6 +785,8 @@ export async function run(targetRaw, typeOverride, opts = {}) {
       if (on("platform")) after.push(runSource("Platform check", "/api/recon/platform-check", { username: handle, sherlock_sites: sites }, {}, "platformCheck"));
       // One follow-up call when GitHub has the user: organisations, repos, linked accounts, commit emails.
       if (c.github?.found && sourceOutcome(c.github).state === "ok") after.push(runSource("GitHub details", "/api/recon/github-deep", { username: handle }, {}, "githubDeep"));
+      // And, like GitHub details, when its public events happen. Only for the searched handle's own account.
+      if (c.github?.found && sourceOutcome(c.github).state === "ok") after.push(runSource(ACTIVITY_SOURCE, "/api/recon/github-activity", { username: handle }, {}, "githubActivity"));
       await Promise.all(after);
     }
     // Compare profile pictures once every profile is in. A passive read of public CDN images;
@@ -781,6 +824,9 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   if (silent.length) c.notAnswered = { keys: silent };
   // Guard-only text has been read by now (or the mode is off): it is not kept with the case.
   { const bare = stripGuard(c); for (const k of Object.keys(bare)) c[k] = bare[k]; }
+  // The record sources are kept in their checked, bounded shape (deep.js), so History, exports and
+  // case files hold nothing else. This comes after the content check, which reads the rows as they came.
+  for (const [k, read] of Object.entries(DEEP_READERS)) if (c[k] && typeof c[k] === "object") c[k] = read(c[k]) || { error: "The answer could not be read.", error_code: "bad_response", error_detail: "" };
   adultRow = null;
   setRunning(false);
   const { items, facts } = evidence();
@@ -926,7 +972,7 @@ export function loadHistory(idOrEntry) {
   // A case the minor guard stopped keeps why (collected.adultBlock, checked and bounded by
   // scrubCollected). It is shown as that run's record, and a case opened from this one by a pivot
   // inherits it. It does not suspend the handle for the session: running the case again checks again.
-  const kept = scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target);
+  const kept = readDeep(scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target));
   const stored = kind === "username" && isBlocked(kept) ? readBlock(kept.adultBlock) : null;
   const storedMinor = stored ? { kind: "stored", via: ["age", "school", "birth", "soft"].includes(stored.kind) || stored.via === "content" ? "content" : "handle", origin: handleOf(e.target), reason: blockText(stored), block: stored } : null;
   Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", minor: startAdult({ on: session.on("adult"), type: kind, target: e.target, suspended }).minor || storedMinor, nameInvalid: "", collected: kept, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });
@@ -950,6 +996,7 @@ export function clearCase() {
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
   $("#brief").hidden = true; $("#tabs").hidden = true; tabs.set("findings"); $("#bySourceEmpty").hidden = false;
   $("#caseBar").hidden = true; $("#verdict").innerHTML = ""; $("#identity").hidden = true; $("#identity").innerHTML = "";
+  renderTimeline();
 }
 
 // ---- notes --------------------------------------------------------------------------
@@ -972,7 +1019,7 @@ export function exportCase() {
   if (!state.target) return;
   const purpose = $("#purpose").value.trim();
   // Built in evidence.js so the export rules (the adult section included) can be tested.
-  const md = caseMarkdown({ collected: state.collected, target: state.target, type: state.type, ran: state.ran, tallyLine: tallyText(tally()), failed: failedSources(), purpose, ai: state.ai, deep: state.deepDive, notes: $("#notes").value });
+  const md = caseMarkdown({ collected: state.collected, target: state.target, type: state.type, ran: state.ran, tallyLine: tallyText(tally()), failed: failedSources(), purpose, ai: state.ai, deep: state.deepDive, notes: $("#notes").value, timeline: timeline().events });
   const name = `crawlr-${slug(state.target)}`;
   const done = (fn) => () => { fn(); closeModal(); };
   openModal({

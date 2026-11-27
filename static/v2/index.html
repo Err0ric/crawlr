@@ -185,6 +185,7 @@
     <div class="tabs" id="tabs" role="tablist" aria-label="Result views" hidden>
       <button type="button" role="tab" id="tabFindings" data-tab="findings" aria-selected="true" aria-controls="panelFindings">Findings</button>
       <button type="button" role="tab" id="tabSources" data-tab="sources" aria-selected="false" aria-controls="panelSources" tabindex="-1">By source</button>
+      <button type="button" role="tab" id="tabTimeline" data-tab="timeline" aria-selected="false" aria-controls="panelTimeline" tabindex="-1" hidden disabled>Timeline</button>
     </div>
     <div id="panelFindings" role="tabpanel" aria-labelledby="tabFindings" tabindex="-1" class="panel">
       <div class="notices" id="notices"></div>
@@ -209,6 +210,10 @@
       <div id="bySource" hidden class="by-source">
         <div class="sources-grid" id="sourceCards"></div>
       </div>
+    </div>
+    <div id="panelTimeline" role="tabpanel" aria-labelledby="tabTimeline" tabindex="-1" class="panel" hidden>
+      <div id="timelineBody"></div>
+      <section class="card act-card" id="activityBox" hidden></section>
     </div>
   </main>
 

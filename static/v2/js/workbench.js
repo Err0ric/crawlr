@@ -151,6 +151,16 @@ export function evWhat(it) {
   }
   return `<span class="ev-title">${head}${it.meta ? h`<span class="meta">${it.meta}</span>` : ""}</span>` + hint;
 }
+// What a record carries beyond the card's one line, behind a disclosure on the row: every value a
+// source read, grouped by how it is known (written by the account holder, or the site's own
+// record; see profileDetail in deep.js). Closed by default, so a row stays one card.
+// A value is escaped text; a link is evidence and goes through link() with its kind.
+export function evDetail(it, open = false) {
+  const d = it?.detail;
+  if (!d?.groups?.length) return "";
+  const row = (r) => h`<div class="ed-row"><dt>${r.k}</dt><dd>${raw(linkOf(r, r.v))}${r.how ? raw(h`<span class="ed-how">${r.how}</span>`) : ""}${r.more?.url ? raw(` ${link(r.more.url, r.more.label, "ev-link", { kind: "evidence" })}`) : ""}</dd></div>`;
+  return h`<details class="ev-more" ${open ? raw("open") : ""}><summary>${it.pgp ? "Key details" : it.emailAccount || it.key === "commits:unattributed" ? "What GitHub and the commits say" : "What was read"}<span class="ev-more-n">${plural(d.count, "value")}</span></summary>${raw(d.groups.map((g) => h`<div class="ed-g"><p class="ed-h">${g.title}<span class="ed-prov">${g.prov}</span></p><dl class="ed">${raw(g.rows.map(row).join(""))}</dl></div>`).join(""))}</details>`;
+}
 // The right side of a row: its buttons, then its sources as chips. The profile button's name is
 // its visible text plus the login for screen readers, so the text can change to "Loading…" and be heard.
 // A similar handle has "Check" until it was checked ("Try again" after a failed check). A profile
@@ -188,7 +198,7 @@ export function patchRow(el, it, doc = globalThis.document, opts = {}) {
   const src = opts.actions ? row.querySelector(".src") : null;
   const active = doc?.activeElement;
   const was = active && active === box ? "box" : active && what.contains(active) ? "link" : active && src && src.contains(active) ? "act" : "";
-  what.innerHTML = evWhat(it);
+  what.innerHTML = evWhat(it) + evDetail(it, !!what.querySelector?.("details.ev-more[open]"));
   // The link check changes how the row is drawn: its edge and its pill follow (see rowCertainty).
   if (row.classList?.remove && row.querySelector) {
     row.classList.remove(...ROW_STATE); const st = rowState(it); if (st.length) row.classList.add(...st);
@@ -217,6 +227,8 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
   // A group marked `aside` (similar handles) is offered beside the findings: when it is the only
   // one with rows, the page still says that nothing was found.
   const lead = shown.some((t) => !t.aside) ? "" : emptyHtml;
+  // A redraw keeps every opened "What was read" open: the reader is in the middle of it.
+  const wasOpen = new Set([...(el.querySelectorAll?.(".ev details.ev-more[open]") || [])].map((d) => d.closest(".ev")?.dataset.row));
   el.innerHTML = shown.length ? lead + shown.map((t) => {
     const rows = byTier[t.id];
     const limit = t.limit ?? 200;
@@ -237,7 +249,7 @@ export function renderTiers(el, items, tiers, done, emptyHtml, opts = {}) {
             <div class="ev ${raw(rowClass(it))} ${done.has(it.key) ? "done" : ""} ${it.gone ? "gone" : ""} ${i >= PREVIEW ? "ev-extra" : ""}" data-row="${it.key}" ${it.sim?.busy ? raw('aria-busy="true"') : ""}>
               <label class="ev-check"><input type="checkbox" data-key="${it.key}" ${done.has(it.key) ? "checked" : ""}><span class="sr-only">Mark ${it.what} reviewed</span></label>
               ${it.card ? raw(rowMark(it, opts)) : ""}
-              <div class="what">${raw(evWhat(it))}</div>
+              <div class="what">${raw(evWhat(it) + evDetail(it, wasOpen.has(it.key)))}</div>
               <div class="ev-side">${raw(pillOf(it))}<span class="src">${raw(evSrc(it))}</span></div>
             </div>`).join(""))}
           ${clip ? raw(h`<button type="button" class="btn btn-sm ev-toggle" data-show-all>Show all ${fmtNum(Math.min(rows.length, limit))}</button>`) : ""}
