@@ -6,6 +6,7 @@
 const MAX_TEXT = 120;
 const fail = (error) => ({ ok: false, error });
 const AXIS = { N: "lat", S: "lat", E: "lon", W: "lon" };
+const DASH_ERROR = "A long dash between two numbers could be a separator or a minus sign. Put a comma between latitude and longitude, and use a plain minus for a negative value.";
 
 export const validLat = (v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 90;
 export const validLon = (v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 180;
@@ -61,9 +62,16 @@ function halves(t) {
 export function parseCoords(input) {
   if (typeof input !== "string" || !input.trim()) return fail("Type a position, for example 48.85837, 2.294481.");
   if (input.length > MAX_TEXT) return fail("That is too long to be a position.");
-  const t = input.normalize("NFKC").toUpperCase()
+  let t = input.normalize("NFKC").toUpperCase()
     .replace(/[\u00ba\u02da]/g, "°").replace(/[\u2032\u2019\u2018\u02b9\u00b4`]/g, "'").replace(/[\u2033\u201d\u201c]/g, '"').replace(/''/g, '"')
-    .replace(/[\u2212\u2013\u2014]/g, "-").replace(/\s+/g, " ").trim();
+    .replace(/\u2212/g, "-").replace(/\s+/g, " ").trim();
+  // A typographic dash (en or em) is a minus only where a sign can stand: at the start, or right
+  // after the comma or semicolon. Anywhere else it sits between two numbers, where it may mean
+  // "to" or be a separator: reading it as a minus would silently flip a longitude, so it is refused.
+  if (/[\u2013\u2014]/.test(t)) {
+    t = t.replace(/(^|[,;]) ?[\u2013\u2014](?= ?\d)/g, "$1-");
+    if (/[\u2013\u2014]/.test(t)) return fail(DASH_ERROR);
+  }
   const parts = halves(t);
   if (!parts) return fail("Give a latitude and a longitude, for example 48.85837, 2.294481 or 48°51'30\"N 2°17'40\"E.");
   const a = readHalf(parts[0].trim()), b = readHalf(parts[1].trim());

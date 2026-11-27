@@ -269,5 +269,28 @@ function uniq(a) { return [...new Set(a)]; }
   ok(kinds(f, "commit-email").length === 0 && kinds(f, "archive").length === 0 && labels(item(f, "activity-hours")).join() === "GitHub", "an answer about another host, a row the case does not have, or an address that may not be looked up is not used");
 }
 
+// ---- a source that never ran or never answered is a gap too ---------------------------------------------
+{
+  // A run that was cancelled: the sources that were asked and did not answer are named.
+  const cut = audit({ notAnswered: { keys: ["sherlock", "maigret", "profiles", "github"] } });
+  ok(cut.items.length === 0 && cut.gaps.some((g) => /^Sherlock, Maigret, GitHub and Profile sources were asked and did not answer/.test(g) && /unknown/.test(g) && /Run the case again/.test(g)), "a cancelled run names every source that never answered as a gap");
+  ok(/1 part of the picture is unknown\./.test(selfAuditText(cut)) && cut.gaps.length === 1 && /What this list could not see:/.test(selfAuditMarkdown(cut, { target: H }).join("\n")), "so the summary and the export never read a cancelled case as a clean one");
+  const part = audit({ ...(({ platformCheck, ...rest }) => rest)(U.collected), notAnswered: { keys: ["platformCheck"] } });
+  ok(!audit({ ...U.collected, notAnswered: { keys: ["platformCheck"] } }).gaps.some((g) => /asked and did not answer/.test(g)), "a source the case holds an answer from is not called unanswered, whatever the record says");
+  ok(part.gaps.some((g) => /^Platform check was asked and did not answer, so what it would have shown is unknown\./.test(g)), "one source that never answered is said in the singular");
+  // What the case records about itself is outside data: only known source names are said.
+  const odd = audit({ ...U.collected, notAnswered: { keys: ["<b>x</b>", 7, null, "constructor", "adultCheck", "sherlockAdult", "hibp"] } });
+  ok(!odd.gaps.some((g) => /did not answer, so what/.test(g) && /<b>|constructor|adult|Breaches/i.test(g)) && audit({ ...U.collected, notAnswered: "sherlock" }).gaps.length === audit(U.collected).gaps.length && audit({ ...U.collected, notAnswered: { keys: "sherlock" } }).gaps.length === audit(U.collected).gaps.length, "a key that is not a source of this kind of case is not said, an adult pass is never named, and a malformed record is ignored");
+  // A username case where an account source did not run at all (switched off, or the run never got there).
+  const one = audit({ github: { found: false } });
+  ok(one.items.length === 0 && one.gaps.some((g) => /^Sherlock, Maigret and Profile sources did not run/.test(g) && /unknown/.test(g)), "a username case with no answer from Sherlock, Maigret or the profile sources says so");
+  const noSher = audit((({ sherlock, ...rest }) => rest)(U.collected));
+  ok(noSher.gaps.some((g) => /^Sherlock did not run, so accounts only it would have reported are unknown\./.test(g)) && !audit(U.collected).gaps.some((g) => /did not run, so accounts/.test(g)), "one of them missing is said alone, and a full run says nothing of the kind");
+  ok(!audit({ ...U.collected, sherlock: FAIL }).gaps.some((g) => /Sherlock did not run/.test(g)) && !audit({ ...(({ sherlock, ...rest }) => rest)(U.collected), notAnswered: { keys: ["sherlock"] } }).gaps.some((g) => /Sherlock did not run/.test(g)), "a source that failed or never answered is said once, as that");
+  // An email case: the same for the sources asked there.
+  const mail = audit({ ...(({ holehe, gravatar, ...rest }) => rest)(E.collected), notAnswered: { keys: ["holehe", "gravatar", "sherlock"] } }, M, "email");
+  ok(mail.gaps.some((g) => /^Holehe and Gravatar were asked and did not answer/.test(g)) && !mail.gaps.some((g) => /Sherlock/.test(g)), "an email case names its own sources");
+}
+
 console.log(bad ? `${bad} of ${n} self-audit checks failed` : `${n}/${n} self-audit checks passed`);
 if (bad) process.exit(1);

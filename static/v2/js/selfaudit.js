@@ -4,7 +4,7 @@
 // This module turns what the case found into a ranked list of things the account holder can do
 // to reduce their public footprint. Each item says what is exposed, where it was seen and the
 // concrete steps. It is advice, never a guarantee: it covers only what these sources could see,
-// and a source that failed may hide more (see `gaps`).
+// and a source that failed, never answered or did not run may hide more (see `gaps`).
 //
 // Pure: no DOM, no network, no AI. Every value that came from a source is a plain string in the
 // item fields. The page escapes them; nothing here builds HTML.
@@ -317,11 +317,21 @@ function unverifiedItems(k) {
 
 // ---- 12. what this list could not see ---------------------------------------------------------------
 const SOURCE_NAMES = { username: { sherlock: "Sherlock", maigret: "Maigret", github: "GitHub", profiles: "Profile sources", platformCheck: "Platform check", enricher: "Profile enrichment", githubDeep: "GitHub details", githubActivity: "GitHub activity", avatarHash: "Avatar comparison" }, email: { holehe: "Holehe", hibp: "Breaches", gravatar: "Gravatar", emailAccounts: "Accounts and keys" } };
+// The account sources of a username case. One that is absent from the case did not run (it was
+// switched off, or the run never reached it), and the accounts only it would report are unknown.
+const USERNAME_MAIN = ["sherlock", "maigret", "profiles"];
 function gapsOf(k) {
   const out = [], c = k.c;
   const down = Object.entries(SOURCE_NAMES[k.type]).filter(([key]) => failedAnswer(c[key])).map(([, name]) => name);
   if (down.length) out.push(`${list(down, 5)} failed, so what ${down.length === 1 ? "it" : "they"} would have shown is unknown. Run the case again before reading this list as complete.`);
+  // Asked and never answered: the run was cancelled (collected.notAnswered, which the run
+  // records). The record is read like any stored value: only a source of this kind of case that
+  // has no answer is named, by CrawlR's own name for it.
+  const silentKeys = isObj(c.notAnswered) && Array.isArray(c.notAnswered.keys) ? Object.keys(SOURCE_NAMES[k.type]).filter((key) => c.notAnswered.keys.includes(key) && !isObj(c[key])) : [];
+  if (silentKeys.length) { const names = silentKeys.map((key) => SOURCE_NAMES[k.type][key]); out.push(`${list(names, 9)} ${names.length === 1 ? "was" : "were"} asked and did not answer, so what ${names.length === 1 ? "it" : "they"} would have shown is unknown. Run the case again before reading this list as complete.`); }
   if (k.type === "username") {
+    const off = USERNAME_MAIN.filter((key) => !isObj(c[key]) && !silentKeys.includes(key)).map((key) => SOURCE_NAMES.username[key]);
+    if (off.length) out.push(`${list(off, 3)} did not run, so accounts only ${off.length === 1 ? "it" : "they"} would have reported are unknown. Switch ${off.length === 1 ? "it" : "them"} on and run the case again to see them.`);
     const cov = profileCoverage(c.profiles).down;
     if (cov.length) out.push(`${plural(cov.length, "profile source")} did not answer (${list(cov.map((x) => `${x.site}: ${x.state === "rate_limited" ? "rate limited" : x.state === "blocked" ? "blocked by site" : x.state === "failed" ? "failed" : "could not tell"}`), 5)}). An account there is unknown, not absent.`);
     const blocked = k.rows.filter((r) => r.tier === "unverified" && /^Blocked by site/.test(r.meta || ""));

@@ -95,5 +95,24 @@ refuses("100 10", /Latitude/);
   ok(!/\bfetch\(|document\.|innerHTML|import\s/.test(geo.replace(/\/\/.*$/gm, "")), "geo.js has no DOM, no network and no imports");
 }
 
+// ---- a dash that is not a minus ---------------------------------------------------------------------------
+// A typographic dash (en or em) is a minus only where a sign can stand: at the start of the text or
+// of the second half, after the comma. Between two numbers it may be meant as "to" or as a
+// separator, so it is refused, never read as a negative longitude.
+{
+  const EN = String.fromCharCode(0x2013), EM = String.fromCharCode(0x2014), MINUS = String.fromCharCode(0x2212);
+  refuses(`48${EN}2`, /plain minus|comma/i);
+  refuses(`48.85837${EN}2.294481`, /plain minus|comma/i);
+  refuses(`48.85837 ${EN} 2.294481`, /plain minus|comma/i);
+  refuses(`48.85837 ${EN}2.294481`, /plain minus|comma/i);
+  refuses(`48${EM}2`, /plain minus|comma/i);
+  refuses(`48 51 30${EN}2 17 40`, /plain minus|comma/i);
+  reads(`${EN}33.856784, 151.215297`, -33.856784, 151.215297, "dd");
+  reads(`48.85837, ${EN}2.294481`, 48.85837, -2.294481, "dd");
+  reads(`${EN}33.856784; ${EN}70.5`, -33.856784, -70.5, "dd");
+  reads(`${MINUS}33.856784 ${MINUS}70.5`, -33.856784, -70.5, "dd");      // the real minus sign is a minus anywhere a hyphen is
+  reads("48-2".replace("-", " -"), 48, -2, "dd");                          // a plain hyphen-minus keeps its meaning
+}
+
 console.log(bad ? `${bad} of ${n} coordinate checks failed` : `all ${n} coordinate checks pass`);
 if (bad) process.exit(1);

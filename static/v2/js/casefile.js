@@ -23,8 +23,12 @@ const clip = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
 const fail = (error) => ({ ok: false, error });
 
 // What Export writes. `mode` is the workbench, `type` the detected target type.
+// "This is me" (collected.selfAudit) is left out: it is the statement of the person at this
+// browser about themselves, the switch says it is never written to a case file, and a file that
+// carried it would tell whoever receives it whose case this is. (The reader drops it too.)
 export function buildCaseFile({ mode, target, type, ran, collected, ai, deep, notes, purpose }) {
-  return { crawlr_case: CASE_VERSION, app: "CrawlR", exported: new Date().toISOString(), mode, target, type, ran: ran || Date.now(), purpose: purpose || "", notes: notes || "", collected: collected || {}, ai: ai || null, deep: deep || null };
+  const { selfAudit: _statement, ...results } = isObj(collected) ? collected : {};
+  return { crawlr_case: CASE_VERSION, app: "CrawlR", exported: new Date().toISOString(), mode, target, type, ran: ran || Date.now(), purpose: purpose || "", notes: notes || "", collected: results, ai: ai || null, deep: deep || null };
 }
 
 // An AI report keeps the fields the report view reads and drops everything else.

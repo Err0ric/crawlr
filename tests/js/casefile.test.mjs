@@ -10,7 +10,13 @@ const recon = () => buildCaseFile({ mode: "recon", target: "example.com", type: 
 
 // ---- "This is me" never arrives in a file ---------------------------------------
 {
-  const inv = (collected) => parseCaseFile(file(buildCaseFile({ mode: "investigate", target: "samexample", type: "username", ran: 1700000000000, collected })));
+  // Written by hand, as a file from elsewhere would be: Export itself never writes the statement (below).
+  const inv = (collected) => parseCaseFile(file({ ...buildCaseFile({ mode: "investigate", target: "samexample", type: "username", ran: 1700000000000, collected: {} }), collected }));
+  // Export leaves the statement out, so the file carries no mark of whose case it is.
+  const mine = { github: { found: true, profile_url: "https://github.com/samexample" }, selfAudit: { on: true, at: 1700000000000 }, trail: [{ target: "samexample", type: "username" }] };
+  const built = buildCaseFile({ mode: "investigate", target: "samexample", type: "username", ran: 1700000000000, collected: mine });
+  ok(!("selfAudit" in built.collected) && !JSON.stringify(built).includes("selfAudit") && built.collected.github.found === true && "trail" in built.collected && "selfAudit" in mine, "the case file Export writes does not carry This is me, keeps everything else, and leaves the case itself as it was");
+  ok(!("selfAudit" in buildCaseFile({ mode: "recon", target: "example.com", type: "domain", collected: { dns: {}, selfAudit: { on: true, at: 1 } } }).collected) && JSON.stringify(buildCaseFile({ mode: "investigate", target: "x", type: "username" }).collected) === "{}", "for either workbench, and a case with no results still builds");
   const r = inv({ github: { found: true, profile_url: "https://github.com/samexample" }, selfAudit: { on: true, at: 1700000000000 } });
   ok(r.ok && !("selfAudit" in r.entry.results) && r.entry.results.github.found === true, "a case file's selfAudit is dropped: the statement is the person's at the browser");
   ok(!inv({ selfAudit: { on: true, at: 1 } }).ok, "and it is not a result");

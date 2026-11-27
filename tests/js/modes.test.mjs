@@ -494,5 +494,20 @@ function makeBench(s) {
   ok(!srcs.includes(String.fromCharCode(8212)), "no em dash in anything this change touched");
 }
 
+// ---- may the adult pass be added to the case on screen? ---------------------------------------------
+// One rule, here, that investigate.js asks (canAddAdult). Every condition must hold, and each is
+// read strictly: a missing or odd value refuses.
+{
+  const base = () => ({ on: true, held: true, running: false, busy: false, live: true, cancelled: false, type: "username", target: "river_stone", adultMode: false, adultBlocked: "", minor: null, blocked: false, suspended: M.makeSuspended() });
+  ok(M.mayAddAdult(base()) === true, "a finished live username case that ran without the pass, with the mode on and the run still in memory, is offered it");
+  for (const [what, change] of [["the mode is off", { on: false }], ["the mode is not literally on", { on: "true" }], ["the run is no longer in memory", { held: false }], ["nothing says the run is in memory", { held: undefined }], ["a run is in flight", { running: true }], ["a lookup or the AI is in flight", { busy: true }], ["nothing says whether a lookup is in flight", { busy: undefined }], ["the case was opened from History or a file", { live: false }], ["the run was cancelled", { cancelled: true }], ["an email case", { type: "email", target: "river@example.org" }], ["no target", { target: "" }], ["the case already had the pass", { adultMode: true }], ["the pass was not run for this case", { adultBlocked: "x" }], ["the case is suspended", { minor: { kind: "content" } }], ["the case records a block", { blocked: true }], ["nothing says whether the case records a block", { blocked: undefined }], ["the handle states an age under 18", { target: "river_15yo" }]]) ok(M.mayAddAdult({ ...base(), ...change }) === false, `not offered: ${what}`);
+  const sus = M.makeSuspended(); sus.add("river_stone", { block: { kind: "age", source: "Reddit", snippet: "x", url: "" } });
+  ok(M.mayAddAdult({ ...base(), suspended: sus }) === false && M.mayAddAdult() === false && M.mayAddAdult({}) === false, "not offered for a handle suspended this session, and never without the facts");
+  const inv = read(J + "investigate.js"), at = inv.indexOf("const canAddAdult = () => mayAddAdult({"), call = at < 0 ? "" : inv.slice(at, inv.indexOf("});", at));
+  ok(at > 0 && /on: session\.on\("adult"\)/.test(call) && /held: guardMem\.held\(state\.ran, state\.target\)/.test(call) && /running: state\.running/.test(call) && /busy: lookBusy\.size > 0 \|\| state\.aiBusy/.test(call) && /live: state\.live/.test(call) && /cancelled: state\.cancelled/.test(call) && /adultMode: state\.adultMode/.test(call) && /adultBlocked: state\.adultBlocked/.test(call) && /minor: state\.minor/.test(call) && /blocked: "adultBlock" in state\.collected/.test(call) && /suspended\b/.test(call), "investigate.js hands the rule the state of the page and decides nothing itself");
+  const lh = inv.slice(inv.indexOf("export function loadHistory("), inv.indexOf("\n}\n", inv.indexOf("export function loadHistory("))), cc = inv.slice(inv.indexOf("export function clearCase("), inv.indexOf("\n}\n", inv.indexOf("export function clearCase(")));
+  ok(/guardMem\.drop\(\)/.test(lh) && /guardMem\.drop\(\)/.test(cc) && !/guardRaw/.test(inv), "opening a case from History, and clearing the case, drop the run held in memory");
+}
+
 console.log(bad ? `${bad} of ${n} mode checks failed` : `${n}/${n} mode checks passed`);
 process.exit(bad ? 1 : 0);

@@ -12,15 +12,28 @@
 // the work done is bounded by the constants below. A block that breaks a rule is reported as
 // "could not be read"; nothing throws and nothing loops.
 //
+// What was not read is never called absent. A file whose only metadata sits in a block this
+// reader does not parse is "unparsed", not "none"; a walk that stops at its cap is a problem, so
+// the answer is "could not be read fully"; and whether the file holds a position is its own
+// answer (`position`), which is "none" only when the Exif block was read whole.
+//
 //   readImageMeta(bytes) -> {
-//     state    "ok" | "none" | "unreadable" | "unsupported"
+//     state    "ok" | "none" | "unparsed" | "unreadable" | "unsupported"
+//              none: read whole, and nothing in it. unparsed: nothing this reader parses, and a
+//              block it does not (see notes). unreadable: nothing was read and a problem says why.
 //     format   "jpeg" | "png" | "webp" | "tiff" | ""
 //     width, height            pixels from the image's own header, or null
 //     meta     { make, model, software, lens, owner, serial, artist, copyright, description, comment,
 //                dateOriginal, offsetOriginal, dateDigitized, offsetDigitized, dateModified, offsetModified,
 //                orientation, orientationText, exifWidth, exifHeight }   only the keys that were found
-//     gps      null | { lat, lon, altitude, time, direction, datum }     lat and lon are always in range
-//     text     [{ k, v }]      PNG text chunks
+//     gps      null | { lat, lon, altitude, time, direction, datum, coarse?, placeholder? }
+//              lat and lon are always in range. coarse: the file leaves the seconds unset, so the
+//              position is read to the minute. placeholder: it is 0, 0.
+//     position "found" | "none" | "unknown" | "unparsed"
+//              unknown: a block that could hold it was not read. unparsed: none in the Exif
+//              block, and the file carries an XMP packet, which can hold one.
+//     text     [{ k, v }]      PNG text chunks, at most 40
+//     textMore                 how many further text chunks the file holds
 //     problems [sentence]      each says which block could not be read
 //     notes    [sentence]      what else the file carries that this reader does not parse
 //   }
@@ -89,14 +102,15 @@ function tiffReader(t) {
   const span = (v, max) => { if (v.count > max) bad("value count"); if (v.at + v.total > t.length) bad("value offset"); return t.subarray(v.at, v.at + v.total); };
   const ascii = (d, tag) => { const v = d.get(tag); return v && (v.type === 2 || v.type === 7 || v.type === 1) ? decodeText(span(v, 65536)) : ""; };
   const int = (d, tag) => { const v = d.get(tag); if (!v || v.count < 1) return null; span(v, 65536); return v.type === 3 ? u16(v.at) : v.type === 4 ? u32(v.at) : v.type === 1 ? t[v.at] : v.type === 9 ? i32(v.at) : null; };
-  const rationals = (d, tag, want) => {
+  // unsetAt: the one position where 0/0 ("not set") is allowed. It is returned as NaN.
+  const rationals = (d, tag, want, unsetAt = -1) => {
     const v = d.get(tag);
     if (!v || (v.type !== 5 && v.type !== 10) || v.count < want) return null;
     span(v, 16);
     const out = [];
     for (let i = 0; i < want; i++) {
       const num = v.type === 5 ? u32(v.at + i * 8) : i32(v.at + i * 8), den = v.type === 5 ? u32(v.at + i * 8 + 4) : i32(v.at + i * 8 + 4);
-      if (den === 0) return null;
+      if (den === 0) { if (i === unsetAt && num === 0) { out.push(NaN); continue; } return null; }
       out.push(num / den);
     }
     return out;
@@ -115,15 +129,21 @@ function tiffReader(t) {
 }
 
 function readGps(r, g) {
-  const lat = r.rationals(g, 2, 3), lon = r.rationals(g, 4, 3);
+  // Seconds written as 0/0 are "not set": some devices write degrees and minutes only. The
+  // position is then read to the minute and marked coarse. Degrees or minutes of 0/0, and any
+  // other zero denominator, still make the block unreadable.
+  const lat = r.rationals(g, 2, 3, 2), lon = r.rationals(g, 4, 3, 2);
   const latRef = r.ascii(g, 1).toUpperCase().slice(0, 1), lonRef = r.ascii(g, 3).toUpperCase().slice(0, 1);
   const out = { lat: null, lon: null, altitude: null, time: "", direction: null, datum: "" };
   if (g.has(2) || g.has(4)) {
     if (!lat || !lon || !"NS".includes(latRef || "?") || !"EW".includes(lonRef || "?")) bad("position");
-    const deg = ([d, m, s]) => (d >= 0 && m >= 0 && m < 60 && s >= 0 && s < 60 ? d + m / 60 + s / 3600 : NaN);
+    const coarse = Number.isNaN(lat[2]) || Number.isNaN(lon[2]);
+    const deg = ([d, m, s0]) => { const s = Number.isNaN(s0) ? 0 : s0; return d >= 0 && m >= 0 && m < 60 && s >= 0 && s < 60 ? d + m / 60 + s / 3600 : NaN; };
     const la = deg(lat) * (latRef === "S" ? -1 : 1), lo = deg(lon) * (lonRef === "W" ? -1 : 1);
     if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) bad("position range");
-    out.lat = la; out.lon = lo;
+    out.lat = la === 0 ? 0 : la; out.lon = lo === 0 ? 0 : lo;      // never -0
+    if (coarse) out.coarse = true;
+    if (out.lat === 0 && out.lon === 0) out.placeholder = true;
   }
   const alt = r.rationals(g, 6, 1);
   if (alt && Number.isFinite(alt[0]) && Math.abs(alt[0]) < 100000) out.altitude = Math.round(alt[0] * (r.int(g, 5) === 1 ? -1 : 1) * 10) / 10;
@@ -140,12 +160,17 @@ function readGps(r, g) {
 
 // Reads one TIFF block into `res`. A broken first directory makes the whole block unreadable;
 // a broken Exif or GPS directory is said by itself, and what was read before it is kept.
+// res.exif says how that went: "read" (whole), or "broken" (some part of it could not be read, so
+// what it holds beyond what is shown is unknown).
+export const COARSE_NOTE = "The file leaves the seconds of the position unset, so the position may be exact only to the minute (within about 2 km).";
+export const PLACEHOLDER_NOTE = "The position is 0, 0. Many devices write that when they have no fix, so it is probably a placeholder and not a place.";
 function readTiff(t, res, { own = false } = {}) {
   let r, d0;
-  try { r = tiffReader(t); d0 = r.dir(r.ifd0); } catch (e) { if (!(e instanceof Unreadable)) throw e; res.problems.push("The Exif block could not be read: its structure is damaged or cut short."); return false; }
+  try { r = tiffReader(t); d0 = r.dir(r.ifd0); } catch (e) { if (!(e instanceof Unreadable)) throw e; res.exif = "broken"; res.problems.push("The Exif block could not be read: its structure is damaged or cut short."); return false; }
+  res.exif = "read";
   const m = res.meta;
   const put = (k, v) => { if (v !== "" && v !== null && v !== undefined) m[k] = v; };
-  const block = (name, fn) => { try { fn(); } catch (e) { if (!(e instanceof Unreadable)) throw e; res.problems.push(`${name} could not be read: it points outside the file, loops or is cut short.`); } };
+  const block = (name, fn) => { try { fn(); } catch (e) { if (!(e instanceof Unreadable)) throw e; res.exif = "broken"; res.problems.push(`${name} could not be read: it points outside the file, loops or is cut short.`); } };
   block("Part of the camera block", () => {
     put("make", r.ascii(d0, 0x010f)); put("model", r.ascii(d0, 0x0110)); put("software", r.ascii(d0, 0x0131));
     put("artist", r.ascii(d0, 0x013b)); put("copyright", r.ascii(d0, 0x8298)); put("description", r.ascii(d0, 0x010e));
@@ -154,7 +179,7 @@ function readTiff(t, res, { own = false } = {}) {
     if (ORIENTATION[o]) { m.orientation = o; m.orientationText = ORIENTATION[o]; }
     if (own) { const w = r.int(d0, 0x0100), h = r.int(d0, 0x0101); if (w > 0 && h > 0 && w < 1e6 && h < 1e6) { res.width = w; res.height = h; } }
   });
-  const exifAt = (() => { try { return r.int(d0, 0x8769); } catch { return null; } })();
+  const exifAt = (() => { try { return r.int(d0, 0x8769); } catch (e) { if (!(e instanceof Unreadable)) throw e; res.exif = "broken"; res.problems.push("The Exif details block could not be read: it points outside the file, loops or is cut short."); return null; } })();
   if (exifAt !== null) block("The Exif details block", () => {
     const x = r.dir(exifAt);
     put("dateOriginal", exifDate(r.ascii(x, 0x9003))); put("dateDigitized", exifDate(r.ascii(x, 0x9004)));
@@ -163,13 +188,16 @@ function readTiff(t, res, { own = false } = {}) {
     put("comment", r.comment(x, 0x9286));
     const w = r.int(x, 0xa002), h = r.int(x, 0xa003);
     if (w > 0 && h > 0 && w < 1e6 && h < 1e6) { m.exifWidth = w; m.exifHeight = h; }
-    if (x.has(0x927c)) res.notes.push("The file carries a maker note (the camera maker's own block), which this reader does not parse.");
+    if (x.has(0x927c)) { res.unparsed = true; res.notes.push("The file carries a maker note (the camera maker's own block), which this reader does not parse."); }
   });
-  const gpsAt = (() => { try { return r.int(d0, 0x8825); } catch { return null; } })();
+  // A pointer that cannot be read is a block that could not be read, not a block that is absent.
+  const pointer = (tag, name) => { try { return r.int(d0, tag); } catch (e) { if (!(e instanceof Unreadable)) throw e; res.exif = "broken"; res.problems.push(`${name} could not be read: it points outside the file, loops or is cut short.`); return null; } };
+  const gpsAt = pointer(0x8825, "The GPS block");
   if (gpsAt !== null) block("The GPS block", () => {
     const g = readGps(r, r.dir(gpsAt));
-    if (g.lat !== null) res.gps = g;
-    else if (g.time || g.altitude !== null) res.notes.push(`The GPS block holds no position${g.time ? `, only a time (${g.time})` : ""}.`);
+    if (g.lat !== null) res.gps = g;      // coarse and placeholder are said with the position (COARSE_NOTE, PLACEHOLDER_NOTE)
+    // A time or an altitude with no position was read: it is metadata, and it is said.
+    else if (g.time || g.altitude !== null) { res.partial = true; res.notes.push(`The GPS block holds no position${g.time ? `, only a time (${g.time})` : ""}.`); }
     else res.notes.push("The GPS block is present and holds no position.");
   });
   return true;
@@ -184,10 +212,16 @@ const le32 = (b, o) => ((b[o + 3] << 24) | (b[o + 2] << 16) | (b[o + 1] << 8) | 
 const le24 = (b, o) => (b[o + 2] << 16) | (b[o + 1] << 8) | b[o];
 const EXIF_HEAD = str("Exif\0\0"), XMP_HEAD = str("http://ns.adobe.com/xap/1.0/\0");
 const XMP_NOTE = "The file also carries an XMP packet, which this reader does not parse.";
+const xmp = (res) => { res.unparsed = true; res.xmp = true; if (!res.notes.includes(XMP_NOTE)) res.notes.push(XMP_NOTE); };
+// A walk that stops at its cap has not seen the rest of the file: that is a problem to say, so
+// the answer can never be "no metadata".
+const capped = (res, n, word) => { res.cut = true; res.problems.push(`The file has more ${word} than this tool walks (${n.toLocaleString("en-US")}). The rest was not read, so it may hold metadata that is not shown.`); };
+const CUT_BLOCK = "The file ends in the middle of a block. What came before it was read.", CUT_CHUNK = "The file ends in the middle of a chunk. What came before it was read.";
 
 function readJpeg(b, res) {
   let pos = 2, exif = false;
-  for (let i = 0; i < MAX_SEGMENTS; i++) {
+  for (let i = 0; ; i++) {
+    if (i >= MAX_SEGMENTS) { capped(res, MAX_SEGMENTS, "blocks"); break; }
     if (pos + 4 > b.length) { if (!exif && res.width === null) bad("truncated"); break; }
     if (b[pos] !== 0xff) bad("marker");
     let marker = b[pos + 1];
@@ -198,10 +232,10 @@ function readJpeg(b, res) {
     const len = be16(b, pos + 2);
     if (len < 2) bad("segment length");
     const start = pos + 4, end = pos + 2 + len;
-    if (end > b.length) { res.problems.push("The file ends in the middle of a block. What came before it was read."); break; }
+    if (end > b.length) { res.cut = true; res.problems.push(CUT_BLOCK); break; }
     if (marker === 0xe1 && !exif && startsWith(b, start, EXIF_HEAD)) { exif = true; readTiff(b.subarray(start + 6, end), res); }
-    else if (marker === 0xe1 && startsWith(b, start, XMP_HEAD)) { if (!res.notes.includes(XMP_NOTE)) res.notes.push(XMP_NOTE); }
-    else if (marker === 0xed) { const n = "The file also carries an IPTC or Photoshop block, which this reader does not parse."; if (!res.notes.includes(n)) res.notes.push(n); }
+    else if (marker === 0xe1 && startsWith(b, start, XMP_HEAD)) xmp(res);
+    else if (marker === 0xed) { const n = "The file also carries an IPTC or Photoshop block, which this reader does not parse."; res.unparsed = true; if (!res.notes.includes(n)) res.notes.push(n); }
     else if (marker === 0xfe && !res.meta.fileComment) { const c = decodeText(b.subarray(start, end)); if (c) res.meta.fileComment = c; }
     else if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc && len >= 7) { res.height = be16(b, start + 1); res.width = be16(b, start + 3); }
     pos = end;
@@ -210,14 +244,17 @@ function readJpeg(b, res) {
 
 function readPng(b, res) {
   let pos = 8;
-  for (let i = 0; i < MAX_CHUNKS && pos + 8 <= b.length; i++) {
+  for (let i = 0; pos + 8 <= b.length; i++) {
+    if (i >= MAX_CHUNKS) { capped(res, MAX_CHUNKS, "chunks"); break; }
     const len = be32(b, pos), type = latin1(b.subarray(pos + 4, pos + 8)), start = pos + 8, end = start + len;
     if (i === 0 && type !== "IHDR") bad("first chunk");
-    if (end + 4 > b.length) { if (i === 0) bad("truncated"); res.problems.push("The file ends in the middle of a chunk. What came before it was read."); break; }
+    if (end + 4 > b.length) { if (i === 0) bad("truncated"); res.cut = true; res.problems.push(CUT_CHUNK); break; }
     const data = b.subarray(start, end);
     if (type === "IHDR" && len >= 8) { res.width = be32(data, 0); res.height = be32(data, 4); }
     else if (type === "eXIf" && !res.exifSeen) { res.exifSeen = true; readTiff(data, res); }
-    else if ((type === "tEXt" || type === "iTXt") && res.text.length < MAX_TEXT_CHUNKS) {
+    // Past the 40 that are kept, a text chunk is counted and not read.
+    else if ((type === "tEXt" || type === "iTXt") && res.text.length >= MAX_TEXT_CHUNKS) res.textMore++;
+    else if (type === "tEXt" || type === "iTXt") {
       const z = data.indexOf(0);
       if (z > 0 && z <= 79) {
         const k = tidy(latin1(data.subarray(0, z)));
@@ -227,26 +264,27 @@ function readPng(b, res) {
           const lang = data.indexOf(0, z + 3), tr = lang < 0 ? -1 : data.indexOf(0, lang + 1);
           if (tr > 0) body = decodeText(data.subarray(tr + 1));
         } else res.zipped = true;
-        if (k && body) { if (/^XML:com\.adobe\.xmp$/i.test(k)) { if (!res.notes.includes(XMP_NOTE)) res.notes.push(XMP_NOTE); } else res.text.push({ k, v: body }); }
+        if (k && body) { if (/^XML:com\.adobe\.xmp$/i.test(k)) xmp(res); else res.text.push({ k, v: body }); }
       }
     } else if (type === "zTXt") res.zipped = true;
     else if (type === "IEND") break;
     pos = end + 4;
   }
-  if (res.zipped) res.notes.push("The file carries compressed text chunks, which this reader does not unpack.");
+  if (res.zipped) { res.unparsed = true; res.notes.push("The file carries compressed text chunks, which this reader does not unpack."); }
 }
 
 function readWebp(b, res) {
   let pos = 12;
-  for (let i = 0; i < MAX_CHUNKS && pos + 8 <= b.length; i++) {
+  for (let i = 0; pos + 8 <= b.length; i++) {
+    if (i >= MAX_CHUNKS) { capped(res, MAX_CHUNKS, "chunks"); break; }
     const type = latin1(b.subarray(pos, pos + 4)), len = le32(b, pos + 4), start = pos + 8, end = start + len;
-    if (end > b.length) { if (i === 0) bad("truncated"); res.problems.push("The file ends in the middle of a chunk. What came before it was read."); break; }
+    if (end > b.length) { if (i === 0) bad("truncated"); res.cut = true; res.problems.push(CUT_CHUNK); break; }
     const d = b.subarray(start, end);
     if (type === "VP8X" && len >= 10) { res.width = le24(d, 4) + 1; res.height = le24(d, 7) + 1; }
     else if (type === "VP8 " && len >= 10 && d[3] === 0x9d && d[4] === 0x01 && d[5] === 0x2a && res.width === null) { res.width = (d[6] | (d[7] << 8)) & 0x3fff; res.height = (d[8] | (d[9] << 8)) & 0x3fff; }
     else if (type === "VP8L" && len >= 5 && d[0] === 0x2f && res.width === null) { res.width = 1 + (d[1] | ((d[2] & 0x3f) << 8)); res.height = 1 + ((d[2] >> 6) | (d[3] << 2) | ((d[4] & 0x0f) << 10)); }
     else if (type === "EXIF" && !res.exifSeen) { res.exifSeen = true; readTiff(startsWith(d, 0, EXIF_HEAD) ? d.subarray(6) : d, res); }
-    else if (type === "XMP ") { if (!res.notes.includes(XMP_NOTE)) res.notes.push(XMP_NOTE); }
+    else if (type === "XMP ") xmp(res);
     pos = end + (len & 1);
   }
 }
@@ -262,8 +300,10 @@ export function sniffFormat(b) {
 
 const META_KEYS = ["make", "model", "software", "lens", "owner", "serial", "artist", "copyright", "description", "comment", "fileComment", "dateOriginal", "dateDigitized", "dateModified", "orientation"];
 
+// Internal marks of a read, removed before the answer is returned.
+const MARKS = ["exifSeen", "zipped", "exif", "cut", "unparsed", "xmp", "partial"];
 export function readImageMeta(bytes) {
-  const res = { state: "unsupported", format: "", width: null, height: null, meta: {}, gps: null, text: [], problems: [], notes: [] };
+  const res = { state: "unsupported", format: "", width: null, height: null, meta: {}, gps: null, position: "unknown", text: [], textMore: 0, problems: [], notes: [] };
   if (!(bytes instanceof Uint8Array) || bytes.length > MAX_IMAGE_BYTES) return res;
   res.format = sniffFormat(bytes);
   if (!res.format) return res;
@@ -271,14 +311,19 @@ export function readImageMeta(bytes) {
     if (res.format === "jpeg") readJpeg(bytes, res);
     else if (res.format === "png") readPng(bytes, res);
     else if (res.format === "webp") readWebp(bytes, res);
-    else if (!readTiff(bytes, res, { own: true })) { res.state = "unreadable"; delete res.exifSeen; delete res.zipped; return res; }
+    else if (!readTiff(bytes, res, { own: true })) { res.state = "unreadable"; for (const k of MARKS) delete res[k]; return res; }
   } catch (e) {
     // The container itself is damaged. Nothing that was half read is shown.
-    return { state: "unreadable", format: res.format, width: null, height: null, meta: {}, gps: null, text: [], problems: ["The file could not be read: it is damaged or cut short."], notes: [] };
+    return { state: "unreadable", format: res.format, width: null, height: null, meta: {}, gps: null, position: "unknown", text: [], textMore: 0, problems: ["The file could not be read: it is damaged or cut short."], notes: [] };
   }
-  delete res.exifSeen; delete res.zipped;
   if (!(res.width > 0 && res.height > 0 && res.width < 1e6 && res.height < 1e6)) { res.width = null; res.height = null; }
-  const has = META_KEYS.some((k) => k in res.meta) || !!res.gps || res.text.length > 0;
-  res.state = has ? "ok" : res.problems.length ? "unreadable" : "none";
+  const has = META_KEYS.some((k) => k in res.meta) || !!res.gps || res.text.length > 0 || res.partial === true;
+  // "none" is an answer about the whole file: nothing was found, nothing was left unread and
+  // nothing sits in a block this reader does not parse.
+  res.state = has ? "ok" : res.problems.length ? "unreadable" : res.unparsed ? "unparsed" : "none";
+  // The position. Absent only when every block that could hold it was read: an Exif block that
+  // broke, or a file that was not walked to the end before an Exif block was seen, leaves it unknown.
+  res.position = res.gps ? "found" : res.exif === "broken" || (res.cut && res.exif !== "read") ? "unknown" : res.xmp ? "unparsed" : "none";
+  for (const k of MARKS) delete res[k];
   return res;
 }

@@ -1118,12 +1118,15 @@ export function archiveDiffMarkdown(v) {
 // per piece under the site name "Internet Archive" with the address of the older capture (the
 // newer one's when there is no older side). Characters are counted as Python counts them (code
 // points), so both sides cut at the same line.
+// The answer is read as it is, not through readArchiveDiff: the server scanned every title and
+// line it returned, so an answer the page cannot show (a state it does not know, two captures in
+// the wrong order) is still scanned here. Only strings are taken, and a checked answer reads the
+// same before and after readArchiveDiff. Nothing read here is shown: it goes to the check only.
 export function archiveDiffTexts(d) {
-  const a = readArchiveDiff(d, isObj(d) ? d.url : "");
-  if (!a) return [];
-  const lines = [];
-  for (const s of [a.from, a.to]) if (s?.title && !lines.includes(s.title)) lines.push(s.title);
-  lines.push(...a.removed.text, ...a.added.text);
+  if (!isObj(d)) return [];
+  const lines = [], sides = [d.from, d.to].filter((s) => isObj(s) && Object.keys(s).length);
+  for (const s of sides) if (typeof s.title === "string" && s.title && !lines.includes(s.title)) lines.push(s.title);
+  for (const part of [d.removed, d.added]) for (const t of isObj(part) && Array.isArray(part.text) ? part.text.slice(0, LINES_MAX) : []) if (typeof t === "string" && t) lines.push(t);
   const chunks = [];
   let cur = "", size = 0;
   for (const t of lines) {
@@ -1133,7 +1136,11 @@ export function archiveDiffTexts(d) {
     cur = cur ? `${cur}\n${t}` : t;
   }
   if (cur) chunks.push(cur);
-  return chunks.map((bio) => ({ source: ARCHIVE_SOURCE, url: (a.from || a.to)?.url || "", bio }));
+  // The address the text is filed under: the snapshot address rebuilt from the capture's time,
+  // as a checked answer has it, else the one the answer itself gives for that side.
+  const a = readArchiveDiff(d, typeof d.url === "string" ? d.url.trim() : "");
+  const url = (a?.from || a?.to)?.url || (typeof sides[0]?.url === "string" ? sides[0].url : "");
+  return chunks.map((bio) => ({ source: ARCHIVE_SOURCE, url, bio }));
 }
 
 // ---- case files and history ---------------------------------------------------------------------------

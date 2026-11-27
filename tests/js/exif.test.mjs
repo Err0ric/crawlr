@@ -2,6 +2,11 @@
 // bytes: no image is stored in the repository and nothing is fetched. The camera and the place are invented.
 import fs from "node:fs";
 const { readImageMeta, sniffFormat, MAX_IMAGE_BYTES } = await import("../../static/v2/js/exif.js");
+globalThis.location = { origin: "https://crawlr.lol" };
+globalThis.document = { addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ innerHTML: "" }) };
+globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+const { renderImage } = await import("../../static/v2/js/imagemeta.js");
+const shown = (meta) => renderImage({ name: "picture.jpg", size: 1234, lastModified: 0 }, meta).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 let bad = 0, n = 0;
 const ok = (cond, name) => { n++; if (!cond) { bad++; console.log("FAIL", name); } };
@@ -91,7 +96,7 @@ for (const le of [true, false]) {
   const c = readImageMeta(jpeg(null, { comment: "made with a tool" }));
   ok(c.state === "ok" && c.meta.fileComment === "made with a tool", "a JPEG comment is metadata");
   const x = readImageMeta(jpeg(null, { extra: [[0xff, 0xe1, 0, 2 + 29 + 4, ...[..."http://ns.adobe.com/xap/1.0/\0"].map((ch) => ch.charCodeAt(0)), 60, 120, 62, 32]] }));
-  ok(x.state === "none" && x.notes.some((s) => /XMP packet/.test(s)), "an XMP packet is named and not parsed");
+  ok(x.state === "unparsed" && x.notes.some((s) => /XMP packet/.test(s)), "an XMP packet is named and not parsed, and a file that holds only that is not called empty");
 }
 // ---- malformed files end in "could not be read" ------------------------------------------------------------
 const unread = (r) => r.problems.some((p) => /could not be read/.test(p));
@@ -120,7 +125,7 @@ const unread = (r) => r.problems.some((p) => /could not be read/.test(p));
   const whole = jpeg(FULL(true));
   let threw = 0, states = new Set();
   for (let i = 0; i <= whole.length; i++) { try { states.add(readImageMeta(whole.slice(0, i)).state); } catch { threw++; } }
-  ok(threw === 0 && [...states].every((s) => ["ok", "none", "unreadable", "unsupported"].includes(s)) && states.has("unreadable"), "a file cut at any byte gives a state, never an exception");
+  ok(threw === 0 && [...states].every((s) => ["ok", "none", "unparsed", "unreadable", "unsupported"].includes(s)) && states.has("unreadable"), "a file cut at any byte gives a state, never an exception");
   // Every single-byte change of the Exif block gives a state too, and a position, when given, is in range.
   let wild = 0;
   for (let i = 12; i < 12 + 400 && i < whole.length; i++) for (const v of [0x00, 0xff, 0x7f]) {
@@ -177,6 +182,58 @@ const unread = (r) => r.problems.some((p) => /could not be read/.test(p));
 {
   const r = readImageMeta(jpeg(tiff({ ifd0: [[0x010f, 2, "Halv\u0007orsen\u0001 Optics"], [0x0110, 7, [...new TextEncoder().encode("Tern\u202e 40 \u00e9"), 0]], [0x013b, 2, "x".repeat(900)]] })));
   ok(r.meta.make === "Halv orsen Optics" && r.meta.model === "Tern 40 \u00e9" && r.meta.artist.length === 300, "control and direction characters are removed, UTF-8 is read and a value is clipped");
+}
+// ---- what was not read is never called absent ---------------------------------------------------------------------
+{
+  const seg = (marker, data) => [0xff, marker, ((data.length + 2) >> 8) & 255, (data.length + 2) & 255, ...data];
+  const XMP = seg(0xe1, [...[..."http://ns.adobe.com/xap/1.0/\0"].map((ch) => ch.charCodeAt(0)), 60, 120, 62, 32]), IPTC = seg(0xed, [80, 104, 111, 116, 111]);
+  // A file whose only metadata is in a block this tool does not parse.
+  for (const [what, r] of [["an XMP packet", readImageMeta(jpeg(null, { extra: [XMP] }))], ["an IPTC block", readImageMeta(jpeg(null, { extra: [IPTC] }))], ["a maker note", readImageMeta(jpeg(tiff({ exif: [[0x927c, 7, [1, 2, 3, 4, 5, 6]]] })))]]) {
+    ok(r.state === "unparsed" && r.notes.length === 1 && !r.problems.length, `a file with only ${what} has the state "unparsed", not "none"`);
+    ok(!/No metadata in this file/.test(shown(r)) && /Metadata this tool does not read/.test(shown(r)) && /not the same as a file with no metadata/.test(shown(r)) && /Also in the file/.test(shown(r)), `and the tool does not say "No metadata" above the card that names ${what}`);
+  }
+  ok(readImageMeta(jpeg(null)).position === "none" && /No metadata in this file/.test(shown(readImageMeta(jpeg(null)))), "a file with nothing in it is still called empty");
+  // The position, in four words: found, none, unknown, unparsed.
+  const full = readImageMeta(jpeg(FULL(true)));
+  ok(full.position === "found" && /Metadata found, with a position/.test(shown(full)), "a position that was read is found");
+  const plain = readImageMeta(jpeg(tiff({ ifd0: [[0x010f, 2, "Halvorsen Optics"]] })));
+  ok(plain.state === "ok" && plain.position === "none" && /The file carries no GPS position\./.test(shown(plain)), "an Exif block that was read whole and has no GPS block: no position");
+  const gone = readImageMeta(jpeg(tiff({ ifd0: [[0x010f, 2, "Halvorsen Optics"]], gps: GPS(), patch: (b, at, { w32 }) => { const a = []; w32(a, 0x00ffffff); b.set(a, at.ifd0 + 2 + 1 * 12 + 8); } })));
+  ok(gone.state === "ok" && gone.position === "unknown" && !/carries no GPS position/.test(shown(gone)) && /Whether the file carries a GPS position is unknown/.test(shown(gone)), "a GPS block that could not be read: the position is unknown, never absent");
+  const badPos = readImageMeta(jpeg(tiff({ ifd0: [[0x010f, 2, "Halvorsen Optics"]], gps: GPS([[98, 1], [0, 1], [0, 1]]) })));
+  ok(badPos.position === "unknown" && !/carries no GPS position/.test(shown(badPos)), "a position out of range is unknown too");
+  const withXmp = readImageMeta(jpeg(tiff({ ifd0: [[0x010f, 2, "Halvorsen Optics"]] }), { extra: [XMP] }));
+  ok(withXmp.state === "ok" && withXmp.position === "unparsed" && !/The file carries no GPS position/.test(shown(withXmp)) && /XMP packet, which this tool does not parse and which can hold one/.test(shown(withXmp)), "no position in the Exif block and an XMP packet beside it: the tool says which part it read");
+  const timeOnly = readImageMeta(jpeg(tiff({ gps: [[7, 5, [[12, 1], [33, 1], [20, 1]]], [0x1d, 2, "2024:05:01"]] })));
+  ok(timeOnly.state === "ok" && timeOnly.position === "none" && timeOnly.notes.some((x) => /only a time \(2024-05-01 12:33:20 UTC\)/.test(x)) && !/No metadata in this file/.test(shown(timeOnly)), "a GPS block with a time and no position is metadata, with no position");
+  // A walk that ends on its cap says so.
+  const many = (count) => { const pre = []; for (let i = 0; i < count; i++) pre.push(0xff, 0xe0, 0, 2); return Uint8Array.from([0xff, 0xd8, ...pre, ...jpeg(FULL(true)).slice(2)]); };
+  const under = readImageMeta(many(300)), over = readImageMeta(many(400));
+  ok(under.state === "ok" && under.gps && !under.problems.length, "a file with many blocks, under the cap, is read whole");
+  ok(over.state === "unreadable" && over.position === "unknown" && over.problems.some((p) => /more blocks than this tool walks/.test(p)) && !/No metadata in this file/.test(shown(over)) && /could not be read/.test(shown(over)), "a file with more blocks than the tool walks: could not be read fully, never 'no metadata'");
+  const pchunk = (type, data) => { const len = data.length; return [(len >>> 24) & 255, (len >> 16) & 255, (len >> 8) & 255, len & 255, ...[...type].map((c) => c.charCodeAt(0)), ...data, 0, 0, 0, 0]; };
+  const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], ihdr = pchunk("IHDR", [0, 0, 2, 128, 0, 0, 1, 224, 8, 2, 0, 0, 0]);
+  const junk = Uint8Array.from(pchunk("juNk", [])), tailPng = Uint8Array.from([...pchunk("eXIf", [...tiff({ ifd0: [[0x010f, 2, "Halvorsen Optics"]], gps: GPS() })]), ...pchunk("IEND", [])]);
+  const bigPng = new Uint8Array(sig.length + ihdr.length + junk.length * 200000 + tailPng.length);
+  bigPng.set([...sig, ...ihdr], 0); for (let i = 0; i < 200000; i++) bigPng.set(junk, sig.length + ihdr.length + i * junk.length); bigPng.set(tailPng, bigPng.length - tailPng.length);
+  const capped = readImageMeta(bigPng);
+  ok(capped.state === "unreadable" && capped.position === "unknown" && capped.problems.some((p) => /more chunks than this tool walks/.test(p)), "a PNG with more chunks than the tool walks: could not be read fully");
+  const s4 = (x) => [...x].map((c) => c.charCodeAt(0)), wj = Uint8Array.from([...s4("JUNK"), 0, 0, 0, 0]);
+  const bigWebp = new Uint8Array(12 + wj.length * 200000 + 8); bigWebp.set([...s4("RIFF"), 0, 0, 0, 0, ...s4("WEBP")], 0); for (let i = 0; i < 200000; i++) bigWebp.set(wj, 12 + i * wj.length); bigWebp.set([...s4("XMP "), 0, 0, 0, 0], bigWebp.length - 8);
+  ok(readImageMeta(bigWebp).problems.some((p) => /more chunks than this tool walks/.test(p)) && readImageMeta(bigWebp).state === "unreadable", "and so does a WebP");
+  // More text chunks than are kept: the rest is counted and said.
+  const text = (k, v) => pchunk("tEXt", [...k].map((c) => c.charCodeAt(0)).concat(0, [...v].map((c) => c.charCodeAt(0))));
+  const wordy = readImageMeta(Uint8Array.from([...sig, ...ihdr, ...Array.from({ length: 47 }, (_, i) => text(`Key${i}`, `value ${i}`)).flat(), ...pchunk("IEND", [])]));
+  ok(wordy.text.length === 40 && wordy.textMore === 7 && /and 7 more text chunks that are not shown/i.test(shown(wordy)), "text chunks past the 40 that are kept are counted and said");
+  ok(readImageMeta(Uint8Array.from([...sig, ...ihdr, ...text("Software", "Quillwriter 7.2"), ...pchunk("IEND", [])])).textMore === 0, "and nothing is said when all were kept");
+  // Seconds the file leaves unset do not cost the whole position, and the tool says how exact it is.
+  const coarse = readImageMeta(jpeg(tiff({ gps: GPS([[48, 1], [51, 1], [0, 0]], [[2, 1], [17, 1], [0, 0]]) })));
+  ok(coarse.gps && Math.abs(coarse.gps.lat - (48 + 51 / 60)) < 1e-9 && Math.abs(coarse.gps.lon - (2 + 17 / 60)) < 1e-9 && coarse.gps.coarse === true && /seconds of the position unset/.test(shown(coarse)) && /exact only to the minute/.test(shown(coarse)), "a position whose seconds are unset is read to the minute, and marked as that");
+  ok(!readImageMeta(jpeg(FULL(true))).gps.coarse && readImageMeta(jpeg(tiff({ gps: GPS([[48, 1], [0, 0], [30, 1]]) }))).gps === null && readImageMeta(jpeg(tiff({ gps: GPS([[48, 1], [51, 1], [7, 0]]) }))).gps === null, "unset minutes, or seconds with a number over zero, are still unreadable");
+  // 0, 0 is what a device writes with no fix.
+  const zero = readImageMeta(jpeg(tiff({ gps: GPS([[0, 1], [0, 1], [0, 1]], [[0, 1], [0, 1], [0, 1]]) })));
+  ok(zero.gps && zero.gps.lat === 0 && zero.gps.lon === 0 && zero.gps.placeholder === true && /Metadata found, with a position of 0, 0/.test(shown(zero)) && /probably a placeholder and not a place/.test(shown(zero)) && !/The file names where it was taken/.test(shown(zero)), "a position of 0, 0 is shown with a note that it is a common placeholder");
+  ok(!readImageMeta(jpeg(FULL(true))).gps.placeholder && !/placeholder/.test(shown(readImageMeta(jpeg(FULL(true))))), "and no other position carries that note");
 }
 // ---- the module keeps its promises -------------------------------------------------------------------------------
 {

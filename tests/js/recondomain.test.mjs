@@ -193,6 +193,42 @@ const DOCS = {
   ok(inv.ok && !("tracker_ids" in inv.entry.results) && !("doc_metadata" in inv.entry.results) && ip.ok && !("tracker_ids" in ip.entry.results), "the two keys belong to a Recon domain case and are dropped anywhere else");
   ok(parseCaseFile(file({ tracker_ids: "x", doc_metadata: 5 })).ok === false, "a file with nothing readable in it is refused as before");
 }
+// ---- an ID is compared by what it shows, and a page address is the case's own ----------------------------------
+{
+  // The comparison key comes from the value on the row, by the kind's rule. A stored "normalized" is not read.
+  const shown = (kind, value, normalized) => D.readTrackerIds(TRACK("harbor-lane.example", [id(kind, value, normalized, ["script_src"])])).ids[0];
+  ok(shown("google_analytics_4", "G-QX7L2M9KD4", "G-ZZ99ZZ99ZZ").key === "google_analytics_4:G-QX7L2M9KD4" && shown("google_analytics_4", "G-QX7L2M9KD4", "G-ZZ99ZZ99ZZ").normalized === "G-QX7L2M9KD4" && shown("google_analytics_4", "G-QX7L2M9KD4", "G-ZZ99ZZ99ZZ").search === '"G-QX7L2M9KD4"', "the key, the normalized ID and the search text all follow the value the row shows");
+  ok(shown("google_analytics_ua", "UA-48213907-3", "UA-11111111").key === "google_analytics_ua:UA-48213907" && shown("google_analytics_ua", "UA-48213907-3", "").search === '"UA-48213907-"' && shown("adsense", "ca-pub-4821730956127843", "pub-1").key === "adsense:pub-4821730956127843" && shown("bing_site_verification", "0a1b2c3d4e5f60718293a4b5c6d7e8f9", "x").key === "bing_site_verification:0A1B2C3D4E5F60718293A4B5C6D7E8F9" && shown("bing_site_verification", "0a1b2c3d4e5f60718293a4b5c6d7e8f9", "x").search === '"0a1b2c3d4e5f60718293a4b5c6d7e8f9"' && shown("matomo", "Stats.Quillmoor-Hosting.example/Matomo", "y").key === "matomo:stats.quillmoor-hosting.example/Matomo" && shown("hotjar", "1234567", "7654321").key === "hotjar:1234567", "each kind's rule is the server's: the account part of a Universal ID, the publisher part of an AdSense ID, a Bing token in capitals, a Matomo host in small letters, anything else as it is");
+  ok(same(D.readTrackerIds(A).ids.map((i) => i.key), A.ids.map((i) => i.key)) && same(D.readTrackerIds(B).ids.map((i) => i.key), B.ids.map((i) => i.key)), "a server answer reads to the same keys as before");
+  const mine = TRACK("harbor-lane.example", [id("google_analytics_4", "G-QX7L2M9KD4", "G-QX7L2M9KD4", ["script_src"])]);
+  const other = { id: "f1", type: "RECON", target: "far-quay.example", timestamp: Date.UTC(2026, 10, 3), imported: 1, results: { tracker_ids: TRACK("far-quay.example", [id("google_analytics_4", "G-AB12CD34EF", "G-QX7L2M9KD4", ["script_src"])]) } };
+  ok(same(D.sharedTrackers(mine, [other], "harbor-lane.example").byKey, {}) && D.sharedTrackers(mine, [other], "harbor-lane.example").compared === 1, "a saved case is not reported as sharing an ID it does not show");
+  // The page the IDs were read from is on the case's own domain, unless the answer says the home page redirected away.
+  const at = (url, extra = {}) => D.readTrackerIds(TRACK("harbor-lane.example", mine.ids, { url, ...extra }));
+  ok(at("https://www.harbor-lane.example/").url === "https://www.harbor-lane.example/" && at("https://harbor-lane.example/shop").final_host === "harbor-lane.example", "an address on the domain or a subdomain of it is kept");
+  ok(at("https://elsewhere.example/").url === "" && at("https://elsewhere.example/").final_host === "" && at("https://notharbor-lane.example/").url === "" && at("https://harbor-lane.example.elsewhere.example/").url === "" && !/elsewhere/.test(D.ownershipMarkdown({ tracker_ids: at("https://elsewhere.example/") }).join("\n")), "an address on another site is not shown as the page that was read");
+  ok(at("https://lot.sedge-parking.example/x", { off_site: true }).url === "https://lot.sedge-parking.example/x" && at("https://lot.sedge-parking.example/x", { off_site: true }).off_site === true, "unless the answer says the home page redirects to another site, which the page then says too");
+  ok(D.readTrackerIds({ ...at("https://www.harbor-lane.example/"), domain: "" }).url === "", "and with no domain to hold it to, no address is kept");
+}
+// ---- names are offered only from an answer the content check has read --------------------------------------------
+{
+  const MS = await import("../../static/v2/js/minorscan.js");
+  const { RULES } = await import("./rules.mjs");
+  const raw = { ...clone(DOCS), guard: { text: "Class newsletter\nI'm 15 and in 8th grade" } };
+  const plain = clone(DOCS);
+  MS.setRules(null);
+  ok(!MS.rulesReady(), "(the rules are not loaded for the next checks)");
+  const early = D.readDocMeta(raw), earlyPlain = D.readDocMeta(plain);
+  ok(early.names_unscanned === true && earlyPlain.names_unscanned === true && !("guard" in early) && !D.nameLead("Odalys Brandtmoor", earlyPlain), "an answer read before the content rules have loaded is marked as not scanned, and offers no name");
+  MS.setRules(RULES);
+  ok(MS.rulesReady() && D.readDocMeta(raw).names_held === true && !D.readDocMeta(raw).names_unscanned && !D.nameLead("Odalys Brandtmoor", D.readDocMeta(raw)), "the same answer read again once the rules are in is scanned, guard text included");
+  ok(!D.readDocMeta(plain).names_unscanned && D.nameLead("Odalys Brandtmoor", D.readDocMeta(plain)), "and a clean one offers its names");
+  // The copy that was made without the scan has lost the guard text, so it stays held however often it is read.
+  ok(D.readDocMeta(early).names_unscanned === true && D.readDocMeta(clone(early)).names_unscanned === true && !D.nameLead("Odalys Brandtmoor", D.readDocMeta(clone(early))) && !D.nameLead("Odalys Brandtmoor", early), "a copy read without the scan never offers a name, also after it was stored and read again");
+  const rows = D.ownershipItems({ doc_metadata: D.readDocMeta(clone(earlyPlain)) }, "tidepool.example"), body = D.docBody(D.readDocMeta(clone(earlyPlain)));
+  ok(rows.some((r) => /^Name in a document/.test(r.what)) && rows.every((r) => !r.action) && !/Open a name case/.test(body) && /their text was not checked\. Use Read again\./.test(body) && /not checked/.test(D.DOC_UNSCANNED), "its rows carry no button to open a name case, and the card says why and what to do");
+  ok(D.readDocMeta({ ...clone(DOCS), names_unscanned: "yes" }).names_unscanned === undefined && D.readDocMeta({ ...clone(DOCS), names_unscanned: true }).names_unscanned === true, "only the literal mark holds the names, and it can only hold them");
+}
 // ---- the page keeps its promises ------------------------------------------------------------------------------------------
 {
   const src = (f) => fs.readFileSync(new URL(`../../static/v2/js/${f}`, import.meta.url), "utf8");

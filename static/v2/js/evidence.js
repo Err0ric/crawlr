@@ -214,7 +214,59 @@ export function profileTexts(collected) {
 // Stage 2 of the minor guard, for a case whose ordinary sources are in:
 // { blocked, kind, signal: { strength, kind, source, snippet, url } | null, signals, soft, soft_years, read }.
 // today is a parameter so the tests can pin it.
-export const contentCheck = (collected, target, type = "username", today = new Date()) => scanProfiles(type === "username" ? profileTexts(collected) : [], handleOf(target), today);
+// also: further readings of the same handle, each shaped like `collected` (makeGuardMemory below):
+// their text is scanned with the case's. Reading a text twice changes nothing: a signal counts once.
+export const contentCheck = (collected, target, type = "username", today = new Date(), also = []) => scanProfiles(type === "username" ? [collected, ...(Array.isArray(also) ? also : [])].flatMap((c) => profileTexts(c)) : [], handleOf(target), today);
+
+// ---- what the content check has read for a handle, in memory ----------------------------------------
+// The check must never read less than the case holds, and a case gains text after its run: a
+// Deep Dive reads profile pages, and the lookups made on a click return author names and
+// archived text. The case itself keeps only a checked, bounded copy of those (and only the last
+// comparison of a row), so this holder keeps each answer as it came:
+//   ran({ ran, target, collected, switched })   a finished run's answers as they came, guard-only
+//                                               text included, and the Sources switches. One run.
+//   held(ran, target)                           is that run the one held?
+//   take(ran, target)                           hands it out once, for the one pass added to a case
+//   drop()                                      the case was left: the run is forgotten
+//   keep([handle], kind, key, answer)           an answer read on a click, under every handle it is
+//                                               about. kind: "commitEmails", "archiveDiffs" (keyed,
+//                                               one entry per row or per pair) or "profileScrape".
+//                                               Kept for the session, across runs of the handle.
+//   also(handle, now)                           what adultPassPlan takes as `also`: everything
+//                                               kept for the handle, then the case as it stands
+// A variable of the page and nothing else: never stored, exported, sent or written to a case
+// file, and gone on reload. Bounded: past the bound the oldest answer (or the handle longest
+// untouched) goes, and with it the held run of that handle, so the pass cannot be added on the
+// strength of a memory that had to forget. The case has to run again, and the server, which
+// keeps its own record of the same text, is asked as always.
+const GUARD_KINDS = { commitEmails: true, archiveDiffs: true, profileScrape: false };   // true: keyed by row
+export function makeGuardMemory({ handles = 50, answers = 200 } = {}) {
+  const later = new Map();
+  let run = null;
+  const keyOf = (t) => handleOf(t).toLowerCase();
+  const forget = (k) => { if (run && keyOf(run.target) === k) run = null; };
+  const held = (ran, target) => !!run && run.ran === ran && run.target === target;
+  return {
+    ran({ ran, target, collected, switched } = {}) { run = { ran, target, c: { ...(collected && typeof collected === "object" ? collected : {}) }, switched: { ...(switched && typeof switched === "object" ? switched : {}) } }; },
+    held,
+    take(ran, target) { const out = held(ran, target) ? run : null; run = null; return out; },
+    drop() { run = null; },
+    keep(targets, kind, key, answer) {
+      const keys = [...new Set((Array.isArray(targets) ? targets : []).map(keyOf).filter(Boolean))];
+      if (!keys.length || !Object.hasOwn(GUARD_KINDS, kind) || !answer || typeof answer !== "object" || Array.isArray(answer)) return false;
+      const reading = GUARD_KINDS[kind] ? { [kind]: { [String(key)]: answer } } : { [kind]: answer };
+      for (const k of keys) {
+        const list = later.get(k) || [];
+        list.push(reading);
+        if (list.length > answers) { list.shift(); forget(k); }
+        later.delete(k); later.set(k, list);
+        while (later.size > handles) { const old = later.keys().next().value; later.delete(old); forget(old); }
+      }
+      return true;
+    },
+    also: (target, now = null) => [...(later.get(keyOf(target)) || []), ...(now && typeof now === "object" ? [now] : [])],
+  };
+}
 
 // ---- a username run: what is asked, and when ----------------------------------------------------
 // investigate.js builds its requests with these three functions and does what they say, so the
@@ -226,17 +278,21 @@ export const ordinaryRequests = (handle, { sherlock = true, maigret = true } = {
 ];
 // The adult pass, decided once everything that returns profile text has answered.
 //   planned    the mode applies to this case (the last entry of sourcePlan is "adult")
+//   collected  the run's answers as they came: whether the profiles could be read is decided on these
+//   also       everything else the check must read (makeGuardMemory's also()): what was read for
+//              this handle on a click, and for a pass added to a finished case the case as it
+//              stands. A sign of a minor anywhere in it blocks.
 //   switched   { sherlock, maigret, platformCheck }: the Sources panel's switches
 // state: "none" (not planned), "cancelled", "unread" (no source that reads profiles answered:
 // unknown is not clean), "blocked" (the profile check found a sign of a minor) or "clean".
 // Only "clean" has requests. block is what the case records; log is the run log row.
-export function adultPassPlan({ planned, cancelled = false, collected, target, type = "username", switched = {}, today = new Date() } = {}) {
+export function adultPassPlan({ planned, cancelled = false, collected, also = [], target, type = "username", switched = {}, today = new Date() } = {}) {
   const none = { state: "none", requests: [], log: "", notice: "", block: null, scan: null, silent: [] };
   if (planned !== true || type !== "username") return none;
   if (cancelled) return { ...none, state: "cancelled", log: ADULT_LOG.cancelled, notice: CANCELLED_TEXT };
   const ready = readiness(collected, switched);
   if (!ready.ok) { const block = readBlock({ kind: "unread", via: ready.via }); return { ...none, state: "unread", log: ADULT_LOG.blocked(block), notice: blockText(block), block }; }
-  const scan = contentCheck(collected, target, type, today);
+  const scan = contentCheck(collected, target, type, today, also);
   if (scan.blocked) { const block = blockFromScan(scan); return { ...none, state: "blocked", log: ADULT_LOG.blocked(block), notice: blockText(block), block, scan }; }
   return { ...none, state: "clean", scan, silent: ready.silent, log: ADULT_LOG.clean(scan.read, ready.silent), requests: adultRequests(handleOf(target), scan, { sherlock: switched.sherlock !== false, maigret: switched.maigret !== false }) };
 }

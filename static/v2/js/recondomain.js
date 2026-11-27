@@ -21,7 +21,9 @@ const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const lc = (s) => String(s ?? "").trim().toLowerCase().replace(/\.$/, "");
 const line = (v, n) => (typeof v === "string" || typeof v === "number" ? Array.from(cleanText(v).replace(/\s+/g, " ").trim()).slice(0, n).join("") : "");
 const count = (v, max = 100000) => (Number.isFinite(v) && v >= 0 ? Math.min(Math.floor(v), max) : 0);
-const memo = (fn) => { const seen = new WeakMap(); return (v) => { if (!isObj(v)) return null; if (!seen.has(v)) { const out = fn(v); seen.set(v, out); if (isObj(out)) seen.set(out, out); } return seen.get(v); }; };
+// A reading is remembered per object. `settled()` false: this reading could come out differently
+// later (the content rules are not loaded yet), so it is made and not remembered.
+const memo = (fn, settled = () => true) => { const seen = new WeakMap(); return (v) => { if (!isObj(v)) return null; if (seen.has(v)) return seen.get(v); const out = fn(v); if (settled()) { seen.set(v, out); if (isObj(out)) seen.set(out, out); } return out; }; };
 const errorOf = (v, fallback) => ({ error: line(v.error, 300) || fallback, error_code: line(v.error_code, 40) || "request_failed", error_detail: line(v.error_detail, 300) });
 const domainOf = (v) => { const d = lc(typeof v === "string" ? v : ""); return isDomain(d) ? d : ""; };
 const dayOf = (ts) => (Number.isFinite(ts) && ts > 0 ? new Date(ts).toISOString().slice(0, 10) : "");
@@ -62,11 +64,26 @@ const MAX_IDS = 60;
 const seenText = (row) => (row.seen_in.length ? `Seen in ${row.seen_in.map((w) => SEEN_IN[w]).join(" and ")}.` : "");
 const safeHttp = (u, max = 600) => { const s = typeof u === "string" ? u.trim() : ""; const x = s && s.length <= max ? parseUrl(s) : null; return x && !x.username && !x.password ? s : ""; };
 
+// The form two IDs are compared in, worked out from the value the row shows by the kind's rule
+// (the same rules as modules/tracker_ids.py). A stored `normalized` is never read: a case in
+// History or a case file could carry one that does not belong to the value it shows, and the
+// comparison would then report a share the rows do not bear out.
+//   Universal Analytics   UA-48213907-3 -> UA-48213907 (the account)
+//   AdSense               ca-pub-... -> pub-...
+//   Bing verification     the token in capitals
+//   Matomo                the host in small letters, the path as it is
+function normalizeId(kind, value) {
+  if (kind === "google_analytics_ua") return (/^(UA-\d+)-\d+$/.exec(value) || [])[1] || value;
+  if (kind === "adsense") return (/^ca-(pub-\d+)$/.exec(value) || [])[1] || value;
+  if (kind === "bing_site_verification") return value.toUpperCase();
+  if (kind === "matomo") { const cut = value.indexOf("/"); return cut < 0 ? value.toLowerCase() : value.slice(0, cut).toLowerCase() + value.slice(cut); }
+  return value;
+}
 function readId(v) {
   if (!isObj(v) || !Object.hasOwn(TRACKER_KINDS, v.kind)) return null;
   const value = line(v.value, 120).replace(/["<>]/g, "");
   if (!value) return null;
-  const normalized = line(v.normalized, 120).replace(/["<>]/g, "") || value;
+  const normalized = normalizeId(v.kind, value);
   const [label, scope, meaning] = TRACKER_KINDS[v.kind];
   const search = v.kind === "google_analytics_ua" ? `"${normalized}-"` : v.kind === "bing_site_verification" ? `"${value}"` : `"${normalized}"`;
   const out = { kind: v.kind, label, value, normalized, key: `${v.kind}:${normalized}`, scope, seen_in: (Array.isArray(v.seen_in) ? v.seen_in : []).filter((w, i, a) => Object.hasOwn(SEEN_IN, w) && a.indexOf(w) === i), search, meaning };
@@ -80,9 +97,13 @@ export const readTrackerIds = memo((v) => {
   if (!state) return null;
   const out = { domain: domainOf(v.domain), state, requests_target: true, url: "", final_host: "", off_site: false, ids: [], count: 0, truncated: false, findings: [], note: "", cached: v.cached === true };
   if (state === "blocked" || state === "failed") return { ...out, ...errorOf(v, state === "blocked" ? "The site refused the request, so its page could not be read." : "The home page could not be read.") };
-  out.url = safeHttp(v.url);
-  out.final_host = out.url ? hostOf(out.url) : "";
   out.off_site = v.off_site === true;
+  // The page that was read is on the case's own domain (or a subdomain of it). Any other address
+  // is kept only when the answer says the home page redirected to another site, which the page
+  // then says too (offSiteText); otherwise it is dropped and not shown as this case's page.
+  const url = safeHttp(v.url), host = url ? lc(parseUrl(url).hostname) : "";
+  out.url = url && (out.off_site || (!!out.domain && (host === out.domain || host.endsWith(`.${out.domain}`)))) ? url : "";
+  out.final_host = out.url ? hostOf(out.url) : "";
   out.truncated = v.truncated === true;
   const seen = new Set();
   for (const r of Array.isArray(v.ids) ? v.ids.slice(0, MAX_IDS * 2) : []) { const id = readId(r); if (id && !seen.has(`${id.kind}:${id.value}`) && out.ids.length < MAX_IDS) { seen.add(`${id.kind}:${id.value}`); out.ids.push(id); } }
@@ -144,6 +165,7 @@ export const DOC_NO_LISTING = "The Internet Archive lists no PDF or Office docum
 export const DOC_REFUSED = "CrawlR does not read documents from adult or dating sites.";
 export const DOC_HELD = "Names from these files are not offered as new cases: text in a file suggests a minor.";
 export const DOC_NO_RULES = "Names are not offered as new cases until the page's content rules have loaded. Reload the page.";
+export const DOC_UNSCANNED = "Names are not offered as new cases: these files were read before the page's content rules had loaded, so their text was not checked. Use Read again.";
 const DOC_SOURCE_NAME = "Internet Archive CDX index";
 const MAX_DOCS = 12;
 const DATE = /^\d{4}(?:-\d{2}(?:-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:?\d{2})?)?)?)?$/;
@@ -255,12 +277,18 @@ export const readDocMeta = memo((v) => {
   out.summary = summarize(docs);
   out.findings = docFindings(docs, out.summary);
   // Guard-only text is read once, for this, and dropped: it is never stored, exported or sent on.
-  if (v.names_held === true || suggestsMinor(docs, isObj(v.guard) && typeof v.guard.text === "string" ? v.guard.text : "")) out.names_held = true;
+  // So the check can only be made now. A reading made while the rules are not loaded is marked
+  // (names_unscanned) and the mark stays with every copy of it: the guard text it was given is
+  // gone, so a later scan of that copy would read less. Like names_held it can only hold names
+  // back, and only the lookup made again ("Read again") gives an answer without it.
+  const scanned = rulesReady();
+  if (v.names_held === true || (scanned && suggestsMinor(docs, isObj(v.guard) && typeof v.guard.text === "string" ? v.guard.text : ""))) out.names_held = true;
+  if (v.names_unscanned === true || !scanned) out.names_unscanned = true;
   // No document was read and they are not all empty: the source did not answer. It is unknown,
   // never "none", so it carries error fields and counts as a source that failed.
   if (out.state !== "ok" && out.state !== "none") Object.assign(out, { error: `No document could be read: ${countsText(out.counts)}.`, error_code: out.state, error_detail: "" });
   return out;
-});
+}, rulesReady);
 
 export const OWNERSHIP_READERS = { [TRACKER_KEY]: readTrackerIds, [DOC_KEY]: readDocMeta };
 // A case's collected results with the two ownership answers read (bounded, guard text removed).
@@ -275,9 +303,9 @@ export function readOwnership(collected) {
 // returns one, so a home page that could not be read never makes the Flags tile say "at least".
 export const withoutOwnership = (collected) => { const out = { ...(isObj(collected) ? collected : {}) }; for (const k of OWNERSHIP_KEYS) delete out[k]; return out; };
 
-// May this name open a name case? Two words or more, as a name case needs, and never when the
-// files' text suggests a minor.
-export const nameLead = (name, d) => !d?.names_held && rulesReady() && looksLikeName(name) && name.length <= 80;
+// May this name open a name case? Two words or more, as a name case needs, never when the
+// files' text suggests a minor, and never from a reading the content check did not scan.
+export const nameLead = (name, d) => !!d && !d.names_held && !d.names_unscanned && rulesReady() && looksLikeName(name) && name.length <= 80;
 
 // ---- ledger rows ---------------------------------------------------------------------------------------------
 // Rows for the "Ownership leads" group. Never a flag. `shared` is sharedTrackers()'s answer.
@@ -382,7 +410,7 @@ export function docBody(v) {
   const companies = d.summary.companies.length ? h`<h4 class="own-h">Companies in the files</h4><ul class="own-names">${raw(d.summary.companies.map((c) => h`<li><span class="own-name">${c.name}</span><span class="dim">in ${plural(c.documents, "file")}</span><span class="src-how">self-declared</span></li>`).join(""))}</ul>` : "";
   const software = d.summary.software.length ? h`<h4 class="own-h">Software</h4><ul class="own-names">${raw(d.summary.software.map((s) => h`<li><span class="own-name">${s.name}</span><span class="dim">${s.roles.map((r) => SOFTWARE_ROLES[r]).filter(Boolean).join(", ")} · ${plural(s.documents, "file")}</span></li>`).join(""))}</ul>` : "";
   const caveat = d.summary.note ? h`<p class="own-note">${DOC_NAMES_NOTE} A name here is a lead for a name case, one click at a time. It is not an employee list.</p>` : "";
-  const held = d.summary.authors.length && (d.names_held || !rulesReady()) ? h`<p class="own-note">${d.names_held ? DOC_HELD : DOC_NO_RULES}</p>` : "";
+  const held = d.summary.authors.length && (d.names_held || d.names_unscanned || !rulesReady()) ? h`<p class="own-note">${d.names_held ? DOC_HELD : !rulesReady() ? DOC_NO_RULES : DOC_UNSCANNED}</p>` : "";
   const docs = d.documents.map((x) => {
     const bad = x.state === "failed", unknown = x.state !== "ok" && x.state !== "none";
     const fields = [["Title", x.title], ["Name in file (author)", x.author], ["Name in file (last modified by)", x.last_modified_by], ["Company", x.company], ["Made with", x.creator_software], ["PDF written by", x.producer], ["Created", x.created], ["Modified", x.modified]].filter(([, val]) => val);

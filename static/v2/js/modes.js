@@ -22,7 +22,7 @@
 //     it gets its own check of its own profiles.
 //   - Without the rules file (data/minor-rules.json) the adult mode cannot be switched on.
 //   - What a run does about the modes is decided here, by startAdult(), portscanFor() and
-//     deepDiveFor(). The workbenches call them once when a run starts and keep the answer, so a
+//     deepDiveFor(), and whether the adult pass may be added to a finished case by mayAddAdult(). The workbenches call them once when a run starts and keep the answer, so a
 //     switch moved mid-run applies from the next run.
 import { h, raw } from "./core.js";
 import { minorGuard, guardText, handleOf, blockClause, readBlock, RULES_UNAVAILABLE } from "./adult.js";
@@ -235,6 +235,18 @@ export function startAdult({ on, type, target, from = null, suspended = null } =
     else if (d.minor.kind === "pivot") suspended.tie(caseHandle(type, target), d.minor.origin, d.minor.via);
   }
   return d;
+}
+// May the adult pass be added to the case on screen (investigate.js: canAddAdult, addAdult)? Only
+// to a live username case whose run finished without one: the mode is on now, the run's answers
+// are still held in memory (`held`), nothing is in flight (`running`: a run or the pass itself;
+// `busy`: a lookup made on a click, a Deep Dive or an AI request, whose answer could still add
+// text the content check must read), the run was not cancelled, and nothing blocked or suspended
+// the case. Every condition is read strictly, so a missing value refuses. A yes here is not a
+// clean check: both stages of the minor guard run again when the pass is added.
+export function mayAddAdult({ on, held, running, busy, live, cancelled, type, target, adultMode, adultBlocked, minor, blocked, suspended = null } = {}) {
+  return on === true && held === true && running === false && busy === false && live === true && cancelled === false
+    && type === "username" && adultMode === false && !adultBlocked && !minor && blocked === false
+    && adultFor({ on: true, type, target, suspended }).adult === true;
 }
 // The run's content check stopped the case: the handle is suspended for the rest of the session,
 // with what was found. Returns what the case keeps as state.minor.
