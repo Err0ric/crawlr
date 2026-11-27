@@ -3,7 +3,7 @@ import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Header, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from core.ai_call import run_ai
 from core.ai_text import parse_json_object, summary_and_report
@@ -94,10 +94,55 @@ _NAME_QUALIFIERS = ("location", "employer", "keyword")
 _NAME_DIRECTORIES = ("Wikidata", "GitHub", "ORCID", "OpenAlex", "Bluesky")
 
 
+# Direction overrides and the byte order mark: the set modules.profiles.base.clean drops.
+_BIDI = frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff")
+_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def _without_surrogates(value):
+    """`value` (parsed JSON) with every unpaired surrogate taken out of every string, keys
+    included. JSON can spell one ("\\ud800"); it is not a character, and text that holds one
+    cannot be written out as UTF-8, so it never gets past the request."""
+    def fix(text: str) -> str:
+        return _SURROGATE.sub("", text) if _SURROGATE.search(text) else text
+
+    if isinstance(value, str):
+        return fix(value)
+    if not isinstance(value, (dict, list)):
+        return value
+    # Walked with a list of work, not by recursion: the depth of the body is the sender's choice.
+    root = [value]
+    todo = [(root, 0, value)]
+    while todo:
+        holder, key, node = todo.pop()
+        if isinstance(node, dict):
+            node = {(fix(k) if isinstance(k, str) else k): v for k, v in node.items()}
+            todo += [(node, k, v) for k, v in node.items() if isinstance(v, (dict, list, str))]
+        elif isinstance(node, list):
+            node = list(node)
+            todo += [(node, n, v) for n, v in enumerate(node) if isinstance(v, (dict, list, str))]
+        else:
+            node = fix(node)
+        holder[key] = node
+    return root[0]
+
+
+class _TextIn(BaseModel):
+    """A request body whose text is written into a prompt or sent back: no string in it
+    holds an unpaired surrogate by the time a field is read."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _plain_text(cls, data):
+        return _without_surrogates(data)
+
+
 def _cell(value, cap: int) -> str:
     """One field of a row, as inert text: a single line, no row delimiter, capped. A bio is
-    written by whoever owns the profile, so it must not be able to add a field or a new line."""
-    s = "".join(" " if (ch in "\r\n\t\u2028\u2029" or ord(ch) < 32 or ord(ch) == 127) else ch for ch in str(value or ""))
+    written by whoever owns the profile, so it must not be able to add a field or a new line,
+    and it carries no unpaired surrogate and no direction override into the prompt."""
+    s = "".join(" " if (ch in "\r\n\t\u2028\u2029" or ord(ch) < 32 or ord(ch) == 127) else ch
+                for ch in str(value or "") if not (0xD800 <= ord(ch) <= 0xDFFF) and ch not in _BIDI)
     s = s.replace("|", "/").replace("`", "'")
     return " ".join(s.split())[:cap].strip()
 
@@ -796,7 +841,7 @@ class AccountEvidence(BaseModel):
     handle: str = Field(default="", max_length=64)
 
 
-class AnalyzeRequest(BaseModel):
+class AnalyzeRequest(_TextIn):
     target: str = Field(max_length=320)
     # "username", "email", "hash", "phone" or "name". Only changes the wording of the question.
     target_type: str = Field(default="", max_length=20)
@@ -1100,7 +1145,7 @@ async def investigation_prompt_only(req: AnalyzeRequest):
     return {"prompt": investigation_prompt(req)}
 
 
-class ParseRequest(BaseModel):
+class ParseRequest(_TextIn):
     text: str = Field(max_length=120_000)
 
 
@@ -1324,7 +1369,7 @@ DEEP_DIVE_PROMPT = (
 )
 
 
-class EmailHeaderAnalyzeRequest(BaseModel):
+class EmailHeaderAnalyzeRequest(_TextIn):
     header_analysis: dict
 
 
@@ -1442,7 +1487,7 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, request: Requ
     }
 
 
-class DeepAnalysisRequest(BaseModel):
+class DeepAnalysisRequest(_TextIn):
     target: str = Field(max_length=320)
     dns: Optional[dict] = None
     whois: Optional[dict] = None
@@ -1586,7 +1631,7 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
     }
 
 
-class CorrelateRequest(BaseModel):
+class CorrelateRequest(_TextIn):
     targets: dict  # { "target_name": { sherlock: ..., github: ..., ... }, ... }
 
 

@@ -162,5 +162,9 @@ async def safe_fetch(
         location = resp.headers.get("location", "")
         if not (follow_redirects and resp.is_redirect and location):
             return Fetched(response=resp, url=current, hops=hops)
+        # This hop's body is not wanted. The client leaves a response pointing at a stream
+        # wrapper that points back at it; cut that, so the body is freed now and not whenever
+        # the cycle collector next runs.
+        resp.stream = httpx.ByteStream(b"")
         current = urljoin(current, location)
     raise httpx.TooManyRedirects(f"more than {max_redirects} redirects", request=resp.request)

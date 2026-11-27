@@ -281,6 +281,46 @@ def test_scrape_profiles_endpoint_refuses_adult_sites(c, monkeypatch):
     assert [x["error_code"] for x in body["results"]] == ["adult_site", "adult_site"]
 
 
+def test_scrape_profiles_puts_what_it_read_on_the_visitors_guard_record(c, monkeypatch):
+    """The names and bios a Deep Dive reads are profile text like any other: with a handle on the
+    request they go on that visitor's record, as text to scan, so the adult pass is refused for
+    a handle whose scraped profile suggests a minor."""
+    profile_record.clear()
+    page = '<html><head><title>River</title><meta property="og:title" content="River S"><meta property="og:description" content="hi, i am 15 years old"></head><body></body></html>'
+
+    def respond(request):
+        if request.url.path.startswith("/broken/"):
+            return httpx.Response(500, text="no")
+        return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+    monkeypatch.setattr(ps.httpx, "AsyncClient", lambda *a, **k: REAL_ASYNC_CLIENT(transport=httpx.MockTransport(respond)))
+    urls = [{"site": "ExampleBlog", "url": "https://blog.example.org/river_stone"}, {"site": "Broken", "url": "https://blog.example.org/broken/river_stone"}]
+    r = c.post("/api/recon/scrape-profiles", json={"urls": urls, "username": "@river_stone"})
+    body = r.json()
+    assert r.status_code == 200 and body["scraped"] == 1 and set(body) == {"total", "scraped", "results"}
+    read = body["results"][0]
+    assert read["bio"] == "hi, i am 15 years old" and read["display_name"]
+    profile_record.bind(c.cookies.get("crawlr_run"))
+    texts = profile_record.texts("river_stone")
+    assert len(texts) == 1 and texts[0]["source"] == "ExampleBlog" and texts[0]["url"] == urls[0]["url"]
+    assert texts[0]["name"] == read["display_name"] and texts[0]["bio"] == read["bio"]
+    assert set(profile_record.outcomes("river_stone")) == {"profiles"}      # text to scan only: no profile reader is on record for it
+    # With a profile reader on record too, the gate reads the scraped text and refuses.
+    profile_record.note("river_stone", "maigret", {"results": []})
+    refused = adult_guard.gate("river_stone")
+    assert refused is not None and refused[0] == 400 and refused[1]["error_code"] == "minor_guard"
+    profile_record.bind("")
+    assert profile_record.texts("river_stone") == []        # another visitor has no such record
+
+    # Without a handle nothing is recorded (the request is as before), and a handle that is not
+    # one is refused before any page is fetched.
+    profile_record.clear()
+    assert c.post("/api/recon/scrape-profiles", json={"urls": urls}).status_code == 200
+    profile_record.bind(c.cookies.get("crawlr_run"))
+    assert profile_record.texts("river_stone") == []
+    assert c.post("/api/recon/scrape-profiles", json={"urls": urls, "username": "not a handle"}).status_code == 400
+    profile_record.clear()
+
+
 # ---- a link found on a GitHub profile -----------------------------------------------------------
 
 def test_no_ordinary_server_path_has_a_fixed_adult_host_and_github_only_talks_to_github():

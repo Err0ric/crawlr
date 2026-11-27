@@ -28,9 +28,15 @@ What the archive answers (checked live on 2026-11-27 with a public figure's prof
   * 429: the archive's rate limit.
 
 Reading a capture: the body is read as a stream up to MAX_BODY (2 MB) and the rest is dropped;
-`truncated` says so. Only an HTML or plain text body is read. The bytes become text through
-core.charset (a short list of real charsets, UTF-8 for any other label) and the page is parsed
-in a thread, so a large capture never holds up other requests. Text is pulled out with the
+`truncated` says so. Each capture, redirects included, is given DEADLINE seconds. Only an HTML
+or plain text body is read. The bytes become text through core.charset (a short list of real
+charsets, UTF-8 for any other label) and the page is parsed on the parse pool
+(core.parsepool): one parse at a time for the whole server, each within a CPU budget, so a
+large or awkward capture never holds up other requests. A page that is not read to its end
+within that budget is `truncated` too. When the pool is full the answer is `failed` with the
+code `busy`, and that answer is not kept. A body that is not text in the charset it was read
+in (UTF-16 without a byte order mark, a binary file) is `failed`, never an empty page. Text is
+pulled out with the
 standard library's html.parser: script, style, noscript, template, svg and head content is
 left out, block elements end a line, and every line is cleaned to plain text (no control
 characters, no direction overrides) and clipped to LINE_MAX characters. Links are the `href`
@@ -68,7 +74,7 @@ from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 import httpx
 
-from core import charset, inflight, pinned
+from core import charset, inflight, parsepool, pinned
 from core.errors import classify, error_fields
 from core.logging import get_logger
 from core.netguard import BlockedTarget
@@ -79,7 +85,9 @@ log = get_logger(__name__)
 
 HOST = "web.archive.org"
 RAW_BASE = f"https://{HOST}/web/"
-TIMEOUT = 20                  # seconds; the archive is slow to open an old capture
+TIMEOUT = 20                  # seconds per connect or read; the archive is slow to open an old capture
+DEADLINE = 30                 # seconds for one capture as a whole, redirects included
+FEED = 32_768                 # characters handed to the parser between two looks at the CPU budget
 MAX_BODY = 2_000_000          # bytes read from one capture, after decoding
 MAX_HOPS = 2
 LINE_MAX = 300                # characters kept of one line of text
@@ -89,6 +97,8 @@ MAX_LINES_OUT = 120           # lines returned per side
 MAX_LINKS_OUT = 60
 MAX_TITLE = 200
 MAX_HIDDEN_DEPTH = 64         # nested hidden elements remembered by name; deeper ones are only counted
+ROW_CLIP = 16 * LINE_MAX      # characters of one line that are looked at; a real line of text is far shorter
+PIECES = 4096                 # pieces of text held one by one before they are joined into one string
 
 CACHE_TTL = int(os.getenv("ARCHIVE_DIFF_CACHE_TTL", str(24 * 3600)))    # ok, same, none: a capture does not change
 CACHE_TTL_SOFT = 600                                                     # rate_limited, failed
@@ -176,9 +186,11 @@ class _Page(HTMLParser):
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.parts: list[str] = []
+        self.parts: list[str] = []        # the newest pieces of text; older ones are joined in `_joined`
+        self._joined: list[str] = []
         self.links: list[str] = []
         self.title: list[str] = []
+        self._title_len = 0
         self._hidden: list[str] = []      # open hidden elements, MAX_HIDDEN_DEPTH at most
         self._deeper = 0                  # hidden elements opened past that depth: counted, not named
         self._in_title = False
@@ -201,6 +213,17 @@ class _Page(HTMLParser):
             if isinstance(href, str) and href.strip():
                 self.links.append(href.strip())
 
+    def text(self) -> str:
+        """All the text collected so far, as one string."""
+        self._pack()
+        return "".join(self._joined)
+
+    def _pack(self) -> None:
+        # A page can be made of millions of tiny pieces; held one by one they would cost many
+        # times the page. They are joined as they come.
+        self._joined.append("".join(self.parts))
+        self.parts = []
+
     def handle_startendtag(self, tag, attrs):
         if tag not in self._HIDDEN:       # <script/> opens nothing
             self.handle_starttag(tag, attrs)
@@ -219,9 +242,13 @@ class _Page(HTMLParser):
 
     def handle_data(self, data):
         if self._in_title:
-            self.title.append(data)
+            if self._title_len < ROW_CLIP:
+                self.title.append(data[:ROW_CLIP])
+                self._title_len += len(data)
         elif not self._hidden:
             self.parts.append(data)
+            if len(self.parts) >= PIECES:
+                self._pack()
 
 
 def _link(href: str, page_url: str) -> str:
@@ -240,10 +267,32 @@ def _link(href: str, page_url: str) -> str:
     return base.safe_link(absolute)
 
 
-def extract(body: bytes, content_type: str, page_url: str) -> dict:
+class NotText(ValueError):
+    """The capture's bytes are not text in the charset they were read in."""
+
+
+def _rows(raw: str):
+    """The lines of `raw`, one at a time, each clipped to ROW_CLIP characters: the text is
+    never split into a list of lines, and a line is never taken apart whole."""
+    at = 0
+    while True:
+        end = raw.find("\n", at)
+        if end < 0:
+            yield raw[at:at + ROW_CLIP]
+            return
+        yield raw[at:min(end, at + ROW_CLIP)]
+        at = end + 1
+
+
+def extract(body: bytes, content_type: str, page_url: str, budget: parsepool.Budget | None = None) -> dict:
     """{title, lines, links} from one capture's bytes. Pure. Lines and links are unique and in
-    page order. The page's own charset label never picks the codec: core.charset does."""
+    page order. The page's own charset label never picks the codec: core.charset does.
+    The work stops when `budget` (CPU time of this thread) is spent, with what was read up to
+    there; `budget.cut` then says so. Raises NotText for a body that is not text."""
+    budget = budget or parsepool.Budget()
     text = charset.decode(body, content_type)
+    if charset.not_text(text):
+        raise NotText()
     kind = (content_type or "").split(";")[0].strip().lower()
     title, hrefs = "", []
     if kind == "text/plain":
@@ -251,14 +300,21 @@ def extract(body: bytes, content_type: str, page_url: str) -> dict:
     else:
         parser = _Page()
         try:
-            parser.feed(text)
-            parser.close()
+            # In pieces, so the budget is looked at however the markup is written.
+            for at in range(0, len(text), FEED):
+                if budget.over(parsepool.READ_SHARE):
+                    break
+                parser.feed(text[at:at + FEED])
+            if not budget.cut:
+                parser.close()
         except Exception:  # noqa: BLE001  (a broken page is read as far as it goes)
             pass
-        raw, hrefs = "".join(parser.parts), parser.links
-        title = base.clean("".join(parser.title), MAX_TITLE)
+        raw, hrefs = parser.text(), parser.links
+        title = base.clean("".join(parser.title)[:ROW_CLIP], MAX_TITLE)
     lines, seen = [], set()
-    for row in raw.split("\n"):
+    for n, row in enumerate(_rows(raw)):
+        if n % 512 == 0 and budget.over():
+            break
         line = base.clean(row, LINE_MAX)
         if line and line not in seen:
             seen.add(line)
@@ -349,37 +405,41 @@ def _capture(state: str, asked: str, **more) -> dict:
 async def _fetch(client: httpx.AsyncClient, url: str, asked: str) -> dict:
     """One capture: {state, asked, timestamp, ...}. `state` is ok, none, rate_limited or
     failed; an ok capture carries `body`, `content_type` and `truncated`."""
-    current = asked
     try:
-        for _ in range(MAX_HOPS + 1):
-            if not _unchanged_on_the_wire(current, url):
-                raise BlockedTarget("the request would not be for this capture")
-            got = await pinned.get(client, raw_url(current, url), max_bytes=MAX_BODY,
-                                   headers={"Accept": "text/html,application/xhtml+xml,text/plain;q=0.8"})
-            if got.status in (301, 302, 303, 307, 308):
-                m = _RAW_LOCATION.match(got.location.strip())
-                if not m or not _same_page(m.group(2), url):
-                    return _capture("none", asked, reason="redirect")
-                if m.group(1) == current:
-                    return _capture("failed", asked, **error_fields(code="bad_response", detail=f"Redirect loop at {HOST}"))
-                current = m.group(1)
-                continue
-            if got.status == 404:
-                return _capture("none", asked, reason="missing")
-            if got.status == 429:
-                return _capture("rate_limited", asked, retry_after=got.retry_after,
-                                **error_fields(code="rate_limited", detail=f"HTTP 429 from {HOST}"))
-            if got.status != 200:
-                return _capture("failed", asked, **error_fields(code="upstream", detail=f"HTTP {got.status} from {HOST}"))
-            ctype = got.headers.get("content-type", "")
-            if ctype.split(";")[0].strip().lower() not in _PAGE_TYPES:
-                return _capture("none", asked, reason="not_a_page")
-            return {"state": "ok", "asked": asked, "timestamp": current, "body": got.body, "content_type": ctype,
-                    "truncated": got.truncated}
-        return _capture("failed", asked, **error_fields(code="bad_response", detail=f"Too many redirects at {HOST}"))
+        return await asyncio.wait_for(_hops(client, url, asked), DEADLINE)
     except Exception as e:  # noqa: BLE001 - every failure becomes a state with a code
         # Only the exception's type is kept as detail: its text can hold the URL.
         return _capture("failed", asked, **error_fields(code=classify(e), detail=type(e).__name__))
+
+
+async def _hops(client: httpx.AsyncClient, url: str, asked: str) -> dict:
+    current = asked
+    for _ in range(MAX_HOPS + 1):
+        if not _unchanged_on_the_wire(current, url):
+            raise BlockedTarget("the request would not be for this capture")
+        got = await pinned.get(client, raw_url(current, url), max_bytes=MAX_BODY, deadline=DEADLINE,
+                               headers={"Accept": "text/html,application/xhtml+xml,text/plain;q=0.8"})
+        if got.status in (301, 302, 303, 307, 308):
+            m = _RAW_LOCATION.match(got.location.strip())
+            if not m or not _same_page(m.group(2), url):
+                return _capture("none", asked, reason="redirect")
+            if m.group(1) == current:
+                return _capture("failed", asked, **error_fields(code="bad_response", detail=f"Redirect loop at {HOST}"))
+            current = m.group(1)
+            continue
+        if got.status == 404:
+            return _capture("none", asked, reason="missing")
+        if got.status == 429:
+            return _capture("rate_limited", asked, retry_after=got.retry_after,
+                            **error_fields(code="rate_limited", detail=f"HTTP 429 from {HOST}"))
+        if got.status != 200:
+            return _capture("failed", asked, **error_fields(code="upstream", detail=f"HTTP {got.status} from {HOST}"))
+        ctype = got.headers.get("content-type", "")
+        if ctype.split(";")[0].strip().lower() not in _PAGE_TYPES:
+            return _capture("none", asked, reason="not_a_page")
+        return {"state": "ok", "asked": asked, "timestamp": current, "body": got.body, "content_type": ctype,
+                "truncated": got.truncated}
+    return _capture("failed", asked, **error_fields(code="bad_response", detail=f"Too many redirects at {HOST}"))
 
 
 def _describe(side: dict, url: str, page: dict | None) -> dict:
@@ -411,16 +471,31 @@ def _base(url: str, state: str) -> dict:
     return {"url": url, "state": state, "from": None, "to": None, "removed": _empty_side(), "added": _empty_side(), "complete": False}
 
 
+def _read(body: bytes, content_type: str, url: str) -> tuple[dict, bool]:
+    """(the page, whether reading it stopped at the CPU budget). Runs on the parse pool."""
+    budget = parsepool.Budget()
+    return extract(body, content_type, url, budget), budget.cut
+
+
 async def _page(side: dict, url: str) -> dict | None:
+    """The text and links of a capture that was fetched. A capture that could not be read
+    (the pool is full, or its bytes are not text) becomes a failed one, here, with a code."""
     if side["state"] != "ok":
         return None
-    return await asyncio.to_thread(extract, side["body"], side["content_type"], url)
+    try:
+        page, cut = await parsepool.run(_read, side["body"], side["content_type"], url)
+    except Exception as e:  # noqa: BLE001 - never a page with nothing on it
+        side.update(state="failed", body=b"", truncated=False,
+                    **error_fields(code="busy" if isinstance(e, parsepool.Busy) else "bad_response", detail=type(e).__name__))
+        return None
+    side["truncated"] = bool(side["truncated"] or cut)
+    return page
 
 
 async def _ask(url: str, older: str, newer: str) -> dict:
     async with httpx.AsyncClient(timeout=TIMEOUT, transport=_transport()) as client:
         a, b = await asyncio.gather(_fetch(client, url, older), _fetch(client, url, newer))
-    # In threads: decoding and parsing 2 MB takes a moment, and nothing else should wait on it.
+    # On the parse pool: decoding and parsing 2 MB takes a moment, and nothing else should wait on it.
     pages = list(await asyncio.gather(*(_page(s, url) for s in (a, b))))
     out = _base(url, "ok")
     out["from"], out["to"] = _describe(a, url, pages[0]), _describe(b, url, pages[1])
@@ -522,7 +597,8 @@ async def run_archive_diff(url: str, from_time: str, to_time: str) -> dict:
             return {**cached, "swapped": swapped, "cached": True}
         async def fresh() -> dict:
             answer = await _ask(clean, older, newer)
-            _cache_put(key, answer)
+            if answer.get("error_code") != "busy":      # a full pool says nothing about the captures: not kept
+                _cache_put(key, answer)
             # States and sizes only: no URL, host, title or line of text is logged.
             log.info("archive diff", extra={"state": answer["state"], "removed": answer["removed"]["text_total"],
                                             "added": answer["added"]["text_total"]})

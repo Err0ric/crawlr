@@ -729,7 +729,7 @@ def test_no_em_dashes_in_any_copy():
 
 def test_endpoint_and_rate_limit(monkeypatch, c):
     serve(monkeypatch, (200, CDX_OK), FILES)
-    assert rl.RATE_LIMITS["/api/recon/doc-metadata"] == (4, 60)
+    assert rl.RATE_LIMITS["/api/recon/doc-metadata"] == (2, 60)
     r = c.post("/api/recon/doc-metadata", json={"domain": f"https://{DOMAIN}/about"})
     body = r.json()
     assert r.status_code == 200 and body["state"] == "ok" and body["domain"] == DOMAIN and body["requests_target"] is True

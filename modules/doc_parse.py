@@ -9,7 +9,9 @@ Office files (docx, xlsx, pptx) are zip archives. Two members hold the metadata:
   * only those two members are ever read; nothing is extracted to disk;
   * a member that declares more than MAX_MEMBER bytes is refused, and the read itself stops
     at MAX_MEMBER whatever the header declared (a zip bomb lies in its header);
-  * an archive with more than MAX_ENTRIES entries, or an encrypted member, is refused;
+  * an archive with more than MAX_ENTRIES entries, or an encrypted member, is refused. The
+    entries are counted in the bytes before the archive is opened, so its directory is never
+    walked just to find it too long;
   * XML with a DOCTYPE or an ENTITY declaration is refused before it reaches the parser, so
     there is no entity to expand and no external entity to resolve. The parser is told the
     bytes are UTF-8, so a declared encoding cannot hide a DOCTYPE from that check.
@@ -27,6 +29,13 @@ look for it: plain FlateDecode streams only (no predictor, no other filter), at 
 MAX_INFLATE bytes each and INFLATE_BUDGET bytes per file, and nothing else is ever inflated.
 When the metadata still cannot be reached (another filter, a compressed XMP stream, an
 encrypted or cut-short file) the answer is `parsed: false` with a `reason`, never a guess.
+The same holds for a file that carries a metadata packet this module cannot tie to the
+document (no readable catalog, and the packet is oversized, repeated or not in the PDF schema).
+
+The work one file can cause is bounded as well as its size: what is read by hand (the bytes
+of every dictionary token, the entries of an object stream) is counted against MAX_WORK for
+the file, a dictionary or stream that was read once is not read again, and a file that runs
+out is `parsed: false` (`bad_pdf`). Real files use a small fraction of it.
 
 Every text value is self-declared: it is whatever the author's software wrote, or whatever
 somebody typed over it. Nothing here verifies it.
@@ -73,6 +82,8 @@ MAX_INFLATE = 4_000_000       # bytes one object stream may inflate to
 INFLATE_BUDGET = 24_000_000   # bytes inflated per file, all object streams together
 MAX_STREAM_OBJECTS = 20_000   # objects listed in one object stream
 MAX_MARKERS = 1000            # object streams, or catalogs, looked at in one file
+MAX_WORK = 1_000_000          # bytes of dictionaries read by hand in one file, object stream entries counted in
+MAX_CHILDREN = 500            # elements looked at under one XML element
 
 
 class _Refused(Exception):
@@ -194,6 +205,10 @@ def _member(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
 def parse_office(data: bytes, hint: str = "") -> dict:
     """Metadata of a docx, xlsx or pptx. `hint` is the type the URL suggested."""
     kind = hint if hint in ("docx", "xlsx", "pptx") else ""
+    # Every entry of the directory starts with these four bytes, so their count is a ceiling
+    # on what opening the archive would have to walk. Checked first: one pass over the bytes.
+    if data.count(b"PK\x01\x02") > MAX_ENTRIES:
+        return _answer(kind, False, "zip_bomb")
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, OSError, ValueError):
@@ -218,7 +233,7 @@ def parse_office(data: bytes, hint: str = "") -> dict:
             core = by_name.get("docProps/core.xml")
             if core is not None:
                 root = safe_xml(_member(zf, core))
-                got = {_local(el.tag): clean(el.text or "") for el in root}
+                got = {_local(el.tag): clean(el.text or "") for el in root[:MAX_CHILDREN]}
                 fields.update({
                     "title": got.get("title", ""), "author": got.get("creator", ""),
                     "last_modified_by": got.get("lastModifiedBy", ""),
@@ -228,7 +243,7 @@ def parse_office(data: bytes, hint: str = "") -> dict:
             app = by_name.get("docProps/app.xml")
             if app is not None:
                 root = safe_xml(_member(zf, app))
-                got = {_local(el.tag): clean(el.text or "") for el in root}
+                got = {_local(el.tag): clean(el.text or "") for el in root[:MAX_CHILDREN]}
                 name, version = got.get("Application", ""), got.get("AppVersion", "")
                 fields["creator_software"] = clean(f"{name} {version}") if name else ""
                 fields["company"] = got.get("Company", "")
@@ -249,6 +264,21 @@ _ESC = {ord("n"): b"\n", ord("r"): b"\r", ord("t"): b"\t", ord("b"): b"\b", ord(
 
 class _Bad(Exception):
     pass
+
+
+class _Work:
+    """What is left of one file's allowance of hand-read pieces. `spend` raises _Bad once it
+    is used up, and `spent` stays True, so the file is never answered as fully read."""
+
+    def __init__(self, units: int = MAX_WORK):
+        self.left = units
+        self.spent = False
+
+    def spend(self, units: int = 1) -> None:
+        self.left -= units
+        if self.left < 0:
+            self.spent = True
+            raise _Bad("too much work")
 
 
 def _literal(data: bytes, p: int, end: int) -> tuple[bytes, int]:
@@ -343,45 +373,57 @@ def _token(data: bytes, p: int, end: int):
     return "word", data[p:q], q
 
 
-def _skip_value(data: bytes, p: int, end: int, kind: str, depth: int) -> int:
+def _next(data: bytes, p: int, end: int, work: _Work):
+    """`_token`, with the bytes it read counted against the file's allowance. A token that
+    could not be read is counted as the longest one there is."""
+    try:
+        kind, value, q = _token(data, p, end)
+    except _Bad:
+        work.spend(MAX_STRING)
+        raise
+    work.spend(q - p + 1)
+    return kind, value, q
+
+
+def _skip_value(data: bytes, p: int, end: int, kind: str, depth: int, work: _Work) -> int:
     """Move past a dictionary or an array whose opening token was just read."""
     if depth > MAX_DEPTH:
         raise _Bad("too deep")
     close = "dict_close" if kind == "dict_open" else "arr_close"
     while True:
-        k, _v, p = _token(data, p, end)
+        k, _v, p = _next(data, p, end, work)
         if k == "eof":
             raise _Bad("not closed")
         if k == close:
             return p
         if k in ("dict_open", "arr_open"):
-            p = _skip_value(data, p, end, k, depth + 1)
+            p = _skip_value(data, p, end, k, depth + 1, work)
 
 
-def _read_dict(data: bytes, p: int) -> tuple[dict, int]:
+def _read_dict(data: bytes, p: int, work: _Work) -> tuple[dict, int]:
     """(the top-level entries of the dictionary that opens at p, the position after it).
     Entries: {name: ("str", bytes) | ("ref", n, g) | ("int", n) | ("name", str) | ("other",)}.
-    Raises _Bad."""
+    Every token read is counted against `work`. Raises _Bad."""
     end = min(len(data), p + MAX_DICT_SPAN)
-    kind, _v, p = _token(data, p, end)
+    kind, _v, p = _next(data, p, end, work)
     if kind != "dict_open":
         raise _Bad("not a dictionary")
     out: dict = {}
     while True:
-        kind, key, p = _token(data, p, end)
+        kind, key, p = _next(data, p, end, work)
         if kind == "dict_close":
             return out, p
         if kind != "name":
             raise _Bad("expected a name")
-        kind, value, p = _token(data, p, end)
+        kind, value, p = _next(data, p, end, work)
         if kind == "str":
             out[key] = ("str", value)
         elif kind in ("dict_open", "arr_open"):
-            p = _skip_value(data, p, end, kind, 1)
+            p = _skip_value(data, p, end, kind, 1, work)
             out[key] = ("other",)
         elif kind == "word" and value.isdigit():
-            k2, v2, p2 = _token(data, p, end)
-            k3, v3, p3 = _token(data, p2, end) if k2 == "word" and v2.isdigit() else ("", None, p2)
+            k2, v2, p2 = _next(data, p, end, work)
+            k3, v3, p3 = _next(data, p2, end, work) if k2 == "word" and v2.isdigit() else ("", None, p2)
             if k3 == "word" and v3 == b"R":
                 out[key] = ("ref", int(value), int(v2))
                 p = p3
@@ -424,21 +466,26 @@ _OBJSTM = re.compile(rb"/Type[\x00\t\n\x0c\r ]*/ObjStm(?![A-Za-z])")
 _STREAM = re.compile(rb"[\x00\t\n\x0c\r ]*stream(?:\r\n|\n|\r)")
 
 
-def _in_object_stream(data: bytes, num: int) -> tuple[bytes, int] | None:
+def _in_object_stream(data: bytes, num: int, work: _Work) -> tuple[bytes, int] | None:
     """(inflated object stream, position of object `num` in it) when a plain FlateDecode
     object stream holds that object, else None. The last stream that lists it wins. Bounded:
-    see MAX_INFLATE and INFLATE_BUDGET."""
+    see MAX_INFLATE, INFLATE_BUDGET and MAX_WORK. A stream is unpacked and searched once,
+    however many markers lead to it."""
     budget = INFLATE_BUDGET
     found = None
+    heads: set[int] = set()                             # object headers whose dictionary was read
     # Only the last MAX_MARKERS are looked at: a real file has far fewer, and the last wins.
     for m in deque(_OBJSTM.finditer(data), maxlen=MAX_MARKERS):     # the matches are never all held at once
         head = None
         for head in _OBJ_HEAD.finditer(data, max(0, m.start() - 2048), m.start()):
             pass
-        if head is None:
-            continue
+        if head is None or head.end() in heads:
+            continue                                    # no object here, or this one was dealt with
+        heads.add(head.end())
+        if work.spent:
+            break
         try:
-            entries, after = _read_dict(data, head.end())
+            entries, after = _read_dict(data, head.end(), work)
         except _Bad:
             continue
         first, count, length = entries.get("First"), entries.get("N"), entries.get("Length")
@@ -464,16 +511,20 @@ def _in_object_stream(data: bytes, num: int) -> tuple[bytes, int] | None:
         budget -= len(plain)
         if len(plain) > MAX_INFLATE or inflater.unconsumed_tail or first[1] > len(plain):
             continue
-        numbers = plain[:first[1]].split()
+        numbers = plain[:first[1]].split(None, 2 * count[1])    # no more pieces than the stream says it lists
         if len(numbers) < 2 * count[1] or not all(n.isdigit() for n in numbers[:2 * count[1]]):
             continue
+        try:
+            work.spend(2 * count[1])
+        except _Bad:
+            break
         for i in range(count[1]):
             if int(numbers[2 * i]) == num and first[1] + int(numbers[2 * i + 1]) < len(plain):
                 found = (plain, first[1] + int(numbers[2 * i + 1]))
     return found
 
 
-def _info(data: bytes) -> tuple[dict, str]:
+def _info(data: bytes, work: _Work) -> tuple[dict, str]:
     """(fields, status). status: "read", "absent" (no /Info reference), "hidden" (the
     reference points at an object that is neither in the file as text nor in an object stream
     this module unpacks) or "bad"."""
@@ -484,11 +535,11 @@ def _info(data: bytes) -> tuple[dict, str]:
         return {}, "absent"
     num, gen = int(last.group(1)), int(last.group(2))
     at = _find_object(data, num, gen)
-    packed = _in_object_stream(data, num) if at < 0 else None
+    packed = _in_object_stream(data, num, work) if at < 0 else None
     if at < 0 and packed is None:
         return {}, "hidden"
     try:
-        entries, _end = _read_dict(*packed) if packed else _read_dict(data, at)
+        entries, _end = _read_dict(*packed, work) if packed else _read_dict(data, at, work)
     except _Bad:
         return {}, "bad"
     fields = {}
@@ -577,8 +628,10 @@ def _xmp_packet(data: bytes) -> tuple[bytes | None, str]:
 
 
 def _rdf_text(el: ET.Element) -> list[str]:
-    """The values of an XMP property: its text, or the items of its rdf list (x-default first)."""
-    items = [li for li in el.iter(_NS_RDF + "li")]
+    """The values of an XMP property: its text, or the items of its rdf list (x-default first).
+    A list is where XMP puts it, in a container directly under the property; nothing deeper
+    is searched."""
+    items = [li for box in el[:8] for li in box[:40] if li.tag == _NS_RDF + "li"]
     if not items:
         return [t for t in [clean(el.text or "")] if t]
     items.sort(key=lambda li: li.get("{http://www.w3.org/XML/1998/namespace}lang") != "x-default")
@@ -599,7 +652,7 @@ def _xmp_fields(packet: bytes) -> dict:
         for attr, name in simple.items():
             if desc.get(attr):
                 put(name, [clean(desc.get(attr))])
-        for child in desc:
+        for child in desc[:MAX_CHILDREN]:
             if child.tag in simple:
                 put(simple[child.tag], _rdf_text(child))
             elif child.tag == _NS_DC + "title":
@@ -621,7 +674,12 @@ def parse_pdf(data: bytes) -> dict:
 
     fields: dict[str, str] = {}
     sources: list[str] = []
-    info, info_status = ({}, "encrypted") if encrypted else _info(data)   # an encrypted file's strings are ciphertext
+    work = _Work()
+    info, info_status = ({}, "encrypted") if encrypted else _info(data, work)   # an encrypted file's strings are ciphertext
+    if work.spent:
+        # The file asked for more reading than any real document needs. What was read up to
+        # there is not a full reading, so it is not given as one.
+        return _answer("pdf", False, "bad_pdf")
     if any(info.values()):
         fields.update({k: v for k, v in info.items() if v})
         sources.append("info")
@@ -650,6 +708,10 @@ def parse_pdf(data: bytes) -> dict:
     if xmp_refused:
         # The file has a metadata packet and it could not be read: that is not "declares nothing".
         return _answer("pdf", False, xmp_refused)
+    if xmp_status == "unknown" and _XMP_CLOSE in data:
+        # A metadata packet is in the file and none could be taken as the document's own: the
+        # same, not "declares nothing".
+        return _answer("pdf", False, "bad_pdf")
     return _answer("pdf", True, "")                     # read, and it declares nothing
 
 

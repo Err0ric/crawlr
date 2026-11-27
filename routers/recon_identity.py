@@ -13,7 +13,7 @@ from modules.commit_emails import SITES as COMMIT_EMAIL_SITES, guard_profile as 
 from modules.github import run_github_deep
 from modules.handle_probe import run_handle_probe
 from modules.link_verify import MAX_LINKS, run_link_verify
-from modules.profile_archive import MAX_URL as ARCHIVE_MAX_URL, run_profile_archive
+from modules.profile_archive import MAX_URL as ARCHIVE_MAX_URL, check_url as archive_check_url, run_profile_archive
 from modules.profiles import run_profiles
 
 router = APIRouter()
@@ -163,6 +163,8 @@ async def archive_diff(req: ArchiveDiffRequest, request: Request):
     checks the URL the way /profile-archive does and refuses adult and dating sites."""
     profile_record.bind(getattr(request.state, "run_session", ""))      # the text goes on this visitor's record
     username = validate.username(req.username)       # 400 for a handle that is not one, before any request
+    # The handle is the case's, not necessarily the one in the address: a linked account under
+    # another name is still read for the case, and its text must count for the case's handle.
     answer = await run_archive_diff(req.url, req.from_, req.to)
     # Removed text can hold an old bio or a name, and so can a page title, so the minor guard's
     # content check reads every piece of text the answer carries, whatever its state, like any

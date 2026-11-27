@@ -359,7 +359,7 @@ def test_a_compressed_body_is_inflated_against_the_cap_and_never_whole(monkeypat
         def __getattr__(self, name):
             return getattr(self._z, name)
 
-    monkeypatch.setattr(pinned.zlib, "decompressobj", Watched)
+    monkeypatch.setattr(zlib, "decompressobj", Watched)       # the one bounded reader (core.capfetch) inflates for core.pinned
 
     async def never(self, *a, **k):
         raise AssertionError("the body must not be decoded by the HTTP client")

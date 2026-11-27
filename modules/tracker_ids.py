@@ -12,7 +12,12 @@ What this module touches:
   * one GET to https://<domain>/ through core.netguard.safe_fetch, redirects followed (each hop
     vetted), body capped at MAX_BYTES (core.capfetch), the whole call capped at DEADLINE;
   * the bytes become text through core.charset (a short list of real charsets, UTF-8 for any
-    other label), and decoding and matching run in a thread so other requests do not wait;
+    other label), and decoding and matching run on the parse pool (core.parsepool): one parse
+    at a time for the whole server, within a CPU budget, so other requests do not wait. A page
+    not read to its end within the budget is `truncated` when IDs were found and `failed` when
+    none were (part of it was never looked at). A full pool is `failed` with the code `busy`,
+    and that answer is not kept. A body that is not text in the charset it was read in (UTF-16
+    without a byte order mark, a binary file) is `failed`, never `none`;
   * nothing else. Scripts the page loads are not fetched, so an ID that only exists inside an
     external script or a tag manager container is not seen.
 
@@ -45,8 +50,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
-from core import charset, inflight
-from core.capfetch import BadEncoding, CappedTransport, TooLarge, was_capped
+from core import charset, inflight, parsepool
+from core.capfetch import BadEncoding, CappedTransport, TooLarge, release, was_capped
 from core.errors import classify_status, error_fields
 from core.logging import get_logger
 from core.netguard import safe_fetch
@@ -70,6 +75,10 @@ NONE_NOTE = ("No tracker or ad account ID was found in the home page's own marku
              "script or through a tag manager are not visible here, so this is not proof the site has none.")
 OFF_SITE_NOTE = "The home page redirects to another site. These IDs were read from that site's page."
 CAPPED_NOTE = "Only the first 1.5 MB of the page was read."
+CUT_NOTE = "Only the first part of the page was read."
+SLOW_PAGE = "The home page could not be read to its end, so no answer is given for it."
+FEED = 32_768                 # characters handed to the parser between two looks at the CPU budget
+MAX_PIECES = 2000             # scripts, meta tags, or image and frame addresses kept from one page
 
 # kind -> (label, scope, what a match means). scope "account": one ID covers every site in the
 # account. scope "site": the ID is issued per site, container or counter, so a match means the
@@ -147,8 +156,15 @@ class _Page(HTMLParser):
         self.embeds: list[str] = []
         self.ad_clients: list[str] = []
         self.cf_beacons: list[str] = []
+        self.full = False                  # a list reached MAX_PIECES: the rest of that kind was not kept
         self._in_script = False
         self._buf: list[str] = []
+
+    def _keep(self, where: list, value) -> None:
+        if len(where) < MAX_PIECES:
+            where.append(value)
+        else:
+            self.full = True
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
@@ -156,17 +172,17 @@ class _Page(HTMLParser):
             self._in_script = True
             self._buf = []
             if a.get("src"):
-                self.script_srcs.append(a["src"])
+                self._keep(self.script_srcs, a["src"])
             if a.get("data-cf-beacon"):
-                self.cf_beacons.append(a["data-cf-beacon"])
+                self._keep(self.cf_beacons, a["data-cf-beacon"])
         elif tag == "meta":
             name = (a.get("name") or a.get("property") or "").strip().lower()
             if name:
-                self.metas.append((name, a.get("content", "").strip()))
+                self._keep(self.metas, (name, a.get("content", "").strip()))
         elif tag in ("img", "iframe") and a.get("src"):
-            self.embeds.append(a["src"])
+            self._keep(self.embeds, a["src"])
         if a.get("data-ad-client"):
-            self.ad_clients.append(a["data-ad-client"])
+            self._keep(self.ad_clients, a["data-ad-client"])
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
@@ -178,7 +194,7 @@ class _Page(HTMLParser):
             self._in_script = False
             text = "".join(self._buf)
             if text.strip():
-                self.inline.append(text)
+                self._keep(self.inline, text)
 
     def handle_data(self, data):
         if self._in_script:
@@ -318,20 +334,34 @@ def _from_script(found: _Found, text: str) -> None:
         found.add("linkedin_insight", m.group(1), m.group(1), where)
 
 
-def extract_ids(html: str) -> list[dict]:
-    """Every ID the page's markup carries, in the order first seen. Pure."""
+def extract_ids(html: str, budget: parsepool.Budget | None = None) -> list[dict]:
+    """Every ID the page's markup carries, in the order first seen. Pure. The work stops when
+    `budget` (CPU time of this thread) is spent, with the IDs found up to there; `budget.cut`
+    then says so."""
+    budget = budget or parsepool.Budget()
     page = _Page()
     try:
-        page.feed(html)
-        page.close()
+        # In pieces, so the budget is looked at however the markup is written.
+        for at in range(0, len(html), FEED):
+            if budget.over(parsepool.READ_SHARE):
+                break
+            page.feed(html[at:at + FEED])
+        if not budget.cut:
+            page.close()
     except Exception:  # noqa: BLE001 - broken markup: keep what was collected before it
         pass
     if page._in_script and page._buf:          # the page was cut inside a script
         page.inline.append("".join(page._buf))
+    if page.full:
+        budget.cut = True                       # more of one kind than is kept: part of the page was not looked at
     found = _Found()
-    for src in page.script_srcs:
+    for n, src in enumerate(page.script_srcs):
+        if n % 256 == 0 and budget.over():
+            break
         _from_address(found, src, "script_src")
-    for text in page.inline:
+    for n, text in enumerate(page.inline):
+        if (n % 64 == 0 or len(text) > FEED) and budget.over():
+            break
         _from_script(found, text)
     for name, content in page.metas:
         if name == "google-site-verification" and _GOOGLE_VERIFY.fullmatch(content):
@@ -340,7 +370,9 @@ def extract_ids(html: str) -> list[dict]:
             found.add("bing_site_verification", content, content.upper(), "meta_tag", search=content)
         elif name == "google-adsense-account":
             _adsense(found, content, "meta_tag")
-    for src in page.embeds:
+    for n, src in enumerate(page.embeds):
+        if n % 256 == 0 and budget.over():
+            break
         _from_address(found, src, "noscript_tag")
     for value in page.ad_clients:
         _adsense(found, value, "attribute")
@@ -392,11 +424,15 @@ def _challenge(resp: httpx.Response) -> bool:
     return resp.status_code == 503 and "cloudflare" in resp.headers.get("server", "").lower()
 
 
-def _parse(body: bytes, content_type: str) -> tuple[bool, list[dict]]:
-    """(the start of the body looks like markup, the IDs) from the fetched bytes. Runs in a
-    thread. The page's own charset label never picks the codec: core.charset does."""
+def _parse(body: bytes, content_type: str) -> tuple[bool, list[dict], bool]:
+    """(the start of the body looks like markup, the IDs, whether reading stopped at the CPU
+    budget) from the fetched bytes. Runs on the parse pool. The page's own charset label never
+    picks the codec: core.charset does. Raises ValueError for a body that is not text."""
+    budget = parsepool.Budget()
     text = charset.decode(body, content_type)
-    return "<" in text[:2000], extract_ids(text)
+    if charset.not_text(text):
+        raise ValueError("not text")
+    return "<" in text[:2000], extract_ids(text, budget), budget.cut
 
 
 async def _read(domain: str) -> dict:
@@ -411,7 +447,7 @@ async def _read(domain: str) -> dict:
         return _problem(domain, "failed", e, code="bad_response")
     except Exception as e:  # noqa: BLE001 - every failure becomes a state with a code
         return _problem(domain, "failed", e)
-    resp = got.response
+    resp = release(got.response)             # the page is freed as soon as it has been read
     if resp.status_code in BLOCKED_STATUS or _challenge(resp):
         return _problem(domain, "blocked", code="rate_limited" if resp.status_code == 429 else "blocked",
                         message="The site refused the request, so its page could not be read.")
@@ -421,12 +457,17 @@ async def _read(domain: str) -> dict:
     if ctype not in ("text/html", "application/xhtml+xml", ""):
         return _problem(domain, "failed", code="bad_response", message="The home page is not an HTML page.")
     try:
-        # Off the event loop: 1.5 MB of markup takes a moment to decode and match.
-        markup, ids = await asyncio.to_thread(_parse, resp.content, resp.headers.get("content-type") or "")
+        # On the parse pool, off the event loop: 1.5 MB of markup takes a moment to decode and match.
+        markup, ids, cut = await parsepool.run(_parse, resp.content, resp.headers.get("content-type") or "")
+    except parsepool.Busy as e:
+        return _problem(domain, "failed", e, code="busy")       # nothing was read: not "none", and not kept
     except Exception as e:  # noqa: BLE001 - a page that cannot be read is a failure with a code, never "none"
         return _problem(domain, "failed", e, code="bad_response")
     if not ctype and not markup:
         return _problem(domain, "failed", code="bad_response", message="The home page is not an HTML page.")
+    if cut and not ids:
+        # Part of the page was never looked at, so "no ID" would be a guess.
+        return _problem(domain, "failed", code="bad_response", message=SLOW_PAGE)
     final_host = (urlsplit(got.url).hostname or "").lower()
     off_site = not same_site(final_host, domain)
     out = _base(domain, "ok" if ids else "none")
@@ -435,11 +476,13 @@ async def _read(domain: str) -> dict:
         notes.append(NONE_NOTE)
     if off_site:
         notes.append(OFF_SITE_NOTE)
-    if was_capped(resp):
+    if was_capped(resp) and len(resp.content) >= MAX_BYTES:
         notes.append(CAPPED_NOTE)
+    elif was_capped(resp) or cut:
+        notes.append(CUT_NOTE)          # the site sent more than was kept, or the reading stopped at its budget
     out.update({
         "url": got.url, "final_host": final_host, "off_site": off_site, "ids": ids, "count": len(ids),
-        "truncated": was_capped(resp), "findings": findings_for(ids), "note": " ".join(notes),
+        "truncated": was_capped(resp) or cut, "findings": findings_for(ids), "note": " ".join(notes),
     })
     return out
 
@@ -487,7 +530,8 @@ async def run_tracker_ids(domain: str) -> dict:
         return {**cached, "cached": True}
     async def fresh() -> dict:
         answer = await _read(domain)
-        _cache_put(domain, answer)
+        if answer.get("error_code") != "busy":          # a full pool says nothing about the page: not kept
+            _cache_put(domain, answer)
         # State and a count only: no domain, URL or ID is logged.
         log.info("tracker ids", extra={"state": answer["state"], "ids": answer["count"]})
         return answer

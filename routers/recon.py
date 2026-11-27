@@ -212,15 +212,29 @@ class ProfileUrl(BaseModel):
 
 class ScrapeProfilesRequest(BaseModel):
     urls: list[ProfileUrl] = Field(max_length=20)
+    # The handle the pages were found for. With it, what is read goes on the visitor's record
+    # for the minor guard. Optional, so a request without one is answered as before.
+    username: str = Field(default="", max_length=320)
 
 
 @router.post("/scrape-profiles")
-async def scrape_profiles_endpoint(req: ScrapeProfilesRequest):
+async def scrape_profiles_endpoint(req: ScrapeProfilesRequest, request: Request):
     """Active technique: fetches the listed profile pages. Each URL (and every redirect it
     takes) must be a public http(s) address; see core.netguard."""
     if not req.urls:
         raise HTTPException(status_code=400, detail="URLs list is required")
+    _mine(request)
+    username = validate.username(req.username) if req.username.strip() else ""      # 400 before any page is fetched
     results = await scrape_profiles([u.model_dump() for u in req.urls])
+    if username:
+        # The names and bios read from the pages are profile text like any other, so the minor
+        # guard's content check reads them (the page's own check reads the same rows). Text to
+        # scan only: this is not a profile reader, so it never opens the adult pass.
+        rows = [{"state": "found", "site": r.get("site") or "Profile", "url": r.get("url", ""),
+                 "display_name": r.get("display_name", ""), "bio": r.get("bio", "")}
+                for r in results if isinstance(r, dict) and not r.get("error")]
+        if rows:
+            profile_record.note(username, "profiles", {"profiles": rows})
     return {
         "total": len(results),
         "scraped": sum(1 for r in results if "error" not in r),

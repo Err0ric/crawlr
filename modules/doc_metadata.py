@@ -29,7 +29,12 @@ time. A redirect is followed only while it stays on the domain or a subdomain of
 port a document may be listed on (80 or 443, no credentials), and every hop is vetted and
 pinned again; a redirect anywhere else is not followed. The body is capped
 at MAX_DOC_BYTES (core.capfetch), each document at DOC_DEADLINE seconds, three at a time. After
-a 429 from the site no further document is requested. The parsing is modules/doc_parse.py.
+a 429 from the site no further document is requested. The parsing is modules/doc_parse.py,
+run on the parse pool (core.parsepool): one file at a time for the whole server. When the pool
+is full a document is `failed` with the code `busy`, and an answer with such a document is not
+kept at all. The same answer is given, before any request for it, to a document that would be
+one more than MAX_HELD held in memory at once: that count is for the whole server, whoever
+asks, so the bytes of fetched files never add up past it (two full runs fit side by side).
 
 An adult or dating site is refused before any request: names from its files would tie people
 to it, and there is no opt-in on this path.
@@ -71,8 +76,8 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from core import adult_sites, inflight
-from core.capfetch import BadEncoding, CappedTransport, TooLarge
+from core import adult_sites, inflight, parsepool
+from core.capfetch import BadEncoding, CappedTransport, TooLarge, release
 from core.errors import classify_status, error_fields
 from core.logging import get_logger
 from core.netguard import safe_fetch
@@ -92,6 +97,7 @@ DOC_TIMEOUT = 8               # seconds per connect or read
 DOC_DEADLINE = 15             # seconds per document, redirects included
 MAX_REDIRECTS = 4
 CONCURRENCY = 3
+MAX_HELD = 2 * CONCURRENCY    # documents being fetched or waiting to be read, in the whole process
 MAX_URL = 600
 TYPES = ("pdf", "docx", "xlsx", "pptx")
 
@@ -219,7 +225,7 @@ async def _list(domain: str) -> tuple[str, dict]:
     except Exception as e:  # noqa: BLE001 - every failure becomes a state with a code
         fields = _error(e)
         return ("rate_limited" if fields["error_code"] == "rate_limited" else "failed"), fields
-    status = got.response.status_code
+    status = release(got.response).status_code
     if status != 200:
         fields = _error(code=classify_status(status))
         return ("rate_limited" if fields["error_code"] == "rate_limited" else "failed"), fields
@@ -256,7 +262,7 @@ async def _fetch(client: httpx.AsyncClient, url: str, domain: str) -> httpx.Resp
             client, current, follow_redirects=False,
             headers={"User-Agent": UA, "Accept": "*/*", "Accept-Encoding": "identity"},
         )
-        resp = got.response
+        resp = release(got.response)         # up to 8 MB: freed as soon as it is read, or passed over
         location = resp.headers.get("location", "")
         if not (resp.is_redirect and location):
             return resp
@@ -274,9 +280,24 @@ async def _fetch(client: httpx.AsyncClient, url: str, domain: str) -> httpx.Resp
     return _error(code="upstream", message="The document redirects too many times.")
 
 
+_held = 0                     # documents in memory right now, all requests together
+
+
 async def _read_one(client: httpx.AsyncClient, candidate: dict, domain: str, limited: asyncio.Event) -> dict:
+    global _held
     if limited.is_set():
         return _doc(candidate, "rate_limited", **_error(code="rate_limited", message="The site was limiting requests, so this document was not asked for."))
+    if _held >= MAX_HELD:
+        # Not asked for at all: unknown, never "declares nothing", and the answer is not kept.
+        return _doc(candidate, "failed", **_error(code="busy"))
+    _held += 1
+    try:
+        return await _fetch_and_read(client, candidate, domain, limited)
+    finally:
+        _held -= 1
+
+
+async def _fetch_and_read(client: httpx.AsyncClient, candidate: dict, domain: str, limited: asyncio.Event) -> dict:
     try:
         resp = await asyncio.wait_for(_fetch(client, candidate["url"], domain), timeout=DOC_DEADLINE)
     except TooLarge as e:
@@ -302,8 +323,12 @@ async def _read_one(client: httpx.AsyncClient, candidate: dict, domain: str, lim
     if doc_parse.sniff(body) == "html":
         return _doc(candidate, "failed", size=len(body),
                     **_error(code="not_document", message="The site answered with a web page instead of the document."))
-    # Off the event loop: reading an 8 MB file takes a moment and nothing else should wait on it.
-    parsed = await asyncio.to_thread(doc_parse.parse_document, body, candidate["type"])
+    # On the parse pool, off the event loop: reading an 8 MB file takes a moment and nothing else should wait on it.
+    try:
+        parsed = await parsepool.run(doc_parse.parse_document, body, candidate["type"])
+    except parsepool.Busy as e:
+        # The file was fetched and not read: unknown, never "declares nothing".
+        return _doc(candidate, "failed", size=len(body), **_error(e, code="busy"))
     fields = parsed["fields"]
     if not parsed["parsed"]:
         state = "unparsed"
@@ -432,8 +457,10 @@ _pending: dict = {}           # domains being read right now (core.inflight)
 
 
 def clear_cache_for_tests() -> None:
+    global _held
     _cache.clear()
     _pending.clear()
+    _held = 0
 
 
 def settled(answer: dict) -> bool:
@@ -482,7 +509,8 @@ async def run_doc_metadata(domain: str) -> dict:
         return {**cached, "cached": True}
     async def fresh() -> dict:
         answer = await _run(domain)
-        _cache_put(domain, answer)
+        if not any(d.get("error_code") == "busy" for d in answer["documents"]):     # a full pool says nothing about a file: not kept
+            _cache_put(domain, answer)
         # States and counts only: no domain, address, name or title is logged.
         log.info("doc metadata", extra={"state": answer["state"], "documents": len(answer["documents"]), "read": answer["counts"].get("ok", 0)})
         return answer

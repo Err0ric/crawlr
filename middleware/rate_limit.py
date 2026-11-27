@@ -55,9 +55,9 @@ RATE_LIMITS = {
     "/api/recon/github-activity": (10, 3600),  # 1 to 3 GitHub API calls per uncached account: at most 30 of the 60 an hour; cached for a day
     "/api/recon/profile-archive": (10, 60),  # 1 request to the Wayback CDX index per uncached profile URL, cached for a day
     "/api/recon/post-activity": (10, 60),    # one site per call: 1 or 2 requests to Hacker News, up to 6 to a Mastodon instance or 5 to Lobsters; cached for a day
-    "/api/recon/archive-diff": (6, 60),      # 2 archived pages from web.archive.org per uncached pair, 2 MB each at most; cached for a day
+    "/api/recon/archive-diff": (4, 60),      # 2 archived pages from web.archive.org per uncached pair, 2 MB each at most, each parsed on the one parse pool; cached for a day
     "/api/recon/tracker-ids": (10, 60),      # 1 page fetch from the typed domain, 1.5 MB at most, cached for an hour
-    "/api/recon/doc-metadata": (4, 60),      # 1 request to the Wayback CDX index, then up to 8 documents from the typed domain, 8 MB each, cached for a day
+    "/api/recon/doc-metadata": (2, 60),      # 1 request to the Wayback CDX index, then up to 8 documents from the typed domain, 8 MB each, each parsed on the one parse pool; cached for a day
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),

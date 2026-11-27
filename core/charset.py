@@ -8,10 +8,17 @@ handed to `bytes.decode` as it came. `pick` maps a label to one of a short, fixe
 charsets that real pages use and that decode in one linear pass; any other label is read as
 UTF-8. Undecodable bytes become U+FFFD. `decode` never raises.
 
-Callers with a large body run `decode` in a thread (`asyncio.to_thread`) together with the
+A one-byte charset is decoded through a table of its 256 characters, made once, so a byte the
+charset does not define costs the same as one it does. A body that starts with a UTF-16 byte
+order mark is UTF-16 whatever its label says, as browsers read it. UTF-16 without the mark is
+not guessed: read as UTF-8 it comes out full of NUL characters, and `not_text` says so, so a
+caller can answer "could not be read" instead of reading nothing out of it.
+
+Callers with a large body run `decode` on the parse pool (core.parsepool) together with the
 parsing that follows it.
 """
 
+import codecs
 import re
 
 DEFAULT = "utf-8"
@@ -38,6 +45,24 @@ for _n in range(1250, 1259):
     _LABELS[f"windows-{_n}"] = _LABELS[f"cp{_n}"] = _LABELS[f"x-cp{_n}"] = f"cp{_n}"
 
 ALLOWED = frozenset(_LABELS.values())
+
+
+def _table(codec: str) -> str | None:
+    """The 256 characters of a one-byte charset, U+FFFD where it defines none; None for a
+    charset that is not one byte per character."""
+    try:
+        chars = [bytes([n]).decode(codec, "replace") for n in range(256)]
+    except Exception:  # noqa: BLE001 - a codec that cannot take one byte alone is not one-byte
+        return None
+    return "".join(chars) if all(len(c) == 1 for c in chars) and chars[0x41] == "A" else None
+
+
+# Only the families that are one byte per character by definition are given a table.
+_TABLES: dict[str, str] = {
+    codec: table for codec in sorted(ALLOWED) if codec.startswith(("cp125", "iso8859_", "koi8_", "mac_"))
+    and (table := _table(codec))
+}
+_BOMS = ((b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be"))
 
 _HEADER_CHARSET = re.compile(r"charset\s*=\s*[\"']?([A-Za-z0-9._:-]{2,40})", re.I)
 _META_CHARSET = re.compile(rb"<meta[^>]{0,200}?charset\s*=\s*[\"']?\s*([A-Za-z0-9._:-]{2,40})", re.I)
@@ -72,9 +97,24 @@ def choose(body: bytes, content_type: str = "") -> str:
 
 
 def decode(body: bytes, content_type: str = "") -> str:
-    """`body` as text. Never raises, and never uses a codec outside ALLOWED."""
+    """`body` as text. Never raises, and never uses a codec outside ALLOWED (or UTF-16, for a
+    body that opens with its byte order mark)."""
+    for mark, codec in _BOMS:
+        if body.startswith(mark):
+            # An odd last byte is half a character: dropped, like any other undecodable tail.
+            return body[2:].decode(codec, "replace")
     codec = choose(body, content_type)
     try:
+        table = _TABLES.get(codec)
+        if table is not None:
+            return codecs.charmap_decode(body, "replace", table)[0]
         return body.decode(codec, "replace")
     except Exception:  # noqa: BLE001 - a codec that gives up on the bytes falls back to the default
         return body.decode(DEFAULT, "replace")
+
+
+def not_text(text: str) -> bool:
+    """Is this decoded body something other than text in the charset it was read in? One
+    character in a hundred being NUL says so: a page in UTF-16 or UTF-32 that carries no byte
+    order mark reads that way, and so does a binary file. A stray NUL in a real page does not."""
+    return bool(text) and text.count("\x00") * 100 >= len(text)

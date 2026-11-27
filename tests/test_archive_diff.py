@@ -417,7 +417,7 @@ def test_endpoint_refusals_and_bad_bodies(c, monkeypatch):
 
 def test_rate_limit_entry():
     group, limit, window = match_limit("/api/recon/archive-diff")
-    assert group == "/api/recon/archive-diff" and (limit, window) == (6, 60)
+    assert group == "/api/recon/archive-diff" and (limit, window) == (4, 60)
 
 
 def test_no_em_dash_in_the_module():
