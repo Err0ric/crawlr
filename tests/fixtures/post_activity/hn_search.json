@@ -1,0 +1,37 @@
+{
+ "exhaustive": {
+  "nbHits": true,
+  "typo": true
+ },
+ "exhaustiveNbHits": true,
+ "exhaustiveTypo": true,
+ "hits": [
+  {
+   "_tags": [
+    "comment",
+    "author_maralind",
+    "story_90000010"
+   ],
+   "created_at_i": 1790000000,
+   "objectID": "90000011"
+  },
+  {
+   "_tags": [
+    "story",
+    "author_maralind",
+    "story_90000002",
+    "show_hn"
+   ],
+   "created_at_i": 1789990000,
+   "objectID": "90000002"
+  }
+ ],
+ "hitsPerPage": 1000,
+ "nbHits": 2,
+ "nbPages": 1,
+ "page": 0,
+ "params": "tags=author_maralind&hitsPerPage=1000&attributesToRetrieve=created_at_i%2C_tags&attributesToHighlight=%5B%5D",
+ "processingTimeMS": 1,
+ "query": "",
+ "serverTimeMS": 1
+}

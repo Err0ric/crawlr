@@ -63,9 +63,14 @@ import { NAME_TIERS, isNameTier, nameItems, nameForAi, nameMarkdownHead } from "
 import { PHONE_TIERS, phoneView, phoneItems, phoneFacts, phoneForAi } from "./phone.js";
 import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultFound, adultMarkdown, blockForAi, reportForExport, adultHost, handleOf, isAdultRow, readiness, adultRequests, readBlock, stripGuard, blockText, blockFromScan, blockFromRefusal, usernameBody, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, CANCELLED_TEXT } from "./adult.js";
 import { scanProfiles, sourceRoles } from "./minorscan.js";
-import { readProfileSources, readEmailAccounts, readActivity, readDeep, profileDetail, detailMarkdown, profileCoverage, emailAccountItems, emailAccountFacts, emailAccountLeads, emailAccountsForAi, emailLookupsDown, activityForAi, activityMarkdown, proofStrong, readArchives, archiveView, archivable, archiveMarkdown, PROOF_TEXT, PROFILE_SOURCE, PROFILE_STATE_WORD, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE } from "./deep.js";
+import { readProfileSources, readEmailAccounts, readActivity, readDeep, profileDetail, detailMarkdown, profileCoverage, emailAccountItems, emailAccountFacts, emailAccountLeads, emailAccountsForAi, emailLookupsDown, activityView, activityForAi, activityMarkdown, proofStrong, readArchives, archiveView, archivable, archiveMarkdown, PROOF_TEXT, PROFILE_SOURCE, PROFILE_STATE_WORD, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE, ARCHIVE_SOURCE,
+  MASTODON_INSTANCES, unclaimedProfile, profileNoteText, NOT_ACTIVE_NOTE,
+  readCommitEmails, commitEmailsFor, commitEmailsView, commitEmailLeads, commitEmailsMarkdown, commitEmailsForAi, COMMIT_EMAILS_SOURCE,
+  readPostActivities, postActivityFor, postActivityView, postActivityLabel, postActivityMarkdown, postActivityForAi, compareOffsets, POST_ACTIVITY_SOURCE,
+  readArchiveDiffs, archiveDiffPairs, archiveDiffView, archiveDiffLeads, archiveDiffMarkdown, archiveDiffTexts } from "./deep.js";
 import { assessCase, suggestNext, factHow, analysisMarkdown, analysisForAi } from "./analysis.js";
-import { trailView, trailText, trailMarkdown } from "./casework.js";
+import { trailView, trailText, trailMarkdown, selfAuditOn } from "./casework.js";
+import { selfAudit, selfAuditMarkdown } from "./selfaudit.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 
@@ -79,9 +84,18 @@ const SITE_ALIAS = {
   // The profile sources name a site the way the site does; the username tools have their own
   // spellings. The canonical name is the one older cases already use as the row's key.
   "hacker news": "hackernews", "dev.to": "dev community", "chess.com": "chess", "mastodon": "mastodon.social", "codeberg.org": "codeberg", "codeforces.com": "codeforces", "dockerhub": "docker hub", "lobste.rs": "lobsters",
+  // Sherlock and Maigret call the Gitea.com check "Gitea" and the fosstodon.org one "Fosstodon";
+  // the other Mastodon instances they know go by their host, which is the canonical name here.
+  "gitea.com": "gitea", "launchpad.net": "launchpad", "fosstodon": "fosstodon.org",
 };
-const SITE_DISPLAY = { x: "X (Twitter)", steam: "Steam", huggingface: "Hugging Face", threads: "Threads", gravatar: "Gravatar", hackernews: "Hacker News", "dev community": "dev.to", chess: "Chess.com", "mastodon.social": "Mastodon", "docker hub": "Docker Hub" };
-export const canonSite = (s) => { const n = norm(s).replace(/\s*\((?!twitter).*\)$/, ""); return Object.hasOwn(SITE_ALIAS, n) ? SITE_ALIAS[n] : n; };
+const SITE_DISPLAY = { x: "X (Twitter)", steam: "Steam", huggingface: "Hugging Face", threads: "Threads", gravatar: "Gravatar", hackernews: "Hacker News", "dev community": "dev.to", chess: "Chess.com", "mastodon.social": "Mastodon", "docker hub": "Docker Hub", gitea: "Gitea.com", launchpad: "Launchpad",
+  // One row per Mastodon instance: the same handle on two instances is two accounts.
+  ...Object.fromEntries(MASTODON_INSTANCES.slice(1).map((host) => [host, `Mastodon (${host})`])) };
+// "Mastodon (fosstodon.org)" is the account on that instance, and its canonical name is the host.
+// mastodon.social keeps the name older cases use as its row key. Any other trailing parenthesis
+// is a tool's remark about the site and is dropped.
+const MASTODON_AT = /^mastodon\s*\(([a-z0-9-]+(?:\.[a-z0-9-]+)+)\)$/;
+export const canonSite = (s) => { const raw = norm(s), m = raw.match(MASTODON_AT); if (m) return m[1]; const n = raw.replace(/\s*\((?!twitter).*\)$/, ""); return Object.hasOwn(SITE_ALIAS, n) ? SITE_ALIAS[n] : n; };
 const siteDisplay = (cs) => (Object.hasOwn(SITE_DISPLAY, cs) ? SITE_DISPLAY[cs] : "");
 const failed = (d) => !!(d && (d.error || d.error_code));
 const fmtNum = (n) => Number(n ?? 0).toLocaleString("en-US");
@@ -139,8 +153,15 @@ export function sourcePlan(type, target, { adult = false } = {}) {
 // tests/test_minor_parity.py feeds one case through both and compares). The order is the rules
 // file's `sources.text_order`: Maigret, GitHub, the platform check (Reddit's record included),
 // profile enrichment, then the profile sources (collected.profiles: the name, the bio and
-// `guard.bio`, with the company and the location as further text). Then, on the page only,
-// Gravatar and a profile scrape when the case has them.
+// `guard.bio`, with the company and the location as further text), then the names on commits
+// (collected.commitEmails, one entry per found answer with rows, in the order the answers are
+// kept: the site name, the profile address, the profile's display name as the name, and the other
+// author names of at most 10 rows as the bio, one per line, each once and at most 100 characters;
+// guard_profile in modules/commit_emails.py builds the same row for the server's record. A
+// commit address is never scanned), then what two archived copies of a profile said
+// (collected.archiveDiffs: the page titles and the removed and added lines, as the server records
+// them under "Internet Archive"). Then, on the page only, Gravatar and a profile scrape when
+// the case has them.
 // A row may carry guard-only text under `guard` (the whole bio, other text fields, a birth date,
 // an age): it is read here and removed before the case is kept (stripGuard in adult.js).
 // Sites known to answer for any name are left out, and nothing adult is ever read. Profiles the
@@ -171,6 +192,21 @@ export function profileTexts(collected) {
   // same way: `texts` in core/profile_record.py). The rows are read as they came, not through
   // readProfileSources, so the page scans exactly what the server scans.
   for (const p of rows(c.profiles, "profiles")) if (p.state === "found") { const g = guardOf(p); put(p.site, p.url, p.display_name, g.bio || p.bio, textLines(p.company, p.location), g); }
+  // The names on commits (POST /api/recon/commit-emails), as the server records them. A stored
+  // answer keeps these names as they came (readCommitEmails in deep.js), so there is no guard-only text.
+  for (const a of Object.values(c.commitEmails && typeof c.commitEmails === "object" && !Array.isArray(c.commitEmails) ? c.commitEmails : {})) {
+    if (!a || typeof a !== "object" || a.state !== "found" || !Array.isArray(a.emails)) continue;
+    const mails = a.emails.filter((r) => r && typeof r === "object" && !Array.isArray(r)).slice(0, 10);
+    if (!mails.length) continue;
+    const text = (v) => (typeof v === "string" ? clipText(v, 100) : ""), shown = text(a.display_name), names = [];
+    for (const r of mails) { const n = text(r.name); if (n && n !== shown && !names.includes(n)) names.push(n); }
+    put(a.site_name, a.profile_url, shown, names.join("\n"), "");
+  }
+  // What two archived copies said (POST /api/recon/archive-diff), as the server records it under
+  // "Internet Archive": the page titles and the removed and added lines, in pieces of at most 2000
+  // characters, with the address of the older capture (archiveDiffTexts in deep.js). In the order
+  // the answers are kept.
+  for (const a of Object.values(c.archiveDiffs && typeof c.archiveDiffs === "object" && !Array.isArray(c.archiveDiffs) ? c.archiveDiffs : {})) for (const e of archiveDiffTexts(a)) put(e.source, e.url, "", e.bio, "");
   if (c.gravatar?.found && !failed(c.gravatar)) put("Gravatar", c.gravatar.profile_url, c.gravatar.name || c.gravatar.display_name, c.gravatar.about || c.gravatar.bio, "");
   for (const r of rows(c.profileScrape)) if (!r.error) put(r.site || "Profile", r.url, r.display_name, r.bio, "");
   return out;
@@ -178,7 +214,59 @@ export function profileTexts(collected) {
 // Stage 2 of the minor guard, for a case whose ordinary sources are in:
 // { blocked, kind, signal: { strength, kind, source, snippet, url } | null, signals, soft, soft_years, read }.
 // today is a parameter so the tests can pin it.
-export const contentCheck = (collected, target, type = "username", today = new Date()) => scanProfiles(type === "username" ? profileTexts(collected) : [], handleOf(target), today);
+// also: further readings of the same handle, each shaped like `collected` (makeGuardMemory below):
+// their text is scanned with the case's. Reading a text twice changes nothing: a signal counts once.
+export const contentCheck = (collected, target, type = "username", today = new Date(), also = []) => scanProfiles(type === "username" ? [collected, ...(Array.isArray(also) ? also : [])].flatMap((c) => profileTexts(c)) : [], handleOf(target), today);
+
+// ---- what the content check has read for a handle, in memory ----------------------------------------
+// The check must never read less than the case holds, and a case gains text after its run: a
+// Deep Dive reads profile pages, and the lookups made on a click return author names and
+// archived text. The case itself keeps only a checked, bounded copy of those (and only the last
+// comparison of a row), so this holder keeps each answer as it came:
+//   ran({ ran, target, collected, switched })   a finished run's answers as they came, guard-only
+//                                               text included, and the Sources switches. One run.
+//   held(ran, target)                           is that run the one held?
+//   take(ran, target)                           hands it out once, for the one pass added to a case
+//   drop()                                      the case was left: the run is forgotten
+//   keep([handle], kind, key, answer)           an answer read on a click, under every handle it is
+//                                               about. kind: "commitEmails", "archiveDiffs" (keyed,
+//                                               one entry per row or per pair) or "profileScrape".
+//                                               Kept for the session, across runs of the handle.
+//   also(handle, now)                           what adultPassPlan takes as `also`: everything
+//                                               kept for the handle, then the case as it stands
+// A variable of the page and nothing else: never stored, exported, sent or written to a case
+// file, and gone on reload. Bounded: past the bound the oldest answer (or the handle longest
+// untouched) goes, and with it the held run of that handle, so the pass cannot be added on the
+// strength of a memory that had to forget. The case has to run again, and the server, which
+// keeps its own record of the same text, is asked as always.
+const GUARD_KINDS = { commitEmails: true, archiveDiffs: true, profileScrape: false };   // true: keyed by row
+export function makeGuardMemory({ handles = 50, answers = 200 } = {}) {
+  const later = new Map();
+  let run = null;
+  const keyOf = (t) => handleOf(t).toLowerCase();
+  const forget = (k) => { if (run && keyOf(run.target) === k) run = null; };
+  const held = (ran, target) => !!run && run.ran === ran && run.target === target;
+  return {
+    ran({ ran, target, collected, switched } = {}) { run = { ran, target, c: { ...(collected && typeof collected === "object" ? collected : {}) }, switched: { ...(switched && typeof switched === "object" ? switched : {}) } }; },
+    held,
+    take(ran, target) { const out = held(ran, target) ? run : null; run = null; return out; },
+    drop() { run = null; },
+    keep(targets, kind, key, answer) {
+      const keys = [...new Set((Array.isArray(targets) ? targets : []).map(keyOf).filter(Boolean))];
+      if (!keys.length || !Object.hasOwn(GUARD_KINDS, kind) || !answer || typeof answer !== "object" || Array.isArray(answer)) return false;
+      const reading = GUARD_KINDS[kind] ? { [kind]: { [String(key)]: answer } } : { [kind]: answer };
+      for (const k of keys) {
+        const list = later.get(k) || [];
+        list.push(reading);
+        if (list.length > answers) { list.shift(); forget(k); }
+        later.delete(k); later.set(k, list);
+        while (later.size > handles) { const old = later.keys().next().value; later.delete(old); forget(old); }
+      }
+      return true;
+    },
+    also: (target, now = null) => [...(later.get(keyOf(target)) || []), ...(now && typeof now === "object" ? [now] : [])],
+  };
+}
 
 // ---- a username run: what is asked, and when ----------------------------------------------------
 // investigate.js builds its requests with these three functions and does what they say, so the
@@ -190,17 +278,21 @@ export const ordinaryRequests = (handle, { sherlock = true, maigret = true } = {
 ];
 // The adult pass, decided once everything that returns profile text has answered.
 //   planned    the mode applies to this case (the last entry of sourcePlan is "adult")
+//   collected  the run's answers as they came: whether the profiles could be read is decided on these
+//   also       everything else the check must read (makeGuardMemory's also()): what was read for
+//              this handle on a click, and for a pass added to a finished case the case as it
+//              stands. A sign of a minor anywhere in it blocks.
 //   switched   { sherlock, maigret, platformCheck }: the Sources panel's switches
 // state: "none" (not planned), "cancelled", "unread" (no source that reads profiles answered:
 // unknown is not clean), "blocked" (the profile check found a sign of a minor) or "clean".
 // Only "clean" has requests. block is what the case records; log is the run log row.
-export function adultPassPlan({ planned, cancelled = false, collected, target, type = "username", switched = {}, today = new Date() } = {}) {
+export function adultPassPlan({ planned, cancelled = false, collected, also = [], target, type = "username", switched = {}, today = new Date() } = {}) {
   const none = { state: "none", requests: [], log: "", notice: "", block: null, scan: null, silent: [] };
   if (planned !== true || type !== "username") return none;
   if (cancelled) return { ...none, state: "cancelled", log: ADULT_LOG.cancelled, notice: CANCELLED_TEXT };
   const ready = readiness(collected, switched);
   if (!ready.ok) { const block = readBlock({ kind: "unread", via: ready.via }); return { ...none, state: "unread", log: ADULT_LOG.blocked(block), notice: blockText(block), block }; }
-  const scan = contentCheck(collected, target, type, today);
+  const scan = contentCheck(collected, target, type, today, also);
   if (scan.blocked) { const block = blockFromScan(scan); return { ...none, state: "blocked", log: ADULT_LOG.blocked(block), notice: blockText(block), block, scan }; }
   return { ...none, state: "clean", scan, silent: ready.silent, log: ADULT_LOG.clean(scan.read, ready.silent), requests: adultRequests(handleOf(target), scan, { sherlock: switched.sherlock !== false, maigret: switched.maigret !== false }) };
 }
@@ -355,7 +447,10 @@ export function collectProfiles(collected, target, type = inferType(collected, t
   // username tools, so for a site both know, the record's values are the ones kept. A picture is
   // already hashed by the server, so these profiles are never sent to the avatar comparison.
   const ps = readProfileSources(c.profiles);
+  // A record Launchpad made by itself is not a claimed account: it is no profile, whoever read it.
+  const unclaimed = new Set();
   for (const r of ps && !failed(ps) ? ps.profiles : []) {
+    if (unclaimedProfile(r)) { unclaimed.add(`acct:${canonSite(r.site)}`); continue; }
     const bio = cleanBio(r.bio, false);
     const p = put(r.site, PROFILE_SOURCE, {
       url: r.url, handle: r.handle, name: r.name, location: r.location, bio, created: r.created, lastActive: r.last_active, company: r.company, siteNote: r.note,
@@ -433,6 +528,7 @@ export function collectProfiles(collected, target, type = inferType(collected, t
   // Avatar hashes, when the comparison ran.
   const av = c.avatarHash;
   if (av && !failed(av)) for (const r of av.results || []) { const p = map.get(r.id); if (p && !p.hashed && r.hash && !r.error) { p.avatarHash = String(r.hash); p.avatarDefault = !!r.default; if (!r.default) p.thumb = safeThumb(r.thumb); } }
+  for (const id of unclaimed) map.delete(id);
   return [...map.values()];
 }
 // The facts of a profile added from a similar handle. The source names the handle it is under.
@@ -468,14 +564,16 @@ function mergeFacts(facts, { weak = new Set() } = {}) {
   }
   return out.map(({ f, src, basis, pids }) => {
     const { pid, basis: _b, ...rest } = f;
-    const how = factHow({ kinds: [...basis], sites: pids.size || 1, sources: src, weak: pids.size > 0 && [...pids].every((id) => weak.has(id)) });
+    const how = factHow({ kinds: [...basis], sites: pids.size || 1, sources: src, weak: pids.size > 0 && [...pids].every((id) => weak.has(id)), commit: f.k === "Commit email" });
     return how ? { ...rest, how } : rest;
   });
 }
 
 // ---- leads ---------------------------------------------------------------------------
 // Handles, addresses, domains and links found on profiles. One hop, started by a click.
-// extra: leads that come from the address itself and not from a profile (emailAccountLeads).
+// extra: leads that come from the address itself and not from a profile (emailAccountLeads), and
+// the leads of a lookup made on a click for one row: an address on its commits, a link removed
+// between two archived copies. Each of those carries `tied` from the standing of its row.
 function buildLeads(c, target, type, profiles, rel, accountUrls, extra = []) {
   const out = new Map();
   const searched = norm(type === "email" ? emailParts(target).handle : String(target ?? "").replace(/^@/, ""));
@@ -485,6 +583,14 @@ function buildLeads(c, target, type, profiles, rel, accountUrls, extra = []) {
     if (prev) { if (!prev.from.includes(from)) prev.from.push(from); if (!prev.sources.includes(source)) prev.sources.push(source); prev.tied ||= tied; return; }
     out.set(k, { kind, value, from: [from], sources: [source], tied, key: k });
   };
+  // A link: a page is a link lead, and a site that is not a platform is a domain lead as well. A
+  // bare personal domain is a domain lead only; a platform's own front page is nowhere to look.
+  const link = (value, from, source, tied) => {
+    const parts = linkParts(value);
+    if (!parts || accountUrls.has(parts.key)) return;
+    if (!parts.platform) add("domain", parts.host, from, source, tied);
+    if (parts.path) add("url", /^https?:/i.test(value) ? value : `https://${value}`, from, source, tied);
+  };
   for (const p of profiles) {
     const r = rel.get(p.id);
     if (!r || r.tier === "different") continue;
@@ -492,16 +598,12 @@ function buildLeads(c, target, type, profiles, rel, accountUrls, extra = []) {
     for (const l of p.leads) {
       if (l.kind === "handle") { const hv = l.value.replace(/^@/, ""); if (HANDLE_OK.test(hv) && norm(hv) !== searched) add("handle", hv, l.from, p.site, tied); }
       else if (l.kind === "email") { if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(l.value) && norm(l.value) !== norm(target)) add("email", l.value.toLowerCase(), l.from, p.site, tied); }
-      else {
-        const parts = linkParts(l.value);
-        if (!parts || accountUrls.has(parts.key)) continue;
-        if (!parts.platform) add("domain", parts.host, l.from, p.site, tied);
-        // A platform's own front page is nowhere to look: only a page on it is a lead.
-        if (parts.path) add("url", /^https?:/i.test(l.value) ? l.value : `https://${l.value}`, l.from, p.site, tied);
-      }
+      else link(l.value, l.from, p.site, tied);
     }
   }
   for (const l of extra) {
+    // A link found on an archived page: never one on an adult or dating site.
+    if (l.kind === "url") { if (!adultHost(l.value)) link(l.value, l.from, l.source, l.tied); continue; }
     if (l.kind === "handle" && HANDLE_OK.test(l.value) && !l.value.startsWith("-") && (type === "email" || norm(l.value) !== searched)) add("handle", l.value, l.from, l.source, l.tied);
     else if (l.kind === "email" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(l.value) && norm(l.value) !== norm(target)) add("email", l.value.toLowerCase(), l.from, l.source, l.tied);
   }
@@ -617,6 +719,15 @@ export function buildEvidence(collected, target, typeArg) {
   const result = clusterIdentities(profiles, { handle: searched, pick: pick?.members, pickFile: pick?.file === true });
   const primary = result.clusters.find((x) => x.primary) || null;
   const archives = person ? readArchives(c.archives || {}) : {};
+  // The three lookups made on a click for one read profile, each kept by row (deep.js).
+  const commitEmails = person ? readCommitEmails(c.commitEmails || {}) || {} : {};
+  const postActivity = person ? readPostActivities(c.postActivity || {}) || {} : {};
+  const archiveDiffs = person ? readArchiveDiffs(c.archiveDiffs || {}) || {} : {};
+  // rowLeads: what those lookups found to look at next. readings: the post activity that was
+  // read, by row. aiCommits: the commit addresses the model is told (primary identity only).
+  const rowLeads = [], readings = [], aiCommits = [];
+  // A record Launchpad made by itself (see unclaimedProfile in deep.js): shown, and never an account of anybody's.
+  const unclaimed = new Set((ps && !failed(ps) ? ps.profiles : []).filter(unclaimedProfile).map((r) => canonSite(r.site)));
   const byId = new Map(profiles.map((p) => [p.id, p]));
   const clusterOf = (id) => result.clusters.find((x) => x.id === result.byProfile[id]) || null;
   const rel = new Map();
@@ -644,6 +755,11 @@ export function buildEvidence(collected, target, typeArg) {
     if (row.kinds.has("registered")) {
       row.tier = "linked";
       row.meta = ["registered with this email", p?.anchor === "gravatar" ? "Gravatar's record for this email" : ""].filter(Boolean).join(" · ");
+    } else if (unclaimed.has(row.key.slice(5))) {
+      // Launchpad's record was read, and it is not an account anybody claimed. Unverified, with
+      // its own words; no profile, so nothing below treats it as one.
+      row.tier = "unverified"; row.unclaimed = true;
+      row.meta = UNCLAIMED_META;
     } else if (p && r && row.kinds.has("read")) {
       row.tier = r.tier;
       const named = meaningfulName(p.name, [p.handle, searched]);
@@ -713,11 +829,17 @@ export function buildEvidence(collected, target, typeArg) {
       if (!read && row.pcOwn && row.card.basis) { const tools = row.sources.filter((x) => x !== "Platform check"); row.card.basis = tools.length ? `Reported by ${tools.join(", ")}. Nothing was read.` : "Nothing was read."; }
       // A taken handle: the card says what the sign-up check said, and nothing about a profile.
       if (row.taken) row.card = { handle: String(searchedHandle || ""), facts: [], bio: "", basis: row.meta, why: "", note: "" };
+      // A record nobody claimed: the card says what Launchpad's record is, and shows nothing from it.
+      if (row.unclaimed) row.card = { handle: String(searchedHandle || ""), facts: [], bio: "", basis: UNCLAIMED_TEXT, why: "", note: "" };
       if (read && p.note === "suspended") row.card.note = "The site marks this account as suspended.";
       // The site's record came back in part ("bio not read"). What was not read is unknown: the
       // card says so, and never words it as a profile with no bio.
+      // A note the page knows (moved, a team, an organization, suspended, automated) is said in the
+      // page's own sentence, and the row carries the note's code as `siteNote`.
       if (read && p.siteNote && !row.similar) {
-        row.card.note = [row.card.note, /not read$/.test(p.siteNote) ? `${p.site} answered in part: ${p.siteNote}. That part is unknown, not empty.` : `${p.site} notes: ${p.siteNote}${/[.!?]$/.test(p.siteNote) ? "" : "."}`].filter(Boolean).join(" ");
+        const known = profileNoteText(p.siteNote);
+        if (known) row.siteNote = p.siteNote;
+        row.card.note = [row.card.note, known ? (p.siteNote === "suspended" && p.note === "suspended" ? "" : known) : /not read$/.test(p.siteNote) ? `${p.site} answered in part: ${p.siteNote}. That part is unknown, not empty.` : `${p.site} notes: ${p.siteNote}${/[.!?]$/.test(p.siteNote) ? "" : "."}`].filter(Boolean).join(" ");
         if (/carries no name, bio or dates/.test(row.card.basis || "")) row.card.basis = `Profile record read by ${row.sources.join(", ")}.`;
       }
       if (row.similar) row.card.why = "";
@@ -730,12 +852,58 @@ export function buildEvidence(collected, target, typeArg) {
       // time. Never for an address with a query (the snapshot address would carry it) and never
       // for an adult or dating site: archivable() in deep.js. An answer is shown on the row.
       if (read && !row.similar && row.link_kind === "verified_profile" && archivable(row.url)) { const a = archives[row.key]; row.archive = { url: row.url, ...(a && a.url === row.url ? { view: archiveView(a) } : {}) }; }
+      // Three more lookups on a click, each for one read profile and never for an adult or dating
+      // site. can*: what the page sends when the button is pressed (the row is on a site the
+      // lookup reads). An answer is shown on the row when it is about this row's account. What an
+      // answer leads to is tied to the person only as far as the row is, and a row filed as a
+      // different person gives no lead and no fact.
+      if (read && !row.similar && row.link_kind === "verified_profile" && !adultHost(row.url)) {
+        const who = { url: row.url, handle: p.handle, siteNote: p.siteNote };
+        const tied = r.tier === "linked" || r.inPrimary, other = r.tier === "different";
+        const sameName = (a, b, exact = false) => (exact ? String(a) === String(b) : norm(a) === norm(b));
+        const ce = commitEmailsFor(who), ca = ce ? commitEmails[row.key] : null;
+        if (ce) row.canCommitEmails = ce;
+        if (ca && ca.site === ce.site && sameName(ca.username, ce.username) && (!ca.profile_url || linkParts(ca.profile_url)?.key === linkParts(row.url)?.key)) {
+          row.commitEmails = commitEmailsView(ca);
+          if (!other) for (const l of commitEmailLeads(ca)) rowLeads.push({ kind: "email", value: l.value, from: `${l.from}${/self-declared/.test(l.from) ? "" : ", self-declared"}`, source: COMMIT_EMAILS_SOURCE, tied });
+          // A fact only for a profile of the primary identity, and marked as what it is: typed
+          // into a commit by its author. The weaker tie says so in its source. It links to a
+          // repository the address was seen in, where the commits can be read.
+          if (tied) {
+            for (const e of row.commitEmails.rows.slice(0, 5)) p.facts.push(sealFact({ k: "Commit email", v: e.email, source: `${ca.site_name} commits${e.strong ? "" : " (author line only)"}`, url: e.repos[0]?.url || "", pid: p.id, basis: "self" }, { subjects: [searchedHandle], secrets }));
+            const ai = commitEmailsForAi(ca);
+            if (ai) aiCommits.push(ai);
+          }
+        }
+        const pa = postActivityFor(who), pv = pa ? postActivity[row.key] : null;
+        if (pa) row.canPostActivity = pa;
+        // Hacker News names are case sensitive, so there the answer must be about the exact name.
+        if (pv && pv.site === pa.site && (pv.instance || "") === (pa.instance || "") && sameName(pv.username, pa.username, pa.site === "hackernews")) {
+          row.postActivity = postActivityView(pv);
+          readings.push({ key: row.key, kind: "post", label: postActivityLabel(pv), answer: pv, view: row.postActivity, tied, tier: r.tier, person: row.person || "" });
+        }
+        // Two archived copies can be compared once the archive listed two or more captures.
+        // The server needs a handle with every comparison (its minor guard files the text under
+        // it): the case's own in a username case, the row's own in an email case. A row with no
+        // handle the server would take is not offered the comparison.
+        const pairs = row.archive?.view?.state === "ok" ? archiveDiffPairs(archives[row.key]) : [];
+        const diffUser = [type === "email" ? p.handle : searchedHandle].map((x) => String(x || "").trim().replace(/^@/, "")).find((x) => /^[A-Za-z0-9._-]{1,64}$/.test(x) && !x.startsWith("-")) || "";
+        if (pairs.length && diffUser) {
+          row.archiveDiffPairs = pairs;
+          row.archiveDiffUser = diffUser;
+          const d = archiveDiffs[row.key];
+          if (d && d.url === row.url) {
+            row.archiveDiff = archiveDiffView(d, { subjects: [searchedHandle, p.handle].filter(Boolean), secrets });
+            if (!other) for (const l of archiveDiffLeads(d, { site: row.what })) rowLeads.push({ kind: "url", value: l.value, from: l.from, source: ARCHIVE_SOURCE, tied });
+          }
+        }
+      }
     }
     // The tools that reported the row. For Reddit and Discord the platform check asked the site
     // itself, so it is not one of them.
     if (r?.inPrimary) row.inPrimary = true;
     row.tools = row.sources.filter((x) => !(row.pcOwn && x === "Platform check")).length;
-    if (row.taken || (row.pcOwn && row.tier === "unverified" && !row.tools)) row.nofind = true;
+    if (row.taken || row.unclaimed || (row.pcOwn && row.tier === "unverified" && !row.tools)) row.nofind = true;
     markUnsendable(row);
     delete row.kinds; delete row.notes; delete row.readUrl; delete row.relate;
   }
@@ -826,14 +994,14 @@ export function buildEvidence(collected, target, typeArg) {
   // --- leads --------------------------------------------------------------------------
   if (person) {
     const urls = new Set([...accounts.values()].map((a) => linkParts(a.srcUrl || a.url)?.key).filter(Boolean));
-    for (const l of buildLeads(c, target, type, profiles, rel, urls, type === "email" ? emailAccountLeads(c.emailAccounts, target) : [])) items.push(l);
+    for (const l of buildLeads(c, target, type, profiles, rel, urls, [...(type === "email" ? emailAccountLeads(c.emailAccounts, target) : []), ...rowLeads])) items.push(l);
   }
 
   for (const it of items) if (it.sources) {
     it.source = it.sources.join(", ");
     // Two tools agreeing is worth saying, but it is still not verification.
     // Not for a row the platform check asked itself: it did not "report" the handle.
-    if (it.tier === "unverified" && !it.taken && (it.tools ?? it.sources.length) > 1 && it.key?.startsWith("acct:")) it.meta = [it.meta, `reported by ${it.tools ?? it.sources.length} tools`].filter(Boolean).join(" · ");
+    if (it.tier === "unverified" && !it.taken && !it.unclaimed && (it.tools ?? it.sources.length) > 1 && it.key?.startsWith("acct:")) it.meta = [it.meta, `reported by ${it.tools ?? it.sources.length} tools`].filter(Boolean).join(" · ");
   }
   for (const it of items) { delete it.srcUrl; sealLink(it, { subjects: [searchedHandle], secrets }); }
   // A row whose page was not found stays in its group, at the end.
@@ -869,8 +1037,46 @@ export function buildEvidence(collected, target, typeArg) {
   const facts = dedupeFacts([...(views.find((v) => v.primary)?.facts || []), ...general]);
   // added: the facts of the profiles added from a similar handle, kept apart from every identity.
   const addedFacts = addedList.map((p) => ({ id: p.id, label: `${p.site} (${p.handle})`, facts: p.facts })).filter((a) => a.facts.length);
-  return { items, facts, general: dedupeFacts(general), identity, type, similarLine: similarBrief(evaluated), added: addedFacts };
+  // --- when the accounts are active: every reading the case holds, and whose each one is -----
+  // own: the readings of the primary identity (GitHub's while that account is the case's own, and
+  // post activity for a row that is Linked or part of the primary identity). other: the rest,
+  // each with the sentence that says whose activity it is. Only `own` is compared, written into
+  // the assessment or sent to the model.
+  const who = primary ? primary.label : "the person this case is about";
+  const reading = (x, own, note) => ({ key: x.key, kind: x.kind, label: x.label, heading: `${x.kind === "github" ? "GitHub activity" : `${x.label} post activity`}${own ? "" : " (not the person this case is about)"}`, own, note: own ? "" : note, standing: { own, text: own ? "" : note }, state: x.view.state, view: x.view, answer: x.answer });
+  const all = [];
+  const ghAct = type === "username" ? readActivity(c.githubActivity) : null, ghView = ghAct ? activityView(ghAct) : null;
+  if (ghView) { const st = githubStanding({ items, identity }); all.push(reading({ key: "acct:github", kind: "github", label: "GitHub", answer: ghAct, view: ghView }, st.own, st.text)); }
+  for (const x of readings.sort((a, b) => a.label.localeCompare(b.label))) all.push(reading(x, x.tied, x.tier === "different"
+    ? `This is the post activity of the ${x.label} account, which the findings file as a different person${x.person ? ` (${x.person})` : ""}. It is that account's, not ${who}'s.`
+    : `This is the post activity of the ${x.label} account. Nothing ties that account to ${who}, so it is not read as theirs.`));
+  const activity = { own: all.filter((x) => x.own), other: all.filter((x) => !x.own) };
+  const offsets = compareOffsets(activity.own.map((x) => ({ label: x.label, answer: x.answer })));
+  return { items, facts, general: dedupeFacts(general), identity, type, similarLine: similarBrief(evaluated), added: addedFacts, activity, offsets, commitsForAi: aiCommits };
 }
+
+// What the row and the card of a Launchpad record nobody claimed say (the pill word is in present.js).
+export const UNCLAIMED_META = "not a claimed account: Launchpad made this record by itself";
+export const UNCLAIMED_TEXT = profileNoteText(NOT_ACTIVE_NOTE).replace(/^Not a claimed account\.\s*/, "");
+export const UNCLAIMED_NOTE = "not a claimed account, made by the site itself";
+
+// ---- when the accounts are active --------------------------------------------------------------
+// The activity readings of a case, as buildEvidence filed them:
+//   { own: [reading], other: [reading] }
+//   reading: { key, kind: "github" | "post", label, heading, own, note, standing: { own, text },
+//              state, view, answer }
+//     view     what one renderer draws for GitHub's reading and a post site's (activityView and
+//              postActivityView in deep.js return the same keys)
+//     heading  the title above it; note: whose activity it is, for a reading that is not the
+//              primary identity's ("" when it is)
+//     answer   the checked reading, for the exports
+// own holds the readings of the primary identity; they are the only ones compared.
+const NO_READINGS = { own: [], other: [] };
+export const activityReadings = (ev) => ev?.activity || NO_READINGS;
+// Do the UTC offset ranges of the primary identity's readings fit together? compareOffsets in
+// deep.js: { verdict: "agree" | "disagree" | "not_enough_data", compared, shared, label, labels,
+// text, caution }. A hint either way, never a place, and it moves no profile between identities.
+export const offsetComparison = (ev) => ev?.offsets || compareOffsets([]);
 
 // Facts for one identity view, plus the facts that belong to the target and to no person.
 export function factsFor(ev, viewId) {
@@ -918,7 +1124,8 @@ export const ledgerTiers = (target, type) => type === "name" ? NAME_TIERS.map((t
 export const accountsFor = (items) => items.filter((i) => i.key?.startsWith("acct:") && ACCOUNT_TIERS.includes(i.tier))
   .map((i) => ({ site: String(i.what).slice(0, 120), url: i.link_kind === "none" ? "" : String(i.url || "").slice(0, 600), link_kind: i.link_kind || "none", ...(i.check ? { link_check: i.check } : {}), status: i.tier, sources: (i.sources || [i.source]).slice(0, 8).map(String),
     // A taken handle is told as that: no profile was read and the owner is unknown.
-    note: i.taken ? TAKEN_NOTE : i.tier === "unverified" ? "" : String(i.meta || "").slice(0, 200),
+    // A record Launchpad made by itself is told as that: it is nobody's claimed account.
+    note: i.taken ? TAKEN_NOTE : i.unclaimed ? UNCLAIMED_NOTE : i.tier === "unverified" ? "" : String(i.meta || "").slice(0, 200),
     // A profile added from a similar handle is under another handle than the target's.
     ...(i.similar ? { handle: String(i.similar.variant).slice(0, 64) } : {}) }));
 export const tierCounts = (items) => Object.fromEntries(ACCOUNT_TIERS.map((t) => [t, items.filter((i) => i.key?.startsWith("acct:") && i.tier === t).length]));
@@ -998,7 +1205,7 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
     ...(scrape ? { profile_scrape: scrape } : {}),
     hunter: c.hunter || null, name_search: c.nameSearch ? { name: c.nameSearch } : null, active_techniques: !!active,
     // The three record sources, each value marked by how it is known (see deepForAi).
-    ...deepForAi(c, items, type),
+    ...deepForAi(c, items, type, ev),
     ...(forAi && (type === "username" || type === "email") ? { case_analysis: forAi } : {}),
     // A name case: the candidates as the screen shows them. Absent for every other case.
     ...(type === "name" && nameForAi(c, target) ? { name_candidates: nameForAi(c, target) } : {}),
@@ -1019,20 +1226,31 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
 //   email_accounts    emailAccountsForAi: self-declared values carry that in the field name
 //   github_activity   activityForAi: counts by UTC hour, and an offset range that is never a place.
 //                     Only while the GitHub account is the case's own (see githubStanding).
-export function deepForAi(c, items, type) {
+// And, from `ev` (the result of buildEvidence), what the lookups made on a click found, for the
+// rows of the primary identity only (Linked, or part of it):
+//   post_activity     at most 3 readings (postActivityForAi): the site, counts by UTC hour, the
+//                     page's own sentences, and an offset range that is never a place
+//   offset_comparison whether those ranges and GitHub's fit together: the verdict, the accounts
+//                     compared, the shared range and the page's sentence and caution. Absent
+//                     when fewer than two readings carry a range.
+//   commit_emails     at most 4 accounts (commitEmailsForAi): at most 5 addresses each, every one
+//                     with its tie and `self_declared: true`
+// A Launchpad record nobody claimed is not sent as a profile: it is one line among the notes.
+// Archive diff text and the self-audit are never sent.
+export function deepForAi(c, items, type, ev = null) {
   const out = {};
   const ps = type === "username" ? readProfileSources(c.profiles) : null;
   if (ps && !failed(ps)) {
     const cov = profileCoverage(ps);
     out.profile_sources = {
-      profiles: ps.profiles.map((r) => ({ r, status: items.find((i) => i.key === `acct:${canonSite(r.site)}`)?.tier || "unverified" })).map(({ r, status }) => (status === "different" ? { site: r.site, status } : {
+      profiles: ps.profiles.filter((r) => !unclaimedProfile(r)).map((r) => ({ r, status: items.find((i) => i.key === `acct:${canonSite(r.site)}`)?.tier || "unverified" })).map(({ r, status }) => (status === "different" ? { site: r.site, status } : {
         site: r.site, url: r.url, handle: r.handle, status,
         self_declared: Object.fromEntries(Object.entries({ name: r.name, bio: r.bio, location: r.location, company: r.company, website: r.website, public_emails: r.emails.join(", "), listed_accounts: r.accounts.filter((a) => !proofStrong(a.proof)).map((a) => `${a.site} ${a.handle} ${a.url}`.replace(/\s+/g, " ")).join("; ") }).filter(([, v]) => v)),
         site_record: Object.fromEntries(Object.entries({ joined: r.created.slice(0, 10), last_active: r.last_active.slice(0, 10), ...r.stats, proven_accounts: r.accounts.filter((a) => proofStrong(a.proof)).map((a) => `${a.site} ${a.handle} ${a.url} (${PROOF_TEXT[a.proof]})`.replace(/\s+/g, " ")).join("; "), items: r.items.slice(0, 12).map((i) => `${i.kind} ${i.name}`).join(", ") }).filter(([, v]) => v !== "" && v !== null && v !== undefined)),
       })),
       not_found: cov.by.not_found || [],
       not_answered: cov.down.map((x) => `${x.site}: ${PROFILE_STATE_WORD[x.state]}`),
-      notes: cov.notes.map((x) => `${x.site}: ${x.note}`),
+      notes: [...ps.profiles.filter(unclaimedProfile).map((r) => `${r.site}: a record exists under this handle that is not a claimed account. The site made it by itself, so it is not the target's account and says nothing about who holds the name`), ...cov.notes.map((x) => `${x.site}: ${x.note}`)],
     };
   }
   const ea = type === "email" ? emailAccountsForAi(c.emailAccounts) : null;
@@ -1040,19 +1258,27 @@ export function deepForAi(c, items, type) {
   const ghRow = items.find((i) => i.key === "acct:github");
   const act = type === "username" && ghRow && (ghRow.tier === "linked" || ghRow.inPrimary === true) ? activityForAi(c.githubActivity) : null;
   if (act) out.github_activity = act;
+  if (ev && (type === "username" || type === "email")) {
+    const posts = activityReadings(ev).own.filter((x) => x.kind === "post").slice(0, 3).map((x) => postActivityForAi(x.answer)).filter(Boolean);
+    if (posts.length) out.post_activity = posts;
+    const cmp = offsetComparison(ev);
+    if (cmp.verdict !== "not_enough_data") out.offset_comparison = { verdict: cmp.verdict, accounts: cmp.labels.slice(0, 6), shared_range: cmp.label, text: cmp.text, caution: cmp.caution };
+    const commits = (ev.commitsForAi || []).slice(0, 4);
+    if (commits.length) out.commit_emails = commits;
+  }
   return out;
 }
 
 // What an AI report was written from. Two runs with the same signature get the same report, so a
 // re-run can reuse the last one. Computed from the case it is given, never from the one on screen.
 export function aiSignature(collected, target, type) {
-  const { items, facts, identity } = buildEvidence(collected, target, type);
+  const ev = buildEvidence(collected, target, type), { items, facts, identity } = ev;
   // A picked identity is part of what the report was written from. Only then, so an older case
   // keeps the signature it had.
   return JSON.stringify([...(identity.picked ? [["picked", identity.primary]] : []), accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]),
     adultForAi(items.filter((i) => i.tier === "adult")), type === "name" ? nameForAi(withoutAdult(collected), target) : null, ...(type === "username" && blockForAi(collected) ? [blockForAi(collected)] : []),
     // Only when the case has one of the record sources, so an older case keeps the signature it had.
-    ...((d) => (Object.keys(d).length ? [d] : []))(deepForAi(withoutAdult(collected), items, type))]);
+    ...((d) => (Object.keys(d).length ? [d] : []))(deepForAi(withoutAdult(collected), items, type, ev))]);
 }
 
 // The profile pages a Deep Dive may read. Built from the adult-free view, and a URL whose host is
@@ -1063,6 +1289,22 @@ export function deepDiveUrls(collected) {
   for (const r of c.platformCheck?.results || []) if (r && r.found && r.url) urls.push({ site: r.platform, url: r.url });
   const seen = new Set();
   return urls.filter((u) => /^https?:\/\//i.test(u.url) && !adultHost(u.url) && !seen.has(u.url) && seen.add(u.url)).slice(0, 20);
+}
+
+// "Reduce your footprint": the self-audit of a case the investigator marked "This is me"
+// (collected.selfAudit, see casework.js), built by rules in selfaudit.js. Only then, and only for
+// a username or an email case. The section says whose statement that is.
+export const FOOTPRINT_HEADING = "Reduce your footprint";
+export const FOOTPRINT_NOTE = "The investigator marked this case as being about themselves (\"This is me\"). That is their own statement, not a finding of the tool.";
+function footprintMarkdown(ev, collected, target, type) {
+  if (!selfAuditOn(collected, type)) return [];
+  const made = selfAuditMarkdown(selfAudit(ev, collected, { target, type }));
+  const lines = (Array.isArray(made) ? made : String(made ?? "").split("\n")).map(String);
+  // The builder may bring a heading of its own: the section then starts there.
+  const body = /^##\s/.test(lines[0] || "") ? lines.slice(1) : lines;
+  while (body.length && !body[0].trim()) body.shift();
+  while (body.length && !body.at(-1).trim()) body.pop();
+  return [`## ${FOOTPRINT_HEADING}`, `_${FOOTPRINT_NOTE}_`, ...(body.length ? body : ["- Nothing in this case calls for a step."]), ""];
 }
 
 // The Markdown export of a case. Adult and dating site rows come after every other finding,
@@ -1090,11 +1332,16 @@ export function caseMarkdown({ collected, target, type, ran = 0, tallyLine = "",
     ...(type === "name" ? nameMarkdownHead(collected, target) : [`## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(choice ? [choice] : []), ...(facts.length ? facts.map(factLine) : ["- Nothing extracted"]), "", ...analysisMarkdown(analysis.assessment, analysis.suggestions)]),
     ...(added.length ? [`## ${ADDED_HEADING}`, ...added.flatMap((a) => a.facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`)), ""] : []),
     ...(others.length ? ["## Other people using this handle", "_Not removed from the case. Check whether each is connected to the primary identity before leaving them out._", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
-    ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...(isNameTier(t.id) ? [`_${t.blurb}_`] : []), ...rows.flatMap((i) => [`- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`, ...detailMarkdown(i.detail), ...archiveMarkdown(i.archive?.view)]), ""] : []; }),
+    ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...(isNameTier(t.id) ? [`_${t.blurb}_`] : []), ...rows.flatMap((i) => [`- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`, ...detailMarkdown(i.detail), ...archiveMarkdown(i.archive?.view), ...archiveDiffMarkdown(i.archiveDiff), ...commitEmailsMarkdown(i.commitEmails)]), ""] : []; }),
     ...(timeline.length ? ["## Timeline", "_Every date was reported by a source in this run. A date marked self-declared was written by the account holder or inside a commit or a key, and can be false._", ...timeline.map((e) => `- ${e.date} · ${mdLink(e, e.title)}${e.detail ? ` · ${e.detail}` : ""} _(${e.source} · ${e.basis_text})_`), ""] : []),
     // GitHub activity is the case's own only while the GitHub account is. Otherwise it is
     // exported under a heading that says whose it is, never as the target's.
     ...(type === "username" ? activityMarkdown(c0.githubActivity, githubStanding(ev)) : []),
+    // Post activity, one section per reading, each under a heading that says whose it is. Then
+    // whether the offset ranges of the primary identity's readings fit together.
+    ...[...activityReadings(ev).own, ...activityReadings(ev).other].filter((x) => x.kind === "post").flatMap((x) => postActivityMarkdown(x.answer, x.standing)),
+    ...(offsetComparison(ev).verdict !== "not_enough_data" ? ["## Do the activity readings fit together", `- ${offsetComparison(ev).text} ${offsetComparison(ev).caution}`, ""] : []),
+    ...footprintMarkdown(ev, c0, target, type),
     ...adultMarkdown(adult),
     // A report's own sections about adult or dating sites are exported only for a case that has such rows.
     ...(ai ? ["## AI analysis", reportForExport(ai.summary, adultFound(adult).length > 0), ""] : []),

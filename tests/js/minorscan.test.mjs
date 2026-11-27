@@ -11,7 +11,8 @@ const J = "../../static/v2/js/";
 const S = await import(J + "minorscan.js");
 const A = await import(J + "adult.js");
 const M = await import(J + "modes.js");
-const { buildEvidence, sourcePlan, profileTexts, contentCheck, ordinaryRequests, adultPassPlan, adultRefusal, aiPayloadFor, aiSignature, caseMarkdown, collectProfiles } = await import(J + "evidence.js");
+const { buildEvidence, sourcePlan, profileTexts, contentCheck, ordinaryRequests, adultPassPlan, adultRefusal, aiPayloadFor, aiSignature, caseMarkdown, collectProfiles, makeGuardMemory } = await import(J + "evidence.js");
+const DEEP = await import(J + "deep.js");
 const { sourceTally, tallyText, partialGaps } = await import(J + "core.js");
 const { evWhat, renderTiers } = await import(J + "workbench.js");
 const { sourceCards } = await import(J + "renderers.js");
@@ -125,6 +126,17 @@ const withBio = (bio, base = MAIN) => { const c = clone(base); c.enricher.profil
   // a similar handle's probe is not part of this case's check
   const sim = { ...clone(MAIN), similar: { riverstone: { variant: "riverstone", probe: { profiles: [{ site: "GitHub", bio: "i'm 15", name: "x" }] } } } };
   ok(JSON.stringify(profileTexts(sim)) === JSON.stringify(t), "what a similar handle's check found is not read");
+  // the names on commits (collected.commitEmails, keyed by the account row): names only, found answers with rows only
+  const mail = (email, name) => ({ email, name, how: "author_line_match" });
+  const forge = (over = {}) => ({ site: "gitlab", site_name: "GitLab", state: "found", profile_url: `https://gitlab.com/${H}`, display_name: "River S", emails: [mail("river@example.org", "River S"), mail("r2@example.org", "River Stone"), mail("r3@example.org", "River Stone")], ...over });
+  const withCommits = (a) => ({ ...clone(MAIN), commitEmails: { "acct:gitlab": a } });
+  const ct = profileTexts(withCommits(forge()));
+  ok(ct.length === t.length + 1 && JSON.stringify(ct[4]) === JSON.stringify({ source: "GitLab", url: `https://gitlab.com/${H}`, name: "River S", bio: "River Stone", text: "" }), "the names on commits are read after the profile sources: the profile's name, then each other author name once");
+  const aged = contentCheck(withCommits(forge({ emails: [mail("river@example.org", "River, 15yo")] })), H, "username", TODAY);
+  ok(aged.blocked && aged.signal.source === "GitLab", "an author name that states an age under 18 blocks, and the message names the site");
+  ok(!contentCheck(withCommits(forge({ emails: [mail("im15yo@example.org", "River S")] })), H, "username", TODAY).signals.length, "a commit address is never scanned");
+  ok([forge({ state: "not_found" }), forge({ state: "failed", error: "x", error_code: "timeout" }), forge({ emails: [] }), forge({ emails: "x" }), null, "x"].every((a) => JSON.stringify(profileTexts(withCommits(a))) === JSON.stringify(t)) && JSON.stringify(profileTexts({ ...clone(MAIN), commitEmails: [forge()] })) === JSON.stringify(t), "an answer that is not a found account with rows adds no text");
+  ok(profileTexts(withCommits(forge({ display_name: "", emails: Array.from({ length: 14 }, (_, i) => mail(`m${i}@example.org`, `${i}`.padStart(2, "0") + "n".repeat(200))) })))[4].bio.length === 1009, "at most ten rows and 100 characters of each name are read");
   // addresses and handles are not scanned
   const urlOnly = clone(MAIN); urlOnly.github.profile_url = "https://github.com/im-15-years-old"; urlOnly.github.blog = "https://example.org/class-of-2031";
   ok(!contentCheck(urlOnly, "river_stone", "username", TODAY).signals.length, "an address is never scanned");
@@ -287,10 +299,22 @@ const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
   ok(adultRefusal({ code: "minor_guard", reason: A.GUARD_REASONS.age }).minor === "server" && adultRefusal({ code: "timeout" }) === null && adultRefusal(null) === null, "a refusal for the handle suspends it as the server's, and any other error is not a refusal");
   // investigate.js calls these functions and nothing else decides.
   const inv = read(J + "investigate.js");
-  ok(/for \(const r of ordinaryRequests\(handle, \{ sherlock: on\("sherlock"\), maigret: on\("maigret"\) \}\)\) jobs\.push\(runSource\(r\.label, r\.url, r\.body, \{\}, r\.key\)\);/.test(inv) && /const pass = adultPassPlan\(\{ planned: wantAdult, cancelled: state\.cancelled, collected: c, target, type, switched: \{ sherlock: on\("sherlock"\), maigret: on\("maigret"\), platformCheck: on\("platform"\) \} \}\);/.test(inv) && /await Promise\.all\(pass\.requests\.map\(\(r\) => runSource\(r\.label, r\.url, r\.body, \{\}, r\.key\)\)\);/.test(inv) && /const out = adultRefusal\(err\);/.test(inv), "investigate.js builds its requests with ordinaryRequests, adultPassPlan and adultRefusal");
+  ok(/for \(const r of ordinaryRequests\(handle, \{ sherlock: on\("sherlock"\), maigret: on\("maigret"\) \}\)\) jobs\.push\(runSource\(r\.label, r\.url, r\.body, \{\}, r\.key\)\);/.test(inv) && /const pass = adultPassPlan\(\{ planned, cancelled: state\.cancelled, collected: read, also, target, type, switched \}\);/.test(inv) && (inv.match(/adultPassPlan\(/g) || []).length === 1 && /runAdultPass\(\{ planned: wantAdult, read: c, also: guardMem\.also\(target\), target, type, handle, switched: \{ sherlock: on\("sherlock"\), maigret: on\("maigret"\), platformCheck: on\("platform"\) \} \}\)/.test(inv) && /await Promise\.all\(pass\.requests\.map\(\(r\) => runSource\(r\.label, r\.url, r\.body, \{\}, r\.key\)\)\);/.test(inv) && /const out = adultRefusal\(err\);/.test(inv), "investigate.js builds its requests with ordinaryRequests, adultPassPlan and adultRefusal");
+  // The pass added to a finished case (addAdult) is the same pass: stage 1 again, then the content
+  // check over what the run read as it came, every answer read since, and the case as it stands at
+  // the click (all of it in memory, never stored), then the requests.
+  ok(/async function addAdult\(\) \{\s*\n\s*if \(!canAddAdult\(\)\) return;/.test(inv) && /const mode = startAdult\(\{ on: session\.on\("adult"\), type, target, suspended \}\);\s*\n\s*if \(!adultOn\(type, target, mode\.adult\)/.test(inv) && /const kept = guardMem\.take\(state\.ran, target\);/.test(inv) && /await runAdultPass\(\{ planned: true, read: kept\.c, also: guardMem\.also\(target, state\.collected\), target, type, handle, switched: kept\.switched \}\);/.test(inv), "the adult pass added to a finished case asks the handle check again and runs the same pass over what the run read and what the case holds now");
+  ok(/if \(handleOk && !state\.cancelled\) guardMem\.ran\(\{ ran: state\.ran, target, collected: c, switched:[^\n]*\}\); else guardMem\.drop\(\);\s*\n[^\n]*\n\s*\{ const bare = stripGuard\(c\)/.test(inv) && !/guardMem/.test(inv.slice(inv.indexOf("function saveHistory"), inv.indexOf("function saveHistory") + 900)) && !/guardMem/.test(read(J + "casefile.js") + read(J + "report.js") + read(J + "core.js")) && /const canAddAdult = \(\) => mayAddAdult\(\{/.test(inv), "what the content check reads is copied before the guard text is stripped, is never saved, and whether the pass is offered is decided by mayAddAdult in modes.js");
+  // Every answer that carries text the check reads goes to the memory as it came, under the handle
+  // it was asked for, whether or not the case is still on screen when it arrives.
+  const fnBody = (name) => { const at = inv.indexOf(`async function ${name}(`); return inv.slice(at, inv.indexOf("\n}\n", at)); };
+  ok(/guardMem\.keep\(\[target, body\.username\], "commitEmails", key, got\);/.test(fnBody("askCommits")) && fnBody("askCommits").indexOf("guardMem.keep(") < fnBody("askCommits").indexOf("if (!sameCase(target, ran)) return;"), "a commit emails answer is kept for the check as it came, before anything else is decided");
+  ok(/guardMem\.keep\(\[target, user\], "archiveDiffs", `\$\{key\}\|\$\{from\}\|\$\{to\}`, \{ \.\.\.got, url \}\);/.test(fnBody("askDiff")) && fnBody("askDiff").indexOf("guardMem.keep(") < fnBody("askDiff").indexOf("if (!sameCase(target, ran)) return;"), "every comparison of two archived copies is kept for the check as it came, one entry per pair, readable or not");
+  ok(/guardMem\.keep\(\[target\], "profileScrape", "", scraped\);/.test(fnBody("runDeepDive")) && fnBody("runDeepDive").indexOf("guardMem.keep(") < fnBody("runDeepDive").indexOf("state.collected.profileScrape = scraped"), "what a Deep Dive read from the profile pages is kept for the check before the case shows it");
+  ok(/lookBusy\.add\("deep"\)/.test(fnBody("runDeepDive")) && /finally \{ lookBusy\.delete\("deep"\);/.test(fnBody("runDeepDive")) && /username: handleOf\(target\)/.test(fnBody("runDeepDive")), "a Deep Dive counts as a lookup in flight, and sends the handle so the server can put the text on its record");
   ok(!/nsfw|adult_only|usernameBody\(|adultRequests\(|contentCheck\(|\/api\/recon\/(?:sherlock|maigret|adult-check)/.test(inv.replace(/\/\/.*$/gm, "")), "and builds no Sherlock, Maigret or adult request of its own");
   ok(/adultSay\(pass\.notice \|\| pass\.log\);/.test(inv) && /function adultSay\(text\) \{ profileLive\.textContent = text; \}/.test(inv) && /profileLive\.setAttribute\("aria-live", "polite"\)/.test(inv), "the outcome is said through the polite live region");
-  ok(/Promise\.all\(\[images\.length > 0 \? runSource\("Avatar comparison"[^\n]*, handleOk \? adultPass\(\) : null\]\)/.test(inv) && inv.indexOf("await Promise.all(after);") < inv.indexOf("const adultPass = async"), "the pass is decided after the follow-up sources, and does not wait for the avatar comparison");
+  ok(/Promise\.all\(\[images\.length > 0 \? runSource\("Avatar comparison"[^\n]*, handleOk \? runAdultPass\(\{[^\n]*\}\) : null\]\)/.test(inv) && inv.indexOf("await Promise.all(after);") < inv.indexOf("handleOk ? runAdultPass("), "the pass is decided after the follow-up sources, and does not wait for the avatar comparison");
 }
 
 // ---- 6. the words -----------------------------------------------------------------------------------------
@@ -445,6 +469,63 @@ const forHandle = (h) => JSON.parse(JSON.stringify(MAIN).replaceAll(H, h));
   ok(stored.results.length === 1 && stored.results[0].adult === true && !JSON.stringify(stored).includes("cdn.example") && A.scrubResponse("sherlockAdult", dirty, false) === null && A.scrubResponse("maigretAdult", mAdult, false) === null, "a pass's rows keep only their text fields, and nothing of a pass is kept with the mode off");
   ok(!("sherlockAdult" in A.withoutAdult(on)) && !("maigretAdult" in A.withoutAdult(on)) && !JSON.stringify(aiPayloadFor(on, H, "username", {}).sherlock).includes("chaturbate") && aiPayloadFor(on, H, "username", {}).adult_sites.length === 8, "the ordinary view of the case holds neither pass, and the AI gets the sites only as existence rows");
   ok(JSON.stringify(A.scrubCollected(on, H, "username").maigretAdult.results[0].profile) === JSON.stringify({ name: "River" }) && !("sherlockAdult" in A.scrubCollected(on, "a_15yo", "username")), "History keeps the passes for a case that had the mode on, and drops them otherwise");
+}
+
+// ---- the pass added to a finished case reads everything the case holds at the click ---------------
+// makeGuardMemory (evidence.js) is the one in-memory holder: the run's answers as they came, and
+// every answer read on a click since, per handle. adultPassPlan scans all of it with the case.
+{
+  const SW = { sherlock: true, maigret: true, platformCheck: true };
+  const young = "i'm 15", SCRAPE = (bio) => ({ total: 1, scraped: 1, results: [{ site: "ExampleBlog", url: `https://blog.example/${H}`, display_name: "River", bio }] });
+  const planOf = (mem, now) => adultPassPlan({ planned: true, collected: MAIN, also: mem.also(H, now), target: H, switched: SW, today: TODAY });
+  const fresh = () => { const m = makeGuardMemory(); m.ran({ ran: 7, target: H, collected: MAIN, switched: SW }); return m; };
+  let mem = fresh();
+  ok(mem.held(7, H) && !mem.held(8, H) && !mem.held(7, "someone_else") && planOf(mem, MAIN).state === "clean" && planOf(mem, MAIN).requests.length === 3, "a finished run is held for its own case only, and a clean case plans the three requests");
+  // A Deep Dive after the run: the page text it read is part of the check.
+  ok(planOf(mem, { ...MAIN, profileScrape: SCRAPE(young) }).state === "blocked" && planOf(mem, { ...MAIN, profileScrape: SCRAPE(young) }).requests.length === 0, "text the case holds at the click is scanned, whatever the run's own copy holds: a scraped profile that states an age under 18 blocks the pass");
+  ok(mem.keep([H], "profileScrape", "", SCRAPE(young)) === true && planOf(mem, MAIN).state === "blocked" && planOf(mem, MAIN).block.source === "ExampleBlog" && planOf(mem, MAIN).requests.length === 0, "and so is the scrape as it came, kept in memory, when the case no longer shows it");
+  ok(adultPassPlan({ planned: true, collected: MAIN, also: [{ profileScrape: SCRAPE("likes maps") }], target: H, switched: SW, today: TODAY }).state === "clean" && contentCheck(MAIN, H, "username", TODAY, [{ profileScrape: SCRAPE(young) }]).blocked && !contentCheck(MAIN, H, "username", TODAY, [{ profileScrape: SCRAPE("likes maps") }]).blocked && contentCheck(MAIN, H, "username", TODAY, [null, 5, "x", []]).blocked === false, "a further reading with nothing in it changes nothing, and only objects are read");
+  // Every comparison of two archived copies stays, not only the last one of a row.
+  const PURL = `https://codeberg.org/${H}`, side = (ts, title) => ({ state: "ok", asked: ts, timestamp: ts, url: `https://web.archive.org/web/${ts.replace(/\D/g, "")}/${PURL}`, title, bytes: 10, truncated: false, text_lines: 3, links: 0 });
+  const diff = (t1, t2, removed) => ({ url: PURL, state: "ok", from: side(t1, "River on Codeberg"), to: side(t2, "River on Codeberg"), removed: { text: removed, text_total: removed.length, links: [], links_total: 0 }, added: { text: ["hello"], text_total: 1, links: [], links_total: 0 }, complete: true, swapped: false, cached: false });
+  mem = fresh();
+  mem.keep([H], "archiveDiffs", "acct:codeberg|a|b", diff("2021-01-02T03:04:05Z", "2022-01-02T03:04:05Z", [young]));
+  mem.keep([H], "archiveDiffs", "acct:codeberg|b|c", diff("2022-01-02T03:04:05Z", "2023-01-02T03:04:05Z", ["likes maps"]));
+  const lastOnly = { ...MAIN, archiveDiffs: { "acct:codeberg": DEEP.readArchiveDiff(diff("2022-01-02T03:04:05Z", "2023-01-02T03:04:05Z", ["likes maps"]), PURL) } };
+  ok(!contentCheck(lastOnly, H, "username", TODAY).blocked && planOf(mem, lastOnly).state === "blocked" && planOf(mem, lastOnly).block.source === "Internet Archive", "the text of an earlier pair is still scanned after a later pair of the same row replaced it on the case");
+  // An answer the page cannot show is scanned as the server scanned it: the titles and the lines.
+  const odd = { ...diff("2023-01-02T03:04:05Z", "2021-01-02T03:04:05Z", [young]) };
+  ok(DEEP.readArchiveDiff(odd, PURL).state === "failed" && DEEP.readArchiveDiff(odd, PURL).removed.text.length === 0 && DEEP.archiveDiffTexts(odd).some((t) => t.bio.split("\n").includes(young)) && DEEP.archiveDiffTexts({ state: "nonsense", from: { title: "River, 15 years old", url: "https://web.archive.org/web/2021/x" }, removed: { text: [young, 7, null, ""] } })[0].bio === `River, 15 years old\n${young}`, "the text of an answer that could not be read for display is still read for the check, strings only");
+  mem = fresh(); mem.keep([H], "archiveDiffs", "acct:codeberg|x|y", odd);
+  ok(planOf(mem, MAIN).state === "blocked", "and it blocks the pass like any other profile text");
+  ok(JSON.stringify(DEEP.archiveDiffTexts(DEEP.readArchiveDiff(diff("2021-01-02T03:04:05Z", "2022-01-02T03:04:05Z", ["a", "b"]), PURL))) === JSON.stringify(DEEP.archiveDiffTexts(diff("2021-01-02T03:04:05Z", "2022-01-02T03:04:05Z", ["a", "b"]))) && DEEP.archiveDiffTexts(null).length === 0 && DEEP.archiveDiffTexts({ state: "refused" }).length === 0, "an answer reads the same for the check before and after it is checked for display");
+  // Names on commits, kept the same way.
+  mem = fresh(); mem.keep([H], "commitEmails", "acct:codeberg", { state: "found", site_name: "Codeberg", profile_url: PURL, display_name: "River", emails: [{ email: "r@example.org", name: "River, 15 years old" }] });
+  ok(planOf(mem, MAIN).state === "blocked", "an author name read on a click is scanned from memory");
+  // Per handle, for the session: a new run of the same handle still reads it; another handle never does.
+  mem = fresh(); mem.keep([H, "@River_Stone", "other_handle"], "profileScrape", "", SCRAPE(young));
+  mem.ran({ ran: 9, target: H, collected: MAIN, switched: SW });
+  ok(mem.also(H).length === 1 && mem.also("RIVER_STONE").length === 1 && mem.also("other_handle").length === 1 && mem.also("third").length === 0 && adultPassPlan({ planned: true, collected: MAIN, also: mem.also(H), target: H, switched: SW, today: TODAY }).state === "blocked" && adultPassPlan({ planned: true, collected: MAIN, also: mem.also("third"), target: H, switched: SW, today: TODAY }).state === "clean", "what was read on a click is kept under the handle it was asked for, once, across runs of that handle, and is not read for another handle");
+  // One pass per run, and nothing is held after the case is left.
+  mem = fresh();
+  const took = mem.take(7, H);
+  ok(took && took.c.github === MAIN.github && took.c !== MAIN && took.switched.maigret === true && !mem.held(7, H) && mem.take(7, H) === null, "the run's copy is handed out once");
+  mem = fresh(); mem.drop();
+  ok(!mem.held(7, H) && mem.take(7, H) === null && fresh().take(8, H) === null, "a dropped run, or another run, hands out nothing");
+  // What cannot be kept is not kept, and a memory that had to forget no longer vouches for the run.
+  mem = fresh();
+  ok(mem.keep([H], "profileScrape", "", null) === false && mem.keep([H], "somethingElse", "k", {}) === false && mem.keep([], "profileScrape", "", {}) === false && mem.keep([""], "profileScrape", "", {}) === false && mem.also(H).length === 0 && mem.held(7, H), "only an answer of a kind the check reads is kept, and only under a handle");
+  const small = makeGuardMemory({ handles: 2, answers: 3 }); small.ran({ ran: 7, target: H, collected: MAIN, switched: SW });
+  for (let i = 0; i < 3; i++) small.keep([H], "profileScrape", "", SCRAPE(`note ${i}`));
+  ok(small.held(7, H) && small.also(H).length === 3, "the memory is bounded per handle");
+  small.keep([H], "profileScrape", "", SCRAPE("one more"));
+  ok(small.also(H).length === 3 && !small.held(7, H), "past the bound the oldest answer goes, and the pass is no longer offered for that run: the case has to run again");
+  const few = makeGuardMemory({ handles: 2, answers: 3 }); few.ran({ ran: 7, target: H, collected: MAIN, switched: SW });
+  few.keep([H], "profileScrape", "", SCRAPE("x")); few.keep(["b"], "profileScrape", "", SCRAPE("x")); few.keep(["c"], "profileScrape", "", SCRAPE("x"));
+  ok(few.also(H).length === 0 && few.also("c").length === 1 && !few.held(7, H), "and per session: when a handle's text is forgotten, its run is no longer held either");
+  // Memory only.
+  const ev = read(J + "evidence.js"), memSrc = ev.slice(ev.indexOf("export function makeGuardMemory"), ev.indexOf("\n}\n", ev.indexOf("export function makeGuardMemory")));
+  ok(memSrc.length > 200 && !/localStorage|sessionStorage|store\.|document|fetch\(|cookie/.test(memSrc) && !/localStorage|sessionStorage/.test(ev), "the memory is a variable of the page: no storage, no request");
 }
 
 console.log(bad ? `${bad} of ${n} minor guard checks failed` : `${n}/${n} minor guard checks passed`);

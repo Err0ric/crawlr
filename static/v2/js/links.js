@@ -7,12 +7,18 @@
 //                         check that found a marker), or the link check confirmed the page exists
 //   templated_unverified  a site template plus the handle, which nothing has checked (Sherlock,
 //                         Maigret without a profile read, a platform check that was blocked)
+//                         or an address found on a page that nothing has opened (a link an
+//                         archived copy of a profile carried: see foundLink)
 //   evidence              where the claim can be checked: a public lookup page for that exact
 //                         record, or the thing the row is about (a host, a link found on a profile)
 //   search                an outbound search the investigator chooses to open (a name case, see
 //                         names.js, and a phone case, see phone.js). It carries the name or the
 //                         number on purpose, proves nothing, and is never used for a finding, a
 //                         fact or a lead.
+//   map                   a map opened at a coordinate the investigator's own file or typed text
+//                         holds (the image metadata reader, the coordinate converter). It carries
+//                         the coordinate on purpose: a coordinate is not a username or an email.
+//                         Built only by mapLink below, and never used for a finding, a fact or a lead.
 //   none                  no usable public URL. Rendered as plain text, never as an anchor.
 //
 // An item's link: { url, link_kind, hint?, link_label?, more? }
@@ -21,7 +27,7 @@
 //   more        one further evidence link: { url, label, link_kind: "evidence" }
 //   hint        how to check by hand, for a row that has no public URL
 
-export const LINK_KINDS = ["verified_profile", "templated_unverified", "evidence", "search", "none"];
+export const LINK_KINDS = ["verified_profile", "templated_unverified", "evidence", "search", "map", "none"];
 export const UNVERIFIED_TEXT = "unverified URL";
 
 const lc = (s) => String(s ?? "").trim().toLowerCase();
@@ -117,6 +123,15 @@ export function classifyLink({ url, want = "evidence", site = "", subjects = [],
   return { url: String(url).trim(), link_kind: LINK_KINDS.includes(want) ? want : "evidence" };
 }
 
+// An address found on a page (a link an archived copy of a profile carried), which CrawlR did not
+// build and nothing has opened. It is held to the evidence rules (http or https, no credentials,
+// no bare homepage, no email or username of the case in its query) and then marked as what it
+// is: an unverified URL, drawn dashed. Anything that fails a rule is shown as text only.
+export function foundLink({ url, subjects = [], secrets = [] } = {}) {
+  const l = classifyLink({ url, want: "evidence", subjects, secrets });
+  return l.link_kind === "evidence" ? { url: l.url, link_kind: "templated_unverified" } : { url: "", link_kind: "none" };
+}
+
 // Gives an item its link fields. `ev` is an evidence link ({ url, label }) set by the builder:
 // it becomes the item's labelled link, or its second link when the item has one of its own.
 export function sealLink(it, { subjects = [], secrets = [] } = {}) {
@@ -197,6 +212,16 @@ export const findingsWithEvidence = (d, domain) => (d?.findings || []).map((f) =
   const e = dnsFindingEvidence(f?.title, domain, d);
   return { ...f, url: e?.url || "", link_kind: e ? "evidence" : "none", ...(e ? { link_label: e.label } : {}) };
 });
+
+// ---- a position on a map -------------------------------------------------------------------
+// The one map link CrawlR writes: OpenStreetMap, with a marker at the position. Both numbers are
+// checked and written with six decimals here, so nothing but two numbers in range can reach the
+// address. Returns null for anything that is not a position.
+export function mapLink(lat, lon) {
+  if (typeof lat !== "number" || typeof lon !== "number" || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const la = lat.toFixed(6), lo = lon.toFixed(6);
+  return { url: `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}`, link_kind: "map", label: "Open in OpenStreetMap", host: "openstreetmap.org" };
+}
 
 // ---- link check ----------------------------------------------------------------------------
 // POST /api/recon/verify-links answers one of these per link. Results are kept in the case as

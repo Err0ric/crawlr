@@ -22,7 +22,7 @@
 //     it gets its own check of its own profiles.
 //   - Without the rules file (data/minor-rules.json) the adult mode cannot be switched on.
 //   - What a run does about the modes is decided here, by startAdult(), portscanFor() and
-//     deepDiveFor(). The workbenches call them once when a run starts and keep the answer, so a
+//     deepDiveFor(), and whether the adult pass may be added to a finished case by mayAddAdult(). The workbenches call them once when a run starts and keep the answer, so a
 //     switch moved mid-run applies from the next run.
 import { h, raw } from "./core.js";
 import { minorGuard, guardText, handleOf, blockClause, readBlock, RULES_UNAVAILABLE } from "./adult.js";
@@ -96,6 +96,9 @@ export const contentText = (block) => `Adult and dating sites are not checked fo
 export const PORTSCAN_PIVOT_NOTE = "Port scan not run: this case was opened from a link. Press Run recon to scan this host.";
 export const DEEP_DIVE_OFF = "Active techniques was switched off, so no profile page was fetched.";
 export const RUN_IN_PROGRESS = "A run is in progress: a change applies from the next run.";
+// Investigate: neither mode needs the run cancelled. Active techniques gates Deep Dive, which is
+// asked when it would fetch; the adult pass can be added to the finished case on a click.
+export const RUN_IN_PROGRESS_CASE = "A run is in progress, and there is no need to cancel it. Active techniques applies as soon as it is on. Adult sites switched on now can be added to this case when the run finishes.";
 
 // ---- the session ------------------------------------------------------------------------------
 export function makeSessionModes() {
@@ -233,6 +236,18 @@ export function startAdult({ on, type, target, from = null, suspended = null } =
   }
   return d;
 }
+// May the adult pass be added to the case on screen (investigate.js: canAddAdult, addAdult)? Only
+// to a live username case whose run finished without one: the mode is on now, the run's answers
+// are still held in memory (`held`), nothing is in flight (`running`: a run or the pass itself;
+// `busy`: a lookup made on a click, a Deep Dive or an AI request, whose answer could still add
+// text the content check must read), the run was not cancelled, and nothing blocked or suspended
+// the case. Every condition is read strictly, so a missing value refuses. A yes here is not a
+// clean check: both stages of the minor guard run again when the pass is added.
+export function mayAddAdult({ on, held, running, busy, live, cancelled, type, target, adultMode, adultBlocked, minor, blocked, suspended = null } = {}) {
+  return on === true && held === true && running === false && busy === false && live === true && cancelled === false
+    && type === "username" && adultMode === false && !adultBlocked && !minor && blocked === false
+    && adultFor({ on: true, type, target, suspended }).adult === true;
+}
 // The run's content check stopped the case: the handle is suspended for the rest of the session,
 // with what was found. Returns what the case keeps as state.minor.
 export function suspendContent(suspended, target, block) {
@@ -277,9 +292,9 @@ export function barSwitchHtml(id, v, { prefix = "", desc = MODE[id].desc } = {})
 // and one click to switch it off. A row with `foreign` is a mode of the other workbench: it is on
 // for the session, so it is said here too ("Port scan on (Recon)."). While a run is in flight the
 // line says that a change applies from the next run.
-export function statusHtml(rows, { running = false } = {}) {
+export function statusHtml(rows, { running = false, wait = RUN_IN_PROGRESS } = {}) {
   const lines = rows.filter((r) => r.view.on).map((r) => h`<p class="mode-line" data-mode-line="${r.id}"><span>${r.foreign ? `${MODE[r.id].label} on (${r.foreign}).` : MODE[r.id].status}${r.foreign ? "" : r.view.state === "suspended" ? ` ${r.view.reason}` : r.view.state === "unused" ? ` ${NOT_USED}` : ""}</span> <button type="button" class="linklike" data-mode-off="${r.id}" aria-label="${MODE[r.id].off}">Turn off</button></p>`);
-  return lines.join("") + (lines.length && running ? h`<p class="mode-line mode-wait">${RUN_IN_PROGRESS}</p>` : "");
+  return lines.join("") + (lines.length && running ? h`<p class="mode-line mode-wait">${wait}</p>` : "");
 }
 // The same control as a row of the Sources sheet.
 export function sheetRowHtml(id, v, { prefix = "", name = MODE[id].label, desc = MODE[id].sheet, tag = CAUTIONED.includes(id) ? "caution" : "" } = {}) {

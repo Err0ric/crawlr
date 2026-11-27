@@ -41,7 +41,8 @@ RATE_LIMITS = {
     "/api/recon/avatar-hash": (10, 60),
     "/api/recon/platform-check": (10, 60),   # up to 6 page fetches plus canaries, and one request each to Reddit and Discord
     "/api/recon/handle-probe": (10, 60),     # one similar handle per click: about 9 requests plus canaries and up to 3 pictures, cached for a day
-    "/api/recon/profiles": (10, 60),         # 16 keyless profile APIs at once: up to 20 requests and one picture per profile, cached for a day
+    "/api/recon/profiles": (10, 60),         # 25 keyless profile sources at once (8 of them Mastodon instances): up to 29 requests and one picture per profile, cached for a day
+    "/api/recon/commit-emails": (10, 60),    # one account on GitLab, Codeberg or Gitea.com per click: at most 5 requests, cached for a day
     "/api/recon/adult-check": (10, 60),      # opt-in: up to 7 fetches plus a canary per call, 300 KB each, cached for a day
     "/api/recon/verify-links": (12, 60),     # up to 25 page fetches per call, 300 KB each, cached for a day
     "/api/recon/name-search": (6, 60),       # 6 requests to 5 public APIs per call; GitHub search allows 10 a minute
@@ -53,6 +54,10 @@ RATE_LIMITS = {
     "/api/recon/email-accounts": (3, 60),    # 3 requests per call, 2 of them GitHub searches: at most 6 of the 10 a minute; cached for a day
     "/api/recon/github-activity": (10, 3600),  # 1 to 3 GitHub API calls per uncached account: at most 30 of the 60 an hour; cached for a day
     "/api/recon/profile-archive": (10, 60),  # 1 request to the Wayback CDX index per uncached profile URL, cached for a day
+    "/api/recon/post-activity": (10, 60),    # one site per call: 1 or 2 requests to Hacker News, up to 6 to a Mastodon instance or 5 to Lobsters; cached for a day
+    "/api/recon/archive-diff": (4, 60),      # 2 archived pages from web.archive.org per uncached pair, 2 MB each at most, each parsed on the one parse pool; cached for a day
+    "/api/recon/tracker-ids": (10, 60),      # 1 page fetch from the typed domain, 1.5 MB at most, cached for an hour
+    "/api/recon/doc-metadata": (2, 60),      # 1 request to the Wayback CDX index, then up to 8 documents from the typed domain, 8 MB each, each parsed on the one parse pool; cached for a day
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),

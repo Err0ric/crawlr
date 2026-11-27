@@ -164,6 +164,14 @@ def registrable_domain(hostname: str) -> str:
     return ".".join(labels[-2:])
 
 
+def is_public_suffix(hostname: str) -> bool:
+    """Best effort: is this name a suffix that many unrelated sites share ("com", "co.uk"),
+    not a site of its own? A single label always is. The two-level list is the small one
+    above, so a False is not proof."""
+    h = (hostname or "").strip().lower().rstrip(".")
+    return "." not in h or h in _TWO_LEVEL_SUFFIXES
+
+
 def same_site(a: str, b: str) -> bool:
     ra, rb = registrable_domain(a), registrable_domain(b)
     return bool(ra) and ra == rb

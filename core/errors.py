@@ -17,6 +17,7 @@ import ssl
 import httpx
 
 from core.netguard import BlockedTarget
+from core.parsepool import Busy
 
 MESSAGES = {
     "rate_limited": "Rate limited by the source. Try again in a few minutes.",
@@ -38,6 +39,8 @@ MESSAGES = {
 def classify(exc: BaseException) -> str:
     if isinstance(exc, BlockedTarget):
         return "blocked_target"
+    if isinstance(exc, Busy):
+        return "busy"               # the parse pool is full: nothing was read, so nothing is known
     if isinstance(exc, httpx.HTTPStatusError):
         return classify_status(exc.response.status_code)
     if isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError, socket.timeout, TimeoutError)):
@@ -53,6 +56,8 @@ def classify(exc: BaseException) -> str:
         return "unreachable"
     if isinstance(exc, (socket.gaierror, LookupError)) or type(exc).__name__ in ("NXDOMAIN", "NoAnswer", "NoNameservers"):
         return "dns"
+    if isinstance(exc, httpx.DecodingError):
+        return "bad_response"       # the body came in a coding that could not be read
     if isinstance(exc, (httpx.TransportError, ConnectionError, OSError)):
         return "unreachable"
     if isinstance(exc, (ValueError, KeyError)):

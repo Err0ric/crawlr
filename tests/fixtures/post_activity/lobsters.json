@@ -1,0 +1,31 @@
+{
+ "user": {
+  "username": "maralind",
+  "created_at": "2021-04-02T10:11:12.000-05:00",
+  "is_admin": false,
+  "is_moderator": false,
+  "karma": 140,
+  "homepage": "",
+  "about": "<p>Tide tables.</p>",
+  "avatar_url": "/avatars/maralind-100.png",
+  "invited_by_user": "samexample"
+ },
+ "story": {
+  "short_id": "aaa001",
+  "created_at": "2026-09-20T07:56:54.181-06:00",
+  "title": "Reading a tide table",
+  "url": "https://tides.example.org/reading",
+  "score": 12,
+  "flags": 0,
+  "comment_count": 3,
+  "description": "",
+  "description_plain": "",
+  "submitter_user": "maralind",
+  "user_is_author": true,
+  "tags": [
+   "science"
+  ],
+  "short_id_url": "https://lobste.rs/s/aaa001",
+  "comments_url": "https://lobste.rs/s/aaa001/reading_tide_table"
+ }
+}

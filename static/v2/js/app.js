@@ -1,16 +1,18 @@
 // Entry point: navigation, landing, settings, history drawer, AI pill, theme, terms.
 import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, plural, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, reconType, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
 import { openModal, closeModal, openDrawer, closeDrawer, openSheet, closeSheet } from "./ui.js";
-import { run, cancel, renderSources, refreshModes, loadHistory, getHistory, clearCase, exportCase, trailFrom, state } from "./investigate.js";
+import { run, cancel, renderSources, refreshModes, loadHistory, getHistory, clearCase, exportCase, trailFrom, modeRows, state } from "./investigate.js";
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
+import "./imagemeta.js";
 import { parseCaseFile, MAX_CASE_BYTES } from "./casefile.js";
 import { groupHistory, lastRunDiff, diffText } from "./present.js";
 import { buildEvidence, isFinding } from "./evidence.js";
 import { buildFindings } from "./reconfindings.js";
 import { scrubCollected } from "./adult.js";
 import { scrubNames } from "./names.js";
-import "./modeui.js";
+import { paintBar } from "./modeui.js";
+import { session } from "./modes.js";
 import { loadRules } from "./minorscan.js";
 
 // ---- theme ---------------------------------------------------------------------
@@ -45,10 +47,10 @@ new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => n.nod
 
 // ---- views ---------------------------------------------------------------------
 const BENCHES = ["investigate", "recon"];
-const TOOLS = ["headers", "dorks", "decoders"];
+const TOOLS = ["headers", "dorks", "decoders", "imagemeta"];
 const VIEWS = [...BENCHES, ...TOOLS];
-const TITLES = { landing: "CrawlR: OSINT investigation in your browser", investigate: "Investigate · CrawlR", recon: "Recon · CrawlR", headers: "Email headers · CrawlR", dorks: "Search query builder · CrawlR", decoders: "Decoders · CrawlR" };
-const FOCUS = { landing: "#landingInput", headers: "#hdrInput", dorks: "#dkName", decoders: "#b64In" };
+const TITLES = { landing: "CrawlR: OSINT investigation in your browser", investigate: "Investigate · CrawlR", recon: "Recon · CrawlR", headers: "Email headers · CrawlR", dorks: "Search query builder · CrawlR", decoders: "Decoders · CrawlR", imagemeta: "Image metadata · CrawlR" };
+const FOCUS = { landing: "#landingInput", headers: "#hdrInput", dorks: "#dkName", decoders: "#b64In", imagemeta: "#imgFile" };
 let current = "";
 function show(view, { focus = true } = {}) {
   current = view;
@@ -129,7 +131,17 @@ const WILL_RUN = {
   headers: "Opens the email header analyzer.",
   multi: "One target at a time for now.",
 };
-$("#landingInput").addEventListener("input", (e) => { const t = detect(e.target.value); detectBox.innerHTML = t ? h`<span class="pill ${INVESTIGATE_TYPES.includes(t) || RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t]}</span><span>${WILL_RUN[t] || ""}</span>` : ""; });
+// A handle shows the two session modes under the box, so they can be set before the run starts
+// (the run reads them when it starts). The same switches as in the case bar: one state.
+const landingModes = $("#landingModes");
+function paintLanding() {
+  const v = $("#landingInput").value, t = detect(v);
+  detectBox.innerHTML = t ? h`<span class="pill ${INVESTIGATE_TYPES.includes(t) || RECON_TYPES.includes(t) ? "violet" : ""}">${TYPE_LABEL[t]}</span><span>${WILL_RUN[t] || ""}</span>` : "";
+  landingModes.hidden = t !== "username";
+  if (t === "username") paintBar(landingModes, modeRows("username", v, "l"));
+}
+$("#landingInput").addEventListener("input", paintLanding);
+session.subscribe(paintLanding);
 // type: set by a button that knows what its value is, so a suggested handle such as "maria.co"
 // is searched as a username and not opened as a domain.
 // opts: how the run was started (see run() in investigate.js). A pivot button passes it; a target

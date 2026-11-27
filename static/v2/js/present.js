@@ -24,9 +24,12 @@ export const certaintyOf = (tier) => CERTAINTY[tier] || { word: "", tone: "", li
 //   blocked, or could not be checked: unchanged, dashed "Unverified" (the reason is on the row)
 //   handle taken     a sign-up check said the handle is in use and nothing was read: dashed, like
 //                    every row nothing read, with its own words
+//   not a claimed account   Launchpad's record for a name nobody claimed (the site made it by
+//                    itself): dashed, with its own words. It is nobody's account.
 export function rowCertainty(it) {
   const c = certaintyOf(it?.tier);
   if (it?.tier === "unverified" && it.taken) return { word: "Handle taken", tone: "unverified", line: "dashed" };
+  if (it?.tier === "unverified" && it.unclaimed) return { word: "Not a claimed account", tone: "unverified", line: "dashed" };
   if (it?.tier === "unverified" && it.check === "verified") return { word: "Page checked", tone: "", line: "solid", checked: true };
   if (it?.tier === "unverified" && (it.check === "not_found" || it.gone)) return { word: "Page not found", tone: "", line: "solid", gone: true };
   return c;

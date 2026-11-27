@@ -13,6 +13,7 @@ import { buildFindings, takeoverForAi, takeoverInput, TIERS, RISKY, flat, day, l
 import { findingsWithEvidence, evidenceUrl, exposureEvidence, isDomain, mdLink, mdNote } from "./links.js";
 import { session, MODE, portscanCase, portscanFor, adultCase, activeCase, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
 import { paintBar, paintStatus } from "./modeui.js";
+import { TRACKER_KEY, DOC_KEY, OWNERSHIP_KEYS, TRACKER_SOURCE, DOC_SOURCE, OWNERSHIP_READERS, readOwnership, withoutOwnership, readDocMeta, sharedTrackers, sharedNotice, trackerCard, docBody, docBadge, docLookup, ownershipMarkdown, countsText } from "./recondomain.js";
 
 // ---- sources -----------------------------------------------------------------
 export const SOURCES = [
@@ -32,6 +33,7 @@ export const SOURCES = [
   { id: "portscan", how: "record",   name: "Port scan",        desc: "connects to 20 common ports on the target. Only scan hosts you own or are authorized to test.", types: ["domain", "ip"], on: false, warn: "caution", mode: "portscan" },
   { id: "redirects", how: "record",  name: "Redirect chain",   desc: "every hop to the final URL",                     types: ["domain", "ip"],  on: true },
   { id: "techfp", how: "guess",     name: "Tech fingerprint", desc: "CMS, server, frameworks, CDN",                   types: ["domain"],        on: true },
+  { id: "trackers", how: "record",   name: "Tracker and ad IDs", desc: "analytics, tag and ad account IDs in the home page's markup, compared with your saved cases (one request to the site)", types: ["domain"], on: true },
   { id: "wayback", how: "index",    name: "Wayback Machine",  desc: "archived snapshots",                             types: ["domain"],        on: true },
   { id: "asndetail", how: "index",  name: "ASN detail",       desc: "organization, prefixes, peers",                  types: ["asn"],           on: true },
 ];
@@ -85,12 +87,19 @@ $("#rSources").addEventListener("change", (e) => {
 
 // ---- state ---------------------------------------------------------------------
 export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings", ran: 0, scanNote: "", trail: [] };
-const SRC_NAME = { email_posture: "Email security", dns_depth: "DNS hardening", takeover: "Takeover candidates", lookalikes: "Lookalike domains", wellknown: "Published files", dns: "DNS records", whois: "WHOIS", ssl: "TLS certificate", headers: "HTTP headers", subdomains: "Subdomains", harvest: "Passive discovery", asn: "Network owner", shodan: "Exposure", portscan: "Port scan", redirects: "Redirect chain", techfp: "Tech fingerprint", wayback: "Wayback Machine", asn_detail: "ASN detail" };
+const SRC_NAME = { email_posture: "Email security", dns_depth: "DNS hardening", takeover: "Takeover candidates", lookalikes: "Lookalike domains", wellknown: "Published files", dns: "DNS records", whois: "WHOIS", ssl: "TLS certificate", headers: "HTTP headers", subdomains: "Subdomains", harvest: "Passive discovery", asn: "Network owner", shodan: "Exposure", portscan: "Port scan", redirects: "Redirect chain", techfp: "Tech fingerprint", wayback: "Wayback Machine", asn_detail: "ASN detail", [TRACKER_KEY]: TRACKER_SOURCE, [DOC_KEY]: DOC_SOURCE };
 // A source that failed is unknown. "No certificate" or "not indexed" are answers; a timeout is not.
 const isFailed = (d) => !!(d && typeof d === "object" && (d.error_code || d.error) && d.error_code !== "not_found");
 // Every count of sources on this page comes from this one tally (see sourceTally in core.js).
 const tally = () => sourceTally(state.collected, SRC_NAME);
 const failedSources = () => tally().rows.filter((r) => r.state === "failed");
+// Neither ownership source can return a flag, so a home page that could not be read never makes
+// a flag count uncertain: the tiles and the brief are built without them.
+const flagSources = (rows) => rows.filter((r) => !OWNERSHIP_KEYS.includes(r.key));
+// Which of this case's tracker IDs another saved Recon case also carries. Worked out in this
+// browser from History when the answer arrives and when a case is opened; nothing is sent.
+let shared = { byKey: {}, compared: 0 };
+const refreshShared = () => { shared = sharedTrackers(state.collected[TRACKER_KEY], store.get(HISTORY_KEY, []), state.target); };
 const checkKey = () => `crawlr_checked_${state.target}`;
 const log = makeLog($("#rRunlog"));
 bindLedger($("#rLedger"), checkKey);
@@ -257,7 +266,9 @@ const CARDS = {
       + (peers.length ? card("Peers", tag(`${fmtNum(d.total_peers ?? peers.length)}`), `<div style="font-size:var(--fs-1)">${peers.slice(0, 25).map((p) => h`<div>${raw(ev(evidenceUrl.asn(p.asn), `AS${String(p.asn).replace(/^AS/i, "")}`))} ${p.name}</div>`).join("")}</div>`) : "");
   },
 };
-const CARD_ORDER = ["shodan", "portscan", "email_posture", "takeover", "headers", "ssl", "dns_depth", "dns", "whois", "subdomains", "certs", "harvest", "lookalikes", "wellknown", "asn", "asn_detail", "redirects", "techfp", "wayback"];
+CARDS[TRACKER_KEY] = (d) => { const c = trackerCard(d, shared); return c ? card(TRACKER_SOURCE, c.badge, c.body) : ""; };
+CARDS[DOC_KEY] = (d) => card(DOC_SOURCE, docBadge(d), docBody(d));
+const CARD_ORDER = ["shodan", "portscan", "email_posture", "takeover", "headers", "ssl", "dns_depth", "dns", "whois", "subdomains", "certs", "harvest", "lookalikes", "wellknown", "asn", "asn_detail", "redirects", "techfp", TRACKER_KEY, DOC_KEY, "wayback"];
 const cardData = (k) => (k === "certs" ? state.collected.subdomains : state.collected[k]);
 
 // Every source that ran gets a card: results, "answered, nothing found", or failed. A failed
@@ -265,7 +276,7 @@ const cardData = (k) => (k === "certs" ? state.collected.subdomains : state.coll
 function renderCards() {
   const html = CARD_ORDER.filter((k) => cardData(k) && !cardData(k).skipped).map((k) => {
     const d = cardData(k);
-    try { return k !== "certs" && isFailed(d) && !(k === "ssl" && d.error_code === "tls") ? errorCard(SRC_NAME[k] || k, d) : k === "certs" && isFailed(d) ? "" : CARDS[k](d); } catch (e) { return card(SRC_NAME[k] || k, tag("render error", "warn"), muted(e.message)); }
+    try { return k !== "certs" && isFailed(d) && !(k === "ssl" && d.error_code === "tls") && !OWNERSHIP_KEYS.includes(k) ? errorCard(SRC_NAME[k] || k, d) : k === "certs" && isFailed(d) ? "" : CARDS[k](d); } catch (e) { return card(SRC_NAME[k] || k, tag("render error", "warn"), muted(e.message)); }
   }).join("");
   // A source that has not answered yet holds its place with a placeholder card.
   const waiting = state.running ? skeletonCards([...pending.values()]) : "";
@@ -294,12 +305,12 @@ function renderTimeline() {
 }
 
 function renderAll() {
-  const { items, facts } = buildFindings(state.collected, state.target, state.type);
+  const { items, facts } = buildFindings(state.collected, state.target, state.type, { shared });
   const diff = !state.running && state.prev ? diffRuns(state.prev.keys, items) : null;
   if (diff) { const added = new Set(diff.added.map((i) => i.key)); for (const it of items) it.isNew = added.has(it.key); }
   const failed = failedSources();
   $("#rEmpty").hidden = true;
-  $("#rNotices").innerHTML = (state.scanNote ? h`<div class="notice" role="note" id="rScanNote">${state.scanNote}</div>` : "") + failedNotice(failed) + (diff ? diffNotice(diff, state.prev.ts) : "");
+  $("#rNotices").innerHTML = (state.scanNote ? h`<div class="notice" role="note" id="rScanNote">${state.scanNote}</div>` : "") + sharedNotice(state.collected[TRACKER_KEY], shared) + failedNotice(failed) + (diff ? diffNotice(diff, state.prev.ts) : "");
   const nothing = state.running ? `<div class="empty"><h3>Collecting</h3><p>Findings appear here as each source answers.</p></div>`
     : failed.length ? `<div class="empty"><h3>No findings from the sources that answered</h3><p>Some sources failed, so this is not a clean bill of health. See the notice above.</p></div>`
     : `<div class="empty"><h3>No findings</h3><p>Nothing risky or exposed was found. Details from each source are below.</p></div>`;
@@ -307,10 +318,11 @@ function renderAll() {
   // The verdict tiles wait for the run to finish, like the brief.
   $("#rCaseBar").hidden = !state.target;
   const trows = tally().rows;
-  renderVerdict($("#rVerdict"), !state.target ? [] : reconTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: failed.map((f) => f.key), partialKeys: partialGaps(trows).map((r) => r.key), missingKeys: (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string"), extra: { certDays: state.collected.ssl?.found && Number.isFinite(state.collected.ssl.days_left) ? state.collected.ssl.days_left : null } }));
+  renderVerdict($("#rVerdict"), !state.target ? [] : reconTiles({ items, collected: withoutOwnership(state.collected), type: state.type, running: state.running, failedKeys: flagSources(failed).map((f) => f.key), partialKeys: partialGaps(trows).map((r) => r.key), missingKeys: (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string"), extra: { certDays: state.collected.ssl?.found && Number.isFinite(state.collected.ssl.days_left) ? state.collected.ssl.days_left : null } }));
   renderFacts($("#rFacts"), facts, state.running ? "Collecting…" : "No facts extracted yet.");
   setTabCount($("#rTabFindings"), "Findings", items.filter((i) => i.tier !== "neighbor").length);
-  renderBrief($("#rBrief"), $("#rBriefBody"), state.running || !state.target ? { rows: [], actions: [] } : reconBrief({ collected: state.collected, items, failed, type: state.type, target: state.target }));
+  renderBrief($("#rBrief"), $("#rBriefBody"), state.running || !state.target ? { rows: [], actions: [] } : reconBrief({ collected: state.collected, items, failed: flagSources(failed), type: state.type, target: state.target }));
+  renderLookups();
   renderCards();
   renderTimeline();
   if (state.tab === "topology") drawGraph();
@@ -380,7 +392,8 @@ const aiBody = () => {
   const c = state.collected;
   return { target: state.target, dns: c.dns || null, whois: c.whois || null, ssl: c.ssl || null, headers: c.headers || null, subdomains: c.subdomains || null, asn: c.asn || null, portscan: c.portscan || null, asn_detail: c.asn_detail || null, shodan: c.shodan || null, email_posture: c.email_posture || null, dns_depth: c.dns_depth || null, takeover: takeoverForAi(c, state.target), lookalikes: c.lookalikes || null, wellknown: c.wellknown || null };
 };
-const hasData = () => Object.entries(state.collected).some(([k, v]) => SRC_NAME[k] && v && !isFailed(v));
+// The ownership leads are not sent to the AI: names from inside files are not its business.
+const hasData = () => Object.entries(state.collected).some(([k, v]) => SRC_NAME[k] && !OWNERSHIP_KEYS.includes(k) && v && !isFailed(v));
 // What the report will cover, said for the kind of target on screen.
 const AI_PITCH = {
   domain: "Get an attack surface summary for this domain: what is exposed, what looks misconfigured, and what to check next.",
@@ -458,9 +471,12 @@ async function source(label, url, body, key, headers = {}) {
   const row = log.add(label);
   pending.set(row, label); asked.add(key); renderAll();
   try {
-    const d = await post(url, body, headers, state.controller?.signal);
+    let d = await post(url, body, headers, state.controller?.signal);
     pending.delete(row);
+    // An ownership answer is kept only as its reader returns it: bounded, and without guard text.
+    if (OWNERSHIP_READERS[key]) d = OWNERSHIP_READERS[key]({ ...d, domain: d?.domain || state.target }) || { state: "failed", error: "The answer could not be read.", error_code: "bad_response", error_detail: "" };
     state.collected[key] = d;
+    if (key === TRACKER_KEY) refreshShared();
     if (isFailed(d)) { const o = sourceOutcome(d); log.set(row, `${label}: ${o.text}`, "err", o.detail); }
     else if (d?.skipped) log.set(row, `${label} · skipped`, "skip");
     else if (!sourceHasResults(d)) log.set(row, `${label} · nothing found`, "none");
@@ -471,6 +487,7 @@ async function source(label, url, body, key, headers = {}) {
     pending.delete(row);
     if (err.code === "cancelled") { log.set(row, `${label} · cancelled`, "skip"); return null; }
     state.collected[key] = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
+    if (OWNERSHIP_READERS[key]) state.collected[key] = OWNERSHIP_READERS[key]({ ...state.collected[key], domain: state.target }) || state.collected[key];
     log.set(row, `${label}: ${err.detail || err.message}`, "err", err.raw);
     renderAll();
     return null;
@@ -498,6 +515,7 @@ export function cancel() {
 export async function run(raw0, opts = {}) {
   const target = String(raw0 || "").trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
   if (!target || state.running) return;
+  stopDoc();
   // opts.type: the button that started this run knows what its value is (a domain lead).
   const type = reconType(target, opts.type);
   if (!RECON_TYPES.includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Investigate.`); return; }
@@ -510,7 +528,7 @@ export async function run(raw0, opts = {}) {
   // Decided once, when the run starts, and kept: switching Port scan on mid-run changes the next run.
   const scan = portscanFor({ on: session.on("portscan"), type, startedBy: opts.startedBy === "run" ? "run" : "pivot" });
   state.scanNote = scan.note;
-  store.del(checkKey()); asked.clear();
+  store.del(checkKey()); asked.clear(); shared = { byKey: {}, compared: 0 };
   $("#rTargetInput").value = target; renderSources(type);
   setRunning(true);
   $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rEmpty").hidden = true; $("#rBySource").hidden = true; $("#rBySourceEmpty").hidden = false;
@@ -540,6 +558,9 @@ export async function run(raw0, opts = {}) {
     if (on("redirects")) jobs.push(source("Redirect chain", "/api/infra/redirects", { target }, "redirects"));
     if (on("techfp")) jobs.push(source("Tech fingerprint", "/api/infra/techfingerprint", T, "techfp"));
     if (type === "domain" && on("wayback")) jobs.push(source("Wayback Machine", "/api/infra/wayback", T, "wayback"));
+    // One GET of the home page, like the header and fingerprint checks. Its IDs are compared with
+    // the Recon cases saved in this browser; no ID is sent to anyone.
+    if (type === "domain" && on("trackers")) jobs.push(source(TRACKER_SOURCE, "/api/recon/tracker-ids", T, TRACKER_KEY));
     await Promise.all(jobs);
     // Takeover candidates need the subdomain list, so they run once discovery is in.
     // Names that only resolve through a wildcard record are not asked about (see takeoverInput).
@@ -577,6 +598,63 @@ function head(meta) {
   $("#rCaseMeta").textContent = meta || TYPE_LABEL[state.type] || "";
 }
 
+// ---- document metadata: one lookup, on a click ---------------------------------------------------------
+// It asks the Internet Archive for a list and then requests files from the target's own site, so
+// it never runs with the other sources: the section under the findings says what it asks for and
+// from whom, and the button starts it. It can take a minute and a half, so there is a clock and a
+// Cancel, and a lookup that failed or timed out offers "Try again".
+const docUi = { busy: false, seconds: 0, controller: null, timer: 0 };
+function stopDoc() {
+  docUi.controller?.abort(); clearInterval(docUi.timer);
+  Object.assign(docUi, { busy: false, seconds: 0, controller: null, timer: 0 });
+}
+function renderLookups() {
+  const box = $("#rLookups"), on = !!state.target && state.type === "domain";
+  box.hidden = !on;
+  box.innerHTML = on ? docLookup(state.target, state.collected[DOC_KEY], { busy: docUi.busy, seconds: docUi.seconds, blocked: state.running }) : "";
+}
+async function runDocMeta() {
+  if (docUi.busy || state.running || state.type !== "domain" || !state.target) return;
+  const target = state.target, started = Date.now(), ctl = new AbortController();
+  Object.assign(docUi, { busy: true, seconds: 0, controller: ctl });
+  // The clock ticks in place: the section is redrawn only when its state changes.
+  docUi.timer = setInterval(() => { docUi.seconds = Math.round((Date.now() - started) / 1000); const c = $("#rLookups [data-doc-clock]"); if (c) c.textContent = `${docUi.seconds} s`; }, 1000);
+  // A case opened from History has no run log: the section itself says what happened.
+  const row = log.live ? log.add(`${DOC_SOURCE} (requests files from ${target})`) : null;
+  const say = (text, status, detail) => { if (row) log.set(row, text, status, detail); };
+  if (row) log.open();
+  renderLookups(); $("#rLookups [data-doc-cancel]")?.focus({ preventScroll: true });
+  let d;
+  try { d = await post("/api/recon/doc-metadata", { domain: target }, {}, ctl.signal); }
+  catch (err) {
+    if (err.code === "cancelled") {
+      // Aborted by Cancel, a new run or another case. Nothing is kept.
+      if (docUi.controller === ctl) stopDoc();
+      say(`${DOC_SOURCE} · cancelled`, "skip");
+      if (state.target === target) { renderLookups(); $("#rLookups [data-doc-meta]")?.focus({ preventScroll: true }); }
+      return;
+    }
+    d = { state: err.code === "rate_limited" ? "rate_limited" : "failed", error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
+  }
+  if (docUi.controller === ctl) stopDoc();
+  if (state.target !== target) return;
+  // Kept only as the reader returns it: bounded, and with the guard text read and removed.
+  const read = readDocMeta({ ...d, domain: d?.domain || target }) || readDocMeta({ domain: target, state: "failed", error: "The answer could not be read.", error_code: "bad_response" });
+  state.collected[DOC_KEY] = read;
+  if (read.state === "refused") say(`${DOC_SOURCE} · not read: adult or dating site`, "skip");
+  else if (isFailed(read)) say(`${DOC_SOURCE}: ${read.error}`, "err", read.error_detail);
+  else if (!read.documents.length) say(`${DOC_SOURCE} · the archive lists no document`, "none");
+  else say(`${DOC_SOURCE} · ${countsText(read.counts)}`, read.state === "ok" ? "done" : "none");
+  saveHistory();
+  renderAll();
+  $("#rLookups [data-doc-meta]")?.focus({ preventScroll: true });
+  toast(read.state === "ok" ? `Document metadata: ${countsText(read.counts)}.` : read.state === "refused" ? "Document metadata: not read." : isFailed(read) ? "Document metadata could not be read." : read.documents.length ? "Document metadata: the files declare nothing." : "Document metadata: the archive lists no document.", 4000);
+}
+$("#rLookups").addEventListener("click", (e) => {
+  if (e.target.closest("[data-doc-cancel]")) { docUi.controller?.abort(); return; }
+  if (e.target.closest("[data-doc-meta]")) runDocMeta();
+});
+
 // ---- history (classic-compatible RECON entries) ---------------------------------------------------
 const HISTORY_KEY = "crawlr_history";
 function saveHistory() {
@@ -589,19 +667,21 @@ function saveHistory() {
   writeHistory(list, entry.id, (l) => store.set(HISTORY_KEY, l));
 }
 export function loadHistory(e) {
-  Object.assign(state, { target: e.target, type: reconType(e.target, e.kind), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, scanNote: "", trail: readTrail(e.trail) });
+  stopDoc();
+  Object.assign(state, { target: e.target, type: reconType(e.target, e.kind), collected: readOwnership(e.results || {}), ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, scanNote: "", trail: readTrail(e.trail) });
   $("#rTargetInput").value = e.target; renderSources(state.type); $("#rRunlog").hidden = true; $("#rTabs").hidden = false; setTab("findings"); hidePivot();
   head(`${TYPE_LABEL[state.type]} · ${e.imported ? "opened from a case file · collected" : "from history ·"} ${new Date(e.timestamp).toLocaleString()}`);
   $("#rNotes").value = e.notes || ""; $("#rPurpose").value = e.purpose || ""; notesMeta();
+  refreshShared();
   renderAll(); renderAi();
 }
 export function clearCase() {
-  cancel();
+  cancel(); stopDoc(); shared = { byKey: {}, compared: 0 };
   Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, prev: null, aiBusy: false, scanNote: "", trail: [] });
   $("#rTrail").hidden = true; $("#rTrail").innerHTML = "";
   $("#rTargetInput").value = ""; $("#rMainHead").hidden = true; $("#rRunlog").hidden = true; $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rBySource").hidden = true;
   $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#rNotes").value = ""; $("#rPurpose").value = ""; notesMeta();
-  renderSources(""); renderAi(); setTab("findings"); hidePivot();
+  renderSources(""); renderAi(); setTab("findings"); hidePivot(); renderLookups();
   $("#rCaseBar").hidden = true; $("#rVerdict").innerHTML = "";
   $("#rBrief").hidden = true; $("#rTabs").hidden = true; $("#rBySourceEmpty").hidden = false; $("#rTimelineBody").innerHTML = ""; setTabCount($("#rTabTimeline"), "Timeline", 0);
 }
@@ -628,6 +708,7 @@ export function exportCase() {
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a clean result)`), ""] : []),
     "## What we know", ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), "",
     ...TIERS.flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...rows.map((i) => `- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`), ""] : []; }),
+    ...ownershipMarkdown(state.collected, shared),
     ...((tl) => (tl.length ? ["## Timeline", ...tl.map((e) => `- ${e.date} · ${mdLink(e, e.title)}${e.detail ? ` · ${e.detail}` : ""} _(${e.source})_`), ""] : []))(reconTimeline(state.collected, state.target).events),
     ...(state.ai ? ["## AI analysis", state.ai.summary, ""] : []), ...(state.deep ? ["## Deep analysis", state.deep.summary, ""] : []),
     ...($("#rNotes").value.trim() ? ["## Notes", $("#rNotes").value.trim(), ""] : [])].join("\n");

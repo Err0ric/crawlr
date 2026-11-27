@@ -8,12 +8,14 @@
 //     call a different person is left out, and one that nothing ties to the target says so.
 //     The ledger is filed against the primary identity, so after the investigator picks a person
 //     the timeline is that person's;
-//   - never an adult or dating site, and nothing from a similar handle.
+//   - never an adult or dating site, and nothing from a similar handle;
+//   - post activity that was read on a click, under the same limits: the first and the last
+//     counted post of a reading, for a row filed Linked or Exists (matches) only.
 // Kept free of DOM code so the rules can be tested with plain node.
 
 import { sealLink, evidenceUrl, isDomain } from "./links.js";
-import { buildEvidence, collectProfiles, breachList } from "./evidence.js";
-import { readEmailAccounts, readActivity, dayOf, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE, ARCHIVE_SOURCE } from "./deep.js";
+import { buildEvidence, collectProfiles, breachList, activityReadings } from "./evidence.js";
+import { readEmailAccounts, readActivity, dayOf, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE, ARCHIVE_SOURCE, POST_ACTIVITY_SOURCE, POST_ACTIVITY_SITES, POST_WINDOW_DAYS } from "./deep.js";
 
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const pad = (n) => String(n).padStart(2, "0");
@@ -143,6 +145,8 @@ export function personTimeline(collected, target, type, today = new Date().toISO
   };
   const rowOf = (id) => ev.items.find((i) => i.key === id);
   const standing = (row) => (row.tier === "linked" ? "" : ev.identity.noPrimary || !ev.identity.primary ? "Nothing ties this account to the target." : "Consistent with the primary identity, not proven to be the same person.");
+  // Post activity that was read for a row, by row: the site's own record of when the posts were made.
+  const posts = new Map([...activityReadings(ev).own, ...activityReadings(ev).other].filter((x) => x.kind === "post" && x.state === "ok").map((x) => [x.key, x]));
   for (const p of collectProfiles(collected, target, type)) {
     const row = rowOf(p.id);
     if (!row || (row.tier !== "linked" && row.tier !== "matches")) continue;
@@ -154,6 +158,13 @@ export function personTimeline(collected, target, type, today = new Date().toISO
     // Archived copies, when the investigator asked for them: the day the archive first captured
     // the page. The archive's record of its own capture, not a date the site or the person gave.
     const arch = row.archive?.view;
+    const post = posts.get(p.id);
+    if (post) {
+      const a = post.answer, one = POST_ACTIVITY_SITES[a.site].one, url = row.link_kind === "none" ? "" : row.url;
+      const counted = `${a.events} ${a.events === 1 ? one : a.unit} counted, from the ${POST_WINDOW_DAYS} days before the newest one${a.read.capped ? "; the account has more than were read" : ""}.`;
+      add(a.window.first, `Oldest counted ${one} on ${post.label}`, POST_ACTIVITY_SOURCE, "record", [counted, "The account may have posted earlier.", standing(row)].filter(Boolean).join(" "), url);
+      if (dayOf(a.window.last) !== dayOf(a.window.first)) add(a.window.last, `Latest ${one} on ${post.label}`, POST_ACTIVITY_SOURCE, "record", standing(row), url);
+    }
     if (arch?.state === "ok") add(arch.first, `${p.site} profile first archived`, ARCHIVE_SOURCE, "archive", [`The Internet Archive first captured this page on that day, and holds copies from ${arch.count} ${arch.count === 1 ? "day" : "days"}. The account may be older.`, standing(row)].filter(Boolean).join(" "), arch.snapshots[0]?.url || "");
   }
   if (type === "username") {

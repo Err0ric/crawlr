@@ -44,6 +44,7 @@
     <a href="#headers" data-mode="headers">Headers</a>
     <a href="#dorks" data-mode="dorks">Dorks</a>
     <a href="#decoders" data-mode="decoders">Decoders</a>
+    <a href="#imagemeta" data-mode="imagemeta" title="Read the metadata inside an image file, in this browser">Image</a>
   </nav>
   <div class="grow"></div>
   <div class="right">
@@ -66,6 +67,7 @@
     <button class="btn btn-primary" type="submit">Run</button>
   </form>
   <div class="detect" id="landingDetect" aria-live="polite"></div>
+  <div class="modes landing-modes" id="landingModes" role="group" aria-label="Session modes" hidden></div>
 
       <div class="examples">
         <h2 class="mini-h" id="tryH">Try one</h2>
@@ -102,10 +104,11 @@
     </div>
     <div>
       <h2 class="mini-h">Tools that need no target</h2>
-      <div class="route-grid three">
+      <div class="route-grid tools">
         <a class="route" href="#headers" data-goto="headers"><b>Email headers</b><span>Check SPF, DKIM and DMARC and trace the route.</span></a>
         <a class="route" href="#dorks" data-goto="dorks"><b>Search query builder</b><span>Write Google operators from what you know.</span></a>
-        <a class="route" href="#decoders" data-goto="decoders"><b>Decoders</b><span>Base64, URL encoding, hashes, VIN.</span></a>
+        <a class="route" href="#decoders" data-goto="decoders"><b>Decoders</b><span>Base64, URL encoding, hashes, coordinates, VIN.</span></a>
+        <a class="route" href="#imagemeta" data-goto="imagemeta"><b>Image metadata</b><span>Camera, dates and GPS position inside an image file. Read in your browser, never uploaded.</span></a>
       </div>
     </div>
   </div>
@@ -197,6 +200,7 @@
       <button type="button" role="tab" id="tabFindings" data-tab="findings" aria-selected="true" aria-controls="panelFindings">Findings</button>
       <button type="button" role="tab" id="tabSources" data-tab="sources" aria-selected="false" aria-controls="panelSources" tabindex="-1">By source</button>
       <button type="button" role="tab" id="tabTimeline" data-tab="timeline" aria-selected="false" aria-controls="panelTimeline" tabindex="-1" hidden disabled>Timeline</button>
+      <button type="button" role="tab" id="tabFootprint" data-tab="footprint" aria-selected="false" aria-controls="panelFootprint" tabindex="-1" hidden disabled>Footprint</button>
     </div>
     <div id="panelFindings" role="tabpanel" aria-labelledby="tabFindings" tabindex="-1" class="panel">
       <div class="notices" id="notices"></div>
@@ -224,7 +228,10 @@
     </div>
     <div id="panelTimeline" role="tabpanel" aria-labelledby="tabTimeline" tabindex="-1" class="panel" hidden>
       <div id="timelineBody"></div>
-      <section class="card act-card" id="activityBox" hidden></section>
+      <div class="act-list" id="activityBox" hidden></div>
+    </div>
+    <div id="panelFootprint" role="tabpanel" aria-labelledby="tabFootprint" tabindex="-1" class="panel" hidden>
+      <section class="footprint" id="footprintBody" aria-labelledby="footprintH"></section>
     </div>
   </main>
 
@@ -242,6 +249,13 @@
       <h2><label for="purpose">Purpose</label></h2>
       <input class="input" id="purpose" maxlength="300" placeholder="Why you are looking this up" aria-describedby="purposeHint" type="search" name="case-purpose" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
       <p class="hint" id="purposeHint">Optional. Saved with the case and printed on exports.</p>
+    </section>
+    <section class="selfset" id="selfSet" aria-labelledby="selfH" hidden>
+      <h2 id="selfH">Self-audit</h2>
+      <div class="mode self-mode off" id="selfMode">
+        <label class="switch"><input type="checkbox" role="switch" id="selfSwitch" aria-labelledby="selfSwitchL" aria-describedby="selfSwitchD"><span></span></label>
+        <span class="mode-text"><label class="mode-label" id="selfSwitchL" for="selfSwitch">This is me</label><span class="mode-desc" id="selfSwitchD">Your own statement. Adds a list of ways to reduce your public footprint. Never written to a case file; a report you export includes the list.</span></span>
+      </div>
     </section>
     <section class="notes">
       <h2><label for="notes">Notes</label></h2>
@@ -306,6 +320,7 @@
     <div id="rFindings" role="tabpanel" aria-labelledby="rTabFindings" tabindex="-1" class="panel">
       <div class="notices" id="rNotices"></div>
       <div class="ledger" id="rLedger"></div>
+      <div class="lookups" id="rLookups" hidden></div>
       <div class="empty hero" id="rEmpty">
         <h1 class="empty-h">No target yet</h1>
         <p>Type a domain, an IP address or an ASN above and run. Known CVEs, risky open services, spoofable mail and expiring certificates come first.</p>
@@ -415,7 +430,7 @@
 
 <!-- ============ Decoders ============ -->
 <main class="tool tool-wide" id="decoders" hidden>
-  <header class="tool-head"><h1>Decoders</h1><p class="lede">Small conversions that come up mid-investigation. Base64, URL and hashing run entirely in your browser. VIN decoding asks NHTSA's public database directly.</p></header>
+  <header class="tool-head"><h1>Decoders</h1><p class="lede">Small conversions that come up mid-investigation. Base64, URL, hashing and coordinates run entirely in your browser. VIN decoding asks NHTSA's public database directly.</p></header>
   <div class="dec-grid">
     <article class="dec"><div class="dec-in"><h2><label for="b64In">Base64</label></h2>
       <textarea class="textarea mono" id="b64In" rows="3" placeholder="Text or Base64" name="b64-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></textarea>
@@ -428,10 +443,36 @@
     <article class="dec"><div class="dec-in"><h2><label for="hashIn">Hash a string</label></h2>
       <div class="inline-form"><input class="input mono" id="hashIn" placeholder="Text to hash" type="search" name="hash-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="hashGo" type="button">Hash</button></div></div>
       <div class="dec-res" id="hashOut" aria-live="polite"></div></article>
+    <article class="dec"><div class="dec-in"><h2><label for="coordIn">Coordinates</label></h2>
+      <div class="inline-form"><input class="input mono" id="coordIn" placeholder="48.85837, 2.294481" maxlength="120" aria-describedby="coordHelp" type="search" name="coord-text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="coordGo" type="button">Convert</button></div>
+      <p class="help" id="coordHelp">Decimal degrees, degrees-minutes-seconds or degrees and decimal minutes: <span class="mono">48°51'30.1"N 2°17'40.1"E</span>, <span class="mono">N 48 51.502 E 2 17.669</span>. Without N, S, E or W the latitude comes first.</p></div>
+      <div class="dec-res" id="coordOut" aria-live="polite"></div></article>
     <article class="dec"><div class="dec-in"><h2><label for="vinIn">VIN</label> <span class="tag">NHTSA</span></h2>
       <div class="inline-form"><input class="input mono" id="vinIn" placeholder="17-character VIN" maxlength="17" type="search" name="vin" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><button class="btn" id="vinGo" type="button">Decode</button></div></div>
       <div class="dec-res" id="vinOut" aria-live="polite"></div></article>
   </div>
+</main>
+
+<!-- ============ Image metadata ============ -->
+<main class="tool" id="imagemeta" hidden>
+  <section class="tool-in">
+    <h1>Image metadata</h1>
+    <p class="lede">Pick an image to read what the file says about itself: the camera, the software, the dates and, when it is there, where it was taken.</p>
+    <label class="dropzone" id="imgDrop" for="imgFile">
+      <input class="sr-only" type="file" id="imgFile" accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff" aria-describedby="imgLocal">
+      <b>Choose an image</b>
+      <span>or drop one here. JPEG, PNG, WebP or TIFF, up to 64 MB.</span>
+    </label>
+    <p class="local-note" id="imgLocal"><b>The file stays in this browser.</b> It is read on this page. It is not uploaded, no request is made for it, and nothing about it is kept once you clear it or leave.</p>
+    <div class="tool-actions"><button class="btn btn-ghost" id="imgClear" type="button">Clear</button></div>
+    <details class="howto"><summary>What is read, and what is not</summary>
+      <ul><li><b>Read:</b> the Exif block of a JPEG, PNG, WebP or TIFF file (camera, software, dates, orientation, GPS), a JPEG comment and a PNG's text chunks.</li><li><b>Not read:</b> maker notes, XMP and IPTC blocks. The page says when a file carries one.</li><li><b>Never shown:</b> the picture itself or the small preview some cameras embed.</li><li><b>Empty is an answer:</b> most social sites and chat apps remove metadata on upload, so a file with none has usually passed through one.</li></ul>
+    </details>
+  </section>
+  <section class="tool-out" id="imgOut" aria-live="polite" aria-label="Image metadata results">
+    <div class="empty"><h2 class="empty-h">No image yet</h2><p>Choose or drop an image on the left. The camera and software come first, then the dates, then the position if the file has one.</p></div>
+  </section>
+  <template id="imgEmptyTpl"><div class="empty"><h2 class="empty-h">No image yet</h2><p>Choose or drop an image on the left. The camera and software come first, then the dates, then the position if the file has one.</p></div></template>
 </main>
 </div>
 
@@ -441,6 +482,7 @@
   <a href="#headers" data-mode="headers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><span>Headers</span></a>
   <a href="#dorks" data-mode="dorks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>Dorks</span></a>
   <a href="#decoders" data-mode="decoders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg><span>Decoders</span></a>
+  <a href="#imagemeta" data-mode="imagemeta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4 4 3 3-2 4 3"/></svg><span>Image</span></a>
 </nav>
 
 <!-- ============ Overlays ============ -->

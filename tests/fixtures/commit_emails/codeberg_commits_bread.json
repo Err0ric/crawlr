@@ -1,0 +1,43 @@
+[
+ {
+  "url": "https://codeberg.org/api/v1/repos/samexample/maps/git/commits/000000000000000000000000000000000000000b",
+  "sha": "000000000000000000000000000000000000000b",
+  "created": "2024-12-03T05:31:23+01:00",
+  "html_url": "https://codeberg.org/samexample/maps/commit/000000000000000000000000000000000000000b",
+  "commit": {
+   "url": "",
+   "author": {
+    "name": "Sam Example",
+    "email": "sam.old@example.com",
+    "date": "2024-12-03T05:31:23+01:00"
+   },
+   "committer": {
+    "name": "Sam Example",
+    "email": "sam.old@example.com",
+    "date": "2024-12-03T05:31:23+01:00"
+   },
+   "message": "Update\n",
+   "tree": {
+    "url": "",
+    "sha": "0000000000000000000000000000000000000000",
+    "created": "2024-12-03T05:31:23+01:00"
+   },
+   "verification": null
+  },
+  "author": {
+   "id": 1000012,
+   "login": "samexample",
+   "full_name": "",
+   "email": "samexample@noreply.codeberg.org"
+  },
+  "committer": {
+   "id": 1000012,
+   "login": "samexample",
+   "full_name": "",
+   "email": "samexample@noreply.codeberg.org"
+  },
+  "parents": [],
+  "files": null,
+  "stats": null
+ }
+]

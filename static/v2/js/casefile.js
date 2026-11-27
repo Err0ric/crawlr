@@ -10,6 +10,7 @@ import { importSimilar } from "./evidence.js";
 import { readBlock } from "./adult.js";
 import { DEEP_READERS } from "./deep.js";
 import { readCasework, CASEWORK_KEYS } from "./casework.js";
+import { OWNERSHIP_READERS } from "./recondomain.js";
 
 export const CASE_VERSION = 1;
 export const MAX_CASE_BYTES = 3 * 1024 * 1024;   // browser storage holds about 5 MB for the whole history
@@ -22,8 +23,12 @@ const clip = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
 const fail = (error) => ({ ok: false, error });
 
 // What Export writes. `mode` is the workbench, `type` the detected target type.
+// "This is me" (collected.selfAudit) is left out: it is the statement of the person at this
+// browser about themselves, the switch says it is never written to a case file, and a file that
+// carried it would tell whoever receives it whose case this is. (The reader drops it too.)
 export function buildCaseFile({ mode, target, type, ran, collected, ai, deep, notes, purpose }) {
-  return { crawlr_case: CASE_VERSION, app: "CrawlR", exported: new Date().toISOString(), mode, target, type, ran: ran || Date.now(), purpose: purpose || "", notes: notes || "", collected: collected || {}, ai: ai || null, deep: deep || null };
+  const { selfAudit: _statement, ...results } = isObj(collected) ? collected : {};
+  return { crawlr_case: CASE_VERSION, app: "CrawlR", exported: new Date().toISOString(), mode, target, type, ran: ran || Date.now(), purpose: purpose || "", notes: notes || "", collected: results, ai: ai || null, deep: deep || null };
 }
 
 // An AI report keeps the fields the report view reads and drops everything else.
@@ -97,25 +102,37 @@ export function parseCaseFile(text) {
   // is marked as coming from the file until it is checked in this browser.
   if ("similar" in results) { const sm = importSimilar(results, target, kind); if (Object.keys(sm).length) results.similar = sm; else delete results.similar; }
   // The record sources (profile sources, the accounts and keys behind an address, GitHub
-  // activity) are read like a fresh answer: a site is one of the 16 CrawlR asks and its profile
+  // activity) are read like a fresh answer: a site is one of the 25 CrawlR asks and its profile
   // address must be on that site, every other address is held to http(s) and never an adult
   // site, a GitHub or key address is rebuilt from the login or the fingerprint, text is clipped,
   // a thumbnail passes the same check as any other and a state is a known one. Guard-only text
   // is dropped. A value that cannot be read is dropped; a recorded failure stays a failure.
   for (const [k, read] of Object.entries(DEEP_READERS)) if (k in results) { const v = read(results[k]); if (v) results[k] = v; else delete results[k]; }
+  // A Recon domain case's ownership leads (tracker and ad IDs, document metadata) are read the
+  // same way: a kind of ID is one CrawlR knows and its label and meaning are CrawlR's own, a
+  // document's address must be an https address on the case's own domain, names and titles are
+  // clipped, every count and summary is rebuilt from the rows, and guard text is dropped. They
+  // belong to a Recon domain case and to the file's own target; anywhere else they are dropped.
+  for (const [k, read] of Object.entries(OWNERSHIP_READERS)) if (k in results) {
+    const v = j.mode === "recon" && kind === "domain" && results[k] && typeof results[k] === "object" ? read({ ...results[k], domain: target }) : null;
+    if (v) results[k] = v; else delete results[k];
+  }
   // The investigator's own work travels with the file and is read like everything else in it:
   // the pick of the person the case is about (member ids only, and marked as the file's pick, so
   // the page never says "you picked") and the pivot trail (text, clipped, each step marked as the
   // file's; its case ids mean nothing in this browser). Parked and followed steps are NOT kept: a
   // file must not be able to hide a suggestion from the person who opens it, so every step the
-  // case supports is offered again. Archive answers are among the record sources above: each
-  // snapshot address is rebuilt from its timestamp and the profile address.
+  // case supports is offered again. "This is me" (selfAudit) is NOT kept either: it is the
+  // statement of the person at the browser, so the "Reduce your footprint" view is never switched
+  // on by a file. Archive answers, and the answers of the other lookups made on a click (commit
+  // emails, post activity, a comparison of two archived copies), are among the record sources
+  // above: each snapshot address is rebuilt from its timestamp and the profile address.
   // A pick that names no cluster of this case simply does not apply: the automatic choice stands.
-  { const cw = readCasework(results, { file: true }); for (const k of ["pick", "trail", "nextSteps"]) { if (k in cw) results[k] = cw[k]; else delete results[k]; } }
+  { const cw = readCasework(results, { file: true }); for (const k of ["pick", "trail", "nextSteps", "selfAudit"]) { if (k in cw) results[k] = cw[k]; else delete results[k]; } }
   // A Recon case keeps its trail beside the results (the History entry's `trail`), and has no
   // identity to pick. The file carries the trail among the results, like an Investigate case.
   const trail = j.mode === "recon" ? results.trail : null;
-  if (j.mode === "recon") for (const k of ["pick", "trail", "nextSteps"]) delete results[k];
+  if (j.mode === "recon") for (const k of ["pick", "trail", "nextSteps", "selfAudit"]) delete results[k];
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
   if (!Object.keys(results).filter((k) => k !== "adultMode" && k !== "adultBlock" && k !== "phoneRegion" && !CASEWORK_KEYS.includes(k)).length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();

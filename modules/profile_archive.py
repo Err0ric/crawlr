@@ -35,7 +35,14 @@ The request (checked against the live API on 2026-11-26 with an organisation's p
   * a URL with `*` in it is refused as `bad_url`: the index reads a trailing `*` as a prefix
     query over every address that starts the same way, which is not one profile page.
 
-The body is read as a stream and dropped past MAX_BODY, never held whole first.
+The body is read by core.capfetch.read_body, the one bounded reader: gzip is the only coding
+asked for, it is inflated here against MAX_BODY and never by the HTTP client, and a body past
+MAX_BODY, in another coding, or that does not inflate to its end is `failed`. The whole call
+ends within DEADLINE seconds.
+
+An address inside a web archive (archive.org and its subdomains) is not a profile page and is
+refused as `bad_url`: the page it wraps would never be checked. A host name written anywhere
+in the path or the query is checked against the adult and dating list as well as the host.
 
 States:
 
@@ -49,16 +56,18 @@ States:
 A failure is never "none". Nothing from the URL is logged.
 """
 
+import asyncio
 import json
 import os
 import re
 import time
+import unicodedata
 from collections import OrderedDict
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, unquote_to_bytes, urlsplit, urlunsplit
 
 import httpx
 
-from core import adult_sites
+from core import adult_sites, capfetch
 from core.errors import classify_status, error_fields
 from core.logging import get_logger
 from core.validate import HOSTNAME_RE, is_ip
@@ -67,7 +76,8 @@ log = get_logger(__name__)
 
 CDX_URL = "https://web.archive.org/cdx/search/cdx"
 SNAPSHOT_BASE = "https://web.archive.org/web/"
-TIMEOUT = 8                   # seconds
+TIMEOUT = 8                   # seconds per connect or read
+DEADLINE = 20                 # seconds for the whole call
 MAX_URL = 600
 ROW_LIMIT = 10_000            # rows asked for: one per day with a capture
 MAX_BETWEEN = 4               # snapshots offered between the first and the last
@@ -86,6 +96,9 @@ REFUSALS = {
 
 _TS = re.compile(r"^\d{14}$")
 _BAD_CHARS = re.compile(r"[\s<>\"'`\\^{}|*]|[\x00-\x1f\x7f]")
+_ARCHIVE_SITES = ("archive.org",)       # and every host under it: an address there wraps another address
+_UNQUOTE_ROUNDS = 4                     # a path still changing after this many decodings is not a plain one
+_HOST_SHAPED = re.compile(r"(?<![a-z0-9.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.){1,8}[a-z]{2,24}(?![a-z0-9-])")
 NONE_NOTE = ("The archive holds no capture of the page itself. Captures that were a redirect or an error are not counted, "
              "so the address may still appear in the archive.")
 
@@ -93,12 +106,61 @@ NONE_NOTE = ("The archive holds no capture of the page itself. Captures that wer
 # --------------------------------------------------------------------------------------
 # The URL
 # --------------------------------------------------------------------------------------
+def _decoded(text: str) -> str | None:
+    """`text` with its percent-encoding taken off, layer by layer, or None when it never
+    settles. What a server further along may read out of an address is checked, not only
+    what is written."""
+    for _ in range(_UNQUOTE_ROUNDS):
+        once = unquote(text)
+        if once == text:
+            return text
+        text = once
+    return None
+
+
+def _plain_path(path: str) -> bool:
+    """Does the path mean the same before and after it is tidied? Not when any reading of it
+    (as written, decoded, or decoded by a reader that takes a look-alike for a dot) has a "."
+    or ".." segment or an empty one. Segments are split at "/" and at a backslash, a ";"
+    parameter is left off, and spaces, control and invisible characters do not hide a segment."""
+    decoded = _decoded(path)
+    if decoded is None:
+        return False
+    # The same decoding on bytes, for the two-byte spelling of "." that a lenient decoder accepts.
+    data = path.encode("utf-8", "replace")
+    for _ in range(_UNQUOTE_ROUNDS):
+        data = unquote_to_bytes(data)
+    lenient = data.replace(b"\xc0\xae", b".").decode("utf-8", "replace")
+    for form in {path, decoded, lenient}:
+        for reading in {form, unicodedata.normalize("NFKC", form)}:      # full-width and other compatibility forms of ".", "/"
+            segments = re.split(r"[/\\]", reading)[1:]
+            names = ["".join(ch for ch in s.split(";")[0] if ch > " " and ch != "\x7f" and unicodedata.category(ch) != "Cf") for s in segments]
+            if any(n in (".", "..") for n in names) or "" in segments[:-1]:
+                return False
+    return True
+
+
+def _names_adult_site(parts) -> bool:
+    """Is a host name on the adult and dating list written anywhere in the path or the query?
+    Such an address is one step from that site whatever host serves it."""
+    rest = _decoded(f"{parts.path}?{parts.query}")
+    if rest is None:
+        return True                          # cannot be read to the bottom: not looked up
+    rest = unicodedata.normalize("NFKC", rest).lower()
+    return any(adult_sites.is_adult_site(url=f"https://{m.group(0)}/") for m in _HOST_SHAPED.finditer(rest))
+
+
 def check_url(url: str) -> tuple[str, str]:
     """(clean URL, "") when the URL may be looked up, else ("", a key of REFUSALS).
 
     A profile link is a plain web address: http or https, a named public host, no credentials
     and no port. The fragment is dropped (it is never part of an archived address). Path and
-    query keep their case."""
+    query keep their case. The path is taken as written, so one that only means something
+    after it is tidied (a "." or ".." segment, spelled out or percent-encoded once or several
+    times, behind an encoded slash or a backslash, with a ";" parameter, or an empty segment)
+    is not a plain address and is refused: the address that is looked up is exactly the
+    address that was checked. An address inside a web archive is refused too, and so is one
+    that names an adult or dating site in its path or query."""
     raw = (url or "").strip()
     if not raw or len(raw) > MAX_URL or _BAD_CHARS.search(raw):
         return "", "bad_url"
@@ -114,9 +176,13 @@ def check_url(url: str) -> tuple[str, str]:
     host = parts.hostname.lower().rstrip(".")
     if is_ip(host) or not HOSTNAME_RE.fullmatch(host) or not host.isascii():
         return "", "not_public_host"
+    if not _plain_path(parts.path or "/"):
+        return "", "bad_url"
     clean = urlunsplit((parts.scheme.lower(), host, parts.path or "/", parts.query, ""))
-    if adult_sites.is_adult_site(url=clean):
+    if adult_sites.is_adult_site(url=clean) or _names_adult_site(parts):
         return "", "adult_site"
+    if any(host == site or host.endswith("." + site) for site in _ARCHIVE_SITES):
+        return "", "bad_url"
     return clean, ""
 
 
@@ -217,25 +283,26 @@ async def _ask(url: str) -> dict:
         "url": url, "matchType": "exact", "output": "json", "fl": "timestamp,digest",
         "filter": "statuscode:200", "collapse": "timestamp:8", "limit": str(ROW_LIMIT),
     }
-    body = bytearray()
+    body, cut = b"", ""
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, transport=_transport()) as client:
-            async with client.stream("GET", CDX_URL, params=params) as resp:
-                status = resp.status_code
-                if status == 200:
-                    # Read up to the cap and stop: a larger body is never held in memory.
-                    async for chunk in resp.aiter_bytes():
-                        body += chunk
-                        if len(body) > MAX_BODY:
-                            break
+        async with asyncio.timeout(DEADLINE):
+            async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, transport=_transport()) as client:
+                # Only gzip is asked for, and the bytes are taken as they come off the wire:
+                # the bounded reader inflates them against the cap, never the HTTP client.
+                async with client.stream("GET", CDX_URL, params=params, headers={"Accept-Encoding": "gzip"}) as resp:
+                    status = resp.status_code
+                    if status == 200:
+                        body, cut = await capfetch.read_body(resp.stream, capfetch.coding_of(resp.headers), MAX_BODY)
+    except capfetch.BadEncoding:
+        return _problem(url, code="bad_response")
     except Exception as e:  # noqa: BLE001 - every failure becomes a state with a code
         return _problem(url, e)
     if status != 200:
         return _problem(url, code=classify_status(status))
-    if len(body) > MAX_BODY:
-        return _problem(url, code="bad_response")
+    if cut:
+        return _problem(url, code="bad_response")       # a list that was not read whole is not a list
     try:
-        rows = parse_rows(json.loads(bytes(body).decode("utf-8")))
+        rows = parse_rows(json.loads(body.decode("utf-8")))
     except (ValueError, RecursionError):
         rows = None
     if rows is None:

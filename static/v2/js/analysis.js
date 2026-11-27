@@ -15,22 +15,28 @@
 //   action.kind:
 //     pivot     { pivot: "investigate" | "recon", value, type?, via, source }   a new case, one click
 //     archive   { key }                                                        one archive lookup for that row
+//     post-activity  { key }                                                   one post activity reading for that row (row.canPostActivity)
+//     commit-emails  { key }                                                   one commit email reading for that row (row.canCommitEmails)
+//     archive-diff   { key, from, to }                                         one comparison of two archived copies of that row's
+//                                                                              profile: the default pair of row.archiveDiffPairs
 //     open      { url, link_kind }                                             a page the investigator opens by hand
 //     copy      { text }                                                       a search copied as text, never a link
 //     jump      { tier }                                                       opens a group of the findings
-//     focus     { where: "identity" }                                          moves to the people under the handle
+//     focus     { where: "identity" | "footprint" }                            moves to the people under the handle, or to the
+//                                                                              "Reduce your footprint" view of a case marked "This is me"
 //     rerun     {}                                                             runs the same target again
 
 import { profileCoverage, emailLookupsDown, readEmailAccounts, PROFILE_STATE_WORD, PROVENANCE } from "./deep.js";
 import { minorGuard, readBlock, isBlocked, adultHost } from "./adult.js";
-import { readSteps } from "./casework.js";
+import { readSteps, selfAuditOn } from "./casework.js";
 import { isPlatformHost } from "./identity.js";
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const list = (arr, n = 4) => arr.slice(0, n).join(", ") + (arr.length > n ? ` and ${arr.length - n} more` : "");
 const uniq = (arr) => [...new Set(arr)];
 const ACCOUNT_TIERS = ["linked", "matches", "different", "unverified"];
-const isAccount = (i) => i.key?.startsWith("acct:") && ACCOUNT_TIERS.includes(i.tier) && !i.similar;
+// A record Launchpad made by itself (row.unclaimed) is nobody's account: it is counted nowhere here.
+const isAccount = (i) => i.key?.startsWith("acct:") && ACCOUNT_TIERS.includes(i.tier) && !i.similar && !i.unclaimed;
 
 // ---- how a fact is known --------------------------------------------------------------------------
 // One line for a fact of "What we know": the kind of knowledge, and how many sites say the same.
@@ -38,11 +44,13 @@ const isAccount = (i) => i.key?.startsWith("acct:") && ACCOUNT_TIERS.includes(i.
 //            read it from a page)
 //   sites    the number of profiles that carry the same value
 //   weak     every profile that carries it is joined to the identity by its name only
-export function factHow({ kinds = [], sites = 1, sources = [], weak = false } = {}) {
+//   commit   the value was typed into a commit by its author: self-declared, and not something
+//            the account holder wrote on a profile
+export function factHow({ kinds = [], sites = 1, sources = [], weak = false, commit = false } = {}) {
   const ks = ["record", "self", "tool"].filter((k) => kinds.includes(k));
   if (!ks.length) return null;
   const prov = ks.map((k) => PROVENANCE[k]).join(" and ");
-  const text = [sites > 1 ? `the same on ${sites} sites (${list(sources, 4)})` : ks.includes("self") ? "written by the account holder" : ks.includes("record") ? "the site's own record" : "read from the page by a tool",
+  const text = [sites > 1 ? `the same on ${sites} sites (${list(sources, 4)})` : ks.includes("self") ? (commit ? "typed into a commit by its author" : "written by the account holder") : ks.includes("record") ? "the site's own record" : "read from the page by a tool",
     weak ? "from a profile joined by its name only" : ""].filter(Boolean).join(" · ");
   return { kinds: ks, prov, agree: sites, sources: sources.slice(0, 8), weak, text };
 }
@@ -131,6 +139,16 @@ export function assessCase(ev, { collected = {}, type = ev?.type || "", failed =
     const vals = facts.filter((f) => f.k === k);
     if (vals.length > 1) add("info", `${k} is given ${vals.length} ways: ${list(vals.map((f) => `${f.v} (${f.source})`), 3)}. They may be the same place or employer written differently, or a change over time.`);
   }
+  // -- when the accounts are active: do the UTC offset ranges of this identity's readings fit? --
+  // A hint either way. It never changes the strength above or which profiles belong together,
+  // and a range of offsets is never a place.
+  const cmp = ev.offsets || null;
+  const RANGES = "The UTC offset ranges estimated from when the accounts are active:";
+  if (cmp?.verdict === "disagree") add("flag", `${RANGES} ${cmp.text} ${cmp.caution}`);
+  else if (cmp?.verdict === "agree") add("info", `Supporting, not proof. ${RANGES} ${cmp.text} ${cmp.caution}`);
+  // -- a record nobody claimed --
+  const unclaimed = ev.items.filter((i) => i.unclaimed);
+  if (unclaimed.length) add("info", `${list(unclaimed.map((i) => i.what), 3)} holds a record under this handle that is not a claimed account: the site made it by itself, so it is counted as nobody's account and nothing is read from it.`);
   // -- other people, and names that could not be compared --
   const different = tier("different");
   if (different.length) {
@@ -203,7 +221,8 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
           : guess ? "The part before the @. It is a guess at a handle, not a finding, and may belong to someone else."
             : shown ? `A ${from}. That is weaker than a commit attribution: the profile was not read to confirm it.`
               : `A handle found here: ${from}.${l.tied ? "" : " That profile is not tied to the target, so this is a weaker lead."} It may be the same person under another name.` });
-    else if (kind === "email") put({ ...base, score: l.tied ? 75 : 50, title: `Investigate ${value}`, reason: `An address found here: ${from}.${l.tied ? "" : " That profile is not tied to the target, so this is a weaker lead."} An email case can show the accounts, keys and breaches behind it.` });
+    // An address on a commit under the account's name only (not one the site ties to the account) ranks lower.
+    else if (kind === "email") { const weakTie = /the weaker tie/.test(from) && !/ties to this account/.test(from); put({ ...base, score: l.tied ? (weakTie ? 62 : 75) : weakTie ? 44 : 50, title: `Investigate ${value}`, reason: `An address found here: ${from}.${l.tied ? "" : " That profile is not tied to the target, so this is a weaker lead."} An email case can show the accounts, keys and breaches behind it.` }); }
     else if (kind === "domain") put({ ...base, score: /the email's domain/.test(from) ? 65 : l.tied ? 70 : 48, title: `Open ${value} in Recon`, reason: /the email's domain/.test(from) ? "The domain of this address. Its DNS, mail setup and certificates describe the organisation behind it." : `A site found here: ${from}.${l.tied ? "" : " That profile is not tied to the target."} Its registration, DNS and certificates can show who runs it.` });
   }
 
@@ -213,6 +232,18 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
   archivable.slice(0, 2).forEach((i, n) => put({ id: `archive:${i.key}`, score: 60 - n * 8, title: `See archived copies of the ${i.what} profile`, reason: `${i.tier === "linked" ? "Tied to this identity." : "Part of this identity."} An archived copy can show a bio or a link that was removed since. One request to the Internet Archive, which is sent this profile's address.`, action: { kind: "archive", key: i.key, label: "Archived copies" } }));
   const retry = accounts.filter((i) => i.archive?.view?.retry && (i.tier === "linked" || i.inPrimary));
   if (retry.length) put({ id: `archive:${retry[0].key}`, score: 34, title: `Ask the Internet Archive about ${retry[0].what} again`, reason: "It could not be asked last time, so whether it holds copies is unknown.", action: { kind: "archive", key: retry[0].key, label: "Try again" } });
+
+  // 3b. three more lookups for a profile of this identity, each one click and one row. Never for
+  //     a row filed as a different person, a record nobody claimed or an adult site: a row has
+  //     canCommitEmails, canPostActivity and archiveDiffPairs only when the lookup may be asked.
+  const mine = accounts.filter((i) => i.tier === "linked" || i.inPrimary).sort((a, b) => (a.tier === "linked" ? 0 : 1) - (b.tier === "linked" ? 0 : 1) || a.what.localeCompare(b.what));
+  const standing = (i) => (i.tier === "linked" ? "Tied to this identity." : "Part of this identity.");
+  mine.filter((i) => i.canCommitEmails && !i.commitEmails).slice(0, 2).forEach((i, n) => put({ id: `commits:${i.key}`, score: 58 - n * 8, title: `Read the commit emails of the ${i.what} account`,
+    reason: `${standing(i)} A commit in its public repositories can carry an email address. What is found is typed by the commit's author, so it is self-declared and a lead to check, not a confirmed address. At most 5 requests to ${i.what}.`, action: { kind: "commit-emails", key: i.key, label: "Commit emails" } }));
+  mine.filter((i) => i.canPostActivity && !i.postActivity).slice(0, 2).forEach((i, n) => put({ id: `posts:${i.key}`, score: 56 - n * 8, title: `Read when the ${i.what} account posts`,
+    reason: `${standing(i)} The hours its public posts fall on can show a range of UTC offsets, and whether that range fits the other accounts of this identity. It is a hint and never a place, and it cannot show who is behind the account. A few requests to ${i.what}.`, action: { kind: "post-activity", key: i.key, label: "Post activity" } }));
+  mine.filter((i) => i.archiveDiffPairs?.length && !i.archiveDiff).slice(0, 1).forEach((i) => { const pair = i.archiveDiffPairs.find((x) => x.default) || i.archiveDiffPairs[0]; put({ id: `diff:${i.key}`, score: 54, title: `Compare two archived copies of the ${i.what} profile`,
+    reason: `${standing(i)} The Internet Archive lists copies from ${i.archive.view.count} days. Comparing the two newest (${pair.label}) shows text and links that were removed or added between them, and a removed link is a lead. Two requests to the Internet Archive.`, action: { kind: "archive-diff", key: i.key, from: pair.from, to: pair.to, label: "Compare copies" } }); });
 
   // 4. unread accounts two tools agree on
   const unverified = accounts.filter((i) => i.tier === "unverified" && !i.nofind);
@@ -243,11 +274,15 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
   const failedNames = failed.map((f) => (typeof f === "string" ? f : f?.name)).filter(Boolean);
   if (limited.length || failedNames.length) put({ id: "rerun:gaps", score: failedNames.length ? 38 : 30, title: "Run this case again later", reason: `${[limited.length ? `${list(limited, 4)} ${limited.length === 1 ? "was" : "were"} rate limited` : "", failedNames.length ? `${list(failedNames, 4)} failed` : ""].filter(Boolean).join(", and ")}, so that part of the picture is unknown. A minute is usually enough for a rate limit.`, action: { kind: "rerun", label: "Run again" } });
 
-  // 9. self-audit: what the account holder could do about an exposure
+  // 9. self-audit: what the account holder could do about an exposure. A case marked "This is
+  //    me" has the whole list in its own view, so these two hints give way to one pointer to it.
   const commitEmails = facts.filter((f) => f.k === "Commit email");
-  if (commitEmails.length) put({ id: "audit:commit-email", score: 26, tag: "self-audit", title: "If this is your account: hide your commit email", reason: `${plural(commitEmails.length, "address", "addresses")} can be read from this account's public commits. On GitHub: Settings, Emails, then "Keep my email addresses private" and "Block command line pushes that expose my email". Old commits keep the address they were made with.`, action: null });
+  const onGitHub = commitEmails.filter((f) => /\bGitHub\b/.test(f.source || "")), onForge = commitEmails.filter((f) => !/\bGitHub\b/.test(f.source || ""));
   const breaches = ev.items.filter((i) => i.tier === "flag" && i.key?.startsWith("breach:"));
-  if (type === "email" && breaches.length) put({ id: "audit:breaches", score: 28, tag: "self-audit", title: "If this is your address: change the exposed passwords", reason: `It is in ${plural(breaches.length, "known breach", "known breaches")} (${list(breaches.map((b) => b.what.replace(/^Breach: /, "")), 3)}). Change the password used on ${breaches.length === 1 ? "that site" : "those sites"} and anywhere it was reused, and turn on two-step sign-in.`, action: null });
+  const audit = selfAuditOn(collected, type);
+  if (audit && (commitEmails.length || (type === "email" && breaches.length))) put({ id: "audit:footprint", score: 28, tag: "self-audit", title: "Open Reduce your footprint", reason: `You marked this case as being about you. ${[commitEmails.length ? `${plural(commitEmails.length, "address", "addresses")} on public commits` : "", type === "email" && breaches.length ? plural(breaches.length, "known breach", "known breaches") : ""].filter(Boolean).join(" and ")} ${commitEmails.length + (type === "email" ? breaches.length : 0) === 1 ? "is" : "are"} among the things that view lists, each with what to do about it.`, action: { kind: "focus", where: "footprint", label: "Open the view" } });
+  if (!audit && commitEmails.length) put({ id: "audit:commit-email", score: 26, tag: "self-audit", title: "If this is your account: hide your commit email", reason: `${plural(commitEmails.length, "address", "addresses")} can be read from this account's public commits.${onGitHub.length ? ' On GitHub: Settings, Emails, then "Keep my email addresses private" and "Block command line pushes that expose my email".' : ""}${onForge.length ? " On GitLab, Codeberg or Gitea.com: choose the private commit address the site offers in the account's email settings, and set it as the address git uses." : ""} Old commits keep the address they were made with.`, action: null });
+  if (!audit && type === "email" && breaches.length) put({ id: "audit:breaches", score: 28, tag: "self-audit", title: "If this is your address: change the exposed passwords", reason: `It is in ${plural(breaches.length, "known breach", "known breaches")} (${list(breaches.map((b) => b.what.replace(/^Breach: /, "")), 3)}). Change the password used on ${breaches.length === 1 ? "that site" : "those sites"} and anywhere it was reused, and turn on two-step sign-in.`, action: null });
 
   out.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
   const steps = readSteps(collected.nextSteps);

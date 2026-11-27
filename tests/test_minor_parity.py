@@ -153,15 +153,72 @@ def test_the_page_and_the_server_read_the_same_text_from_the_same_answers():
         {"site": "Keybase", "source": "keybase", "state": "blocked", "url": f"https://keybase.io/{h}", "bio": "i'm 15"},
         {"site": "Empty", "source": "npm", "state": "found", "url": "https://www.npmjs.com/~x", "display_name": "", "bio": ""},
     ], "sources": {}}
+    # The names on commits (POST /api/recon/commit-emails), keyed in the page's case by the account
+    # row. The router records one row per found answer with rows, after the profile sources.
+    from modules.commit_emails import guard_profile
+    mail = lambda address, name: {"email": address, "name": name, "how": "author_line_match", "self_declared": True, "commits": 1, "repos": []}      # noqa: E731
+    commits = {
+        "acct:gitlab": {"site": "gitlab", "site_name": "GitLab", "username": h, "state": "found", "handle": h, "profile_url": f"https://gitlab.com/{h}", "display_name": "River S",
+                        "emails": [mail("river@example.org", "River S"), mail("r.stone@example.com", "River Stone, 15yo"), mail("rs@example.net", "River Stone, 15yo"),
+                                   mail("old@example.org", ""), mail("long@example.org", "\U0001f338" * 120)], "emails_state": "found"},
+        "acct:codeberg": {"site": "codeberg", "site_name": "Codeberg", "username": h, "state": "found", "handle": h, "profile_url": f"https://codeberg.org/{h}", "display_name": "i'm 15",
+                          "emails": [], "emails_state": "none"},
+        "acct:gitea.com": {"site": "gitea", "site_name": "Gitea.com", "username": h, "state": "found", "handle": h, "profile_url": f"https://gitea.com/{h}", "display_name": "",
+                           "emails": [mail(f"m{i}@example.org", f"Mara Lind {i}") for i in range(12)], "emails_state": "found"},
+        "acct:nowhere": {"site": "gitlab", "site_name": "GitLab", "username": h, "state": "not_found", "emails": [mail("x@example.org", "i'm 15")], "emails_state": "none"},
+        "acct:down": {"site": "codeberg", "site_name": "Codeberg", "username": h, "state": "failed", "profile_url": f"https://codeberg.org/{h}", "emails": [mail("x@example.org", "i'm 15")],
+                      "emails_state": "unknown", "error": "The source took too long to answer.", "error_code": "timeout", "error_detail": "ConnectTimeout"},
+    }
+    # What two archived copies said (POST /api/recon/archive-diff), keyed the same way. The router
+    # records the text of every answer that carries any, in pieces of at most 2000 characters, under
+    # "Internet Archive" with the address of the older capture; the page reads the same from its case.
+    from modules.archive_diff import guard_texts
+    snap = lambda url, ts: f"https://web.archive.org/web/{ts.replace('-', '').replace(':', '').replace('T', '').replace('Z', '')}/{url}"      # noqa: E731
+    side = lambda url, ts, title, state="ok": {"state": state, "timestamp": ts, "asked": ts, "exact": True, "url": snap(url, ts), "bytes": 900 if state == "ok" else 0,      # noqa: E731
+                                                 "truncated": False, "title": title, "text_lines": 9 if state == "ok" else 0, "links": 2 if state == "ok" else 0}
+    part = lambda text=(), links=(): {"text": list(text), "text_total": len(text), "links": list(links), "links_total": len(links)}      # noqa: E731
+    kb, lc = f"https://keybase.io/{h}", f"https://lichess.org/@/{h}"
+    long_lines = [f"line {i} " + "\U0001f338" * 280 for i in range(9)]
+    diffs = {
+        "acct:keybase": {"url": kb, "state": "ok", "from": side(kb, "2019-03-04T05:06:07Z", f"{h} (River Stone) on Keybase"), "to": side(kb, "2024-01-02T03:04:05Z", f"{h} on Keybase"),
+                         "removed": part(["River Stone", "Lincoln High, class of 2029", *long_lines], [{"url": "https://social.example.net/@river", "external": True}]),
+                         "added": part(["R S", "<b>not markup</b>"]), "complete": True, "swapped": False, "cached": False},
+        "acct:lichess": {"url": lc, "state": "same", "from": side(lc, "2021-01-01T00:00:00Z", "river_stone, 15 \u2022 lichess.org"), "to": side(lc, "2021-06-01T00:00:00Z", "river_stone, 15 \u2022 lichess.org"),
+                         "removed": part(), "added": part(), "complete": True, "swapped": False, "cached": True},
+        "acct:npm": {"url": f"https://www.npmjs.com/~{h}", "state": "none", "missing": ["to"], "from": side(f"https://www.npmjs.com/~{h}", "2020-02-02T02:02:02Z", "npm profile of river"),
+                     "to": {**side(f"https://www.npmjs.com/~{h}", "2022-02-02T02:02:02Z", "", "none"), "reason": "redirect", "note": "That capture is a redirect to another page, not the profile itself."},
+                     "removed": part(), "added": part(), "complete": False, "swapped": False, "cached": False},
+        "acct:down": {"url": kb, "state": "failed", "from": side(kb, "2019-03-04T05:06:07Z", "", "failed"), "to": side(kb, "2024-01-02T03:04:05Z", "", "failed"), "removed": part(), "added": part(),
+                      "complete": False, "swapped": False, "cached": False, "error": "The source took too long to answer.", "error_code": "timeout", "error_detail": "ReadTimeout"},
+        "acct:refused": {"url": "", "state": "refused", "from": None, "to": None, "removed": part(), "added": part(), "complete": False, "reason": "adult_site",
+                         "note": "CrawlR does not look up archived copies of pages on adult or dating sites.", "cached": False},
+    }
     engine = mr.load()
     server = [e for name, _ in engine.text_order for e in pr.entries_of(name, answers[name])] + pr.entries_of("profiles", profiles)
-    collected = {page: answers[name] for name, page in [("sherlock", "sherlock"), *engine.text_order]} | {"profiles": profiles}
+    server += pr.entries_of("profiles", {"profiles": [row for row in map(guard_profile, commits.values()) if row]})
+    before_archive = len(server)
+    for answer in diffs.values():        # as routers/recon_identity.py records one answer
+        texts = guard_texts(answer)
+        if texts:
+            first = answer.get("from") or answer.get("to") or {}
+            server += pr.entries_of("profiles", {"profiles": [{"state": "found", "site": "Internet Archive", "url": first.get("url", ""), "bio": text} for text in texts]})
+    # The page's case holds an archive diff under the profile address it was asked for (the server echoes it as `url`).
+    collected = {page: answers[name] for name, page in [("sherlock", "sherlock"), *engine.text_order]} | {"profiles": profiles, "commitEmails": commits, "archiveDiffs": diffs}
     node = shutil.which("node")
     assert node, "node is not installed: the parity test needs it"
     done = subprocess.run([node, str(ROOT / "tests" / "js" / "texts_runner.mjs")], input=json.dumps(collected), capture_output=True, text=True, timeout=60, cwd=str(ROOT))
     assert done.returncode == 0, done.stderr[-600:]
     page = json.loads(done.stdout)
-    assert [e["source"] for e in server] == ["Gitlab", "GitHub", "Reddit", "Instagram", "Mastodon", "Lichess"]
+    archive = server[before_archive:]
+    assert [e["source"] for e in server] == ["Gitlab", "GitHub", "Reddit", "Instagram", "Mastodon", "Lichess", "GitLab", "Gitea.com"] + ["Internet Archive"] * len(archive)
+    # The titles, then the removed lines, then the added ones, cut into pieces at the same line on both sides.
+    assert len(archive) == 4 and [e["url"] for e in archive] == [snap(kb, "2019-03-04T05:06:07Z")] * 2 + [snap(lc, "2021-01-01T00:00:00Z"), snap(f"https://www.npmjs.com/~{h}", "2020-02-02T02:02:02Z")]
+    assert archive[0]["bio"].split("\n")[:4] == [f"{h} (River Stone) on Keybase", f"{h} on Keybase", "River Stone", "Lincoln High, class of 2029"] and archive[1]["bio"].endswith("R S\n<b>not markup</b>")
+    assert all(len(e["bio"]) <= 2000 and e["name"] == "" and e["text"] == "" for e in archive) and archive[2]["bio"] == "river_stone, 15 \u2022 lichess.org" and archive[3]["bio"] == "npm profile of river"
+    # The profile's name, then the other author names once each, at most 100 characters of a name and ten rows; never an address.
+    assert server[6] == {"source": "GitLab", "url": f"https://gitlab.com/{h}", "name": "River S", "bio": "River Stone, 15yo\n" + "\U0001f338" * 100, "text": ""}
+    assert server[7]["name"] == "" and server[7]["bio"].split("\n") == [f"Mara Lind {i}" for i in range(10)]
+    assert "@example" not in json.dumps(server[6:])
     assert server[4]["bio"] == long_bio and server[4]["text"] == "Lincoln High\nLeeds"
     assert page == server
     assert server[0]["bio"] == long_bio and server[0]["text"] == "Leeds\nabout me\nLincoln High" and server[1]["text"] == "Lincoln High School\n9th grade"

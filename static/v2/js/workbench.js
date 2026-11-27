@@ -136,7 +136,92 @@ export function simWhat(it) {
 export function archHtml(it) {
   const v = it?.archive?.view;
   if (!v) return "";
-  return h`<span class="ev-arch ${v.state === "ok" || v.state === "none" ? "" : "unknown"}"><b>Archived copies</b><span>${v.text}</span>${v.snapshots.length ? raw(h`<span class="ev-snaps"><span class="sr-only">Snapshots: </span>${raw(v.snapshots.map((x) => link(x.url, x.label, "ev-link", { kind: x.link_kind })).join(""))}</span>`) : ""}</span>`;
+  return h`<div class="ev-arch ${v.state === "ok" || v.state === "none" ? "" : "unknown"}"><b>Archived copies</b><span>${v.text}</span>${v.snapshots.length ? raw(h`<span class="ev-snaps"><span class="sr-only">Snapshots: </span>${raw(v.snapshots.map((x) => link(x.url, x.label, "ev-link", { kind: x.link_kind })).join(""))}</span>`) : ""}${raw(diffHtml(it))}</div>`;
+}
+// ---- two archived copies, compared on a click -------------------------------------------------
+// Inside the Archived copies inset of a row whose archive listed two or more captures
+// (row.archiveDiffPairs): two labelled selects, one button, and under them the last answer
+// (archiveDiffView in deep.js). Removed and added are told apart by a word and a mark (a minus,
+// a plus), never by color. A line of text from a capture is plain escaped text; a link goes
+// through link() as an unverified URL, and an address the link rules do not pass is text.
+// The captures a row can compare, oldest first: every time a pair names.
+export const diffCaptures = (pairs) => [...new Set((pairs || []).flatMap((p) => [p.from, p.to]))].filter(Boolean).sort();
+const capWord = (t, all) => (all.filter((x) => x.slice(0, 10) === t.slice(0, 10)).length > 1 ? `${t.slice(0, 10)} ${t.slice(11, 16)} UTC` : t.slice(0, 10));
+// The pair the selects show: the one the investigator chose (it.diffPick), else the default pair.
+export function diffChoice(it) {
+  const pairs = it?.archiveDiffPairs || [], caps = diffCaptures(pairs), def = pairs.find((x) => x.default) || pairs[0] || { from: "", to: "" };
+  const p = it?.diffPick;
+  return p && caps.includes(p.from) && caps.includes(p.to) ? { from: p.from, to: p.to } : { from: def.from, to: def.to };
+}
+// What the line under the selects says about a chosen pair: { text, ok, warn }.
+// ok: the pair can be sent. warn: the captures are not neighbours, so the answer will be noisier.
+export const DIFF_HINT = "Neighbouring captures give the cleanest answer. One comparison per click: two requests to the Internet Archive, which can take a few seconds.";
+export const DIFF_SAME = "Pick two different captures: these are the same one.";
+export const DIFF_DISTANT = "These two captures are not neighbours. A site changes its layout over time, so the answer will also list differences that are not edits to the profile.";
+export function diffHint(caps, from, to) {
+  if (!from || !to || from === to) return { text: DIFF_SAME, ok: false, warn: true };
+  const far = Math.abs(caps.indexOf(from) - caps.indexOf(to)) > 1;
+  return { text: far ? DIFF_DISTANT : "", ok: true, warn: far };
+}
+const DIFF_SIDES = [["removed", "Removed", "−", "in the older capture, not in the newer"], ["added", "Added", "+", "in the newer capture, not in the older"]];
+function diffPart(v, [k, word, sign, where]) {
+  const d = v[k], rows = [
+    ...d.text.map((t) => h`<li><span class="diff-mark" aria-hidden="true">${sign}</span><span class="sr-only">${word}: </span><span class="diff-text">${t}</span></li>`),
+    ...d.links.map((l) => h`<li><span class="diff-mark" aria-hidden="true">${sign}</span><span class="sr-only">${word}: </span><span class="ed-prov">${l.link_kind === "none" ? "address" : "link"}</span>${raw(link(l.url, l.label, "", { kind: l.link_kind }))}</li>`)];
+  return h`<div class="diff-part"><p class="diff-h"><span class="diff-mark" aria-hidden="true">${sign}</span><b>${word}</b><span class="diff-where">${where}</span></p>${rows.length ? raw(`<ul class="diff-list" aria-label="${word}">${rows.join("")}</ul>`) : raw(h`<p class="diff-none">Nothing ${word.toLowerCase()}.</p>`)}${d.more ? raw(h`<p class="diff-more">${d.more}</p>`) : ""}</div>`;
+}
+export function diffHtml(it) {
+  const pairs = it?.archiveDiffPairs;
+  if (!pairs?.length) return "";
+  const caps = diffCaptures(pairs), pick = diffChoice(it), hint = diffHint(caps, pick.from, pick.to), v = it.archiveDiff, busy = !!it.diffBusy;
+  const options = (sel) => caps.map((t) => h`<option value="${t}" ${t === sel ? raw("selected") : ""}>${capWord(t, caps)}</option>`).join("");
+  const form = h`<div class="ev-diff" role="group" aria-label="Compare two captures of the ${it.what} profile" data-diff="${it.key}">
+      <b class="diff-k">Compare two captures</b>
+      <label class="diff-f"><span>Older capture</span><select class="input" data-diff-pick="from">${raw(options(pick.from))}</select></label>
+      <label class="diff-f"><span>Newer capture</span><select class="input" data-diff-pick="to">${raw(options(pick.to))}</select></label>
+      <button type="button" class="btn btn-sm" data-archive-diff="${it.key}" ${busy || !hint.ok ? raw('aria-disabled="true"') : ""}>${busy ? "Comparing…" : v?.retry ? "Try again" : "Compare"}<span class="sr-only">: two archived copies of the ${it.what} profile</span></button>
+      <span class="diff-hint">${DIFF_HINT}</span>
+      <span class="diff-warn" data-diff-warn role="status">${hint.text}</span>
+    </div>`;
+  if (!v) return form;
+  const side = (s, word) => (s ? h`<span class="diff-cap"><span class="diff-capk">${word}</span>${raw(link(s.url, s.label || "capture", "ev-link", { kind: s.link_kind }))}${s.note ? raw(h`<span class="diff-capn">${s.note}</span>`) : ""}</span>` : "");
+  const res = h`<div class="ev-diffres ${v.retry ? "unknown" : ""}" data-diff-result tabindex="-1">
+      <p class="diff-sum"><b>What changed</b><span>${v.text}</span></p>
+      ${v.from || v.to ? raw(h`<p class="diff-caps">${raw(side(v.from, "Older"))}${raw(side(v.to, "Newer"))}</p>`) : ""}
+      ${v.state === "ok" ? raw(DIFF_SIDES.map((x) => diffPart(v, x)).join("")) : ""}
+      ${v.caveats.length ? raw(h`<details class="diff-cav"><summary>How to read a comparison</summary><ul>${raw(v.caveats.map((c) => h`<li>${c}</li>`).join(""))}</ul></details>`) : ""}
+    </div>`;
+  return form + res;
+}
+// ---- commit emails of one forge account, read on a click ------------------------------------------
+// commitEmailsView in deep.js. Each address is mono text (never a link), with how it is tied to
+// the account as an outlined label and in words, the name written in the commits marked
+// self-declared, how many commits carried it, the first and last date the commits state, and the
+// repositories as evidence links. Unknown has a dashed rule and "Try again"; it is never "none".
+export function commitHtml(it) {
+  const v = it?.commitEmails;
+  if (!v) return "";
+  const known = v.state === "found" || v.state === "none" || v.state === "not_found" || v.state === "not_asked";
+  const again = v.retry && it.canCommitEmails ? h`<button type="button" class="btn btn-sm" data-commit-emails="${it.key}" ${it.commitBusy ? raw('aria-disabled="true"') : ""}>${it.commitBusy ? "Asking…" : "Try again"}<span class="sr-only">: commit emails of ${it.what}</span></button>` : "";
+  const row = (e) => h`<li class="ce-row">
+      <span class="ce-main"><span class="ce-addr">${e.email}</span><span class="ed-prov">${e.strong ? "tied by the site" : "author line only"}</span></span>
+      <span class="ce-how">${e.howText}</span>
+      <span class="ce-meta">${e.name ? raw(h`<span>Name in the commits: <b>${e.name}</b> <span class="ed-prov">self-declared</span></span>`) : ""}<span>${plural(e.commits, "commit")} read</span>${e.first || e.last ? raw(h`<span>${e.first && e.last && e.first !== e.last ? `first ${e.first}, last ${e.last}` : `dated ${e.first || e.last}`} <span class="ed-prov">self-declared dates</span></span>`) : ""}</span>
+      ${e.repos.length ? raw(h`<span class="ce-repos"><span class="ce-k">Seen in</span>${raw(e.repos.map((r) => link(r.url, r.name, "ev-link", { kind: r.link_kind })).join(""))}</span>`) : ""}
+    </li>`;
+  return h`<div class="ev-arch ev-ce ${known ? "" : "unknown"}" data-look="commit" tabindex="-1"><b>Commit emails</b>${v.partial ? raw('<span class="tag warn">partial</span>') : ""}<span>${v.text}</span>${raw(again)}${v.rows.length ? raw(h`<ul class="ce-list" aria-label="Addresses on the commits of the ${it.what} account">${raw(v.rows.map(row).join(""))}</ul><p class="ce-note">${v.note}</p>`) : ""}</div>`;
+}
+// ---- when one account posts, read on a click ------------------------------------------------------
+// One line on the row (postActivityView in deep.js) and a control that opens the Timeline tab at
+// the reading, where the hours are drawn. A site that could not be asked is unknown: dashed rule,
+// "Try again", never "no posts".
+export function postHtml(it) {
+  const v = it?.postActivity;
+  if (!v) return "";
+  const again = v.retry && it.canPostActivity ? h`<button type="button" class="btn btn-sm" data-post-activity="${it.key}" ${it.postBusy ? raw('aria-disabled="true"') : ""}>${it.postBusy ? "Asking…" : "Try again"}<span class="sr-only">: post activity of ${it.what}</span></button>` : "";
+  const open = v.state === "ok" || v.state === "none" ? h`<button type="button" class="btn btn-sm" data-open-reading="${it.key}">Show on the Timeline<span class="sr-only">: post activity of ${it.what}</span></button>` : "";
+  const est = v.state === "ok" ? (v.estimate ? ` UTC offset estimate ${v.estimate.label}: a hint, not a fact, and never a place.` : " No UTC offset estimate was made.") : "";
+  return h`<div class="ev-arch ev-pa ${v.retry ? "unknown" : ""}" data-look="post" tabindex="-1"><b>Post activity</b><span>${v.text}${est}</span>${raw(again)}${raw(open)}</div>`;
 }
 export function evWhat(it) {
   if (it.sim) return simWhat(it);
@@ -147,7 +232,7 @@ export function evWhat(it) {
   const state = checkText(it);
   const head = name + (it.card?.handle ? h`<span class="ev-handle">${it.card.handle}</span>` : "") + (it.isNew ? '<span class="tag violet">new</span>' : "") + labelled + more
     + (state ? h`<span class="lk-state ${CHECK_CLS[it.check] || ""}">${state}</span>` : "");
-  const hint = (it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "") + archHtml(it);
+  const hint = (it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "") + archHtml(it) + commitHtml(it) + postHtml(it);
   // An evidence card: the title line, then only what a source read (facts, a bio excerpt), or a
   // plain statement of what kind of check found the row, then why it sits in this group.
   if (it.card) {
@@ -182,10 +267,15 @@ const simAct = (it) => (it.sim && it.sim.state !== "checked" ? h`<button type="b
 // "Archived copies" on a read profile: one lookup, on a click. Once the archive answered, the
 // answer is on the row and the button is gone; an archive that could not be asked can be asked again.
 const archAct = (it) => (it.archive && (!it.archive.view || it.archive.view.retry) ? h`<button type="button" class="btn btn-sm ev-act" data-archive="${it.key}" ${it.archive.busy ? raw('aria-disabled="true"') : ""}>${it.archive.busy ? "Asking…" : it.archive.view ? "Try again" : "Archived copies"}<span class="sr-only">: ${it.archive.view ? "archived copies of " : ""}${it.what}</span></button>` : "");
+// "Commit emails" and "Post activity" on a read profile the lookup can be asked for: one request,
+// on a click. Once the site answered, the answer is on the row and the button is gone; "Try again"
+// for an answer that is unknown sits in the answer itself.
+const lookBtn = (it, attr, label, busy) => h`<button type="button" class="btn btn-sm ev-act" ${raw(attr)}="${it.key}" ${busy ? raw('aria-disabled="true"') : ""}>${busy ? "Asking…" : label}<span class="sr-only">: ${it.what}</span></button>`;
+const lookAct = (it) => (it.canCommitEmails && !it.commitEmails ? lookBtn(it, "data-commit-emails", "Commit emails", it.commitBusy) : "") + (it.canPostActivity && !it.postActivity ? lookBtn(it, "data-post-activity", "Post activity", it.postBusy) : "");
 // A lead can be parked ("not now"): it stays listed, marked, and is not suggested again.
 const stepAct = (it) => (it.tier === "lead" && it.action ? (it.step ? h`<span class="tag">${it.step}</span>` : "") + (it.step === "followed" ? "" : h`<button type="button" class="btn btn-sm btn-ghost ev-act" data-step-${it.step === "parked" ? "back" : "park"}="${it.key}" data-step-title="${it.action.label === "Open in Recon" ? `Open ${it.action.value} in Recon` : `Investigate ${it.action.value}`}">${it.step === "parked" ? "Bring back" : "Not now"}<span class="sr-only">: ${it.action.value}</span></button>`) : "");
 const viaAttrs = (a, id) => raw([a.type ? h`data-pivot-type="${a.type}"` : "", a.via ? h`data-via="${a.via}"` : "", a.source ? h`data-via-source="${a.source}"` : "", id ? h`data-step="${id}"` : ""].filter(Boolean).join(" "));
-export const evSrc = (it) => simAct(it) + archAct(it) + (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
+export const evSrc = (it) => simAct(it) + archAct(it) + lookAct(it) + (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
   + (it.action ? h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${viaAttrs(it.action, it.tier === "lead" ? it.key : "")} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>` : "")
   + stepAct(it)
   + String(it.source ?? "").split(", ").filter(Boolean).map((x) => h`<span class="chip">${x}</span>`).join("");
@@ -444,9 +534,14 @@ export function renderAnalysis(section, body, a) {
 }
 // One suggestion: what to do, why, the one control that does it, and "Not now".
 // busy: the ids of archive lookups in flight, so their buttons say so in every redraw.
-function nextAct(x, busy) {
+// look: the other lookups in flight, as "commit:<row>", "post:<row>" and "diff:<row>".
+function nextAct(x, busy, look = new Set()) {
   const a = x.action;
   if (!a) return "";
+  const ask = (attr, id, extra = "") => h`<button type="button" class="btn btn-sm" ${raw(attr)}="${a.key}" ${raw(extra)} ${look.has(`${id}:${a.key}`) ? raw('aria-disabled="true"') : ""}>${look.has(`${id}:${a.key}`) ? (id === "diff" ? "Comparing…" : "Asking…") : a.label}<span class="sr-only">: ${x.title}</span></button>`;
+  if (a.kind === "commit-emails") return ask("data-commit-emails", "commit");
+  if (a.kind === "post-activity") return ask("data-post-activity", "post");
+  if (a.kind === "archive-diff") return ask("data-archive-diff", "diff", h`data-from="${a.from}" data-to="${a.to}"`);
   if (a.kind === "pivot") return h`<button type="button" class="btn btn-sm" data-pivot="${a.pivot}" data-value="${a.value}" ${viaAttrs(a, x.id)} data-confirm-run="1">${a.label}<span class="sr-only">: ${a.value}</span></button>`;
   if (a.kind === "archive") return h`<button type="button" class="btn btn-sm" data-archive="${a.key}" ${busy.has(a.key) ? raw('aria-disabled="true"') : ""}>${busy.has(a.key) ? "Asking…" : a.label}<span class="sr-only">: ${x.title}</span></button>`;
   if (a.kind === "open") return link(a.url, a.label, "btn btn-sm", { kind: a.link_kind });
@@ -456,18 +551,57 @@ function nextAct(x, busy) {
   if (a.kind === "rerun") return h`<button type="button" class="btn btn-sm" data-next-rerun>${a.label}</button>`;
   return "";
 }
-const nextItem = (x, busy) => h`<li class="next" data-next="${x.id}"><div class="next-main"><span class="next-t">${x.title}${x.tag ? raw(h`<span class="tag">${x.tag}</span>`) : ""}</span><span class="next-r">${x.reason}${x.action?.kind === "copy" ? raw(h` <code class="next-q">${x.action.text}</code>`) : ""}</span></div><div class="next-act">${raw(nextAct(x, busy))}<button type="button" class="btn btn-sm btn-ghost" data-step-park="${x.id}" data-step-title="${x.title}">Not now<span class="sr-only">: ${x.title}</span></button></div></li>`;
-export function renderNext(section, body, s, { busy = new Set(), open = false, held = false } = {}) {
+const nextItem = (x, busy, look) => h`<li class="next" data-next="${x.id}"><div class="next-main"><span class="next-t">${x.title}${x.tag ? raw(h`<span class="tag">${x.tag}</span>`) : ""}</span><span class="next-r">${x.reason}${x.action?.kind === "copy" ? raw(h` <code class="next-q">${x.action.text}</code>`) : ""}</span></div><div class="next-act">${raw(nextAct(x, busy, look))}<button type="button" class="btn btn-sm btn-ghost" data-step-park="${x.id}" data-step-title="${x.title}">Not now<span class="sr-only">: ${x.title}</span></button></div></li>`;
+export function renderNext(section, body, s, { busy = new Set(), look = new Set(), open = false, held = false } = {}) {
   const any = !!s && (s.top.length || s.more.length || s.parked.length || s.followed.length || s.note);
   section.hidden = !any;
   if (!any) { body.innerHTML = ""; return; }
   const heldRows = [...s.followed.map((x) => ({ ...x, state: "followed" })), ...s.parked.map((x) => ({ ...x, state: "parked" }))];
   body.innerHTML = (s.note ? h`<p class="next-note">${s.note}</p>` : "")
-    + (s.top.length ? `<ol class="next-list">${s.top.map((x) => nextItem(x, busy)).join("")}</ol>` : s.note ? "" : `<p class="next-note">Nothing more to suggest from what this case holds.</p>`)
-    + (s.more.length ? h`<details class="next-more" ${open ? raw("open") : ""}><summary>${plural(s.more.length, "more suggestion")}</summary><ol class="next-list" start="${s.top.length + 1}">${raw(s.more.map((x) => nextItem(x, busy)).join(""))}</ol></details>` : "")
+    + (s.top.length ? `<ol class="next-list">${s.top.map((x) => nextItem(x, busy, look)).join("")}</ol>` : s.note ? "" : `<p class="next-note">Nothing more to suggest from what this case holds.</p>`)
+    + (s.more.length ? h`<details class="next-more" ${open ? raw("open") : ""}><summary>${plural(s.more.length, "more suggestion")}</summary><ol class="next-list" start="${s.top.length + 1}">${raw(s.more.map((x) => nextItem(x, busy, look)).join(""))}</ol></details>` : "")
     + (heldRows.length ? h`<details class="next-more next-held" ${held ? raw("open") : ""}><summary>${[s.followed.length ? `${s.followed.length} followed` : "", s.parked.length ? `${s.parked.length} parked` : ""].filter(Boolean).join(", ")}</summary><ul class="next-list">${raw(heldRows.map((x) => h`<li class="next held"><div class="next-main"><span class="next-t">${x.title}<span class="tag">${x.state}</span></span><span class="next-r">${x.state === "parked" ? "Parked by you. It is not suggested while it is parked." : "A case was opened from this lead."}</span></div><div class="next-act">${x.state === "parked" ? raw(h`<button type="button" class="btn btn-sm btn-ghost" data-step-back="${x.id}">Bring back<span class="sr-only">: ${x.title}</span></button>`) : ""}</div></li>`).join(""))}</ul></details>` : "");
 }
 
+// ---- when the accounts are active (the Timeline tab) ---------------------------------------------
+// One block per reading (activityReadings in evidence.js), the primary identity's first. A reading
+// of an account that is not the person the case is about keeps its place, under a pill and a
+// note that say whose it is. draw(view) is the one activity renderer (activityViewHtml).
+// cmp: offsetComparison(ev). It is said above the readings, tagged as a hint like the estimates.
+export const readingId = (key) => `act-${String(key).replace(/[^A-Za-z0-9_-]/g, "-")}`;
+export function activityBlocks(readings, cmp, draw) {
+  const all = [...(readings?.own || []), ...(readings?.other || [])];
+  if (!all.length) return "";
+  const head = (r) => (r.kind === "github" ? "When the GitHub account is active" : `When the ${r.label} account posts`);
+  const fit = cmp && cmp.text ? h`<div class="act-fit ${cmp.verdict === "not_enough_data" ? "" : "est"}" id="actFit"><p><b>Do the offset estimates fit together</b>${cmp.verdict === "not_enough_data" ? "" : raw(' <span class="tag">a hint, not a fact</span>')}</p><p>${cmp.text}</p>${cmp.caution ? raw(h`<p class="muted small">${cmp.caution}</p>`) : ""}</div>` : "";
+  return fit + all.map((r) => h`<section class="card act-card ${r.own ? "" : "other"}" id="${readingId(r.key)}" data-reading="${r.key}" tabindex="-1" aria-label="${r.heading}">
+      <h3 class="act-h">${head(r)}${r.own ? "" : raw('<span class="cp tone-different">not the person this case is about</span>')}</h3>
+      ${r.own || !r.note ? "" : raw(h`<p class="act-other" role="note">${r.note}</p>`)}
+      ${raw(draw(r.view))}
+    </section>`).join("");
+}
+
+// ---- "Reduce your footprint": the self-audit list of a case marked "This is me" --------------------
+// selfAudit() in selfaudit.js made the list by rules; every string in it is plain text and is
+// escaped here. A place is a link only when it carries a link kind of its own. No control in
+// this view acts on another site: it is a list to read.
+export function footprintHtml(result, { title, note, sum, statement }) {
+  const where = (w) => h`<li>${raw(link(w.url || "", w.label, "", { kind: w.url ? w.link_kind || "" : "none" }))}${w.check ? raw('<span class="ed-prov">check that it is yours</span>') : ""}</li>`;
+  const item = (it) => h`<li class="fp-item">
+      <h3 class="fp-t">${it.title}<span class="ed-prov">${it.group}</span></h3>
+      <dl class="fp-dl">
+        <dt>Exposed</dt><dd>${it.exposed}</dd>
+        ${it.where.length ? raw(h`<dt>Seen on</dt><dd><ul class="fp-where">${raw(it.where.map(where).join(""))}</ul></dd>`) : ""}
+        <dt>Fix</dt><dd>${it.fix}</dd>
+        ${it.why ? raw(h`<dt>Why</dt><dd>${it.why}</dd>`) : ""}
+      </dl>
+    </li>`;
+  return h`<div class="fp-head"><h2 class="fp-h" id="footprintH" tabindex="-1">${title}</h2><span class="tag">rules, no AI</span></div>
+    <p class="fp-note">${statement} ${note}</p>
+    <p class="fp-sum">${sum}</p>
+    ${result.items.length ? raw(h`<ol class="fp-list">${raw(result.items.map(item).join(""))}</ol>`) : ""}
+    ${result.gaps.length ? raw(h`<h3 class="fp-gaps-h">What this list could not see</h3><ul class="fp-gaps">${raw(result.gaps.map((g) => h`<li>${g}</li>`).join(""))}</ul>`) : ""}`;
+}
 // ---- verdict strip ----------------------------------------------------------------------------
 // The tiles come from present.js (investigateTiles, reconTiles). Each is a button that opens its
 // group or tab. A count of zero is quiet and not a button to anywhere; "unknown" opens By source,
@@ -531,7 +665,7 @@ export function itemCollector() {
 
 // What the HTML export removes from the page's markup. No image with a remote address survives:
 // site icons go, and so would any other image that is not an embedded thumbnail.
-export const EXPORT_STRIP = '[hidden], .btn, .ev-check, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs, .sk-wrap, .sk-card, .who-switch, .case-details, .mode-echo, .mark img.mark-fav, img:not([src^="data:image/"])';
+export const EXPORT_STRIP = '[hidden], .btn, .ev-check, .selfset, .ev-diff, .runlog, .sr-only, [role=status], .lg-detail, .ai-pitch, .ai-cost, .lk-status, input, textarea, .tabs, .sk-wrap, .sk-card, .who-switch, .case-details, .mode-echo, .mark img.mark-fav, img:not([src^="data:image/"])';
 
 // ---- print / standalone HTML export --------------------------------------------------
 // The same markup as the screen, with every collapsed section opened, wrapped in a page

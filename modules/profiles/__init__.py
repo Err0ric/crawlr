@@ -6,14 +6,16 @@ the bio, the location, the links and the accounts on other sites that the profil
 file per source in this package; `SOURCES` below is the registry and `run_profiles` asks them
 all at once, each with its own time limit, so one slow or broken source costs the others nothing.
 
-  GitLab, Keybase, Hacker News, Mastodon (mastodon.social), Docker Hub, npm, dev.to, Lichess,
-  Chess.com, Codeberg, Bluesky, Wikipedia, Gravatar, Codeforces, Lobsters, Hugging Face
+  GitLab, Keybase, Hacker News, Mastodon (eight instances, each a source of its own: the list
+  is modules/profiles/mastodon.py INSTANCES), Docker Hub, npm, dev.to, Lichess, Chess.com,
+  Codeberg, Bluesky, Wikipedia, Gravatar, Codeforces, Lobsters, Hugging Face, Launchpad,
+  Gitea.com
 
 Every host is a fixed constant and no redirect is followed. None of them is an adult or dating
 site (tests/test_profiles.py asks core.adult_sites). Per uncached call: one request per source
 (three small ones to Hacker News; a second one to Docker Hub for an organization and to Hugging
-Face for a handle typed in another case), so at most 20, and one picture download per profile
-that has one, through modules/avatar_hash.py and so through core.netguard.
+Face for a handle typed in another case), so at most 29 for the 25 sources, and one picture
+download per profile that has one, through modules/avatar_hash.py and so through core.netguard.
 
 The answer:
 
@@ -35,8 +37,8 @@ The cache is per source, keyed on (source id, handle as typed), and each answer 
 long as its own state deserves: found and not_found for a day; blocked, rate_limited, unknown
 and failed for ten minutes, and so is a profile whose picture could not be read or whose source
 said a part of it was not read. A repeat lookup is put together from that cache and only the
-sources without a kept answer are asked again, so one site that fails does not make the other
-fifteen be asked again. `asked` lists the sources asked in this call, and `cached` is true
+sources without a kept answer are asked again, so one site that fails does not make the
+others be asked again. `asked` lists the sources asked in this call, and `cached` is true
 when that list is empty: every answer came from the cache or needed no request.
 
 A source that answers 429 is left alone for everyone until its Retry-After has passed (five
@@ -56,13 +58,15 @@ from core.errors import classify, error_fields
 from core.logging import get_logger
 from modules.avatar_hash import run_avatar_hash
 
-from . import (base, bluesky, chesscom, codeberg, codeforces, devto, dockerhub, gitlab, gravatar, hackernews, huggingface, keybase,
-               lichess, lobsters, mastodon, npm, wikipedia)
+from . import (base, bluesky, chesscom, codeberg, codeforces, devto, dockerhub, gitea, gitlab, gravatar, hackernews, huggingface, keybase,
+               launchpad, lichess, lobsters, mastodon, npm, wikipedia)
 
 log = get_logger(__name__)
 
-SOURCES = (gitlab, keybase, hackernews, mastodon, dockerhub, npm, devto, lichess, chesscom, codeberg, bluesky, wikipedia,
-           gravatar, codeforces, lobsters, huggingface)
+# A module per source, except Mastodon: one source per instance (mastodon.SOURCES), the first of
+# which is mastodon.social under the ID "mastodon".
+SOURCES = (gitlab, keybase, hackernews, *mastodon.SOURCES, dockerhub, npm, devto, lichess, chesscom, codeberg, bluesky, wikipedia,
+           gravatar, codeforces, lobsters, huggingface, launchpad, gitea)
 STATES = ("found", "not_found", "blocked", "rate_limited", "unknown", "failed", "not_asked")
 # Asking again today would not change these. "blocked" is not one of them: a 403 or a challenge
 # page is usually a passing condition of the site's edge, so it is asked again soon.
@@ -74,7 +78,7 @@ PICTURES_TIMEOUT = 12.0       # seconds for all pictures
 
 CACHE_TTL_OK = 24 * 3600
 CACHE_TTL_PARTIAL = 600       # the source did not settle: keep it only long enough to stop a retry loop
-CACHE_MAX = 16_000            # entries, one per (source, handle): about a thousand handles
+CACHE_MAX = 25_000            # entries, one per (source, handle): about a thousand handles
 # (source id, handle as typed) -> (expires_at, the source's entry, its profile or None)
 _cache: "OrderedDict[tuple[str, str], tuple[float, dict, dict | None]]" = OrderedDict()
 

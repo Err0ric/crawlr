@@ -1,4 +1,4 @@
-"""Profile sources (modules/profiles): sixteen keyless public APIs, asked at once. No network.
+"""Profile sources (modules/profiles): keyless public APIs, asked at once. No network.
 
 Every host is answered by one mock transport from tests/fixtures/profiles (recorded once, then
 every person in them replaced by an invented one). The picture hashing is replaced by a
@@ -33,9 +33,14 @@ HOSTS = {
     "dockerhub": "hub.docker.com", "npm": "registry.npmjs.org", "devto": "dev.to", "lichess": "lichess.org", "chesscom": "api.chess.com",
     "codeberg": "codeberg.org", "bluesky": "public.api.bsky.app", "wikipedia": "en.wikipedia.org", "gravatar": "api.gravatar.com",
     "codeforces": "codeforces.com", "lobsters": "lobste.rs", "huggingface": "huggingface.co",
+    "launchpad": "api.launchpad.net", "gitea": "gitea.com",
+    # one source per Mastodon instance: the list is mastodon.INSTANCES and nowhere else
+    **{s.ID: s.HOST for s in mastodon.SOURCES},
 }
+OTHER_INSTANCES = [s for s in mastodon.SOURCES if s.ID != "mastodon"]
+N = len(ALL)
 PICTURE_HOSTS = ("gitlab.com/uploads", "amazonaws.com", "files.mastodon.social", "gravatar.com/avatar", "media2.dev.to", "chesscomfiles.com",
-                 "codeberg.org/avatars", "cdn.bsky.app", "userpic.codeforces.org", "lobste.rs/avatars", "cdn-avatars.huggingface.co")
+                 "codeberg.org/avatars", "gitea.com/avatars", *(f"files.{s.HOST}" for s in OTHER_INSTANCES), "cdn.bsky.app", "userpic.codeforces.org", "lobste.rs/avatars", "cdn-avatars.huggingface.co")
 
 
 def fx(name: str) -> str:
@@ -44,6 +49,11 @@ def fx(name: str) -> str:
 
 def bsky(name: str) -> str:
     return (FIX / "probe" / name).read_text(encoding="utf-8").replace("sam-example.bsky.social", f"{H}.bsky.social")
+
+
+def masto(host: str) -> str:
+    """The recorded mastodon.social account as another instance would answer it."""
+    return fx("mastodon_found.json").replace("mastodon.social", host)
 
 
 def j(status, body, **headers):
@@ -71,6 +81,9 @@ def found():
         "codeforces.com/api/user.info": j(200, fx("codeforces_found.json")),
         "lobste.rs/~samexample.json": j(200, fx("lobsters_found.json")),
         "huggingface.co/api/users/samexample/overview": j(200, fx("huggingface_found.json")),
+        "api.launchpad.net/1.0/~samexample": j(200, fx("launchpad_found.json")),
+        "gitea.com/api/v1/users/samexample": j(200, fx("gitea_found.json")),
+        **{f"{s.HOST}/api/v1/accounts/lookup": j(200, masto(s.HOST)) for s in OTHER_INSTANCES},
     }
 
 
@@ -85,6 +98,9 @@ def absent():
         "gravatar": j(404, fx("gravatar_not_found.json")), "codeforces": j(400, fx("codeforces_not_found.json")),
         "lobsters": httpx.Response(404, text=fx("lobsters_not_found.html"), headers={"content-type": "text/html; charset=utf-8"}),
         "huggingface": j(404, fx("huggingface_not_found.json")),
+        "launchpad": httpx.Response(404, text=fx("launchpad_not_found.txt"), headers={"content-type": "text/plain;charset=utf-8"}),
+        "gitea": j(404, fx("gitea_not_found.json")),
+        **{s.ID: j(404, fx("mastodon_not_found.json")) for s in OTHER_INSTANCES},
     }
 
 
@@ -144,11 +160,14 @@ def by_source(out) -> dict:
 # ---- the registry ------------------------------------------------------------------------
 
 def test_the_registry_is_one_module_per_source_with_a_fixed_host_and_no_adult_site():
-    assert len(ALL) == len(set(ALL)) == 16 and set(ALL) == set(HOSTS)
+    assert len(ALL) == len(set(ALL)) == 25 and set(ALL) == set(HOSTS)
+    assert len({s.SITE for s in pf.SOURCES}) == 25 and len(set(HOSTS.values())) == 25
     package = Path(pf.__file__).parent
     for src in pf.SOURCES:
-        assert (package / f"{src.ID}.py").is_file() and src.SITE and src.HANDLE_RE.pattern.startswith("^")
-        text = (package / f"{src.ID}.py").read_text(encoding="utf-8")
+        # one file per source, except that every Mastodon instance is read by mastodon.py
+        name = "mastodon" if src in mastodon.SOURCES else src.ID
+        assert (package / f"{name}.py").is_file() and src.SITE and src.HANDLE_RE.pattern.startswith("^")
+        text = (package / f"{name}.py").read_text(encoding="utf-8")
         code = text.split('"""', 2)[2]                                                    # the code, not the docstring
         hosts = set(re.findall(r"https://([a-z0-9.-]+\.[a-z]+)", code)) | {HOSTS[src.ID]}
         assert f'"{HOSTS[src.ID]}' in code or f"//{HOSTS[src.ID]}" in code, src.ID
@@ -200,6 +219,9 @@ def test_every_source_reads_its_profile(monkeypatch):
         "codeforces": ("SamExample", "https://codeforces.com/profile/SamExample"),
         "lobsters": (H, "https://lobste.rs/~samexample"),
         "huggingface": ("SamExample", "https://huggingface.co/SamExample"),
+        "launchpad": (H, "https://launchpad.net/~samexample"),
+        "gitea": (H, "https://gitea.com/samexample"),
+        **{s.ID: ("SamExample", f"https://{s.HOST}/@SamExample") for s in OTHER_INSTANCES},
     }
     g = p["gitlab"]
     assert g["display_name"] == "Sam Example" and g["emails"] == ["sam@example.org"] and g["note"] == ""
@@ -263,7 +285,7 @@ def test_every_source_reads_its_profile(monkeypatch):
 def test_pictures_are_hashed_on_the_server_and_no_picture_address_is_returned(monkeypatch):
     _calls, pictures = world(monkeypatch, found())
     out = run()
-    assert len(pictures) == 11 and all(u.startswith("https://") for u in pictures)
+    assert len(pictures) == 12 + len(OTHER_INSTANCES) and all(u.startswith("https://") for u in pictures)
     assert pictures[0] == "https://gitlab.com/uploads/-/system/user/avatar/1000001/avatar.png?v=1"
     assert "https://lobste.rs/avatars/samexample-100.png" in pictures                    # built here from the checked handle
     assert not any("codeforces" in u for u in pictures)
@@ -272,7 +294,7 @@ def test_pictures_are_hashed_on_the_server_and_no_picture_address_is_returned(mo
         assert needle not in text, needle
     assert not re.search(r"\.(?:png|jpe?g|gif|webp|svg)\b", text.replace(THUMB, ""))
     p = by_source(out)
-    without = {"hackernews", "npm", "lichess", "wikipedia", "codeforces"}
+    without = {"hackernews", "npm", "lichess", "wikipedia", "codeforces", "launchpad"}
     for source, row in p.items():
         if source in without:
             assert row["avatar_state"] == "none" and row["avatar_hash"] == "" and row["thumb"] == "", source
@@ -310,7 +332,7 @@ def test_a_picture_step_that_raises_leaves_the_profiles_in_place(monkeypatch):
         raise RuntimeError("decoder blew up for samexample")
     monkeypatch.setattr(pf, "run_avatar_hash", boom)
     out = run()
-    assert len(out["profiles"]) == 16 and by_source(out)["gitlab"]["avatar_state"] == "failed" and by_source(out)["wikipedia"]["avatar_state"] == "none"
+    assert len(out["profiles"]) == N and by_source(out)["gitlab"]["avatar_state"] == "failed" and by_source(out)["wikipedia"]["avatar_state"] == "none"
 
 
 # ---- not found, blocked, rate limited, failed: one source at a time ------------------------
@@ -352,9 +374,9 @@ def test_a_refusal_is_blocked_or_rate_limited_and_never_not_found(monkeypatch, s
     assert ("error_code" in entry) == (state == "rate_limited")
     if state == "rate_limited":
         assert entry["error_code"] == "rate_limited" and entry["error"] and H not in json.dumps(entry)
-    assert sum(e["state"] == "found" for e in out["sources"].values()) == 15
+    assert sum(e["state"] == "found" for e in out["sources"].values()) == N - 1
     # a refusal is usually a passing condition, so that one source is asked again soon; the
-    # other fifteen keep their answers for the day
+    # others keep their answers for the day
     assert 0 < ttl(source) <= pf.CACHE_TTL_PARTIAL
     assert all(ttl(s) > 23 * 3600 for s in ALL if s != source)
     if state == "rate_limited":
@@ -377,7 +399,7 @@ def test_a_source_that_fails_is_failed_with_error_fields_and_sinks_nothing_else(
     entry = out["sources"][source]
     assert entry["state"] == "failed" and entry["error_code"] == code and entry["error"] and set(entry) == {"site", "state", "error", "error_code", "error_detail"}
     assert H not in json.dumps(entry) and "example.invalid" not in json.dumps(entry)      # never str(exception)
-    assert sum(e["state"] == "found" for e in out["sources"].values()) == 15 and len(out["profiles"]) == 15
+    assert sum(e["state"] == "found" for e in out["sources"].values()) == N - 1 and len(out["profiles"]) == N - 1
     assert 0 < ttl(source) <= pf.CACHE_TTL_PARTIAL and all(ttl(s) > 23 * 3600 for s in ALL if s != source)
 
 
@@ -404,7 +426,7 @@ def test_a_slow_source_times_out_alone(monkeypatch):
     monkeypatch.setattr(pf.lichess, "read", hang)
     out = run()
     assert out["sources"]["lichess"]["state"] == "failed" and out["sources"]["lichess"]["error_code"] == "timeout"
-    assert sum(e["state"] == "found" for e in out["sources"].values()) == 15
+    assert sum(e["state"] == "found" for e in out["sources"].values()) == N - 1
 
 
 def test_the_total_cap_ends_the_run_and_marks_what_was_still_out(monkeypatch):
@@ -417,7 +439,7 @@ def test_the_total_cap_ends_the_run_and_marks_what_was_still_out(monkeypatch):
     started = time.time()
     out = run()
     assert time.time() - started < 2
-    assert out["sources"]["keybase"]["state"] == "failed" and out["sources"]["keybase"]["error_code"] == "timeout" and len(out["profiles"]) == 15
+    assert out["sources"]["keybase"]["state"] == "failed" and out["sources"]["keybase"]["error_code"] == "timeout" and len(out["profiles"]) == N - 1
 
 
 def test_a_source_that_raises_anything_is_failed(monkeypatch):
@@ -427,7 +449,7 @@ def test_a_source_that_raises_anything_is_failed(monkeypatch):
         raise RuntimeError(f"unexpected for {username}")
     monkeypatch.setattr(pf.devto, "read", boom)
     out = run()
-    assert out["sources"]["devto"]["state"] == "failed" and out["sources"]["devto"]["error_detail"] == "RuntimeError" and len(out["profiles"]) == 15
+    assert out["sources"]["devto"]["state"] == "failed" and out["sources"]["devto"]["error_detail"] == "RuntimeError" and len(out["profiles"]) == N - 1
 
 
 def test_a_response_that_is_too_large_is_a_failure(monkeypatch):
@@ -451,7 +473,7 @@ def test_a_handle_a_site_cannot_hold_is_not_asked_there(monkeypatch):
     out = run("sam.example")
     states = {s: e["state"] for s, e in out["sources"].items()}
     not_asked = {s for s, v in states.items() if v == "not_asked"}
-    assert not_asked == {"keybase", "hackernews", "mastodon", "dockerhub", "devto", "lichess", "chesscom", "bluesky", "gravatar", "lobsters"}
+    assert not_asked == {"keybase", "hackernews", "dockerhub", "devto", "lichess", "chesscom", "bluesky", "gravatar", "lobsters", *(s.ID for s in mastodon.SOURCES)}
     assert {c.url.host for c in calls} == {HOSTS[s] for s in ALL if s not in not_asked}
     assert all(set(out["sources"][s]) == {"site", "state"} for s in not_asked)
     assert states["gitlab"] == "not_found" and ttl("gitlab", "sam.example") > 23 * 3600
@@ -470,6 +492,8 @@ def test_a_handle_a_site_cannot_hold_is_not_asked_there(monkeypatch):
     ("codeforces", "ab", False), ("codeforces", "sam.example", True), ("lobsters", "a" * 26, False),
     ("huggingface", "sam--example", False), ("huggingface", "sam-example", True), ("gitlab", "s", False), ("gitlab", "sam.", False),
     ("npm", "Sam.Example", True),
+    ("launchpad", "s", False), ("launchpad", "-sam", False), ("launchpad", "sam.example-1", True), ("launchpad", "sam_example", False),
+    ("gitea", "sam.", False), ("gitea", "sam_example", True), ("gitea", "a" * 41, False),
 ])
 def test_handle_rules(source, handle, ok):
     assert bool(getattr(pf, source).HANDLE_RE.fullmatch(handle)) is ok
@@ -842,6 +866,97 @@ def test_a_mastodon_field_is_a_link_only_when_it_is_written_as_one():
     assert base.known_account("nowhere", "sam", "listed") is None and base.known_account("github", None, "listed") is None
 
 
+# ---- Mastodon beyond mastodon.social, Launchpad, Gitea.com --------------------------------
+
+def test_the_mastodon_instances_are_one_fixed_list_and_each_is_a_source_of_its_own():
+    assert mastodon.INSTANCES[0] == "mastodon.social" and 6 <= len(mastodon.INSTANCES) <= 9 and len(set(mastodon.INSTANCES)) == len(mastodon.INSTANCES)
+    assert [s.HOST for s in mastodon.SOURCES] == list(mastodon.INSTANCES)
+    assert [(s.ID, s.SITE) for s in mastodon.SOURCES][:3] == [("mastodon", "Mastodon"), ("mastodon_mastodon_online", "Mastodon (mastodon.online)"),
+                                                              ("mastodon_mstdn_social", "Mastodon (mstdn.social)")]
+    assert all(re.fullmatch(r"mastodon(_[a-z0-9_]+)?", s.ID) and s.HANDLE_RE is mastodon.HANDLE_RE for s in mastodon.SOURCES)
+    assert all(base.HOSTNAME_RE.fullmatch(h) and not is_adult_site(url=f"https://{h}/") for h in mastodon.INSTANCES)
+    # the registry holds exactly these and no other spelling of the list exists in the package
+    assert [s for s in pf.SOURCES if s.ID.startswith("mastodon")] == list(mastodon.SOURCES)
+    others = [h for h in mastodon.INSTANCES if h != "mastodon.social"]
+    for path in Path(pf.__file__).parent.glob("*.py"):
+        if path.name != "mastodon.py":
+            assert not any(h in path.read_text(encoding="utf-8") for h in others), path.name
+
+
+def test_each_mastodon_instance_keeps_its_own_row_and_its_own_state(monkeypatch):
+    pages = {k: v for k, v in found().items() if "/api/v1/accounts/lookup" not in k}
+    wall = httpx.Response(403, text="<html><title>Just a moment...</title></html>", headers={"content-type": "text/html"})
+    answers = {"mastodon.social": j(404, fx("mastodon_not_found.json")), "mastodon.online": j(404, fx("mastodon_not_found.json")),
+               "mstdn.social": httpx.Response(429, text="{}", headers={"retry-after": "60"}), "fosstodon.org": j(200, masto("fosstodon.org")),
+               "hachyderm.io": wall, "infosec.exchange": httpx.Response(503, text=""), "mas.to": httpx.ConnectTimeout(f"timed out for {H}"),
+               "mastodon.world": j(200, masto("mastodon.world"))}
+    assert set(answers) == set(mastodon.INSTANCES)
+    calls, pictures = world(monkeypatch, pages | {f"{h}/api/v1/accounts/lookup": a for h, a in answers.items()})
+    out = run()
+    states = {s.HOST: out["sources"][s.ID]["state"] for s in mastodon.SOURCES}
+    assert states == {"mastodon.social": "not_found", "mastodon.online": "not_found", "mstdn.social": "rate_limited", "fosstodon.org": "found",
+                      "hachyderm.io": "blocked", "infosec.exchange": "failed", "mas.to": "failed", "mastodon.world": "found"}
+    assert out["sources"]["mastodon_mstdn_social"]["retry_after"] == 60 and out["sources"]["mastodon_mas_to"]["error_code"] == "timeout"
+    assert out["sources"]["mastodon_hachyderm_io"] == {"site": "Mastodon (hachyderm.io)", "state": "blocked"}
+    p = by_source(out)
+    assert "mastodon" not in p and set(k for k in p if k.startswith("mastodon")) == {"mastodon_fosstodon_org", "mastodon_mastodon_world"}
+    f = p["mastodon_fosstodon_org"]
+    assert (f["site"], f["handle"], f["url"], f["display_name"]) == ("Mastodon (fosstodon.org)", "SamExample", "https://fosstodon.org/@SamExample", "Sam Example")
+    # rel=me links the instance verified keep their proof on every instance
+    assert f["accounts"] == [{"site": "GitHub", "handle": H, "url": "https://github.com/samexample", "proof": "verified_link"},
+                             {"site": "sam.example.org", "handle": "", "url": "https://sam.example.org", "proof": "verified_link"}]
+    assert f["avatar_state"] == "ok" and "https://files.fosstodon.org/accounts/avatars/000/000/001/original/0000000000000000.png" in pictures
+    # one request per instance, each with the handle and nothing else
+    asked = [c for c in calls if c.url.host in mastodon.INSTANCES]
+    assert sorted(c.url.host for c in asked) == sorted(mastodon.INSTANCES) and all(dict(c.url.params) == {"acct": H} for c in asked)
+    # the settled answers are kept for the day, the others are asked again soon, each alone
+    assert ttl("mastodon") > 23 * 3600 and ttl("mastodon_fosstodon_org") > 23 * 3600
+    assert all(0 < ttl(i) <= pf.CACHE_TTL_PARTIAL for i in ("mastodon_mstdn_social", "mastodon_hachyderm_io", "mastodon_infosec_exchange", "mastodon_mas_to"))
+    assert pf._backing_off("mastodon_mstdn_social") and not pf._backing_off("mastodon") and not pf._backing_off("mastodon_fosstodon_org")
+
+
+def test_a_mastodon_instance_reads_only_its_own_accounts_and_notes_a_move(monkeypatch):
+    remote = {**json.loads(masto("hachyderm.io")), "acct": "SamExample@mastodon.social"}
+    moved = {**json.loads(masto("mas.to")), "moved": {"id": "1", "username": "SamExample", "acct": "SamExample@fosstodon.org"}}
+    pages = found() | {"hachyderm.io/api/v1/accounts/lookup": j(200, remote), "mas.to/api/v1/accounts/lookup": j(200, moved)}
+    world(monkeypatch, pages)
+    out = run()
+    assert out["sources"]["mastodon_hachyderm_io"]["state"] == "unknown" and "mastodon_hachyderm_io" not in by_source(out)
+    assert by_source(out)["mastodon_mas_to"]["note"] == "moved" and by_source(out)["mastodon"]["note"] == ""
+
+
+def test_launchpad_reads_the_person_and_says_what_kind_of_record_it_is(monkeypatch):
+    calls, pictures = world(monkeypatch, found())
+    lp = by_source(run("SamExample"))["launchpad"]          # Launchpad names are lower case, whatever was typed
+    assert next(c for c in calls if c.url.host == "api.launchpad.net").url.path == "/1.0/~samexample"
+    assert (lp["site"], lp["handle"], lp["url"], lp["display_name"]) == ("Launchpad", H, "https://launchpad.net/~samexample", "Sam Example")
+    assert lp["bio"] == "Maps and bread. Invented person for a test fixture." and lp["created"] == "2011-05-26T10:29:24Z"
+    assert lp["stats"] == {"karma": 1204} and lp["note"] == "" and lp["emails"] == [] and lp["avatar_state"] == "none"
+    assert not any("launchpad" in u for u in pictures)       # its picture address is a redirect, so it is not read
+    record = json.loads(fx("launchpad_found.json"))
+    for change, note in (({"is_valid": False, "karma": 0}, pf.launchpad.NOT_ACTIVE), ({"is_team": True}, "team"), ({"is_team": True, "is_valid": False}, "team")):
+        pf.clear_cache_for_tests()
+        world(monkeypatch, with_source("launchpad", j(200, {**record, **change})))
+        assert by_source(run())["launchpad"]["note"] == note
+    assert len(pf.launchpad.NOT_ACTIVE) <= base.NOTE_MAX
+    pf.clear_cache_for_tests()
+    world(monkeypatch, with_source("launchpad", j(200, {**record, "name": "somebody-else"})))
+    assert run()["sources"]["launchpad"]["state"] == "unknown"
+
+
+def test_gitea_reads_the_user_and_drops_the_placeholder_address(monkeypatch):
+    world(monkeypatch, found())
+    g = by_source(run())["gitea"]
+    assert (g["site"], g["handle"], g["url"], g["display_name"], g["location"]) == ("Gitea.com", H, "https://gitea.com/samexample", "Sam Example", "Lisbon")
+    assert g["emails"] == [] and g["website"] == "https://sam.example.org" and g["created"] == "2018-11-27T17:33:38Z" and g["note"] == ""
+    assert g["stats"] == {"followers": 7, "following": 2, "starred": 31} and g["avatar_state"] == "ok"
+    shown = {**json.loads(fx("gitea_found.json")), "email": "sam@example.org", "type": "Organization"}
+    pf.clear_cache_for_tests()
+    world(monkeypatch, with_source("gitea", j(200, shown)))
+    g = by_source(run())["gitea"]
+    assert g["emails"] == ["sam@example.org"] and g["note"] == "organization"
+
+
 # ---- the cache ---------------------------------------------------------------------------
 
 def test_the_answer_is_cached_for_a_day_per_handle_as_typed(monkeypatch):
@@ -944,7 +1059,7 @@ def test_endpoint_validates_and_answers_in_the_documented_shape(monkeypatch):
         r = c.post("/api/recon/profiles", json={"username": "@samexample"})
     body = r.json()
     assert r.status_code == 200 and set(body) == {"username", "profiles", "sources", "cached", "asked"} and body["username"] == H
-    assert list(body["sources"]) == ALL and len(body["profiles"]) == 16
+    assert list(body["sources"]) == ALL and len(body["profiles"]) == N
     assert all(set(e) >= {"site", "state"} and e["state"] in pf.STATES for e in body["sources"].values())
     assert match_limit("/api/recon/profiles") == ("/api/recon/profiles", 10, 60)
 
@@ -1002,7 +1117,7 @@ def test_nothing_about_the_handle_or_a_profile_is_logged(monkeypatch, caplog):
     ours = [r for r in caplog.records if r.name.startswith("modules.profiles")]
     assert {r.getMessage() for r in ours} == {"profile source did not answer", "profile pictures failed", "profile sources answered"}
     summary = next(r for r in ours if r.getMessage() == "profile sources answered")
-    assert (summary.asked, summary.found, summary.failed, summary.rate_limited) == (16, 14, 1, 1)
+    assert (summary.asked, summary.found, summary.failed, summary.rate_limited) == (N, N - 2, 1, 1)
     for r in caplog.records:
         line = (r.getMessage() + json.dumps({k: str(v) for k, v in r.__dict__.items()})).lower()
         assert H not in line and "sam example" not in line and "example.org" not in line and "lisbon" not in line, r.getMessage()

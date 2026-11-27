@@ -32,6 +32,9 @@ node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
 node tests/js/adult.test.mjs
+node tests/js/exif.test.mjs
+node tests/js/geo.test.mjs
+node tests/js/recondomain.test.mjs
 node tests/js/deep.test.mjs
 node tests/js/minorscan.test.mjs
 node tests/js/names.test.mjs
@@ -40,6 +43,7 @@ node tests/js/similar.test.mjs
 node tests/js/modes.test.mjs
 node tests/js/wildcard.test.mjs
 node tests/js/casework.test.mjs
+node tests/js/selfaudit.test.mjs
 node tests/js/caserules.test.mjs
 ```
 
@@ -72,6 +76,7 @@ CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally t
 - The primary identity is chosen by the rules or picked by the investigator (`collected.pick`, matched by members). After a pick, "primary" means the picked one, everywhere. A pick is a judgment, not a finding: label it as the investigator's on the page, in exports and in the AI payload, always with the automatic choice beside it. A pick never removes a row: another person's rows stay, filed as different, each with a check.
 - Analysis and suggested next steps are rules (`static/v2/js/analysis.js`), never a model call. A suggestion is one hop on a click. Never suggest an adult or dating site, a people-search site or a data broker, and suggest nothing for a case the minor guard stopped.
 - The pick, the pivot trail and parked steps are outside data when they come from History or a case file: read them with `readPick` and `readCasework`.
+- "This is me" (`collected.selfAudit`) is the investigator's statement: browser only, never taken from a case file (`readCasework(results, { file: true })` drops it), never sent to the AI. The self-audit it opens is built by rules in `static/v2/js/selfaudit.js`.
 - Leads are followed one hop at a time and only on a click.
 - Adult and dating sites are opt-in. The mode is off on every page load, held in memory only and never stored (not in localStorage, sessionStorage, a cookie, the URL, History or a case file). Once switched on it stays on for the page session, across cases, until it is switched off or the page is reloaded (`static/v2/js/modes.js`). A case records that a run had the mode on; that record never switches the mode on. With the mode off no path may query one: ask `core/adult_sites.py`. Results stay in their own group, text only, with no image of any kind. The minor guard has two stages and no override. The handle: `core.adult_guard.minor_indicated` refuses an age-specific token for 8 to 17 (`14yo`, `age16`, `16yrsold`) or one of three words, before the run, on every server path (a bare number never blocks, and bare years such as `16yrs` are only a soft signal). The profiles: the adult pass is its own request (`nsfw` with `adult_only`), made after the ordinary sources, and only when the scan of the profile text they found is clean: the page checks before it asks (`contentCheck` in `static/v2/js/evidence.js`), and `core.adult_guard.gate` checks again on the server from `core/profile_record.py` (kept per visitor under the `crawlr_run` session cookie, the only cookie the app sets) and wins. Unknown is not clean: without an answer from a source that reads profiles (Maigret or Platform check) there is no adult pass. Guard-only text on a row (`guard`) is read by the check and never stored, exported or sent to the AI. The rules live in one file, `static/v2/data/minor-rules.json`, applied by `core/minor_rules.py` and `static/v2/js/minorscan.js`: change a rule there, never in code, and keep `tests/test_minor_parity.py` passing (it needs node). Sherlock and Maigret run on the site lists that ship with the installed packages, so the queried set is known; regenerate `static/v2/js/adult-sites.js` when either package is upgraded.
 - Every link gets a kind from `static/v2/js/links.js`. No finding links to a bare homepage, and no third-party URL carries a username or email in its query. `node tests/js/links.test.mjs` enforces both. The one exception is the "Search the web" group of a name case: link kind `search`, opened by the investigator, never evidence. A search the investigator should run on a value is offered as text to copy, not as a link. Archived copies are never offered for a profile address that carries a query.

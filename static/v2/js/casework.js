@@ -13,12 +13,17 @@
 // collected.nextSteps  { [step id]: { state: "parked" | "followed", title, at } }
 //                      parked: "not now". It stays listed as parked and is not suggested again.
 //                      followed: a case was opened from it. It is listed as followed.
+// collected.selfAudit  { on: true, at }   the investigator's statement "This is me": the case is
+//                      about themselves. It turns on the "Reduce your footprint" view (selfaudit.js)
+//                      and nothing else: no finding, tier or identity changes. Only a username or
+//                      an email case can carry it. Absent means off.
 // (The pick of the person a case is about is collected.pick: see readPick in identity.js.)
 //
 // A case file brings its pick and its trail, each marked as the file's. It does not bring
 // nextSteps: a file that could park or mark a step as followed could hide a suggestion from the
 // person who opens it, so the steps are dropped on import (readCasework with file: true) and
-// every suggestion the case supports is offered again.
+// every suggestion the case supports is offered again. It does not bring selfAudit either: "this
+// is me" is the statement of the person at this browser, and a file cannot make it for them.
 
 import { readPick } from "./identity.js";
 import { cleanText } from "./deep.js";
@@ -79,6 +84,19 @@ export function setStep(steps, id, state, title = "") {
   return out;
 }
 
+// ---- "This is me" -------------------------------------------------------------------------------
+// The statement is read here every time it is used: only the literal `on: true` counts, and the
+// time is a plausible one or 0.
+export const readSelfAudit = (v) => (isObj(v) && v.on === true ? { on: true, at: stamp(v.at) } : null);
+const PERSON_TYPES = ["username", "email"];
+// Is the case marked "This is me"? type: when given, only a username or an email case can be.
+export const selfAuditOn = (collected, type) => (type === undefined || PERSON_TYPES.includes(type)) && isObj(collected) && !!readSelfAudit(collected.selfAudit);
+// The case with the statement set or taken back: a new object, the one passed in is not changed.
+export function setSelfAudit(collected, on, now = Date.now()) {
+  const { selfAudit: _was, ...rest } = isObj(collected) ? collected : {};
+  return on === true ? { ...rest, selfAudit: { on: true, at: stamp(now) } } : rest;
+}
+
 // The keys this module and identity.js own, read like a fresh answer: for History and case files.
 export function readCasework(results, { file = false } = {}) {
   if (!isObj(results)) return results;
@@ -87,6 +105,12 @@ export function readCasework(results, { file = false } = {}) {
   if ("trail" in out) { const t = readTrail(out.trail, { file }); if (t.length) out.trail = t; else delete out.trail; }
   // A case file never parks or follows a step for the person who opens it.
   if ("nextSteps" in out) { const s = file ? {} : readSteps(out.nextSteps); if (Object.keys(s).length) out.nextSteps = s; else delete out.nextSteps; }
+  // Nor does it say "this is me" for them.
+  if ("selfAudit" in out) { const a = file ? null : readSelfAudit(out.selfAudit); if (a) out.selfAudit = a; else delete out.selfAudit; }
   return out;
 }
-export const CASEWORK_KEYS = ["pick", "trail", "nextSteps", "archives"];
+// The investigator's own work on a case: what a new run of the same target carries over, and what
+// alone does not make a case file hold results. The answers of the lookups made on a click
+// (archived copies and their comparison, commit emails, post activity) are among them: each was
+// asked by hand for one row, and each is read again through its reader in deep.js.
+export const CASEWORK_KEYS = ["pick", "trail", "nextSteps", "archives", "selfAudit", "commitEmails", "postActivity", "archiveDiffs"];

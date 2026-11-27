@@ -1,8 +1,8 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, partialGaps, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
-import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, caseAnalysis, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal, githubStanding, storedCase } from "./evidence.js";
+import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, caseAnalysis, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal, makeGuardMemory, storedCase, activityReadings, offsetComparison, FOOTPRINT_NOTE } from "./evidence.js";
 import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, handleOf, readiness, stripGuard, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, GUARD_VERDICT, NOT_RUN_KINDS, NOT_CHECKED_BLURB, NOT_RUN_BLURB } from "./adult.js";
-import { session, MODE, normHandle, adultFor, startAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
+import { session, MODE, normHandle, adultFor, startAdult, mayAddAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml, RUN_IN_PROGRESS_CASE } from "./modes.js";
 import { paintBar, paintStatus } from "./modeui.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
@@ -12,16 +12,17 @@ import { openModal, closeModal } from "./ui.js";
 import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText } from "./links.js";
 import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
-import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards, addedFactsHtml, renderAnalysis, renderNext, trailHtml, archHtml } from "./workbench.js";
+import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards, addedFactsHtml, renderAnalysis, renderNext, trailHtml, activityBlocks, readingId, footprintHtml, diffCaptures, diffChoice, diffHint, DIFF_SAME } from "./workbench.js";
 import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
 import { readPhone, phoneTileExtra, readRegion, needsCountry, defaultRegion, PHONE_REGIONS, PHONE_SOURCE, PHONE_SOURCE_DESC, PHONE_NOT_USABLE } from "./phone.js";
 import { buildCaseFile } from "./casefile.js";
 import { readSimilar, readProbe, similarBase, probeStatus, similarBlurb } from "./similar.js";
 import { readPick } from "./identity.js";
-import { readCasework, readSteps, setStep, extendTrail, trailView, CASEWORK_KEYS } from "./casework.js";
-import { readDeep, readArchive, readArchives, archivable, archiveView, ARCHIVE_SOURCE, profileSourcesText, emailAccountsText, activityView, DEEP_READERS, PROFILE_SOURCE, PROFILE_SOURCE_DESC, EMAIL_ACCOUNTS_SOURCE, EMAIL_ACCOUNTS_DESC, ACTIVITY_SOURCE } from "./deep.js";
+import { readCasework, readSteps, setStep, extendTrail, trailView, selfAuditOn, setSelfAudit, CASEWORK_KEYS } from "./casework.js";
+import { readDeep, readArchive, readArchives, archivable, archiveView, readCommitEmail, readCommitEmails, commitEmailsView, readPostActivity, readPostActivities, postActivityView, readArchiveDiff, readArchiveDiffs, archiveDiffView, COMMIT_EMAILS_SOURCE, POST_ACTIVITY_SOURCE, ARCHIVE_SOURCE, profileSourcesText, emailAccountsText, activityView, DEEP_READERS, PROFILE_SOURCE, PROFILE_SOURCE_DESC, EMAIL_ACCOUNTS_SOURCE, EMAIL_ACCOUNTS_DESC, ACTIVITY_SOURCE } from "./deep.js";
 import { personTimeline } from "./timeline.js";
-import { activityHtml } from "./renderers.js";
+import { activityViewHtml } from "./renderers.js";
+import { selfAudit, selfAuditText, SELF_AUDIT_TITLE, SELF_AUDIT_NOTE } from "./selfaudit.js";
 
 // ---- sources ---------------------------------------------------------------
 // AI analysis is not in this list on purpose: it never runs on its own. The investigator
@@ -65,6 +66,8 @@ const setSrc = (id, v) => { if (!mayStore(id)) return; srcState[id] = v; saveSrc
 const suspended = makeSuspended();
 const adultView = (type, target = $("#targetInput").value) => adultFor({ on: session.on("adult"), type, target, suspended }).view;
 const activeView = (type) => activeCase(session.on("active"), type);
+// The same two switches for the landing form, so they can be set before the first run starts.
+export const modeRows = (type, target, prefix = "") => [{ id: "adult", view: adultView(type, target), desc: MODE.adult.desc, prefix }, { id: "active", view: activeView(type), desc: MODE.active.desc, prefix }];
 // The two switches in the case bar, the status line under them, and the same two rows in the sheet.
 function paintModes() {
   // For the case on screen the reason is the one its run was given (it may have been opened by a pivot).
@@ -78,7 +81,7 @@ function paintModes() {
   paintBar($("#modes"), rows);
   // The line stays in view at every width, is repeated in the Case details drawer, and also names
   // Recon's mode while that is on: it is on for the session wherever the investigator is.
-  paintStatus([$("#modeStatus"), $("#modeEcho")], [...rows, { id: "portscan", view: portscanCase(session.on("portscan"), ""), foreign: "Recon" }], { running: state.running });
+  paintStatus([$("#modeStatus"), $("#modeEcho")], [...rows, { id: "portscan", view: portscanCase(session.on("portscan"), ""), foreign: "Recon" }], { running: state.running, wait: RUN_IN_PROGRESS_CASE });
   for (const r of rows) $(`#sources [data-mode-row="${r.id}"]`)?.classList.toggle("off", !r.view.on);
 }
 
@@ -149,7 +152,9 @@ $("#sources").addEventListener("change", (e) => {
 
 // A mode changed: the bar and the sheet follow in place (no redraw, so focus stays on the switch),
 // and Deep Dive in the AI panel becomes available or not.
-session.subscribe((id) => { paintModes(); paintCount(); if (id === "active" && state.ai && !state.aiBusy) renderAiPanel(); });
+// Active techniques gates Deep Dive only, so it applies the moment it is switched: no run is needed.
+// Adult sites switched on with a finished case on screen offers to add the check to that case.
+session.subscribe((id) => { paintModes(); paintCount(); if (id === "active" && state.target && !state.aiBusy) renderAiPanel(); if (id === "adult" && state.target && !state.running) renderLedger({ keep: true }); });
 
 // ---- run log + result tabs -----------------------------------------------------
 const log = makeLog($("#runlog"));
@@ -183,6 +188,7 @@ const hasAdult = () => adultAllowed(state.collected, state.target, state.type);
 function adultNotice() {
   if (state.type === "username" && isBlocked(state.collected)) return `<div class="notice" role="note" id="adultNotice">${blockHtml(state.collected.adultBlock, handleOf(state.target))}${NOT_RUN_KINDS.includes(readBlock(state.collected.adultBlock)?.kind) ? "" : " The other sources ran as usual."}</div>`;
   if (state.adultBlocked) return h`<div class="notice" role="note" id="adultNotice">${state.adultBlocked}</div>`;
+  if (canAddAdult()) return `<div class="notice" role="note" id="adultNotice">Adult sites is on, and this case ran without it. The case does not need to run again. <button type="button" class="btn btn-sm" data-adult-add>Check adult and dating sites for this case</button></div>`;
   if (!hasAdult()) return "";
   // A part of the adult pass that failed is unknown, never "not found". (A case saved before the
   // pass was its own request keeps Maigret's failure inside its ordinary answer.)
@@ -197,6 +203,10 @@ function adultNotice() {
 // Similar handles whose check is in flight (see simCheck), and rows whose archive lookup is.
 const simBusy = new Set();
 const archBusy = new Set();
+// The other lookups made on a click, while in flight: "commit:<row>", "post:<row>", "diff:<row>".
+const lookBusy = new Set();
+// The two captures the investigator chose to compare on a row, so a redraw keeps the selects.
+const diffPick = new Map();
 function evidence() {
   const ev = buildEvidence(state.collected, state.target, state.type);
   // Leads and host inventory are not findings, so they are not part of "what changed".
@@ -211,6 +221,13 @@ function evidence() {
   // flight says so on its button, in every redraw.
   const steps = readSteps(state.collected.nextSteps);
   for (const it of ev.items) { if (it.tier === "lead" && steps[it.key]) it.step = steps[it.key].state; if (it.archive && archBusy.has(it.key)) it.archive.busy = true; }
+  // So do the commit email, post activity and archive comparison lookups, and a row keeps the
+  // two captures that were chosen on it.
+  for (const it of ev.items) {
+    if (it.canCommitEmails && lookBusy.has(`commit:${it.key}`)) it.commitBusy = true;
+    if (it.canPostActivity && lookBusy.has(`post:${it.key}`)) it.postBusy = true;
+    if (it.archiveDiffPairs) { if (lookBusy.has(`diff:${it.key}`)) it.diffBusy = true; if (diffPick.has(it.key)) it.diffPick = diffPick.get(it.key); }
+  }
   return { ...ev, items: state.running ? ev.items.filter((i) => i.tier !== "similar") : ev.items, diff };
 }
 // opts.keep: a redraw after the investigator changed one row (added or removed a profile from a
@@ -240,7 +257,8 @@ function renderLedger(opts = {}) {
     : t.id === "different" && ev.identity.picked ? { ...t, open: true } : t)), items);
   renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [], imported: state.imported, handle: state.type === "username" ? state.target.replace(/^@/, "") : "", open });
   paintSummary(ev);
-  renderTimeline();
+  renderTimeline(ev);
+  renderFootprint(ev);
   checker.watch();
 }
 // What sits beside and above the rows: "What we know", the tab count and the brief. Drawn with the
@@ -287,7 +305,7 @@ function paintAnalysis(ev = evidence()) {
   const was = (sel) => !!$(`#nextBody ${sel}`)?.open;
   const more = was(".next-more:not(.next-held)"), held = was(".next-held");
   renderAnalysis($("#analysis"), $("#analysisBody"), a?.assessment);
-  renderNext($("#nextSteps"), $("#nextBody"), a?.suggestions, { busy: archBusy, open: more, held });
+  renderNext($("#nextSteps"), $("#nextBody"), a?.suggestions, { busy: archBusy, look: lookBusy, open: more, held });
 }
 // How the case was reached. An earlier case is a button while it is still in History.
 function paintTrail() {
@@ -303,7 +321,7 @@ bindLedger($("#ledger"), checkKey);
 // events were read, the hours and weekdays they fall on. Nothing here is inferred.
 const person = () => (state.type === "username" || state.type === "email") && !state.nameInvalid;
 const timeline = () => (person() ? personTimeline(state.collected, state.target, state.type) : { events: [], today: "" });
-function renderTimeline() {
+function renderTimeline(ev) {
   const tab = $("#tabTimeline"), box = $("#timelineBody"), act = $("#activityBox");
   const show = person() && !!state.target;
   tab.hidden = !show; tab.disabled = !show;
@@ -320,16 +338,52 @@ function renderTimeline() {
   box.innerHTML = events.length ? `<p class="tl-note">Every date below was reported by a source in this run, for an account the findings file as Linked or Exists (matches). "Site record" means the site or the index wrote the date. "Self-declared" means the account holder, a commit or a key says so, and it can be false. A source that failed leaves a gap, not a clean record.</p>
     <ol class="tl">${past.map(row).join("")}<li class="tl-now"><span class="tl-year"></span><time datetime="${esc(today)}">${esc(today)}</time><b>Today</b></li>${future.map((e, i, all) => row(e, i, all)).join("")}</ol>`
     : `<p class="empty flat">${state.running ? "Collecting…" : "No dated facts in this case. Profiles that state when they were made, commits, keys and breaches supply them."}</p>`;
-  // The hours are the GitHub account's. They are shown as the case's own only while that account
-  // is the person the case is about (githubStanding). After a pick of someone else they stay on
-  // the page, under a heading and a note that say whose account this is.
-  const a = state.type === "username" ? activityHtml(withoutAdult(state.collected).githubActivity) : "";
-  const gh = a ? githubStanding(evidence()) : null;
+  // When the accounts are active: GitHub's public events, and the posts of each account whose
+  // post activity was asked for on a click. One block per reading, drawn by one renderer, the
+  // primary identity's first. A reading is shown as the case's own only while its account is the
+  // person the case is about; any other stays on the page under a pill and a note that say whose
+  // account it is. Above them, when two or more of the identity's readings carry a range, one
+  // sentence on whether the ranges fit, tagged as the hint it is. Never an adult or dating site.
+  const view = ev || evidence();
+  const a = activityBlocks(activityReadings(view), offsetComparison(view), activityViewHtml);
   act.hidden = !a;
-  act.classList.toggle("other", !!a && !gh.own);
-  act.innerHTML = !a ? "" : gh.own ? h`<h3 class="act-h">When the GitHub account is active</h3>${raw(a)}`
-    : h`<h3 class="act-h">When the GitHub account is active<span class="cp tone-different">not the person this case is about</span></h3><p class="act-other" role="note">${gh.text}</p>${raw(a)}`;
+  act.innerHTML = a;
 }
+// ---- "This is me" and the footprint view ----------------------------------------------------------
+// The switch is the investigator's own statement about the case (collected.selfAudit, casework.js):
+// kept with the case in this browser, never taken from a case file, never sent anywhere. While it
+// is on, a fourth tab lists what the case shows about them and what to do about each item, built
+// by rules (selfaudit.js). Like the brief, the list waits for the run to finish.
+function renderFootprint(ev) {
+  const tab = $("#tabFootprint"), box = $("#footprintBody"), set = $("#selfSet"), sw = $("#selfSwitch");
+  const may = person() && !!state.target, on = may && selfAuditOn(state.collected, state.type);
+  set.hidden = !may;
+  sw.checked = on; $("#selfMode").classList.toggle("off", !on);
+  const show = on && !state.running;
+  tab.hidden = !show; tab.disabled = !show;
+  if (!show) { if (tabs.get() === "footprint") tabs.set("findings"); box.innerHTML = ""; setTabCount(tab, "Footprint", 0); return; }
+  const res = selfAudit(ev || evidence(), state.collected, { target: state.target, type: state.type });
+  setTabCount(tab, "Footprint", res.items.length);
+  box.innerHTML = footprintHtml(res, { title: SELF_AUDIT_TITLE, note: SELF_AUDIT_NOTE, sum: selfAuditText(res), statement: FOOTPRINT_NOTE });
+}
+function openFootprint() {
+  if ($("#tabFootprint").hidden) return;
+  tabs.set("footprint");
+  const head = $("#footprintH");
+  head?.scrollIntoView({ block: "start" }); head?.focus({ preventScroll: true });
+}
+$("#selfSwitch").addEventListener("change", (e) => {
+  if (!person() || !state.target) { e.target.checked = false; return; }
+  // Set in place: a run in flight holds this object.
+  const next = setSelfAudit(state.collected, e.target.checked);
+  if (next.selfAudit) state.collected.selfAudit = next.selfAudit; else delete state.collected.selfAudit;
+  saveHistory();
+  renderLedger({ keep: true });
+  const n = e.target.checked && !state.running ? selfAudit(evidence(), state.collected, { target: state.target, type: state.type }).items.length : 0;
+  profileLive.textContent = !e.target.checked ? "This case is no longer marked as being about you. The Footprint tab was removed."
+    : state.running ? "This case is marked as being about you. The Footprint tab appears when the run finishes."
+      : `This case is marked as being about you. The Footprint tab lists ${plural(n, "thing")} to look at.`;
+});
 // What the tiles of a hash, phone or name case show, from the same functions the cards use.
 function tileExtra() {
   const c = state.collected;
@@ -415,7 +469,13 @@ $("#main").addEventListener("click", (e) => {
     return;
   }
   const jump = e.target.closest("[data-next-jump]"), focus = e.target.closest("[data-next-focus]"), copy = e.target.closest("[data-next-copy]"), rerun = e.target.closest("[data-next-rerun]"), arch = e.target.closest("[data-archive]");
-  if (jump) jumpToTier(jump.dataset.nextJump);
+  const commit = e.target.closest("[data-commit-emails]"), posts = e.target.closest("[data-post-activity]"), diff = e.target.closest("[data-archive-diff]"), reading = e.target.closest("[data-open-reading]");
+  if (commit) askCommits(commit);
+  else if (posts) askPosts(posts);
+  else if (diff) askDiff(diff);
+  else if (reading) openReading(reading.dataset.openReading);
+  else if (jump) jumpToTier(jump.dataset.nextJump);
+  else if (focus && focus.dataset.nextFocus === "footprint") openFootprint();
   else if (focus) { $("#identity").scrollIntoView({ block: "center" }); ($("#identity [data-pick]") || $("#identity"))?.focus({ preventScroll: true }); }
   else if (copy) { const b = copy, text = b.dataset.nextCopy; navigator.clipboard?.writeText(text).then(() => { b.textContent = "Copied"; profileLive.textContent = "The search was copied. Paste it into a search engine."; setTimeout(() => { if (b.isConnected) b.textContent = "Copy search"; }, 1600); }, () => toast("Could not copy. The search text is shown beside the button.")); }
   else if (rerun) { if (!state.running && state.target) $("#runBtn").click(); }
@@ -451,6 +511,138 @@ async function askArchive(b) {
   else (row?.querySelector("[data-archive]") || row?.querySelector(".ev-arch a") || row?.querySelector("input"))?.focus({ preventScroll: true });
   profileLive.textContent = `${it.what}: ${archiveView(answer).text}`;
   if (log.live) log.add(`${ARCHIVE_SOURCE} · ${it.what} · ${answer.state === "ok" ? `captured on ${plural(answer.count, "day")}` : answer.state === "none" ? "no copies" : answer.state === "refused" ? "not looked up" : "could not be asked"}`, answer.state === "ok" ? "done" : answer.state === "none" ? "none" : answer.state === "refused" ? "skip" : "err");
+}
+
+// ---- three more lookups on a click: commit emails, post activity, two archived copies compared ------
+// Each follows the archive lookup: one request to CrawlR for one row, only on a click, only for
+// a row the case offers it for (never an adult or dating site), the answer kept with the case
+// through its reader, a failure kept as unknown with "Try again", the outcome said through the
+// polite live region, and focus left on the answer (or in the list of next steps when the click
+// was there). An answer that arrives after the case changed is dropped.
+const rowEl = (key) => $$("#ledger .ev[data-row]").find((r) => r.dataset.row === key);
+const sameCase = (target, ran) => state.target === target && state.ran === ran && person();
+const failWord = (err) => (err.status === 429 || err.code === "rate_limited" ? "rate_limited" : "failed");
+const failOf = (err) => ({ state: failWord(err), error: err.detail || err.message, error_code: err.status === 429 ? "rate_limited" : err.code || "request_failed", error_detail: err.status === 429 ? "" : err.raw || "", ...(err.retryAfter > 0 ? { retry_after: err.retryAfter } : {}), asked_at: Date.now() });
+const UNREADABLE = { state: "failed", error: "The answer could not be read.", error_code: "bad_response" };
+// The answers of one kind, in the order they arrived, with this one last.
+const putLast = (map, key, value) => { const { [key]: _was, ...rest } = map; return { ...rest, [key]: value }; };
+// The page's content check reads commit author names, archived text and scraped profile pages too
+// (profileTexts in evidence.js). Each such answer goes to guardMem as it came, the moment it
+// arrives and before anything else is decided, under the handle it was asked for: the case keeps
+// only a checked copy (and only the last comparison of a row), the check reads all of it.
+function lookStart(b, id, word, name) {
+  lookBusy.add(id);
+  // aria-disabled, not disabled: the button keeps focus while it loads.
+  b.setAttribute("aria-disabled", "true"); b.innerHTML = h`${word}<span class="sr-only">: ${name}</span>`;
+}
+// After the redraw: focus goes to the answer on the row, or stays in the list of next steps.
+function lookDone(key, inList, sel) {
+  renderLedger({ keep: true });
+  if (inList) ($("#nextBody .next-act button") || $("#nextSteps"))?.focus({ preventScroll: true });
+  else { const box = rowEl(key)?.querySelector(sel); (box?.querySelector("button:not([aria-disabled=true]), a[href]") || box || rowEl(key)?.querySelector("input"))?.focus({ preventScroll: true }); }
+}
+async function askCommits(b) {
+  const key = b.dataset.commitEmails, id = `commit:${key}`, target = state.target, ran = state.ran;
+  if (!person() || state.running || lookBusy.has(id)) return;
+  const it = evidence().items.find((i) => i.key === key);
+  // Only a row this case offers the lookup for, and only one with no answer yet (or an unknown one).
+  if (!it?.canCommitEmails || (it.commitEmails && !it.commitEmails.retry) || adultHost(it.url)) return;
+  const body = { site: it.canCommitEmails.site, username: it.canCommitEmails.username }, inList = !!b.closest("#nextSteps");
+  lookStart(b, id, "Asking…", `commit emails of ${it.what}`);
+  profileLive.textContent = `Reading the commits of the ${it.what} account`;
+  let answer, got = null;
+  try { got = await post("/api/recon/commit-emails", body); answer = readCommitEmail({ ...got, asked_at: Date.now() }); }
+  catch (err) { answer = readCommitEmail({ ...body, ...failOf(err) }); }
+  if (got) guardMem.keep([target, body.username], "commitEmails", key, got);
+  lookBusy.delete(id);
+  if (!sameCase(target, ran)) return;
+  answer ||= readCommitEmail({ ...body, ...UNREADABLE, asked_at: Date.now() });
+  if (!answer) { renderLedger({ keep: true }); return; }
+  state.collected.commitEmails = putLast(readCommitEmails(state.collected.commitEmails || {}) || {}, key, answer);
+  saveHistory();
+  lookDone(key, inList, '[data-look="commit"]');
+  const v = commitEmailsView(answer);
+  profileLive.textContent = `${it.what} commit emails: ${v?.text || ""}${inList ? ` The answer is on the ${it.what} row in the findings.` : ""}`;
+  if (log.live) log.add(`${COMMIT_EMAILS_SOURCE} · ${it.what} · ${v?.state === "found" ? `${plural(v.rows.length, "address", "addresses")}${v.partial ? ", and maybe more" : ""}` : v?.state === "none" ? "no address on the commits read" : v?.state === "not_found" ? "no such account" : "could not be read"}`, v?.state === "found" ? "done" : v?.state === "none" || v?.state === "not_found" ? "none" : "err");
+}
+async function askPosts(b) {
+  const key = b.dataset.postActivity, id = `post:${key}`, target = state.target, ran = state.ran;
+  if (!person() || state.running || lookBusy.has(id)) return;
+  const it = evidence().items.find((i) => i.key === key);
+  if (!it?.canPostActivity || (it.postActivity && !it.postActivity.retry) || adultHost(it.url)) return;
+  // The handle goes exactly as the row has it: Hacker News names are case sensitive.
+  const can = it.canPostActivity, body = { site: can.site, username: can.username, ...(can.instance ? { instance: can.instance } : {}) }, inList = !!b.closest("#nextSteps");
+  lookStart(b, id, "Asking…", `post activity of ${it.what}`);
+  profileLive.textContent = `Reading when the ${it.what} account posts`;
+  let answer;
+  try { answer = readPostActivity({ ...(await post("/api/recon/post-activity", body)), asked_at: Date.now() }); }
+  catch (err) { answer = readPostActivity({ ...body, ...failOf(err) }); }
+  lookBusy.delete(id);
+  if (!sameCase(target, ran)) return;
+  answer ||= readPostActivity({ ...body, ...UNREADABLE, asked_at: Date.now() });
+  if (!answer) { renderLedger({ keep: true }); return; }
+  state.collected.postActivity = putLast(readPostActivities(state.collected.postActivity || {}) || {}, key, answer);
+  saveHistory();
+  lookDone(key, inList, '[data-look="post"]');
+  const v = postActivityView(answer), cmp = offsetComparison(evidence());
+  profileLive.textContent = `${it.what} post activity: ${v?.text || ""}${v?.state === "ok" ? " The hours are on the Timeline tab." : ""}${cmp.verdict !== "not_enough_data" ? ` ${cmp.text} A hint, not a fact.` : ""}`;
+  if (log.live) log.add(`${POST_ACTIVITY_SOURCE} · ${it.what} · ${v?.state === "ok" ? `${fmtNum(v.events)} ${v.unit}${v.estimate ? `, offset estimate ${v.estimate.label}` : ""}` : v?.state === "none" ? "no public posts" : v?.state === "not_found" ? "no such account" : "could not be asked"}`, v?.state === "ok" ? "done" : v?.state === "none" || v?.state === "not_found" ? "none" : "err");
+}
+// Two captures of one archived profile. The pair is the one the step names, else the one the
+// row's two selects show. The server requires a handle with every comparison (row.archiveDiffUser:
+// the case's handle, or the row's own in an email case), and files the text under it for its
+// minor guard; the page's own check reads the same text.
+async function askDiff(b) {
+  const key = b.dataset.archiveDiff, id = `diff:${key}`, target = state.target, ran = state.ran;
+  if (!person() || state.running || lookBusy.has(id)) return;
+  const it = evidence().items.find((i) => i.key === key);
+  if (!it?.archiveDiffPairs?.length || !it.archiveDiffUser || !it.archive || !archivable(it.archive.url) || adultHost(it.archive.url)) return;
+  const caps = diffCaptures(it.archiveDiffPairs), form = b.closest("[data-diff]"), chosen = diffChoice(it);
+  let from = b.dataset.from || form?.querySelector('[data-diff-pick="from"]')?.value || chosen.from, to = b.dataset.to || form?.querySelector('[data-diff-pick="to"]')?.value || chosen.to;
+  // Only two different captures the archive listed for this row.
+  if (!caps.includes(from) || !caps.includes(to) || from === to) { profileLive.textContent = DIFF_SAME; return; }
+  if (from > to) [from, to] = [to, from];
+  diffPick.set(key, { from, to });
+  const url = it.archive.url, user = it.archiveDiffUser, inList = !!b.closest("#nextSteps");
+  lookStart(b, id, "Comparing…", `two archived copies of the ${it.what} profile`);
+  profileLive.textContent = `Comparing two archived copies of the ${it.what} profile. This can take a few seconds.`;
+  let answer, got = null;
+  try { got = await post("/api/recon/archive-diff", { url, from, to, username: user }); answer = readArchiveDiff({ ...got, asked_at: Date.now() }, url); }
+  catch (err) { answer = readArchiveDiff(failOf(err), url); }
+  // Every pair, and an answer that cannot be shown too: the server scanned its text either way.
+  if (got) guardMem.keep([target, user], "archiveDiffs", `${key}|${from}|${to}`, { ...got, url });
+  lookBusy.delete(id);
+  if (!sameCase(target, ran)) return;
+  answer ||= readArchiveDiff({ ...UNREADABLE, asked_at: Date.now() }, url);
+  if (!answer) { renderLedger({ keep: true }); return; }
+  state.collected.archiveDiffs = putLast(readArchiveDiffs(state.collected.archiveDiffs || {}) || {}, key, answer);
+  saveHistory();
+  lookDone(key, inList, "[data-diff-result]");
+  if (!inList) rowEl(key)?.querySelector("[data-diff-result]")?.focus({ preventScroll: true });
+  const v = archiveDiffView(answer);
+  profileLive.textContent = `${it.what}: ${v?.text || ""}${inList ? ` The answer is on the ${it.what} row in the findings.` : ""}`;
+  if (log.live) log.add(`${ARCHIVE_SOURCE} · ${it.what} · ${answer.state === "ok" ? "two copies compared" : answer.state === "same" ? "two copies compared, no difference" : answer.state === "none" ? "a copy was missing" : answer.state === "refused" ? "not compared" : "could not be asked"}`, answer.state === "ok" ? "done" : answer.state === "same" || answer.state === "none" ? "none" : answer.state === "refused" ? "skip" : "err");
+}
+// Choosing a capture changes nothing but the line under the selects: whether the pair can be
+// compared, and a warning when the two are far apart. The choice is kept for the next redraw.
+$("#ledger").addEventListener("change", (e) => {
+  const sel = e.target.closest("[data-diff-pick]"), box = sel?.closest("[data-diff]");
+  if (!box) return;
+  const key = box.dataset.diff, it = evidence().items.find((i) => i.key === key);
+  if (!it?.archiveDiffPairs) return;
+  const from = box.querySelector('[data-diff-pick="from"]').value, to = box.querySelector('[data-diff-pick="to"]').value;
+  diffPick.set(key, { from, to });
+  const hint = diffHint(diffCaptures(it.archiveDiffPairs), from, to);
+  box.querySelector("[data-diff-warn]").textContent = hint.text;
+  const btn = box.querySelector("[data-archive-diff]");
+  if (!lookBusy.has(`diff:${key}`)) { if (hint.ok) btn.removeAttribute("aria-disabled"); else btn.setAttribute("aria-disabled", "true"); }
+});
+// From a row's one-line result to the reading on the Timeline tab.
+function openReading(key) {
+  if ($("#tabTimeline").hidden) return;
+  tabs.set("timeline");
+  const el = document.getElementById(readingId(key));
+  el?.scrollIntoView({ block: "start" }); el?.focus({ preventScroll: true });
 }
 
 // ---- link check -----------------------------------------------------------------------
@@ -678,10 +870,18 @@ async function runDeepDive(urls) {
   // Asked again at the moment it would fetch: the mode may have been switched off since the button was drawn.
   const may = deepDiveFor({ on: session.on("active") });
   if (!may.fetch) { toast(may.note, 5000); renderAiPanel(); return; }
+  const target = state.target, ran = state.ran, type = state.type, same = () => state.target === target && state.ran === ran;
   const row = log.add(`Scraping ${plural(urls.length, "profile")}`);
   log.open();
+  // A lookup in flight: the adult pass is not added to the case until its text is in (mayAddAdult).
+  lookBusy.add("deep");
   try {
-    const scraped = await post("/api/recon/scrape-profiles", { urls });
+    // The handle goes with the request so the server puts the names and bios it reads on this
+    // visitor's record for the minor guard, as it does for every other profile text.
+    const scraped = await post("/api/recon/scrape-profiles", { urls, ...(type === "username" ? { username: handleOf(target) } : {}) });
+    guardMem.keep([target], "profileScrape", "", scraped);
+    // An answer that arrives after the case changed belongs to no case on screen.
+    if (!same()) return;
     state.collected.profileScrape = scraped;
     log.set(row, `Scraped ${plural((scraped.results || []).filter((r) => !r.error).length, "profile")}`, "done");
     renderLedger(); renderSourceCards();
@@ -700,7 +900,7 @@ async function runDeepDive(urls) {
   } catch (err) {
     log.set(row, `Profile scrape: ${err.detail || err.message}`, "err", err.raw);
     toast(err.detail || err.message, 5000);
-  }
+  } finally { lookBusy.delete("deep"); if (same() && !state.running) renderLedger({ keep: true }); }
 }
 
 // ---- the run --------------------------------------------------------------------
@@ -744,6 +944,12 @@ function dropAdult() {
 // What the run does with a refusal is decided in evidence.js (adultRefusal): what the case
 // records, and the words. Here it is applied to the page.
 let adultRow = null;      // the run log's one "Adult sites" row, for the run in flight
+// What the content check reads beyond the case on screen (makeGuardMemory in evidence.js): the
+// last run's answers as they came, with the text only the check reads and the Sources switches,
+// and every answer read on a click since, per handle. Memory only, never stored. It lets the
+// adult pass be added to a finished case with a content check that reads everything the case
+// holds at that moment, and a later run of the same handle read what a click found.
+const guardMem = makeGuardMemory();
 // The page's own check blocked the adult pass, so no adult request goes out and the server
 // would never hear of it. This asks the server for its verdict (it contacts no site), so the
 // block is counted there by rule ID. The answer changes nothing here: the page's block stands.
@@ -808,6 +1014,69 @@ async function runSource(label, url, body, headers, key, opts = {}) {
   }
 }
 
+// The adult pass. Everything that returns profile text has answered, so the decision can be made
+// (adultPassPlan in evidence.js): cancelled, nothing to read, a sign of a minor in a profile, or
+// clean. Only a clean check has requests to send. `read` is what the content check reads: the
+// run's answers as they came. `also` is the rest of it (guardMem.also): what a click read for this
+// handle, and for addAdult() the case as it stands. Used by a run, and by addAdult() for a case
+// that ran with the mode off.
+async function runAdultPass({ planned, read, also, target, type, handle, switched }) {
+  const c = state.collected;
+  const pass = adultPassPlan({ planned, cancelled: state.cancelled, collected: read, also, target, type, switched });
+  if (pass.state === "none") return;
+  log.set(adultRow, pass.log, pass.state === "clean" ? "done" : "skip");
+  adultSay(pass.notice || pass.log);
+  if (pass.state === "cancelled") { state.adultBlocked = pass.notice; return; }
+  if (pass.block) {
+    c.adultBlock = pass.block;
+    if (pass.state === "blocked") { state.minor = suspendContent(suspended, target, pass.block); reportBlock(handle); }
+    renderSources(type); renderLedger();
+    return;
+  }
+  c.adultMode = true; state.adultMode = true;
+  await Promise.all(pass.requests.map((r) => runSource(r.label, r.url, r.body, {}, r.key)));
+}
+// May the adult pass be added to the case on screen? The rule is mayAddAdult in modes.js: only a
+// live username case whose run finished without one (mode off when it started, not cancelled,
+// nothing blocked or suspended), while the mode is on now, the run's answers are still in memory
+// and no lookup, Deep Dive or AI request is in flight. Both stages of the minor guard run again
+// in addAdult(); nothing here overrides either.
+const canAddAdult = () => mayAddAdult({ on: session.on("adult"), held: guardMem.held(state.ran, state.target), running: state.running, busy: lookBusy.size > 0 || state.aiBusy, live: state.live, cancelled: state.cancelled,
+  type: state.type, target: state.target, adultMode: state.adultMode, adultBlocked: state.adultBlocked, minor: state.minor, blocked: "adultBlock" in state.collected, suspended });
+// Adult sites was switched on during or after a run: the check is added to that case on a click,
+// without running the other sources again. Stage 1 (the handle) is asked again, then the same
+// pass a run makes: the content check over what the run read, what every click since read, and
+// the case as it stands now, then the requests. The server runs its own two stages as always,
+// and says so if its record of the run has lapsed.
+async function addAdult() {
+  if (!canAddAdult()) return;
+  const target = state.target, type = state.type, handle = target.replace(/^@/, "");
+  const mode = startAdult({ on: session.on("adult"), type, target, suspended });
+  if (!adultOn(type, target, mode.adult) || !sourcePlan(type, target, { adult: true }).includes("adult")) { state.minor = mode.minor; renderSources(type); renderLedger(); return; }
+  const kept = guardMem.take(state.ran, target);   // one pass per run
+  if (!kept) return;
+  Object.assign(state, { cancelled: false, controller: new AbortController() });
+  setRunning(true);
+  adultRow = log.add(ADULT_LOG.waiting);
+  await runAdultPass({ planned: true, read: kept.c, also: guardMem.also(target, state.collected), target, type, handle, switched: kept.switched });
+  const c = state.collected;
+  if (state.cancelled && ADULT_PASS_KEYS.some((k) => asked.has(k) && !(k in c)) && !("adultCheck" in c)) c.notAnswered = { keys: [...new Set([...(c.notAnswered?.keys || []), "adultCheck"])] };
+  { const bare = stripGuard(c); for (const k of Object.keys(bare)) c[k] = bare[k]; }
+  adultRow = null;
+  setRunning(false);
+  const sum = summary();
+  log.finish(sum.log, sum.t.failed);
+  renderHead(sum.head);
+  renderLedger(); renderSourceCards(); renderAiPanel();
+  saveHistory();
+}
+$("#notices").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-adult-add]")) return;
+  // The button was drawn before a lookup started: say why nothing happens, and offer it again after.
+  if (lookBusy.size > 0 || state.aiBusy) { toast("A lookup is still running. The check can be added when it has answered.", 5000); return; }
+  addAdult();
+});
+
 function setRunning(on) {
   state.running = on;
   const b = $("#runBtn");
@@ -838,7 +1107,7 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   let prev = null;
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: aiSignature(scrubNames(last.results || {}, last.target), last.target, last.kind) }; }
 
-  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear();
+  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear(); guardMem.drop(); diffPick.clear();
   // The session mode as it applies to this target, decided once and kept for the whole run
   // (startAdult in modes.js): a username, and only if nothing suspends it. A pivot, a similar
   // handle or a re-run reads the same session state, with no click. A case opened by a pivot from
@@ -956,27 +1225,10 @@ export async function run(targetRaw, typeOverride, opts = {}) {
     // Compare profile pictures once every profile is in. A passive read of public CDN images;
     // it needs at least two to say anything. If it fails, clusters fall back to the other signals.
     const images = state.cancelled ? [] : avatarImages(c, target, type);
-    // The adult pass. Everything that returns profile text has answered by now, so the decision
-    // can be made (adultPassPlan in evidence.js): cancelled, nothing to read, a sign of a minor
-    // in a profile, or clean. Only a clean check has requests to send.
-    const adultPass = async () => {
-      const pass = adultPassPlan({ planned: wantAdult, cancelled: state.cancelled, collected: c, target, type, switched: { sherlock: on("sherlock"), maigret: on("maigret"), platformCheck: on("platform") } });
-      if (pass.state === "none") return;
-      log.set(adultRow, pass.log, pass.state === "clean" ? "done" : "skip");
-      adultSay(pass.notice || pass.log);
-      if (pass.state === "cancelled") { state.adultBlocked = pass.notice; return; }
-      if (pass.block) {
-        c.adultBlock = pass.block;
-        if (pass.state === "blocked") { state.minor = suspendContent(suspended, target, pass.block); reportBlock(handle); }
-        renderSources(type); renderLedger();
-        return;
-      }
-      c.adultMode = true; state.adultMode = true;
-      await Promise.all(pass.requests.map((r) => runSource(r.label, r.url, r.body, {}, r.key)));
-    };
+    // The adult pass (runAdultPass). Everything that returns profile text has answered by now.
     // One picture is still fetched: it cannot be compared, but its thumbnail is shown on the card.
     // The avatar comparison returns no text, so the adult pass does not wait for it.
-    await Promise.all([images.length > 0 ? runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash") : null, handleOk ? adultPass() : null]);
+    await Promise.all([images.length > 0 ? runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash") : null, handleOk ? runAdultPass({ planned: wantAdult, read: c, also: guardMem.also(target), target, type, handle, switched: { sherlock: on("sherlock"), maigret: on("maigret"), platformCheck: on("platform") } }) : null]);
     const img = [target, ...(withoutAdult(c).maigret?.results || []).map((r) => r.profile?.image)].find((u) => /^https?:\/\/\S+\.(jpe?g|png|gif|webp)(\?|$)/i.test(String(u || "")));
     if (img) { c.reverseImage = img; renderSourceCards(); }
   }
@@ -986,6 +1238,8 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   // (The adult pass of Sherlock and of Maigret are parts of the one adult site check.)
   const silent = state.cancelled ? [...new Set([...asked].filter((k) => !(k in c)).map((k) => (ADULT_PASS_KEYS.includes(k) ? "adultCheck" : k)))].filter((k) => !(k in c)) : [];
   if (silent.length) c.notAnswered = { keys: silent };
+  // Kept in memory for this run only, so the adult pass can be added on a click (addAdult).
+  if (handleOk && !state.cancelled) guardMem.ran({ ran: state.ran, target, collected: c, switched: { sherlock: on("sherlock"), maigret: on("maigret"), platformCheck: on("platform") } }); else guardMem.drop();
   // Guard-only text has been read by now (or the mode is off): it is not kept with the case.
   { const bare = stripGuard(c); for (const k of Object.keys(bare)) c[k] = bare[k]; }
   // The record sources are kept in their checked, bounded shape (deep.js), so History, exports and
@@ -1133,7 +1387,8 @@ function saveHistory() {
 export function loadHistory(idOrEntry) {
   const e = typeof idOrEntry === "string" ? getHistory().find((x) => x.id === idOrEntry) : idOrEntry;
   if (!e) return false;
-  checker.reset(); linkRow = null;
+  // The run held in memory belonged to the case that was on screen: it never vouches for this one.
+  checker.reset(); linkRow = null; diffPick.clear(); guardMem.drop();
   // Opening a case runs nothing and changes no session mode. The case shows adult and dating site
   // rows only if it recorded that the mode was on for that run; otherwise any such row is dropped
   // here. That record never switches the mode on.
@@ -1158,14 +1413,14 @@ export function loadHistory(idOrEntry) {
   return true;
 }
 export function clearCase() {
-  cancel(); checker.reset(); linkRow = null; nameError(""); setQualifiers(null);
+  cancel(); guardMem.drop(); checker.reset(); linkRow = null; nameError(""); setQualifiers(null); diffPick.clear();
   Object.assign(state, { nameInvalid: "", live: false, imported: false, adultMode: false, adultBlocked: "", minor: null, target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();
   renderSources(""); renderAiPanel(); $("#targetDetected").innerHTML = ""; $("#reportSection").hidden = true;
   $("#brief").hidden = true; $("#tabs").hidden = true; tabs.set("findings"); $("#bySourceEmpty").hidden = false;
   $("#caseBar").hidden = true; $("#verdict").innerHTML = ""; $("#identity").hidden = true; $("#identity").innerHTML = "";
-  renderTimeline();
+  renderTimeline(); renderFootprint();
 }
 
 // ---- notes --------------------------------------------------------------------------

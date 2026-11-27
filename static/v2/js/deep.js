@@ -1,9 +1,14 @@
 // The three sources that read a record instead of guessing that one exists:
-//   Profile sources     POST /api/recon/profiles          a handle's public record on 16 sites
+//   Profile sources     POST /api/recon/profiles          a handle's public record on 25 sites
 //   Accounts and keys   POST /api/recon/email-accounts    the GitHub account and OpenPGP keys behind an address
 //   GitHub activity     POST /api/recon/github-activity   when an account's public events happen
-// and one lookup that runs only on a click, for one read profile:
+// and four lookups that run only on a click, each for one read profile:
 //   Profile archive     POST /api/recon/profile-archive   which copies of a profile page the Internet Archive holds
+//   Archive diff        POST /api/recon/archive-diff      what text and links two of those copies do not share
+//   Commit emails       POST /api/recon/commit-emails     the addresses on an account's own commits (GitLab, Codeberg, Gitea.com)
+//   Post activity       POST /api/recon/post-activity     when an account posts (Hacker News, Mastodon, Lobsters)
+// and one comparison made here, with no request: whether the UTC offset ranges of two or more
+// activity readings fit together (compareOffsets).
 // Pure: no DOM, no network. Every answer is read through one of the readers below before
 // anything is shown, stored or exported. A reader takes outside data (a live answer, a case in
 // History, a case file) and returns a checked, bounded copy: text is clipped, an address is
@@ -17,7 +22,7 @@
 //   tool report     a tool parsed it from a page (Maigret, the platform check, enrichment)
 
 import { safeThumb } from "./present.js";
-import { parseUrl, classifyLink, hostOf } from "./links.js";
+import { parseUrl, classifyLink, foundLink, hostOf, isBareHome, ownProfileQuery } from "./links.js";
 import { adultHost } from "./adult.js";
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -47,18 +52,48 @@ const failed = (d) => !!(d && (d.error || d.error_code));
 // A reader's answer for one raw object is computed once: the ledger is rebuilt often.
 const memo = (fn) => { const seen = new WeakMap(); return (raw) => { if (!isObj(raw)) return null; if (!seen.has(raw)) { const out = fn(raw); seen.set(raw, out); if (isObj(out)) seen.set(out, out); } return seen.get(raw); }; };
 
+// ---- answers kept by row -------------------------------------------------------------------------
+// collected.archives, .commitEmails, .postActivity and .archiveDiffs are each { [row key]: answer }.
+// A key is an account row's; at most 40 are kept.
+const ROW_KEY = /^acct:[^\u0000-\u001f]{1,76}$/;
+const byRow = (read) => memo((raw) => {
+  const out = {};
+  for (const [k, v] of Object.entries(raw).slice(0, 40)) { const a = ROW_KEY.test(k) && isObj(v) ? read(v) : null; if (a) out[k] = a; }
+  return out;
+});
+const askedAt = (raw) => (Number.isFinite(raw.asked_at) && raw.asked_at > 0 ? raw.asked_at : 0);
+const retryAfter = (raw) => (int(raw.retry_after) ? { retry_after: Math.min(int(raw.retry_after), 86400) } : {});
+const waitText = (s) => (s ? ` Try again in ${s < 90 ? "a minute" : `${Math.ceil(s / 60)} minutes`}.` : " Try again in a few minutes.");
+const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
 export const PROVENANCE = { record: "site record", self: "self-declared", tool: "tool report" };
 
 // ---- profile sources -----------------------------------------------------------------------------
 export const PROFILE_SOURCE = "Profile sources";
-export const PROFILE_SOURCE_DESC = "reads the public record for this handle on 16 sites with an open API: name, bio, links, dates and linked accounts";
+export const PROFILE_SOURCE_DESC = "reads the public record for this handle on 25 sites with an open API: name, bio, links, dates and linked accounts";
 // id -> [site name, the host a profile address must be on]. The names and hosts are CrawlR's own:
 // a stored case or a case file cannot rename a site or point a profile somewhere else.
+// Mastodon: one source per instance, and the same handle on two instances is two accounts. The
+// list is the server's (INSTANCES in modules/profiles/mastodon.py), in its order. The id is
+// "mastodon" for mastodon.social and "mastodon_" plus the host with underscores for the rest.
+export const MASTODON_INSTANCES = ["mastodon.social", "mastodon.online", "mstdn.social", "fosstodon.org", "hachyderm.io", "infosec.exchange", "mas.to", "mastodon.world"];
+const MASTODON_IDS = Object.fromEntries(MASTODON_INSTANCES.map((host, i) => [i ? `mastodon_${host.replace(/\./g, "_")}` : "mastodon", host]));
+// The instance a source id, a host or a profile address names: one of the known hosts, or "".
+export function mastodonInstance(v) {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (Object.hasOwn(MASTODON_IDS, s)) return MASTODON_IDS[s];
+  if (MASTODON_INSTANCES.includes(s.toLowerCase())) return s.toLowerCase();
+  const x = s.length <= 300 ? parseUrl(s) : null;
+  const host = x && x.protocol === "https:" && !x.port && !x.username && !x.password ? x.hostname.toLowerCase() : "";
+  return MASTODON_INSTANCES.includes(host) ? host : "";
+}
 export const PROFILE_SITES = {
-  gitlab: ["GitLab", "gitlab.com"], keybase: ["Keybase", "keybase.io"], hackernews: ["Hacker News", "news.ycombinator.com"], mastodon: ["Mastodon", "mastodon.social"],
+  gitlab: ["GitLab", "gitlab.com"], keybase: ["Keybase", "keybase.io"], hackernews: ["Hacker News", "news.ycombinator.com"],
+  ...Object.fromEntries(Object.entries(MASTODON_IDS).map(([id, host]) => [id, [id === "mastodon" ? "Mastodon" : `Mastodon (${host})`, host]])),
   dockerhub: ["Docker Hub", "hub.docker.com"], npm: ["npm", "npmjs.com"], devto: ["dev.to", "dev.to"], lichess: ["Lichess", "lichess.org"], chesscom: ["Chess.com", "chess.com"],
   codeberg: ["Codeberg", "codeberg.org"], bluesky: ["Bluesky", "bsky.app"], wikipedia: ["Wikipedia", "en.wikipedia.org"], gravatar: ["Gravatar", "gravatar.com"],
   codeforces: ["Codeforces", "codeforces.com"], lobsters: ["Lobsters", "lobste.rs"], huggingface: ["Hugging Face", "huggingface.co"],
+  launchpad: ["Launchpad", "launchpad.net"], gitea: ["Gitea.com", "gitea.com"],
 };
 export const PROFILE_STATES = ["found", "not_found", "blocked", "rate_limited", "unknown", "failed", "not_asked"];
 // Only "found" and "not_found" say whether the account is there. The rest are unknown.
@@ -68,7 +103,56 @@ export const PROOF_TEXT = { keybase: "proven on Keybase", verified_link: "verifi
 export const proofStrong = (proof) => proof === "keybase" || proof === "verified_link";
 const ITEM_KINDS = { package: "Packages", organization: "Organizations" };
 const AVATAR_STATES = ["ok", "none", "default", "failed"];
+// What a site's own `note` on a record means, in the page's words. A note outside this table is
+// shown as the site gave it (a part that was not read, say), never as one of these.
+export const NOT_ACTIVE_NOTE = "not an active account";
+export const PROFILE_NOTE_TEXT = {
+  [NOT_ACTIVE_NOTE]: "Not a claimed account. Launchpad makes such a record by itself for a person named in an imported bug, translation or package, so the person did not necessarily make it and it says nothing about who holds the name.",
+  team: "A team on Launchpad, not a person.",
+  moved: "The account says it moved to another instance. This row is the old account.",
+  suspended: "The site has suspended this account.",
+  bot: "The account is marked as automated.",
+  organization: "An organization, not a person.",
+  admin: "The site lists this account as an administrator.",
+  moderator: "The site lists this account as a moderator.",
+};
+export const profileNoteText = (note) => (typeof note === "string" && Object.hasOwn(PROFILE_NOTE_TEXT, note) ? PROFILE_NOTE_TEXT[note] : "");
+const SITE_BY_NAME = Object.fromEntries(Object.entries(PROFILE_SITES).map(([id, [name]]) => [name.toLowerCase(), id]));
+const SITE_BY_HOST = Object.fromEntries(Object.entries(PROFILE_SITES).map(([id, [, host]]) => [host, id]));
 const onHost = (u, host) => { const x = parseUrl(u); const hn = x ? x.hostname.toLowerCase().replace(/^www\./, "") : ""; return !!x && x.protocol === "https:" && hn === host && x.pathname.replace(/\/+$/, "").length > 0; };
+// Which of the 25 sources a record, a profile or a ledger row is about: its `source` id, else the
+// host of its address, else its site name. "" when it is none of them. This says which site, not
+// that the row was read: the caller offers a lookup only on a row a source read.
+export function profileSourceId(p) {
+  if (typeof p === "string") return Object.hasOwn(PROFILE_SITES, p) ? p : "";
+  if (!isObj(p)) return "";
+  if (typeof p.source === "string" && Object.hasOwn(PROFILE_SITES, p.source)) return p.source;
+  const url = safeLink(p.url), host = url ? hostOf(url) : "";
+  if (host && Object.hasOwn(SITE_BY_HOST, host) && onHost(url, host)) return SITE_BY_HOST[host];
+  const name = [p.site, p.what].find((x) => typeof x === "string" && Object.hasOwn(SITE_BY_NAME, x.trim().toLowerCase()));
+  return !url && name ? SITE_BY_NAME[name.trim().toLowerCase()] : "";
+}
+// A Launchpad record the site made by itself. It is shown, and it is not a claimed account: no
+// identity, fact, lead, timeline entry or AI input is taken from it.
+export const unclaimedProfile = (p) => isObj(p) && profileSourceId(p) === "launchpad" && (p.note ?? p.siteNote) === NOT_ACTIVE_NOTE;
+// The handle a lookup is asked about: the row's own spelling, else the one its address carries.
+const HANDLE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/;
+function handleOf(p) {
+  const own = [p.handle, p.username].map((x) => (typeof x === "string" ? x.trim().replace(/^@/, "") : "")).find((x) => HANDLE.test(x));
+  if (own) return own;
+  const url = safeLink(p.url), x = url ? parseUrl(url) : null;
+  const seg = x ? ownProfileQuery(url) || (x.search || x.hash ? "" : x.pathname.split("/").filter(Boolean).at(-1) || "").replace(/^[@~]/, "") : "";
+  return HANDLE.test(seg) ? seg : "";
+}
+// A row a lookup may be asked for: one of `sites`, read ("found" when it says), never on an adult site.
+function askable(p, ok) {
+  const id = profileSourceId(p);
+  if (!id || !ok(id)) return null;
+  if (typeof p === "string") return { id, username: "" };
+  if (("state" in p && p.state !== "found") || unclaimedProfile(p) || (p.url && !safeLink(p.url))) return null;
+  const username = handleOf(p);
+  return username ? { id, username } : null;
+}
 
 function readProfile(p) {
   if (!isObj(p) || p.state !== "found" || !Object.hasOwn(PROFILE_SITES, p.source)) return null;
@@ -121,12 +205,15 @@ export const readProfileSources = memo((raw) => {
 // A site that answered whether the account is there. npm cannot see an account without packages:
 // it answers, and says so in a note, which is still an answer from the site.
 const answeredState = (s) => s.state === "found" || s.state === "not_found" || (s.state === "unknown" && !!s.note && !s.error_code);
-// { read, asked, answered, by: { state: [site] }, down: [{ site, state, note }] }
+// { read, asked, answered, by: { state: [site] }, down: [{ site, state, note }], unclaimed: [site] }
 // down: the sites that were asked and did not say. Unknown, never "not found".
+// unclaimed: sites whose record is not a claimed account (unclaimedProfile). The site answered
+// "found", so it is in `read` and `by.found`; a caller that counts profiles takes these out.
 export function profileCoverage(d) {
   const r = readProfileSources(d);
-  const out = { read: 0, asked: 0, answered: 0, by: {}, down: [], notes: [] };
+  const out = { read: 0, asked: 0, answered: 0, by: {}, down: [], notes: [], unclaimed: [] };
   if (!r || failed(r)) return out;
+  out.unclaimed = r.profiles.filter(unclaimedProfile).map((p) => p.site);
   for (const s of Object.values(r.sources)) {
     (out.by[s.state] ||= []).push(s.site);
     if (s.state === "not_asked") continue;
@@ -142,11 +229,13 @@ export function profileSourcesText(d) {
   const c = profileCoverage(d);
   if (!c.asked) return "";
   const down = c.down.map((x) => `${x.site} ${PROFILE_STATE_WORD[x.state]}`);
-  return [`${c.read} ${c.read === 1 ? "profile" : "profiles"} read on ${c.asked} sites`, down.length ? `${down.length} did not answer (${down.slice(0, 4).join(", ")}${down.length > 4 ? ` and ${down.length - 4} more` : ""})` : ""].filter(Boolean).join(", ");
+  // A record a site made by itself is not a profile that was read: it is said apart.
+  const read = c.read - c.unclaimed.length;
+  return [`${read} ${read === 1 ? "profile" : "profiles"} read on ${c.asked} sites`, c.unclaimed.length ? `${c.unclaimed.length} ${c.unclaimed.length === 1 ? "record" : "records"} nobody claimed (${c.unclaimed.join(", ")})` : "", down.length ? `${down.length} did not answer (${down.slice(0, 4).join(", ")}${down.length > 4 ? ` and ${down.length - 4} more` : ""})` : ""].filter(Boolean).join(", ");
 }
 
 // ---- what a read profile shows when its row is opened -----------------------------------------
-const STAT_LABEL = { followers: "Followers", following: "Following", posts: "Posts", karma: "Karma", repos: "Repositories", public_repos: "Repositories", packages: "Packages", games: "Games", stars: "Stars", edits: "Edits", rating: "Rating", max_rating: "Highest rating", contributions: "Contributions", friends: "Friends", models: "Models", datasets: "Datasets", spaces: "Spaces", submissions: "Submissions", comments: "Comments", articles: "Articles" };
+const STAT_LABEL = { followers: "Followers", following: "Following", posts: "Posts", karma: "Karma", repos: "Repositories", public_repos: "Repositories", packages: "Packages", games: "Games", stars: "Stars", edits: "Edits", rating: "Rating", max_rating: "Highest rating", contributions: "Contributions", friends: "Friends", models: "Models", datasets: "Datasets", spaces: "Spaces", submissions: "Submissions", comments: "Comments", articles: "Articles", starred: "Starred" };
 const statLabel = (k) => (Object.hasOwn(STAT_LABEL, k) ? STAT_LABEL[k] : (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " "));
 const fmt = (n) => Number(n).toLocaleString("en-US");
 const bareUrl = (u) => String(u).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
@@ -188,7 +277,8 @@ export function profileDetail(p, { secrets = [] } = {}) {
   for (const kind of Object.keys(ITEM_KINDS)) { const it = (p.items || []).filter((i) => i.kind === kind); for (const i of it.slice(0, 10)) rec.push(drow(ITEM_KINDS[kind].replace(/s$/, ""), i.name, i.url, { ...o, subjects: [p.handle, i.name] })); if (it.length > 10) rec.push(drow(ITEM_KINDS[kind], `and ${it.length - 10} more`)); }
   if (p.avatarState === "failed") rec.push(drow("Picture", "could not be read, so it was not compared"));
   // The site answered in part ("bio not read"): that part is unknown, and is never shown as empty.
-  if (p.siteNote) rec.push(drow("Not read", `${p.siteNote}${/not read$/.test(p.siteNote) ? ": unknown, not empty" : ""}`));
+  // A note the page knows ("moved", "team") is said in the page's words.
+  if (p.siteNote) rec.push(profileNoteText(p.siteNote) ? drow("Site note", profileNoteText(p.siteNote)) : drow("Not read", `${p.siteNote}${/not read$/.test(p.siteNote) ? ": unknown, not empty" : ""}`));
   const groups = p.api
     ? [{ id: "self", title: "Written by the account holder", prov: PROVENANCE.self, rows: self }, { id: "record", title: `${p.site}'s own record`, prov: PROVENANCE.record, rows: rec }]
     : [{ id: "tool", title: `Read from the page by ${(p.sources || []).join(", ") || "a tool"}`, prov: PROVENANCE.tool, rows: [...self, ...rec] }];
@@ -418,10 +508,13 @@ const endsLabel = (a, b) => (a <= b ? (a === b ? utc(a) : `${utc(a)} to ${utc(b)
 export const NOT_A_LOGIN_NOTE = "GitHub cannot hold this handle: a login is 1 to 39 letters, digits or hyphens, so nothing was asked.";
 // Why no estimate was made. The code is the server's; the sentence is written here from the
 // checked numbers, so a stored case or a case file cannot put words of its own in it.
+// `unit` is the word for what was counted: "public events" on GitHub, a post site's own word there.
 const REASON_CODES = ["too_few_events", "too_few_days", "no_quiet_window", "quiet_window_too_long", "ambiguous_quiet_window"];
-function reasonText(code, r) {
-  if (code === "too_few_events") return `Too few public events to say anything about hours: ${fmt(r.events)} seen.`;
-  if (code === "too_few_days") return `The events fall on too few days to show a daily pattern: ${fmt(r.window.active_days)} seen.`;
+export const BOT_REASON = "The account is marked as automated, so its hours say nothing about a person's day.";
+function reasonText(code, r, unit = "public events") {
+  if (code === "too_few_events") return `Too few ${unit} to say anything about hours: ${fmt(r.events)} seen.`;
+  if (code === "too_few_days") return `The ${unit.split(" ").at(-1)} fall on too few days to show a daily pattern: ${fmt(r.window.active_days)} seen.`;
+  if (code === "bot_account") return BOT_REASON;
   if (code === "no_quiet_window") return "No quiet stretch long enough to be a night: the account is active around the clock.";
   if (code === "quiet_window_too_long") return "The account is only active in a few hours of the day, so the quiet stretch is too long to place a night in.";
   if (code === "ambiguous_quiet_window") return "Two quiet stretches of about the same length, so neither can be called the night.";
@@ -434,55 +527,80 @@ export const ESTIMATE_CAVEAT = "A hint, not a fact. Shift work, scheduled jobs, 
 // from the first end to the last one hour at a time. The label and the three sentences of an
 // estimate (basis, assumption, caveat) are never kept from the answer: activityView writes them
 // from the checked numbers, so a case file cannot add a claim ("lives in ...") to the estimate.
+const off = (v) => (Number.isInteger(v) && v >= -12 && v <= 14 ? v : null);
+function readEstimate(e) {
+  const from = isObj(e) ? off(e.utc_offset_from) : null, to = isObj(e) ? off(e.utc_offset_to) : null;
+  if (from === null || to === null) return null;
+  const listed = [...new Set(list(e.utc_offsets, 27).filter((x) => off(x) !== null))];
+  const east = listed.every((o, i) => i === 0 || o === listed[i - 1] + 1 || (listed[i - 1] >= 12 && o === listed[i - 1] - 23));
+  const offs = listed.length && listed[0] === from && listed.at(-1) === to && east ? listed : [];
+  const qs = hourOf(e.quiet_start_hour), qe = hourOf(e.quiet_end_hour), quiet = qs !== null && qe !== null;
+  return {
+    utc_offset_from: from, utc_offset_to: to, utc_offsets: offs,
+    // A range that runs past the date line is two runs, and is never shown as one span.
+    crosses_date_line: from > to,
+    label: offs.length ? offsetsLabel(offs) : endsLabel(from, to),
+    quiet_start_hour: quiet ? qs : null, quiet_end_hour: quiet ? qe : null,
+    // The length of the stretch follows from its two ends.
+    quiet_hours: quiet ? ((qe - qs + 24) % 24 || 24) : null, quiet_events: quiet ? capped(e.quiet_events, EVENTS_MAX) : null,
+  };
+}
+// The part every activity answer shares, GitHub's and a post site's: the two histograms, the
+// window, the count and the estimate. null when an "ok" answer has no histograms. `never` is a
+// reason code that rules an estimate out whatever the answer carries (an automated account).
+function activityBody(raw, never = "") {
+  const hours = counts(raw.hours_utc, 24), days = counts(raw.weekdays_utc, 7);
+  if (raw.state === "ok" && (!hours || !days)) return null;
+  const w = isObj(raw.window) ? raw.window : {};
+  const est = never ? null : readEstimate(raw.estimate);
+  return {
+    cached: raw.cached === true, complete: raw.complete !== false, pages: num(raw.pages, 20), events: num(raw.events, EVENTS_MAX),
+    later_pages: ["rate_limited", "failed"].includes(raw.later_pages) ? raw.later_pages : "",
+    window: { first: when(w.first), last: when(w.last), days: num(w.days, 400), active_days: Math.min(num(w.active_days, 400), num(w.days, 400)) },
+    hours_utc: hours || Array(24).fill(0), weekdays_utc: days || Array(7).fill(0), estimate: est,
+    code: never || (!est && isObj(raw.estimate_reason) && REASON_CODES.includes(raw.estimate_reason.code) ? raw.estimate_reason.code : "none"),
+  };
+}
 export const readActivity = memo((raw) => {
   if (failed(raw)) return errorOf(raw);
   if (!ACTIVITY_STATES.includes(raw.state)) return null;
   const username = typeof raw.username === "string" && GH_LOGIN.test(raw.username) ? raw.username : "";
   // A handle GitHub cannot hold was never asked about: the answer says so in `note`.
   if (raw.state === "not_found") return { username, found: false, state: "not_found", events: 0, ...(raw.note === NOT_A_LOGIN_NOTE ? { note: NOT_A_LOGIN_NOTE } : {}) };
-  const hours = counts(raw.hours_utc, 24), days = counts(raw.weekdays_utc, 7);
-  if (raw.state === "ok" && (!hours || !days)) return null;
-  const w = isObj(raw.window) ? raw.window : {};
-  const window = { first: when(w.first), last: when(w.last), days: num(w.days, 400), active_days: Math.min(num(w.active_days, 400), num(w.days, 400)) };
-  const events = num(raw.events, EVENTS_MAX);
-  const e = isObj(raw.estimate) ? raw.estimate : null;
-  const off = (v) => (Number.isInteger(v) && v >= -12 && v <= 14 ? v : null);
-  const from = e ? off(e.utc_offset_from) : null, to = e ? off(e.utc_offset_to) : null;
-  let est = null;
-  if (from !== null && to !== null) {
-    const listed = [...new Set(list(e.utc_offsets, 27).filter((x) => off(x) !== null))];
-    const east = listed.every((o, i) => i === 0 || o === listed[i - 1] + 1 || (listed[i - 1] >= 12 && o === listed[i - 1] - 23));
-    const offs = listed.length && listed[0] === from && listed.at(-1) === to && east ? listed : [];
-    const qs = hourOf(e.quiet_start_hour), qe = hourOf(e.quiet_end_hour), quiet = qs !== null && qe !== null;
-    est = {
-      utc_offset_from: from, utc_offset_to: to, utc_offsets: offs,
-      // A range that runs past the date line is two runs, and is never shown as one span.
-      crosses_date_line: from > to,
-      label: offs.length ? offsetsLabel(offs) : endsLabel(from, to),
-      quiet_start_hour: quiet ? qs : null, quiet_end_hour: quiet ? qe : null,
-      // The length of the stretch follows from its two ends.
-      quiet_hours: quiet ? ((qe - qs + 24) % 24 || 24) : null, quiet_events: quiet ? capped(e.quiet_events, EVENTS_MAX) : null,
-    };
-  }
-  const code = !est && isObj(raw.estimate_reason) && REASON_CODES.includes(raw.estimate_reason.code) ? raw.estimate_reason.code : "none";
+  const b = activityBody(raw);
+  if (!b) return null;
   const out = {
-    username, found: true, state: raw.state, cached: raw.cached === true, complete: raw.complete !== false, pages: num(raw.pages, 20), events,
-    ...(["rate_limited", "failed"].includes(raw.later_pages) ? { later_pages: raw.later_pages } : {}),
-    window, hours_utc: hours || Array(24).fill(0), weekdays_utc: days || Array(7).fill(0),
+    username, found: true, state: raw.state, cached: b.cached, complete: b.complete, pages: b.pages, events: b.events,
+    ...(b.later_pages ? { later_pages: b.later_pages } : {}),
+    window: b.window, hours_utc: b.hours_utc, weekdays_utc: b.weekdays_utc,
     types: list(raw.types, 12).map((t) => (isObj(t) && /^[A-Za-z]{1,40}$/.test(String(t.type)) ? { type: t.type, count: num(t.count, EVENTS_MAX) } : null)).filter(Boolean),
     repos: list(raw.repos, 10).map((x) => (isObj(x) && REPO.test(String(x.name)) ? { name: x.name, url: `https://github.com/${x.name}`, count: num(x.count, EVENTS_MAX) } : null)).filter(Boolean),
-    estimate: est,
+    estimate: b.estimate,
   };
-  out.estimate_reason = est ? null : { code, text: reasonText(code, out) };
+  out.estimate_reason = b.estimate ? null : { code: b.code, text: reasonText(b.code, out) };
   return out;
 });
 const EVENT_WORD = { PushEvent: "pushes", PullRequestEvent: "pull requests", IssuesEvent: "issues", IssueCommentEvent: "issue comments", WatchEvent: "stars", ForkEvent: "forks", CreateEvent: "branches or repositories created", DeleteEvent: "branches deleted", PullRequestReviewEvent: "reviews", PullRequestReviewCommentEvent: "review comments", ReleaseEvent: "releases", PublicEvent: "repositories made public", MemberEvent: "collaborators added", GollumEvent: "wiki edits", CommitCommentEvent: "commit comments" };
 export const eventWord = (t) => (Object.hasOwn(EVENT_WORD, t) ? EVENT_WORD[t] : String(t).replace(/Event$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase());
 const hh = (n) => `${String(n).padStart(2, "0")}:00`;
 // The three sentences of an estimate, from the checked numbers and nothing else.
-function estimateWords(r) {
+function estimateWords(r, one = "public event", many = `${one}s`) {
   const e = r.estimate, quiet = e.quiet_start_hour !== null && e.quiet_end_hour !== null ? `The longest quiet stretch is ${hh(e.quiet_start_hour)} to ${hh(e.quiet_end_hour)} UTC.` : "";
-  return { label: e.label, basis: [`Based on ${plural(r.events, "public event")}${r.window.days ? ` over ${plural(r.window.days, "day")} (${fmt(r.window.active_days)} with activity)` : ""}.`, quiet].filter(Boolean).join(" "), assumption: ESTIMATE_ASSUMPTION, caveat: ESTIMATE_CAVEAT, quiet: "" };   // the basis names the quiet stretch; it is not said twice
+  return { label: e.label, basis: [`Based on ${plural(r.events, one, many)}${r.window.days ? ` over ${plural(r.window.days, "day")} (${fmt(r.window.active_days)} with activity)` : ""}.`, quiet].filter(Boolean).join(" "), assumption: ESTIMATE_ASSUMPTION, caveat: ESTIMATE_CAVEAT, quiet: "" };   // the basis names the quiet stretch; it is not said twice
+}
+// The two strips of an activity reading and their words. `things` starts both text alternatives
+// ("Events", "Public posts").
+function histView(r, things) {
+  const top = Math.max(1, ...r.hours_utc), topDay = Math.max(1, ...r.weekdays_utc);
+  const hours = r.hours_utc.map((count, hour) => ({ hour, count, pct: Math.round((count / top) * 100) }));
+  const days = r.weekdays_utc.map((count, i) => ({ day: WEEKDAYS[i], count, pct: Math.round((count / topDay) * 100) }));
+  const busiest = hours.filter((x) => x.count > 0).sort((a, b) => b.count - a.count || a.hour - b.hour).slice(0, 3);
+  return {
+    window: dayOf(r.window.first) && dayOf(r.window.last) ? `${dayOf(r.window.first)} to ${dayOf(r.window.last)}` : "", hours, days,
+    hoursAlt: `${things} by hour of day, UTC: ${hours.map((x) => `${hh(x.hour)} ${x.count}`).join(", ")}.`,
+    daysAlt: `${things} by weekday, UTC: ${days.map((x) => `${x.day} ${x.count}`).join(", ")}.`,
+    busiest: busiest.length ? `Busiest hours (UTC): ${busiest.map((x) => `${hh(x.hour)} (${x.count})`).join(", ")}.` : "",
+  };
 }
 // Everything the page says about the activity, in words, so the two strips always have a text
 // alternative and the exports say the same thing.
@@ -493,19 +611,12 @@ export function activityView(d) {
   if (!r || failed(r)) return null;
   if (r.state === "not_found") return { state: "not_found", text: r.note === NOT_A_LOGIN_NOTE ? NOT_A_LOGIN_NOTE : "GitHub has no account with this name.", events: 0 };
   if (r.state === "none") return { state: "none", text: "The account exists and has no public events in the window GitHub keeps (about 90 days, 300 events at most).", events: 0 };
-  const top = Math.max(1, ...r.hours_utc), topDay = Math.max(1, ...r.weekdays_utc);
-  const hours = r.hours_utc.map((count, hour) => ({ hour, count, pct: Math.round((count / top) * 100) }));
-  const days = r.weekdays_utc.map((count, i) => ({ day: WEEKDAYS[i], count, pct: Math.round((count / topDay) * 100) }));
-  const busiest = hours.filter((x) => x.count > 0).sort((a, b) => b.count - a.count || a.hour - b.hour).slice(0, 3);
-  const win = dayOf(r.window.first) && dayOf(r.window.last) ? `${dayOf(r.window.first)} to ${dayOf(r.window.last)}` : "";
+  const g = histView(r, "Events");
   const partial = r.complete ? "" : ` GitHub ${r.later_pages === "rate_limited" ? "rate limited" : "failed on"} a later page, so older events are missing.`;
   return {
     state: "ok", events: r.events, complete: r.complete, username: r.username,
-    text: `${plural(r.events, "public event")}${win ? ` from ${win}` : ""}${r.window.days ? ` (${plural(r.window.days, "day")}, active on ${r.window.active_days})` : ""}. Times are UTC.${partial}`,
-    window: win, hours, days,
-    hoursAlt: `Events by hour of day, UTC: ${hours.map((x) => `${hh(x.hour)} ${x.count}`).join(", ")}.`,
-    daysAlt: `Events by weekday, UTC: ${days.map((x) => `${x.day} ${x.count}`).join(", ")}.`,
-    busiest: busiest.length ? `Busiest hours (UTC): ${busiest.map((x) => `${hh(x.hour)} (${x.count})`).join(", ")}.` : "",
+    text: `${plural(r.events, "public event")}${g.window ? ` from ${g.window}` : ""}${r.window.days ? ` (${plural(r.window.days, "day")}, active on ${r.window.active_days})` : ""}. Times are UTC.${partial}`,
+    ...g,
     repos: r.repos, types: r.types.map((t) => ({ ...t, word: eventWord(t.type) })),
     estimate: r.estimate ? estimateWords(r) : null,
     noEstimate: r.estimate ? "" : reasonText(r.estimate_reason?.code, r),
@@ -572,12 +683,8 @@ export function readArchive(raw, url) {
   if (!first || !last || !snaps.length || !(int(raw.count) > 0)) return { ...base, state: "failed", error: "The archive's answer could not be read.", error_code: "bad_response", error_detail: "" };
   return { ...base, count: int(raw.count), first, last, snapshots: snaps, distinct_versions: num(raw.distinct_versions), truncated: raw.truncated === true };
 }
-// collected.archives: { [row key]: answer }. A key is an account row's; at most 40 are kept.
-export const readArchives = memo((raw) => {
-  const out = {};
-  for (const [k, v] of Object.entries(raw).slice(0, 40)) { const a = /^acct:[^\u0000-\u001f]{1,76}$/.test(k) && isObj(v) ? readArchive(v, typeof v.url === "string" ? v.url.trim() : "") : null; if (a) out[k] = a; }
-  return out;
-});
+// collected.archives: { [row key]: answer } (byRow, below).
+export const readArchives = byRow((v) => readArchive(v, typeof v.url === "string" ? v.url.trim() : ""));
 // What the row says, in words: { state, text, snapshots: [{ label, url, link_kind }], retry }.
 export function archiveView(a) {
   if (!a) return null;
@@ -593,10 +700,453 @@ export function archiveView(a) {
 }
 export const archiveMarkdown = (v) => (v ? [`  - Archived copies: ${v.text}${v.snapshots.length ? ` Snapshots: ${v.snapshots.map((x) => `[${x.label}](${x.url})`).join(", ")}` : ""} _(${ARCHIVE_SOURCE}${v.state === "ok" || v.state === "none" ? " · archive record" : ""})_`] : []);
 
+// ---- commit emails ----------------------------------------------------------------------------------
+// Asked on a click, for one read GitLab, Codeberg or Gitea.com profile (POST /api/recon/commit-emails).
+// Kept with the case as collected.commitEmails, keyed by the row. Two things are kept apart:
+//   state          about the account: one of the seven profile states
+//   emails_state   about the addresses: "found" (rows), "none" (everything asked answered and no
+//                  address of the account was on a commit) or "unknown" (a part did not answer and
+//                  nothing was read). "unknown" is never "no addresses".
+// complete: false with rows means "these, and maybe more". Every name, address and date in a row
+// was typed by the commit's author: self-declared, and a lead to check.
+export const COMMIT_EMAILS_SOURCE = "Commit emails";
+// id -> [site name, the host the profile and its repositories must be on]
+export const COMMIT_EMAIL_SITES = { gitlab: ["GitLab", "gitlab.com"], codeberg: ["Codeberg", "codeberg.org"], gitea: ["Gitea.com", "gitea.com"] };
+export const COMMIT_HOWS = ["forge_attributed", "author_line_match"];
+export const COMMIT_HOW_TEXT = {
+  forge_attributed: "The site links these commits to this account by the address, so the account holds the address there.",
+  author_line_match: "A commit under this account's name carries this address. Anybody can commit under any name, so this ties the address to the account only weakly.",
+};
+export const COMMIT_EMAILS_NOTE = "Names, addresses and dates inside commits are typed by the author and checked by nobody. They are self-declared and can be forged. A row is a lead to check, not a confirmed address.";
+// May commit emails be asked for this row? { site, username } or null. A source id alone
+// answers for the site, with an empty username.
+export function commitEmailsFor(p) {
+  const a = askable(p, (id) => Object.hasOwn(COMMIT_EMAIL_SITES, id));
+  return a ? { site: a.id, username: a.username } : null;
+}
+const FORGE_REPO = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}\/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
+const REPOS_SECTION = ["ok", "none", "not_asked", "blocked", "rate_limited", "unknown", "failed", "not_found"];
+const REPO_STATES = ["ok", "empty", "blocked", "rate_limited", "unknown", "failed"];
+// Three repositories of thirty commits are read at most. A count beyond this is not one the source returned.
+const COMMITS_MAX = 10000;
+export const readCommitEmail = memo((raw) => {
+  if (typeof raw.site !== "string" || !Object.hasOwn(COMMIT_EMAIL_SITES, raw.site)) return null;
+  const [site_name, host] = COMMIT_EMAIL_SITES[raw.site];
+  let state = PROFILE_STATES.includes(raw.state) ? raw.state : failed(raw) ? "failed" : "";
+  if (!state) return null;
+  const profile_url = state === "found" && onHost(safeLink(raw.profile_url), host) ? safeLink(raw.profile_url) : "";
+  // "found" with no profile on the site behind it showed nothing: unknown, not found.
+  if (state === "found" && !profile_url) state = "unknown";
+  const found = state === "found", seen = new Set();
+  const emails = (found ? list(raw.emails, 10) : []).map((e) => {
+    const addr = isObj(e) ? email(e.email) : "";
+    if (!addr || seen.has(addr)) return null;
+    seen.add(addr);
+    return {
+      // An unknown tie is the weaker one.
+      email: addr, name: line(e.name, 100), how: e.how === "forge_attributed" ? "forge_attributed" : "author_line_match", commits: num(e.commits, COMMITS_MAX),
+      first_commit: when(e.first_commit), last_commit: when(e.last_commit), repos: [...new Set(list(e.repos, 3).filter((r) => typeof r === "string" && FORGE_REPO.test(r)))],
+    };
+  }).filter(Boolean).sort((a, b) => COMMIT_HOWS.indexOf(a.how) - COMMIT_HOWS.indexOf(b.how));
+  const sec = isObj(raw.sections) && REPOS_SECTION.includes(raw.sections.repos) ? raw.sections.repos : found ? "unknown" : "not_asked";
+  const repos = (found ? list(raw.repos, 3) : []).map((r) => (isObj(r) && typeof r.name === "string" && FORGE_REPO.test(r.name)
+    ? { name: r.name, url: `https://${host}/${r.name}`, fork: r.fork === true ? true : r.fork === false ? false : null, state: REPO_STATES.includes(r.state) ? r.state : "unknown", commits_seen: num(r.commits_seen, COMMITS_MAX) } : null)).filter(Boolean);
+  // Complete: the account answered, the repository list answered, and so did every repository asked.
+  const complete = raw.complete === true && (state === "not_found" || state === "not_asked" || (found && (sec === "ok" || sec === "none") && repos.every((r) => r.state === "ok" || r.state === "empty")));
+  // "none" is an answer, so it needs everything asked to have answered. "found" with no readable
+  // row, and every state in which the site did not say, is unknown.
+  const emails_state = emails.length ? "found" : state === "not_found" || (found && complete && raw.emails_state === "none") ? "none" : "unknown";
+  const c = isObj(raw.counts) ? raw.counts : {};
+  return {
+    site: raw.site, site_name, username: line(raw.username, 64), state, cached: raw.cached === true,
+    handle: found ? line(raw.handle, 80) : "", profile_url, display_name: found ? line(raw.display_name, 200) : "",
+    emails, emails_state, complete, sections: { account: state, repos: sec }, repos,
+    counts: Object.fromEntries(["repos_listed", "repos_read", "commits_seen", "own", "noreply", "other_authors"].map((k) => [k, num(c[k], COMMITS_MAX)])),
+    ...retryAfter(raw), ...(state === "failed" || state === "rate_limited" ? errorOf(raw) : {}), asked_at: askedAt(raw),
+  };
+});
+export const readCommitEmails = byRow(readCommitEmail);
+const REPO_DOWN = { blocked: "was refused", rate_limited: "was rate limited", unknown: "gave an answer that could not be read", failed: "failed", not_found: "was not found" };
+// What the row says, in words:
+//   { state, text, rows: [{ email, name, how, howText, strong, commits, first, last, repos: [{ name, url, link_kind }] }], partial, retry, note }
+// state: "found", "none" or "unknown" for an account that was read, else the account's own state.
+// "unknown" and every state in which the site did not say have retry: true and never read as "none found".
+export function commitEmailsView(d) {
+  const a = readCommitEmail(d);
+  if (!a) return null;
+  const site = a.site_name, base = { rows: [], partial: false, note: COMMIT_EMAILS_NOTE };
+  const unknown = `whether its commits carry an address is unknown`;
+  if (a.state === "not_found") return { ...base, state: "not_found", retry: false, text: `${site} has no account with this name, so no commits were read.` };
+  if (a.state === "not_asked") return { ...base, state: "not_asked", retry: false, text: `${site} cannot hold this handle, so nothing was asked.` };
+  if (a.state === "blocked") return { ...base, state: "blocked", retry: true, text: `${site} refused the request, so ${unknown}.` };
+  if (a.state === "rate_limited") return { ...base, state: "rate_limited", retry: true, text: `${site} is rate limiting requests, so ${unknown}.${waitText(a.retry_after)}` };
+  if (a.state === "failed") return { ...base, state: "failed", retry: true, text: `${site} could not be asked, so ${unknown}.` };
+  if (a.state === "unknown") return { ...base, state: "unknown", retry: true, text: `${site} gave an answer CrawlR could not read, so ${unknown}.` };
+  const urls = Object.fromEntries(a.repos.map((r) => [r.name, r.url])), [, host] = COMMIT_EMAIL_SITES[a.site];
+  const rows = a.emails.map((e) => ({
+    email: e.email, name: e.name, how: e.how, howText: COMMIT_HOW_TEXT[e.how], strong: e.how === "forge_attributed", commits: e.commits, first: dayOf(e.first_commit), last: dayOf(e.last_commit),
+    repos: e.repos.map((name) => ({ name, url: urls[name] || `https://${host}/${name}`, link_kind: "evidence" })),
+  }));
+  const read = `the ${plural(a.counts.commits_seen, "commit")} read`;
+  const down = a.sections.repos !== "ok" && a.sections.repos !== "none" ? `the repository list ${REPO_DOWN[a.sections.repos] || "did not answer"}` : (() => { const r = a.repos.find((x) => x.state !== "ok" && x.state !== "empty"); return r ? `${r.name} ${REPO_DOWN[r.state]}` : "a part did not answer"; })();
+  if (a.emails_state === "found") {
+    const n = `${plural(rows.length, "address", "addresses")} of this account on ${read}`;
+    return { ...base, state: "found", rows, partial: !a.complete, retry: !a.complete, text: a.complete ? `${n}.` : `These, and maybe more: ${n}, and ${down}.` };
+  }
+  if (a.emails_state === "none") {
+    const why = a.sections.repos === "none" ? "The account has no public repository of its own, so there were no commits to read." : `No address of this account on ${read}.`;
+    const left = [a.counts.noreply ? `${plural(a.counts.noreply, "commit")} of its own ${a.counts.noreply === 1 ? "carries" : "carry"} a "noreply" placeholder, which is not an address` : "", a.counts.other_authors ? `${plural(a.counts.other_authors, "commit")} by other authors ${a.counts.other_authors === 1 ? "was" : "were"} left out` : ""].filter(Boolean).join(", and ");
+    return { ...base, state: "none", retry: false, text: `${why}${left ? ` ${left.charAt(0).toUpperCase()}${left.slice(1)}.` : ""}` };
+  }
+  return { ...base, state: "unknown", retry: true, text: `Could not read the commits: ${down}. Whether an address is there is unknown.${a.retry_after ? waitText(a.retry_after) : ""}` };
+}
+// Each address is a place to look next, one hop on a click: [{ kind: "email", value, from, how, strong }].
+// Whether a lead is tied to the person is decided by the row's standing, not here.
+export function commitEmailLeads(d) {
+  const a = readCommitEmail(d);
+  if (!a || a.emails_state !== "found") return [];
+  return a.emails.map((e) => ({ kind: "email", value: e.email, how: e.how, strong: e.how === "forge_attributed",
+    from: e.how === "forge_attributed" ? `an address ${a.site_name} ties to this account through its commits (written in the commit, so self-declared)` : `an address on a commit made under this ${a.site_name} account's name (the weaker tie: anybody can commit under any name)` }));
+}
+// Indented Markdown lines under the row.
+export const commitEmailsMarkdown = (v) => (v ? [`  - Commit emails: ${v.text} _(${COMMIT_EMAILS_SOURCE}${v.rows.length ? " · self-declared" : ""})_`,
+  ...v.rows.map((r) => `    - ${r.email}${r.name ? `, name on the commits: ${r.name}` : ""}, ${plural(r.commits, "commit")}${r.first && r.last ? ` (${r.first === r.last ? r.first : `${r.first} to ${r.last}`})` : ""}${r.repos.length ? ` in ${r.repos.map((x) => `[${x.name}](${x.url})`).join(", ")}` : ""}. ${r.howText}`),
+  ...(v.rows.length ? [`    - ${v.note}`] : [])] : []);
+// What the model is told: at most 5 addresses, each with its tie and marked self-declared.
+export function commitEmailsForAi(d) {
+  const a = readCommitEmail(d), v = a ? commitEmailsView(a) : null;
+  if (!v) return null;
+  return { site: a.site_name, state: v.state, complete: a.complete, summary: v.text, addresses: a.emails.slice(0, 5).map((e) => ({ email: e.email, tie: e.how, self_declared: true, commits: e.commits })), ...(a.emails.length ? { caution: COMMIT_EMAILS_NOTE } : {}) };
+}
+
+// ---- post activity ----------------------------------------------------------------------------------
+// Asked on a click, for one read Hacker News, Mastodon or Lobsters profile (POST /api/recon/post-activity).
+// Kept with the case as collected.postActivity, keyed by the row. The reading has the shape
+// readActivity returns, so one renderer draws both, plus `site`, `instance`, `unit`, `bot` and `read`.
+//   ok            posts were counted
+//   none          the account exists and nothing was listed. An answer (on Lobsters: no submitted
+//                 stories; the account may still comment)
+//   not_found     the site's own "no such account"; not_asked: true when the site cannot hold the
+//                 handle and no request was made
+//   rate_limited, failed   the site could not be asked. Unknown, never "no posts".
+export const POST_ACTIVITY_SOURCE = "Post activity";
+// What a site counts. unit / one: the word for it, used where GitHub's reading says "public events".
+export const POST_ACTIVITY_SITES = {
+  hackernews: { name: "Hacker News", unit: "public posts", one: "public post", cap: 1000, types: { comment: "comments", story: "stories", poll: "polls", pollopt: "poll options", job: "job posts" } },
+  mastodon: { name: "Mastodon", unit: "public posts", one: "public post", cap: 200, types: { post: "posts", reply: "replies", boost: "boosts" } },
+  lobsters: { name: "Lobsters", unit: "submitted stories", one: "submitted story", cap: 100, types: { story: "stories" } },
+};
+export const POST_ACTIVITY_STATES = ["ok", "none", "not_found", "rate_limited", "failed"];
+export const POST_WINDOW_DAYS = 365;
+// May post activity be asked for this row? { site, username, instance? } or null. The instance
+// of a Mastodon row comes from its source id or its address, and is one of the known ones. The
+// handle is sent as the row has it: Hacker News names are case sensitive.
+export function postActivityFor(p) {
+  const a = askable(p, (id) => id === "hackernews" || id === "lobsters" || !!mastodonInstance(id));
+  if (!a) return null;
+  const instance = mastodonInstance(a.id);
+  return instance ? { site: "mastodon", username: a.username, instance } : { site: a.id, username: a.username };
+}
+// "Hacker News", "Mastodon (fosstodon.org)": the name a reading goes by.
+export const postActivityLabel = (a) => (a && Object.hasOwn(POST_ACTIVITY_SITES, a.site) ? (a.site === "mastodon" && a.instance && a.instance !== "mastodon.social" ? `Mastodon (${a.instance})` : POST_ACTIVITY_SITES[a.site].name) : "");
+const notAHandle = (name) => `${name} cannot hold this handle, so nothing was asked.`;
+export const readPostActivity = memo((raw) => {
+  const site = typeof raw.site === "string" && Object.hasOwn(POST_ACTIVITY_SITES, raw.site) ? raw.site : "";
+  const state = POST_ACTIVITY_STATES.includes(raw.state) ? raw.state : failed(raw) ? "failed" : "";
+  // An answer about an instance CrawlR does not read is not an answer. No instance is mastodon.social.
+  const instance = site === "mastodon" ? (raw.instance ? mastodonInstance(raw.instance) : MASTODON_INSTANCES[0]) : "";
+  if (!site || !state || (site === "mastodon" && !instance)) return null;
+  const spec = POST_ACTIVITY_SITES[site];
+  const head = { site, site_name: spec.name, instance, username: line(raw.username, 64), unit: spec.unit };
+  if (state === "failed" || state === "rate_limited") return { ...head, found: null, state, ...errorOf(raw), ...retryAfter(raw), asked_at: askedAt(raw) };
+  if (state === "not_found") return { ...head, found: false, state, events: 0, ...(raw.not_asked === true || raw.note === notAHandle(spec.name) ? { not_asked: true } : {}), asked_at: askedAt(raw) };
+  // An automated account is counted and never estimated. Only Mastodon says which accounts are.
+  const bot = site === "mastodon" && raw.bot === true;
+  const b = activityBody(raw, bot ? "bot_account" : "");
+  if (!b) return null;
+  // The count is the histogram's own sum, so the sentence and the strip cannot disagree. "ok"
+  // with nothing counted showed nothing: it reads as "none".
+  const events = b.hours_utc.reduce((n, x) => n + x, 0), ok = state === "ok" && events > 0;
+  const rd = isObj(raw.read) ? raw.read : {};
+  const out = {
+    ...head, found: true, state: ok ? "ok" : "none", cached: b.cached, complete: b.complete, pages: b.pages, events: ok ? Math.min(events, EVENTS_MAX) : 0,
+    ...(b.later_pages ? { later_pages: b.later_pages } : {}),
+    window: ok ? b.window : { first: "", last: "", days: 0, active_days: 0 }, hours_utc: ok ? b.hours_utc : Array(24).fill(0), weekdays_utc: ok ? b.weekdays_utc : Array(7).fill(0),
+    types: ok ? list(raw.types, 8).map((t) => (isObj(t) && typeof t.type === "string" && Object.hasOwn(spec.types, t.type) ? { type: t.type, count: num(t.count, EVENTS_MAX) } : null)).filter(Boolean) : [],
+    repos: [], estimate: ok ? b.estimate : null,
+  };
+  out.estimate_reason = out.estimate ? null : { code: ok ? b.code : "none", text: reasonText(ok ? b.code : "none", out, spec.unit) };
+  return { ...out, bot, read: { posts: num(rd.posts, EVENTS_MAX), outside_window: num(rd.outside_window, EVENTS_MAX), capped: rd.capped === true, available: capped(rd.available) }, asked_at: askedAt(raw) };
+});
+export const readPostActivities = byRow(readPostActivity);
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+// What is counted on each site, as the strip's footnote. Written here, not kept from the answer.
+function postFootnote(a) {
+  const win = (thing) => `Only the ${POST_WINDOW_DAYS} days before the newest ${thing} are counted.`;
+  if (a.site === "hackernews") return `Counted: stories and comments, the newest ${fmt(1000)} at most. ${win("post")}`;
+  if (a.site === "mastodon") return `Counted: public posts, replies and boosts of the local account on ${a.instance}, the newest 200 at most. ${win("post")}`;
+  return `Counted: submitted stories only, the newest 100 at most. Lobsters has no public list of a user's comments, so comments are not counted. ${win("story")}`;
+}
+// The keys activityView returns (state, text, events, complete, username, window, hours, days,
+// hoursAlt, daysAlt, busiest, repos, types, estimate, noEstimate), in the site's own unit word, and:
+//   site, label, unit, bot   which reading this is
+//   footnote                 what is counted, and what was read and left out
+//   partial, capped          the two sentences for a short reading ("" when it is whole). partial
+//                            is already part of `text`, capped of `footnote`.
+//   retry                    true when the site could not be asked: unknown, never "no posts"
+export function postActivityView(d) {
+  const a = readPostActivity(d);
+  if (!a) return null;
+  const spec = POST_ACTIVITY_SITES[a.site], label = postActivityLabel(a), where = a.site === "mastodon" ? a.instance : spec.name;
+  const base = { site: a.site, label, unit: a.unit, username: a.username, events: 0, bot: false, footnote: "", partial: "", capped: "", retry: false };
+  if (a.state === "rate_limited") return { ...base, state: "rate_limited", retry: true, text: `${where} is rate limiting requests, so when this account posts is unknown.${waitText(a.retry_after)}` };
+  if (a.state === "failed") return { ...base, state: "failed", retry: true, text: `${where} could not be asked, so when this account posts is unknown.` };
+  if (a.state === "not_found") return { ...base, state: "not_found", text: a.not_asked ? notAHandle(spec.name) : a.site === "mastodon" ? `${where} has no local account with this name.` : `${where} has no account with this name.${a.site === "hackernews" ? " Hacker News names are case sensitive." : ""}` };
+  const footnote = postFootnote(a);
+  if (a.state === "none") return { ...base, state: "none", footnote, bot: a.bot,
+    text: a.site === "lobsters" ? "The account exists and has no submitted stories. Lobsters has no public list of a user's comments, so the account may still comment." : a.site === "mastodon" ? `The account exists and has no public posts on ${where}.` : "The account exists and has no public posts: no story and no comment is listed." };
+  const g = histView(a, cap1(a.unit));
+  const partial = a.complete ? "" : `Partial: ${where} ${a.later_pages === "rate_limited" ? "rate limited" : "failed on"} a later page, so older ${a.unit.split(" ").at(-1)} are missing.`;
+  const capped = a.read.capped ? `The newest ${fmt(a.read.posts)} were read; ${a.read.available !== null && a.read.available > a.read.posts ? `the site says the account has ${fmt(a.read.available)}` : "the account has more"}.` : "";
+  const older = a.read.outside_window ? `${cap1(plural(a.read.outside_window, "older one"))} ${a.read.outside_window === 1 ? "was" : "were"} read and not counted.` : "";
+  return {
+    ...base, state: "ok", events: a.events, complete: a.complete, bot: a.bot,
+    text: `${plural(a.events, spec.one, spec.unit)}${g.window ? ` from ${g.window}` : ""}${a.window.days ? ` (${plural(a.window.days, "day")}, active on ${a.window.active_days})` : ""}. Times are UTC.${partial ? ` ${partial}` : ""}`,
+    ...g, repos: [], types: a.types.map((t) => ({ ...t, word: spec.types[t.type] })),
+    estimate: a.estimate ? estimateWords(a, spec.one, spec.unit) : null, noEstimate: a.estimate ? "" : reasonText(a.estimate_reason?.code, a, a.unit),
+    footnote: [footnote, capped, older].filter(Boolean).join(" "), partial, capped,
+  };
+}
+export function postActivityForAi(d) {
+  const v = postActivityView(d);
+  if (!v) return null;
+  if (v.state !== "ok") return { site: v.label, state: v.state, note: v.text };
+  return { site: v.label, state: "ok", summary: v.text, counted: v.footnote, hours_utc: v.hours.map((x) => x.count), weekdays_utc: Object.fromEntries(v.days.map((x) => [x.day, x.count])), kinds: v.types.slice(0, 5).map((t) => `${t.word} (${t.count})`),
+    ...(v.bot ? { automated_account: true } : {}),
+    utc_offset_estimate: v.estimate ? { range: v.estimate.label, basis: v.estimate.basis, assumption: v.estimate.assumption, caveat: v.estimate.caveat } : null, no_estimate_reason: v.noEstimate };
+}
+// standing: { own, text } as activityMarkdown takes it, for the account the reading is about.
+export function postActivityMarkdown(d, standing = { own: true, text: "" }) {
+  const v = postActivityView(d);
+  if (!v) return [];
+  const head = standing.own ? [`## ${v.label} post activity`] : [`## ${v.label} post activity (not the person this case is about)`, `_${standing.text}_`];
+  if (v.state !== "ok") return [...head, `- ${v.text}`, ""];
+  return [...head, `- ${v.text} _(site record)_`, ...(v.busiest ? [`- ${v.busiest}`] : []), `- ${v.daysAlt}`,
+    ...(v.types.length ? [`- Kinds of post: ${v.types.map((t) => `${t.word} (${t.count})`).join(", ")}`] : []),
+    v.estimate ? `- UTC offset estimate: ${v.estimate.label}. ${v.estimate.basis} ${v.estimate.assumption} ${v.estimate.caveat} This is a range of time offsets, never a place.` : `- No UTC offset estimate: ${v.noEstimate}`,
+    `- ${v.footnote}`, ""];
+}
+
+// ---- do the offset ranges fit? -----------------------------------------------------------------------
+// Made here from readings the case already holds; no request. The same rule as the server's tested
+// reference (compare_offsets in modules/activity_pattern.py). Only readings of accounts in one
+// identity group are compared, and the verdict never moves a profile between groups.
+//   agree            two or more ranges, and at least one offset is in all of them
+//   disagree         two or more ranges, and no offset is in all of them
+//   not_enough_data  fewer than two readings carry a range
+export const OFFSETS_AGREE_NOTE = "This supports one person behind these accounts and does not prove it: a large share of the world lives in any few offsets.";
+export const OFFSETS_DISAGREE_NOTE = "This does not show two people: one account may be scheduled, automated, or used only at work.";
+export const OFFSETS_NOT_A_PLACE = "A range of UTC offsets is never a place.";
+// answers: [{ label, answer }], each answer a checked reading (readActivity or readPostActivity).
+// Returns { verdict, compared, shared, label, labels, text, caution }.
+export function compareOffsets(answers) {
+  const used = [];
+  for (const x of Array.isArray(answers) ? answers : []) {
+    const a = isObj(x) ? x.answer : null, offs = isObj(a) && a.state === "ok" && isObj(a.estimate) ? a.estimate.utc_offsets : null;
+    if (Array.isArray(offs) && offs.length && offs.every((o) => Number.isInteger(o) && o >= -11 && o <= 12)) used.push({ label: line(x.label, 60) || "An account", offs });
+  }
+  const labels = used.map((u) => u.label);
+  if (used.length < 2) return { verdict: "not_enough_data", compared: used.length, shared: [], label: "", labels, text: used.length === 1 ? "Only one account has enough activity to compare." : "", caution: "" };
+  const shared = used[0].offs.filter((o) => used.slice(1).every((u) => u.offs.includes(o)));   // keeps the first range's eastward order
+  const label = shared.length ? offsetsLabel(shared) : "";
+  return shared.length
+    ? { verdict: "agree", compared: used.length, shared, label, labels, text: `${andList(labels)} fit the same range (${label}).`, caution: `${OFFSETS_AGREE_NOTE} ${OFFSETS_NOT_A_PLACE}` }
+    : { verdict: "disagree", compared: used.length, shared, label, labels, text: `${andList(labels)} do not fit one range.`, caution: `${OFFSETS_DISAGREE_NOTE} ${OFFSETS_NOT_A_PLACE}` };
+}
+
+// ---- what changed between two archived copies ------------------------------------------------------------
+// Asked on a click, for two captures the profile archive listed (POST /api/recon/archive-diff). The
+// last pair compared for a row is kept as collected.archiveDiffs[row key].
+//   ok            both captures were read; `removed` is what the older has and the newer lacks,
+//                 `added` the other way round
+//   same          both were read and no text line or link differs (same_capture: the archive
+//                 answered both times with one capture, so nothing was compared)
+//   none          a capture is missing: `missing` names the side, and the side says why
+//   rate_limited, failed   the archive could not be asked. Unknown, never "no difference".
+//   refused       no request was made, and `note` says why
+// Snapshot addresses are rebuilt from the timestamps and the profile address. A text line is a
+// plain string ("<" is text). A link is an address found on an archived page: CrawlR did not
+// build it and never fetches it.
+export const ARCHIVE_DIFF_STATES = ["ok", "same", "none", "rate_limited", "failed", "refused"];
+export const ARCHIVE_DIFF_REFUSALS = {
+  adult_site: ARCHIVE_REFUSALS[0], bad_url: ARCHIVE_REFUSALS[1], not_public_host: ARCHIVE_REFUSALS[2],
+  bad_timestamp: "A capture time must be one the capture list returned, so nothing was fetched.",
+  same_timestamp: "Both capture times are the same capture, so there is nothing to compare.",
+};
+export const ARCHIVE_SIDE_NOTES = {
+  missing: "The archive holds no capture of this address at or near that time.",
+  redirect: "That capture is a redirect to another page, not the profile itself.",
+  not_a_page: "That capture is not an HTML or text page, so it was not read.",
+};
+export const ARCHIVE_SAME_CAPTURE_NOTE = "The archive answered both times with the same capture.";
+// How a difference is to be read. Shown with every "ok" answer.
+export const ARCHIVE_DIFF_CAVEATS = [
+  "The two copies are compared by line and by link, not by position: a line that only moved is not listed.",
+  "Removed does not mean deleted by the owner. The site may have dropped a field, or the capture may be of another variant of the page.",
+  "Numbers that change all the time, such as followers or stars, show up as a removed line and an added one.",
+  "Captures far apart differ in layout too, so menus and footers of both designs end up in the lists. Neighbouring captures give a cleaner answer.",
+];
+export const ARCHIVE_INEXACT_NOTE = "The archive had no capture at exactly the time asked and answered with the nearest one. Each column is labelled with the capture that was really read.";
+const SIDE_STATES = ["ok", "none", "rate_limited", "failed"];
+const BODY_MAX = 4e6, LINES_MAX = 5000, LINKS_MAX = 2000;
+function diffSide(s, url) {
+  if (!isObj(s) || !SIDE_STATES.includes(s.state)) return null;
+  const ts = stamp(s.timestamp) ? when(s.timestamp) : "", asked = stamp(s.asked) ? when(s.asked) : ts;
+  const reason = s.state === "none" ? (Object.hasOwn(ARCHIVE_SIDE_NOTES, s.reason) ? s.reason : "missing") : "";
+  return {
+    // exact follows from the two times: the capture read is the one asked for, or it is not.
+    state: s.state, timestamp: ts, asked, exact: ts === asked, url: ts ? `${SNAPSHOT_BASE}${stamp(ts)}/${url}` : "",
+    bytes: num(s.bytes, BODY_MAX), truncated: s.truncated === true, title: line(s.title, 200), text_lines: num(s.text_lines, LINES_MAX), links: num(s.links, LINKS_MAX),
+    ...(reason ? { reason, note: ARCHIVE_SIDE_NOTES[reason] } : {}),
+  };
+}
+const IP_HOST = /^[\d.]+$|:/;
+function diffList(v, url) {
+  const d = isObj(v) ? v : {}, seen = new Set(), home = hostOf(url);
+  const text = list(d.text, 120).map((t) => (typeof t === "string" ? line(t, 300) : "")).filter(Boolean);
+  const links = list(d.links, 60).map((l) => {
+    const u = isObj(l) ? safeLink(l.url) : "", x = u ? parseUrl(u) : null;
+    if (!x || x.port || IP_HOST.test(x.hostname) || seen.has(u)) return null;
+    seen.add(u);
+    // A link on the profile's own host is never external, whatever the answer says.
+    return { url: u, external: l.external === true && hostOf(u) !== home };
+  }).filter(Boolean);
+  return { text, text_total: Math.max(num(d.text_total, LINES_MAX), text.length), links, links_total: Math.max(num(d.links_total, LINKS_MAX), links.length) };
+}
+const NO_DIFF = () => ({ text: [], text_total: 0, links: [], links_total: 0 });
+// url: the profile address the captures are of. An address that may not be looked up has no answer.
+export function readArchiveDiff(raw, url) {
+  if (!isObj(raw) || !ARCHIVE_DIFF_STATES.includes(raw.state) || !archivable(url)) return null;
+  const base = { url, state: raw.state, from: null, to: null, removed: NO_DIFF(), added: NO_DIFF(), complete: false, swapped: raw.swapped === true, cached: raw.cached === true, asked_at: askedAt(raw) };
+  if (raw.state === "refused") { const reason = Object.hasOwn(ARCHIVE_DIFF_REFUSALS, raw.reason) ? raw.reason : ""; return { ...base, swapped: false, reason, note: reason ? ARCHIVE_DIFF_REFUSALS[reason] : "This address was not looked up." }; }
+  const from = diffSide(raw.from, url), to = diffSide(raw.to, url);
+  if (raw.state === "failed" || raw.state === "rate_limited") return { ...base, from, to, ...errorOf(raw), ...retryAfter(raw) };
+  const unread = { ...base, from, to, state: "failed", error: "The archive's answer could not be read.", error_code: "bad_response", error_detail: "" };
+  if (raw.state === "none") {
+    const missing = [["from", from], ["to", to]].filter(([, s]) => s?.state === "none").map(([k]) => k);
+    return missing.length ? { ...base, from, to, missing } : unread;
+  }
+  // "ok" and "same" need two captures that were read, the older one first.
+  if (from?.state !== "ok" || to?.state !== "ok" || !from.timestamp || !to.timestamp || from.timestamp > to.timestamp) return unread;
+  const same_capture = from.timestamp === to.timestamp;
+  const removed = diffList(raw.removed, url), added = diffList(raw.added, url);
+  const nothing = !removed.text_total && !removed.links_total && !added.text_total && !added.links_total;
+  // "ok" with no difference behind it is "same"; one capture compared with itself compared nothing.
+  if (raw.state === "same" || same_capture || nothing) return { ...base, state: "same", from, to, complete: !from.truncated && !to.truncated, ...(same_capture ? { same_capture: true } : {}) };
+  const whole = [removed, added].every((x) => x.text_total === x.text.length && x.links_total === x.links.length);
+  return { ...base, from, to, removed, added, complete: raw.complete === true && whole && !from.truncated && !to.truncated };
+}
+export const readArchiveDiffs = byRow((v) => readArchiveDiff(v, typeof v.url === "string" ? v.url.trim() : ""));
+// The pairs the page may offer, from a checked profile archive answer: [{ from, to, label, default?, distant? }]
+// with the older capture as `from`. Neighbouring captures, the newest pair first (the default), then
+// the first capture against the last, marked distant. [] unless the archive answered "ok" with two
+// or more snapshots: a lookup that was refused or failed offers no comparison.
+export function archiveDiffPairs(a) {
+  if (!isObj(a) || a.state !== "ok" || !archivable(a.url)) return [];
+  const ts = [...new Set(list(a.snapshots, 8).map((s) => (isObj(s) && stamp(s.timestamp) ? when(s.timestamp) : "")).filter(Boolean))].sort();
+  if (ts.length < 2) return [];
+  const pair = (from, to, x = {}) => ({ from, to, label: capLabel(from, to).join(" to "), ...x });
+  const out = ts.slice(1).map((to, i) => pair(ts[i], to)).reverse();
+  out[0].default = true;
+  const first = stamp(a.first) && when(a.first) < ts[0] ? when(a.first) : ts[0], last = stamp(a.last) && when(a.last) > ts.at(-1) ? when(a.last) : ts.at(-1);
+  if (!out.some((p) => p.from === first && p.to === last)) out.push(pair(first, last, { distant: true }));
+  return out;
+}
+// Two capture times as labels: the days, or day and time when both fall on one day.
+const capLabel = (a, b) => (dayOf(a) !== dayOf(b) ? [dayOf(a), dayOf(b)] : [a, b].map((t) => (t ? `${dayOf(t)} ${t.slice(11, 16)} UTC` : "")));
+const bareLink = (u) => Array.from(String(u).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")).slice(0, 120).join("");
+// What the page shows:
+//   { state, text, from: { label, url, link_kind: "evidence", note }, to: { ... },
+//     removed: { text: [line], links: [{ label, url, link_kind, external }], more }, added: { ... }, caveats: [sentence], retry }
+// A link is an unverified URL (dashed) when it passes the link rules, else text only (link_kind
+// "none"): never a bare homepage, never with the case's handle or address in its query.
+// subjects, secrets: the link rules' own, as profileDetail takes them.
+export function archiveDiffView(d, { subjects = [], secrets = [] } = {}) {
+  const a = readArchiveDiff(d, isObj(d) ? d.url : "");
+  if (!a) return null;
+  const labels = capLabel(a.from?.timestamp || "", a.to?.timestamp || "");
+  const side = (s, i) => (s ? { label: labels[i] || "", url: s.url, link_kind: s.url ? "evidence" : "none", state: s.state, title: s.title,
+    note: [s.state === "none" ? s.note : s.state !== "ok" ? "This capture could not be read." : "", s.state === "ok" && !s.exact ? `Asked for ${capLabel(s.asked, s.timestamp)[0]}: the archive answered with this capture, the nearest one, and it is the one that was read.` : "", s.truncated ? "The page is larger than 2 MB, so only its start was read." : ""].filter(Boolean).join(" ") } : null);
+  const part = (d) => {
+    const mt = d.text_total - d.text.length, ml = d.links_total - d.links.length;
+    return { text: d.text, links: d.links.map((l) => ({ label: bareLink(l.url), ...foundLink({ url: l.url, subjects, secrets }), external: l.external })),
+      more: mt > 0 || ml > 0 ? `And ${[mt > 0 ? `${plural(mt, "more line")}` : "", ml > 0 ? `${plural(ml, "more link")}` : ""].filter(Boolean).join(" and ")}: open the two captures to see them.` : "" };
+  };
+  const base = { state: a.state, from: side(a.from, 0), to: side(a.to, 1), removed: part(a.removed), added: part(a.added), caveats: [], retry: false };
+  const days = labels.filter(Boolean).join(" and ");
+  if (a.state === "ok") {
+    const n = (d) => `${plural(d.text_total, "line")} and ${plural(d.links_total, "link")}`;
+    return { ...base, text: `Between the captures of ${days}: ${n(a.removed)} removed, ${n(a.added)} added.${a.complete ? "" : " There may be more differences than shown."}`, caveats: [...ARCHIVE_DIFF_CAVEATS, ...(a.from.exact && a.to.exact ? [] : [ARCHIVE_INEXACT_NOTE])] };
+  }
+  if (a.state === "same") return { ...base, text: a.same_capture ? `${ARCHIVE_SAME_CAPTURE_NOTE} Nothing was compared.` : `The captures of ${days} show the same text and the same links. Pictures, layout and scripts are not compared.` };
+  if (a.state === "none") return { ...base, text: `Nothing was compared. ${a.missing.map((k) => `The ${k === "from" ? "older" : "newer"} capture: ${a[k].note}`).join(" ")}` };
+  if (a.state === "refused") return { ...base, text: `Not compared. ${a.note}` };
+  return { ...base, retry: true, text: a.state === "rate_limited" ? `The Internet Archive is rate limiting requests, so what changed is unknown.${waitText(a.retry_after)}` : "The Internet Archive could not be asked, so what changed is unknown. A failed answer is kept for 10 minutes, so wait before trying again." };
+}
+// A removed link that leaves the profile's site is a place to look next: [{ kind: "url", value, from, bare? }].
+// bare: the address is a site's front page with no path (a personal site, or a platform's
+// homepage: the lead rules decide). Only an "ok" answer gives leads; at most 20.
+export function archiveDiffLeads(d, { site = "" } = {}) {
+  const a = readArchiveDiff(d, isObj(d) ? d.url : "");
+  if (!a || a.state !== "ok") return [];
+  const [d1, d2] = capLabel(a.from.timestamp, a.to.timestamp), name = line(site, 60);
+  return a.removed.links.filter((l) => l.external).slice(0, 20).map((l) => ({ kind: "url", value: l.url, from: `removed from the archived ${name ? `${name} ` : ""}profile between ${d1} and ${d2}`, ...(isBareHome(l.url) ? { bare: true } : {}) }));
+}
+// Indented Markdown lines under the row.
+export function archiveDiffMarkdown(v) {
+  if (!v) return [];
+  const caps = [v.from, v.to].filter((s) => s?.url).map((s) => `[${s.label}](${s.url})`).join(", ");
+  const part = (name, d) => [...(d.text.length ? [`    - ${name} text: ${d.text.map((t) => `"${t}"`).join("; ")}`] : []), ...(d.links.length ? [`    - ${name} links: ${d.links.map((l) => (l.link_kind === "none" ? l.label : `[${l.label}](${l.url}) (unverified URL)`)).join(", ")}`] : []), ...(d.more ? [`    - ${d.more}`] : [])];
+  return [`  - Archive diff: ${v.text}${caps ? ` Captures: ${caps}` : ""} _(${ARCHIVE_SOURCE}${v.state === "ok" || v.state === "same" ? " · archive record" : ""})_`, ...part("Removed", v.removed), ...part("Added", v.added), ...v.caveats.map((c) => `    - ${c}`)];
+}
+// The text of an answer as the minor guard's content check reads it, the same on the page as on
+// the server: guard_texts in modules/archive_diff.py takes the title of the older capture, the
+// title of the newer one when it differs, the removed lines and then the added ones, and joins
+// them, one per line, into pieces of at most 2000 characters (a new piece starts when the next
+// line would not fit). Every state that carries text counts: a title comes back with "same", and
+// with "none" when one of the two captures was read. routers/recon_identity.py records one entry
+// per piece under the site name "Internet Archive" with the address of the older capture (the
+// newer one's when there is no older side). Characters are counted as Python counts them (code
+// points), so both sides cut at the same line.
+// The answer is read as it is, not through readArchiveDiff: the server scanned every title and
+// line it returned, so an answer the page cannot show (a state it does not know, two captures in
+// the wrong order) is still scanned here. Only strings are taken, and a checked answer reads the
+// same before and after readArchiveDiff. Nothing read here is shown: it goes to the check only.
+export function archiveDiffTexts(d) {
+  if (!isObj(d)) return [];
+  const lines = [], sides = [d.from, d.to].filter((s) => isObj(s) && Object.keys(s).length);
+  for (const s of sides) if (typeof s.title === "string" && s.title && !lines.includes(s.title)) lines.push(s.title);
+  for (const part of [d.removed, d.added]) for (const t of isObj(part) && Array.isArray(part.text) ? part.text.slice(0, LINES_MAX) : []) if (typeof t === "string" && t) lines.push(t);
+  const chunks = [];
+  let cur = "", size = 0;
+  for (const t of lines) {
+    const n = Array.from(t).length;
+    if (cur && size + 1 + n > 2000) { chunks.push(cur); cur = ""; size = 0; }
+    size = cur ? size + 1 + n : n;
+    cur = cur ? `${cur}\n${t}` : t;
+  }
+  if (cur) chunks.push(cur);
+  // The address the text is filed under: the snapshot address rebuilt from the capture's time,
+  // as a checked answer has it, else the one the answer itself gives for that side.
+  const a = readArchiveDiff(d, typeof d.url === "string" ? d.url.trim() : "");
+  const url = (a?.from || a?.to)?.url || (typeof sides[0]?.url === "string" ? sides[0].url : "");
+  return chunks.map((bio) => ({ source: ARCHIVE_SOURCE, url, bio }));
+}
+
 // ---- case files and history ---------------------------------------------------------------------------
 // The keys as a case may carry them. A value that is not a readable answer is dropped;
 // a failure is kept as a failure, so the source stays "unknown" and never becomes "not found".
-export const DEEP_READERS = { profiles: readProfileSources, emailAccounts: readEmailAccounts, githubActivity: readActivity, archives: readArchives };
+export const DEEP_READERS = { profiles: readProfileSources, emailAccounts: readEmailAccounts, githubActivity: readActivity, archives: readArchives, commitEmails: readCommitEmails, postActivity: readPostActivities, archiveDiffs: readArchiveDiffs };
 export function readDeep(results) {
   if (!isObj(results)) return results;
   const out = { ...results };

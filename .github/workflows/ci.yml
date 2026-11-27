@@ -43,4 +43,8 @@ jobs:
           node tests/js/wildcard.test.mjs
           node tests/js/deep.test.mjs
           node tests/js/casework.test.mjs
+          node tests/js/selfaudit.test.mjs
           node tests/js/caserules.test.mjs
+          node tests/js/exif.test.mjs
+          node tests/js/geo.test.mjs
+          node tests/js/recondomain.test.mjs

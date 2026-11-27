@@ -2,6 +2,8 @@
 import { writeHistory } from "./present.js";
 import { $, $$, h, raw, esc, link, store, toast, post, postAi, aiAvailable, aiCost, providerName, looksLikeHeaders, fmtNum } from "./core.js";
 import { md5 } from "./md5.js";
+import { parseCoords } from "./geo.js";
+import { positionHtml } from "./imagemeta.js";
 
 const copy = (text, btn) => navigator.clipboard?.writeText(text).then(() => { if (btn) { const t = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = t), 1400); } else toast("Copied"); });
 
@@ -197,6 +199,13 @@ $("#hashGo").addEventListener("click", async () => {
   const rows = [["MD5", md5(s)], ["SHA-1", await hex("SHA-1")], ["SHA-256", await hex("SHA-256")], ["SHA-512", await hex("SHA-512")]];
   out("#hashOut", rows.map(([k, v]) => h`<div class="dec-row"><span class="k">${k}</span>${raw(result(v))}</div>`).join(""));
 });
+// Coordinates: decimal degrees, degrees-minutes-seconds and degrees with decimal minutes, each
+// way. Worked out in the browser; the only thing that can leave is the map link, on a click.
+const COORD_FORM = { dd: "decimal degrees", dms: "degrees, minutes and seconds", ddm: "degrees and decimal minutes" };
+$("#coordGo").addEventListener("click", () => {
+  const r = parseCoords($("#coordIn").value);
+  out("#coordOut", r.ok ? h`<p class="dec-wait">Read as ${COORD_FORM[r.format]}.</p>${raw(positionHtml(r.lat, r.lon))}` : err(r.error));
+});
 // VIN (NHTSA, straight from the browser)
 const VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/i;
 $("#vinGo").addEventListener("click", async () => {
@@ -212,7 +221,7 @@ $("#vinGo").addEventListener("click", async () => {
   } catch { out("#vinOut", err("Couldn't reach NHTSA. Try again in a moment.")); }
 });
 // Enter submits each decoder
-[["#b64In", null], ["#urlIn", null], ["#hashIn", "#hashGo"], ["#vinIn", "#vinGo"]].forEach(([i, b]) => b && $(i).addEventListener("keydown", (e) => { if (e.key === "Enter") $(b).click(); }));
+[["#b64In", null], ["#urlIn", null], ["#hashIn", "#hashGo"], ["#coordIn", "#coordGo"], ["#vinIn", "#vinGo"]].forEach(([i, b]) => b && $(i).addEventListener("keydown", (e) => { if (e.key === "Enter") $(b).click(); }));
 
 // paste-detect on the decoders input is not needed; headers paste-detect lives in app.js
 export { looksLikeHeaders };

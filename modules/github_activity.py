@@ -47,7 +47,6 @@ the first is the larger number, and then the two are not the ends of one run of 
 import os
 import time
 from collections import Counter, OrderedDict
-from datetime import datetime, timezone
 from urllib.parse import quote
 
 import httpx
@@ -55,6 +54,10 @@ import httpx
 from core.errors import classify, error_fields
 from core.logging import get_logger
 from modules import github
+from modules.activity_pattern import (  # noqa: F401  (the estimate lives there; these names stay importable from here)
+    ESTIMATE_MIN_DAYS, ESTIMATE_MIN_EVENTS, MIDSLEEP_LOCAL, QUIET_MAX_HOURS, QUIET_MIN_HOURS, QUIET_SHARE, REASONS, SLEEP_HOURS,
+    WEEKDAYS, _hh, _iso, _name, _utc, _when, estimate_offset, offsets_label, quiet_runs,
+)
 from modules.github import LOGIN_RE, REPO_RE, api_headers, is_rate_limit, note_quota, quota_wait, rate_limited_fields, retry_after
 
 log = get_logger(__name__)
@@ -67,30 +70,10 @@ MAX_PAGES = 3
 TOP_REPOS = 10
 MAX_TYPES = 20
 
-ESTIMATE_MIN_EVENTS = 40
-ESTIMATE_MIN_DAYS = 10
-QUIET_SHARE = 0.02          # an hour with at most this share of the events is quiet
-QUIET_MIN_HOURS = 6
-QUIET_MAX_HOURS = 12
-SLEEP_HOURS = 6             # the block assumed to sit inside the quiet stretch
-MIDSLEEP_LOCAL = (2, 5)     # local hours the middle of that block is assumed to fall between
-
 CACHE_TTL_OK = int(os.getenv("GITHUB_ACTIVITY_CACHE_TTL", "86400"))
 CACHE_TTL_PARTIAL = 600     # a later page did not answer: keep it only long enough to stop a retry loop
 CACHE_MAX = 500
 _cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()   # login -> (expires_at, result)
-
-WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-
-REASONS = {
-    "too_few_events": "Too few public events to say anything about hours: {events} seen, {need} needed.",
-    "too_few_days": "The events fall on too few days to show a daily pattern: {days} seen, {need} needed.",
-    "no_quiet_window": "No quiet stretch of {need} hours or more: the account is active around the clock.",
-    "quiet_window_too_long": "The account is only active in a few hours of the day, so the quiet stretch "
-                             "({hours} hours) is too long to place a night in.",
-    "ambiguous_quiet_window": "Two quiet stretches of about the same length, so neither can be called the night.",
-}
-
 
 NOT_A_LOGIN = "GitHub cannot hold this handle: a login is 1 to 39 letters, digits or hyphens, so nothing was asked."
 
@@ -117,113 +100,6 @@ def _cache_put(key: str, val: dict, ttl: int) -> None:
     _cache.move_to_end(key)
     while len(_cache) > CACHE_MAX:
         _cache.popitem(last=False)
-
-
-def _when(value) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        d = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        # A date at the edge of the calendar with an offset cannot be moved to UTC.
-        return d.astimezone(timezone.utc) if d.tzinfo is not None else None
-    except (ValueError, OverflowError):
-        return None
-
-
-def _iso(d: datetime) -> str:
-    return d.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _hh(hour: int) -> str:
-    return f"{hour % 24:02d}:00"
-
-
-def _utc(offset: int) -> str:
-    return "UTC" if offset == 0 else f"UTC{offset:+d}"
-
-
-def _name(offset: int) -> int:
-    """An offset as its one name in -11..+12."""
-    return (offset + 11) % 24 - 11
-
-
-def offsets_label(offsets: list[int]) -> str:
-    """Offsets listed going east, as words. A list that crosses the date line (+12 then -11) is
-    two runs joined by "or", so it cannot be read as one span from the first to the last."""
-    runs: list[list[int]] = []
-    for o in offsets:
-        if runs and o == runs[-1][-1] + 1:
-            runs[-1].append(o)
-        else:
-            runs.append([o])
-    return " or ".join(_utc(r[0]) if len(r) == 1 else f"{_utc(r[0])} to {_utc(r[-1])}" for r in runs)
-
-
-def quiet_runs(hours: list[int]) -> list[tuple[int, int]]:
-    """Circular runs of quiet hours as (start hour, length), longest first."""
-    total = sum(hours)
-    limit = int(total * QUIET_SHARE)
-    quiet = [h <= limit for h in hours]
-    if all(quiet) or not any(quiet):
-        return []
-    # Start walking just after an active hour so no run is split across midnight.
-    origin = next(i for i in range(24) if not quiet[i]) + 1
-    runs: list[tuple[int, int]] = []
-    start, length = None, 0
-    for step in range(24):
-        hour = (origin + step) % 24
-        if quiet[hour]:
-            start = hour if start is None else start
-            length += 1
-        elif start is not None:
-            runs.append((start, length))
-            start, length = None, 0
-    if start is not None:
-        runs.append((start, length))
-    return sorted(runs, key=lambda r: (-r[1], r[0]))
-
-
-def estimate_offset(hours: list[int], events: int, active_days: int, window_days: int) -> tuple[dict | None, dict | None]:
-    """(estimate, reason). Exactly one of the two is None."""
-
-    def no(code: str, **kw) -> tuple[None, dict]:
-        return None, {"code": code, "text": REASONS[code].format(**kw)}
-
-    if events < ESTIMATE_MIN_EVENTS:
-        return no("too_few_events", events=events, need=ESTIMATE_MIN_EVENTS)
-    if active_days < ESTIMATE_MIN_DAYS:
-        return no("too_few_days", days=active_days, need=ESTIMATE_MIN_DAYS)
-    runs = quiet_runs(hours)
-    if not runs or runs[0][1] < QUIET_MIN_HOURS:
-        return no("no_quiet_window", need=QUIET_MIN_HOURS)
-    start, length = runs[0]
-    if length > QUIET_MAX_HOURS:
-        return no("quiet_window_too_long", hours=length)
-    if len(runs) > 1 and runs[1][1] >= length - 1:
-        return no("ambiguous_quiet_window")
-
-    # The middle of the assumed sleep can sit anywhere the block still fits in the quiet stretch.
-    low = MIDSLEEP_LOCAL[0] - (start + length - SLEEP_HOURS // 2)
-    high = MIDSLEEP_LOCAL[1] - (start + SLEEP_HOURS // 2)
-    offsets = [_name(low + i) for i in range(high - low + 1)]     # going east, each in -11..+12
-    end = (start + length) % 24
-    return {
-        "utc_offset_from": offsets[0],
-        "utc_offset_to": offsets[-1],
-        "utc_offsets": offsets,
-        "crosses_date_line": offsets[0] > offsets[-1],
-        "label": offsets_label(offsets),
-        "quiet_start_hour": start,
-        "quiet_end_hour": end,                         # the first active hour after the stretch
-        "quiet_hours": length,
-        "quiet_events": sum(hours[(start + i) % 24] for i in range(length)),
-        "basis": (f"Based on {events} public events over {window_days} day{'s' if window_days != 1 else ''} "
-                  f"({active_days} with activity). The longest quiet stretch is {_hh(start)} to {_hh(end)} UTC."),
-        "assumption": ("Assumes one person who sleeps at least 6 hours inside the quiet stretch, with the middle "
-                       "of that sleep between 02:00 and 05:00 local time."),
-        "caveat": ("A hint, not a fact. Shift work, scheduled jobs, bots and shared accounts all break it, "
-                   "and a UTC offset is not a place."),
-    }, None
 
 
 def summarize(events: list[dict]) -> dict:

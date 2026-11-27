@@ -149,6 +149,19 @@ const sig = (res, a, b) => [...res.clusters.flatMap((c) => c.links), ...res.supp
   ok(clusterIdentities([P("gh", { anchor: "github", name: "jdoe" })], { handle: "jdoe" }).clusters[0].label === "jdoe", "an anchor with no name still gets a cluster, labelled with the handle");
 }
 
+// ---- the same handle on two Mastodon instances is two accounts ----------------------------------
+{
+  const { isPlatformHost } = await import("../../static/v2/js/identity.js");
+  const M = (host, o = {}) => P(host, { site: host === "mastodon.social" ? "Mastodon" : `Mastodon (${host})`, url: `https://${host}/@jdoe`, ...o });
+  const gh = P("github", { anchor: "github", url: "https://github.com/jdoe", name: "J Doe" });
+  const bare = clusterIdentities([gh, M("mastodon.social"), M("fosstodon.org"), M("mastodon.online", { name: "jdoe" })], { handle: "jdoe" });
+  ok(clusterOf(bare, "acct:github").members.join() === "acct:github" && bare.unassigned.length === 3 && sig(bare, "acct:mastodon.social", "acct:fosstodon.org") === "", "two instances with the same handle and no name are tied to nothing and to each other by nothing");
+  const linked = clusterIdentities([{ ...gh, links: ["https://fosstodon.org/@jdoe"] }, M("mastodon.social"), M("fosstodon.org"), M("mas.to", { links: ["https://mastodon.world/@jdoe"] }), M("mastodon.world")], { handle: "jdoe" });
+  ok(clusterOf(linked, "acct:github").members.includes("acct:fosstodon.org") && !clusterOf(linked, "acct:github").members.includes("acct:mastodon.social") && !clusterOf(linked, "acct:github").members.includes("acct:mas.to"), "a link from the anchor ties the instance it names, and only that one");
+  const site = clusterIdentities([M("mastodon.social", { name: "Ann One", websites: ["https://codeberg.org"] }), M("fosstodon.org", { name: "Bea Two", websites: ["https://codeberg.org/"] }), M("hachyderm.io", { name: "Cy Three", websites: ["https://launchpad.net"] }), M("mas.to", { name: "Di Four", websites: ["https://launchpad.net"] })], { handle: "jdoe" });
+  ok(site.clusters.every((c) => c.members.length === 1) && ["codeberg.org", "gitea.com", "launchpad.net", "mastodon.online", "mastodon.world", "mstdn.social", "infosec.exchange"].every(isPlatformHost), "a code host or an instance is a platform: naming its front page ties nobody, and it is never a domain lead");
+}
+
 // ---- torvalds: many people, one handle --------------------------------------------------
 {
   const f = fx("torvalds");

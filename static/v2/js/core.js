@@ -232,7 +232,7 @@ export function sourceCoverage(d) {
     const v = Object.values(d.sources).filter((s) => s && typeof s.state === "string");
     return { answered: v.filter((s) => s.state === "ok" || s.state === "none").length, total: v.length, unit: "directories", failedText: "no directory could be asked" };
   }
-  // The profile sources ask up to 16 sites in one request. Only "found" and "not found" say
+  // The profile sources ask up to 25 sites in one request. Only "found" and "not found" say
   // whether the account is there (npm's "cannot tell" with its note is the site's own answer).
   // Blocked, rate limited, failed and unknown did not answer, and a site that was not asked (the
   // handle cannot exist there) is not part of the count. Unlike the platform check, a site that

@@ -203,6 +203,35 @@ ok(L.classifyLink({ url: "javascript:alert(1)", want: "verified_profile" }).link
   const row = ev.items.find((i) => i.key === "acct:hackernews");
   ok(row && row.url === "https://news.ycombinator.com/user?id=samexample" && row.link_kind === "verified_profile" && /href="https:\/\/news\.ycombinator\.com\/user\?id=samexample"/.test(evWhat(row)), "the Hacker News row links to the profile the record was read from");
 }
+// ---- the 25 profile sources: every profile address is a read profile's link -----------------------
+{
+  const D = await import(J + "deep.js");
+  const H = "samexample";
+  const PATHS = { gitlab: `/${H}`, keybase: `/${H}`, hackernews: `/user?id=${H}`, dockerhub: `/u/${H}`, npm: `/~${H}`, devto: `/${H}`, lichess: `/@/${H}`, chesscom: `/member/${H}`, codeberg: `/${H}`, bluesky: `/profile/${H}.example.org`, wikipedia: "/wiki/Special:Contributions/Samexample", gravatar: `/${H}`, codeforces: `/profile/${H}`, lobsters: `/~${H}`, huggingface: `/${H}`, launchpad: `/~${H}`, gitea: `/${H}` };
+  const rows = Object.entries(D.PROFILE_SITES).map(([source, [site, host]]) => ({ site, source, handle: H, url: `https://${host}${PATHS[source] ?? "/@SamExample"}`, state: "found" }));
+  const read = D.readProfileSources({ username: H, profiles: rows, sources: Object.fromEntries(rows.map((p) => [p.source, { site: p.site, state: "found" }])) }).profiles;
+  ok(read.length === 25, "all 25 profile addresses pass the reader");
+  for (const p of read) {
+    const l = L.classifyLink({ url: p.url, want: "verified_profile", site: p.site, subjects: [H], secrets: [H] });
+    const e = L.classifyLink({ url: p.url, want: "evidence", subjects: [H], secrets: [H, "sam@example.org"] });
+    ok(l.link_kind === "verified_profile" && l.url === p.url && e.link_kind === "evidence" && !L.isBareHome(p.url, [H]) && (L.parseUrl(p.url).search === "") === (p.source !== "hackernews"), `${p.site}: the profile address is a read profile's link, not a homepage, with no handle in a query${p.source === "hackernews" ? " but its own" : ""}`);
+  }
+  ok(read.filter((p) => L.parseUrl(p.url).search).map((p) => p.source).join() === "hackernews" && L.ownProfileQuery(read.find((p) => p.source === "hackernews").url) === H, "Hacker News stays the only profile address that is a query");
+  const lp = "https://launchpad.net/~samexample";
+  ok(L.parseUrl(lp).pathname === "/~samexample" && L.classifyLink({ url: lp, want: "verified_profile", site: "Launchpad", subjects: [H] }).url === lp && L.mdLink({ what: "Launchpad", url: lp, link_kind: "verified_profile" }) === `[Launchpad](${lp})` && /href="https:\/\/launchpad\.net\/~samexample"/.test(link(lp, "Launchpad", "", { kind: "verified_profile" })) && L.classifyLink({ url: "https://launchpad.net/", want: "verified_profile", site: "Launchpad", subjects: [H] }).link_kind === "none" && L.classifyLink({ url: "https://launchpad.net/~", want: "evidence", subjects: [H] }).link_kind === "evidence", "the Launchpad ~ path is kept as it is, and Launchpad's front page is still a homepage");
+  for (const host of D.MASTODON_INSTANCES) {
+    const u = `https://${host}/@SamExample`;
+    ok(L.classifyLink({ url: u, want: "verified_profile", site: host === "mastodon.social" ? "Mastodon" : `Mastodon (${host})`, subjects: ["SamExample"], secrets: ["SamExample"] }).url === u && L.classifyLink({ url: `https://${host}/`, want: "verified_profile", subjects: ["SamExample"] }).link_kind === "none" && L.classifyLink({ url: `https://${host}/search?q=SamExample`, want: "evidence", secrets: ["samexample"] }).link_kind === "none" && L.regHost(u) === host, `${host}: /@Handle is a profile link, the instance's front page is not, and a search for the handle is refused`);
+  }
+  ok(L.classifyLink({ url: "https://gitea.com/samexample", want: "verified_profile", site: "Gitea.com", subjects: [H] }).link_kind === "verified_profile" && L.classifyLink({ url: "https://gitea.com", want: "verified_profile", site: "Gitea.com", subjects: [H] }).link_kind === "none" && L.classifyLink({ url: "https://gitea.com/explore/users?q=samexample", want: "evidence", secrets: [H] }).link_kind === "none", "Gitea.com: the same rules");
+}
+// ---- an address found on an archived page -----------------------------------------------------------
+{
+  const f = (url, o = {}) => L.foundLink({ url, subjects: ["samexample"], secrets: ["samexample", "sam@example.org"], ...o });
+  ok(JSON.stringify(f("https://social.example.net/@samexample")) === '{"url":"https://social.example.net/@samexample","link_kind":"templated_unverified"}' && f("https://other.example.org/page?ref=1").link_kind === "templated_unverified" && f("https://samexample.itch.io/").link_kind === "templated_unverified", "a link found on a page is an unverified URL: CrawlR did not build it and nothing opened it");
+  ok(["https://twitter.com/", "https://sam.example.org", "https://find.example.org/?q=samexample", "https://find.example.org/lookup?email=sam%40example.org", "https://user:pw@example.org/a", "javascript:alert(1)", "mailto:sam@example.org", "", null].every((u) => JSON.stringify(f(u)) === '{"url":"","link_kind":"none"}'), "a bare homepage, the case's handle or address in a query, credentials or a script address is never a link");
+  ok(L.foundLink().link_kind === "none" && L.LINK_KINDS.includes(f("https://social.example.net/@samexample").link_kind) && / \(unverified URL\)$/.test(L.mdLink({ what: "x", ...f("https://social.example.net/@samexample") })) && /data-link-kind="templated_unverified"/.test(link("https://social.example.net/@samexample", "x", "", { kind: "templated_unverified" })), "and it is drawn and exported as unverified");
+}
 ok(L.classifyLink({ url: "https://example.org/find?q=jdoe@example.org", want: "evidence", secrets: ["jdoe@example.org"] }).link_kind === "none" && L.classifyLink({ url: "https://example.org/find?u=JDoe_Old", want: "evidence", secrets: ["jdoe_old"] }).link_kind === "none", "an evidence link never carries the email or the username in its query");
 
 // ---- link markup ------------------------------------------------------------------------------

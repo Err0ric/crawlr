@@ -3,7 +3,7 @@ import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Header, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from core.ai_call import run_ai
 from core.ai_text import parse_json_object, summary_and_report
@@ -94,10 +94,55 @@ _NAME_QUALIFIERS = ("location", "employer", "keyword")
 _NAME_DIRECTORIES = ("Wikidata", "GitHub", "ORCID", "OpenAlex", "Bluesky")
 
 
+# Direction overrides and the byte order mark: the set modules.profiles.base.clean drops.
+_BIDI = frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff")
+_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def _without_surrogates(value):
+    """`value` (parsed JSON) with every unpaired surrogate taken out of every string, keys
+    included. JSON can spell one ("\\ud800"); it is not a character, and text that holds one
+    cannot be written out as UTF-8, so it never gets past the request."""
+    def fix(text: str) -> str:
+        return _SURROGATE.sub("", text) if _SURROGATE.search(text) else text
+
+    if isinstance(value, str):
+        return fix(value)
+    if not isinstance(value, (dict, list)):
+        return value
+    # Walked with a list of work, not by recursion: the depth of the body is the sender's choice.
+    root = [value]
+    todo = [(root, 0, value)]
+    while todo:
+        holder, key, node = todo.pop()
+        if isinstance(node, dict):
+            node = {(fix(k) if isinstance(k, str) else k): v for k, v in node.items()}
+            todo += [(node, k, v) for k, v in node.items() if isinstance(v, (dict, list, str))]
+        elif isinstance(node, list):
+            node = list(node)
+            todo += [(node, n, v) for n, v in enumerate(node) if isinstance(v, (dict, list, str))]
+        else:
+            node = fix(node)
+        holder[key] = node
+    return root[0]
+
+
+class _TextIn(BaseModel):
+    """A request body whose text is written into a prompt or sent back: no string in it
+    holds an unpaired surrogate by the time a field is read."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _plain_text(cls, data):
+        return _without_surrogates(data)
+
+
 def _cell(value, cap: int) -> str:
     """One field of a row, as inert text: a single line, no row delimiter, capped. A bio is
-    written by whoever owns the profile, so it must not be able to add a field or a new line."""
-    s = "".join(" " if (ch in "\r\n\t\u2028\u2029" or ord(ch) < 32 or ord(ch) == 127) else ch for ch in str(value or ""))
+    written by whoever owns the profile, so it must not be able to add a field or a new line,
+    and it carries no unpaired surrogate and no direction override into the prompt."""
+    s = "".join(" " if (ch in "\r\n\t\u2028\u2029" or ord(ch) < 32 or ord(ch) == 127) else ch
+                for ch in str(value or "") if not (0xD800 <= ord(ch) <= 0xDFFF) and ch not in _BIDI)
     s = s.replace("|", "/").replace("`", "'")
     return " ".join(s.split())[:cap].strip()
 
@@ -398,7 +443,7 @@ def _deep_lines(req) -> list[str]:
     lines: list[str] = []
     ps = req.profile_sources if isinstance(req.profile_sources, dict) else None
     if ps:
-        for p in _dicts(ps.get("profiles"), 16):
+        for p in _dicts(ps.get("profiles"), 25):
             status = _cell(p.get("status"), 20) or "unverified"
             if status == "different":
                 # Another person's record: the page sends the site and the status only, and
@@ -465,7 +510,60 @@ def _deep_lines(req) -> list[str]:
                              "Report it only as a range of UTC offsets with this caveat. Never name a country, a city or a time zone from it.")
             else:
                 lines.append(f"No UTC offset estimate was made: {_cell(ga.get('no_estimate_reason'), 300)} Do not infer one.")
+    lines.extend(_click_lines(req))
     return [DEEP_PROVENANCE, *_within(lines, DEEP_TOTAL_MAX)] if lines else []
+
+
+_NEVER_A_PLACE = "An offset range is never a place: never name a country, a city or a time zone from it."
+
+
+def _click_lines(req) -> list[str]:
+    """What three lookups made on a click found, as the page sends it for the accounts of the
+    primary identity only: when an account posts (at most 3 readings), whether the UTC offset
+    ranges of the readings fit together, and the addresses on an account's commits (at most 4
+    accounts of 5 addresses). Every value is an inert cell or a whole number in range, and the
+    cautions are written here, not taken from the payload."""
+    lines: list[str] = []
+    for pa in _dicts(getattr(req, "post_activity", None), 3):
+        site = _cell(pa.get("site"), 40) or "A post site"
+        if pa.get("state") != "ok":
+            lines.append(f"{site} post activity: {_cell(pa.get('note'), 300)}")
+            continue
+        hours = [str(x) for x in _list(pa.get("hours_utc"), 24) if isinstance(x, int) and not isinstance(x, bool) and 0 <= x < _COUNT_MAX]
+        kinds = ", ".join(c for c in (_cell(x, 60) for x in _list(pa.get("kinds"), 5)) if c)
+        lines.append(f"SITE RECORD, {site} post activity: {_cell(pa.get('summary'), 300)} {_cell(pa.get('counted'), 400)} Posts per UTC hour 00 to 23: {', '.join(hours)}."
+                     + (f" Kinds: {kinds}." if kinds else "") + (" The account is marked as automated, so its hours say nothing about a person's day." if pa.get("automated_account") is True else ""))
+        est = pa.get("utc_offset_estimate")
+        if isinstance(est, dict):
+            lines.append(f"UTC offset ESTIMATE from those hours ({site}): {_cell(est.get('range'), 40)}. {_cell(est.get('basis'), 400)} {_cell(est.get('assumption'), 400)} {_cell(est.get('caveat'), 400)} "
+                         "Report it only as a range of UTC offsets with this caveat. Never name a country, a city or a time zone from it.")
+        else:
+            lines.append(f"No UTC offset estimate was made for {site}: {_cell(pa.get('no_estimate_reason'), 300)} Do not infer one.")
+    oc = getattr(req, "offset_comparison", None)
+    if isinstance(oc, dict) and oc.get("verdict") in ("agree", "disagree"):
+        accounts = ", ".join(c for c in (_cell(x, 40) for x in _list(oc.get("accounts"), 6) if isinstance(x, str)) if c) or "the readings above"
+        shared = _cell(oc.get("shared_range"), 60)
+        if oc.get("verdict") == "agree":
+            lines.append(f"UTC OFFSET RANGES COMPARED ({accounts}): they fit the same range" + (f" ({shared})" if shared else "") + ". This SUPPORTS one person behind these accounts and does NOT prove it: "
+                         "a large share of the world lives in any few offsets. " + _NEVER_A_PLACE)
+        else:
+            lines.append(f"UTC OFFSET RANGES COMPARED ({accounts}): they do NOT fit one range. This does not show two people: an account may be scheduled, automated or used only at work. "
+                         "Report it as something to check, never as a conclusion. " + _NEVER_A_PLACE)
+    for ce in _dicts(getattr(req, "commit_emails", None), 4):
+        site = _cell(ce.get("site"), 40) or "a code host"
+        rows = []
+        for a in _dicts(ce.get("addresses"), 5):
+            address = _cell(a.get("email"), 254)
+            if not address:
+                continue
+            tie = "the site ties the commits to the account by this address" if a.get("tie") == "forge_attributed" else "a commit under the account's name carries it: the weaker tie, anybody can commit under any name"
+            rows.append(f"{address} ({tie}; {_count(a.get('commits'))} commits)")
+        if rows:
+            lines.append(f"SELF-DECLARED, addresses on the commits of the {site} account (typed by each commit's author and forgeable; each is a lead to check, never a confirmed address of the target): "
+                         + "; ".join(rows) + "." + ("" if ce.get("complete") is True else " The reading was partial: there may be more."))
+        else:
+            lines.append(f"Commit emails of the {site} account: {_cell(ce.get('summary'), 300)}")
+    return lines
 
 
 # The record sources are capped as a whole and line by line: a request can carry far more text than
@@ -507,6 +605,8 @@ def _breach_names(hibp: Optional[dict], limit: int = 20) -> list[str]:
 
 _HANDLE_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 TAKEN_NOTE = "handle taken, owner unknown"
+# A record the site made by itself for a name nobody claimed (Launchpad): UNCLAIMED_NOTE in static/v2/js/evidence.js.
+UNCLAIMED_NOTE = "not a claimed account, made by the site itself"
 
 _GITHUB_OTHER = {
     "different": "the ledger files it as a different person from the primary identity",
@@ -575,7 +675,7 @@ def _account_lines(req) -> list[str]:
         other = lambda a: a.handle if a.handle and _HANDLE_RE.fullmatch(a.handle) else ""
         noted = lambda a: f"{fmt(a)}{' [' + '; '.join(x for x in (('under the different handle ' + other(a)) if other(a) else '', a.note) if x) + ']' if a.note or other(a) else ''}"
         # A sign-up check said the handle is in use. Nothing was read, so nobody is named.
-        unread = lambda a: fmt(a) + (" [handle taken, owner unknown]" if a.note == TAKEN_NOTE else "")
+        unread = lambda a: fmt(a) + (" [handle taken, owner unknown]" if a.note == TAKEN_NOTE else " [not a claimed account: the site made this record by itself, so it is nobody's account]" if a.note == UNCLAIMED_NOTE else "")
         if by["linked"]:
             lines.append(
                 f"LINKED accounts ({len(by['linked'])}), tied to the primary identity by a strong signal "
@@ -741,7 +841,7 @@ class AccountEvidence(BaseModel):
     handle: str = Field(default="", max_length=64)
 
 
-class AnalyzeRequest(BaseModel):
+class AnalyzeRequest(_TextIn):
     target: str = Field(max_length=320)
     # "username", "email", "hash", "phone" or "name". Only changes the wording of the question.
     target_type: str = Field(default="", max_length=20)
@@ -777,6 +877,12 @@ class AnalyzeRequest(BaseModel):
     profile_sources: Optional[dict] = None
     email_accounts: Optional[dict] = None
     github_activity: Optional[dict] = None
+    # What three lookups made on a click found, for the accounts of the primary identity only
+    # (deepForAi again): when an account posts, whether the offset ranges of the readings fit
+    # together, and the addresses on an account's commits. Read by _click_lines, bounded there.
+    post_activity: Optional[list] = Field(default=None, max_length=8)
+    offset_comparison: Optional[dict] = None
+    commit_emails: Optional[list] = Field(default=None, max_length=8)
     # What the page's own rules worked out (analysisForAi in static/v2/js/analysis.js): whether the
     # primary identity was chosen by the rules or picked by the investigator, how firmly the
     # accounts are tied together, and how the case was reached.
@@ -1039,7 +1145,7 @@ async def investigation_prompt_only(req: AnalyzeRequest):
     return {"prompt": investigation_prompt(req)}
 
 
-class ParseRequest(BaseModel):
+class ParseRequest(_TextIn):
     text: str = Field(max_length=120_000)
 
 
@@ -1263,7 +1369,7 @@ DEEP_DIVE_PROMPT = (
 )
 
 
-class EmailHeaderAnalyzeRequest(BaseModel):
+class EmailHeaderAnalyzeRequest(_TextIn):
     header_analysis: dict
 
 
@@ -1381,7 +1487,7 @@ async def analyze_email_headers_ai(req: EmailHeaderAnalyzeRequest, request: Requ
     }
 
 
-class DeepAnalysisRequest(BaseModel):
+class DeepAnalysisRequest(_TextIn):
     target: str = Field(max_length=320)
     dns: Optional[dict] = None
     whois: Optional[dict] = None
@@ -1525,7 +1631,7 @@ async def deep_analysis(req: DeepAnalysisRequest, request: Request, x_api_key: s
     }
 
 
-class CorrelateRequest(BaseModel):
+class CorrelateRequest(_TextIn):
     targets: dict  # { "target_name": { sherlock: ..., github: ..., ... }, ... }
 
 

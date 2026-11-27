@@ -4,6 +4,7 @@ import { fmtNum, plural } from "./core.js";
 import { factCollector, itemCollector } from "./workbench.js";
 import { resolvedHosts, mailState, noMailOpen } from "./brief.js";
 import { wildcardOf, wildcardText } from "./present.js";
+import { OWNERSHIP_TIER, ownershipItems } from "./recondomain.js";
 import { sealLink, sealFact, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, dnsFindingEvidence, isDomain } from "./links.js";
 
 // ---- findings -------------------------------------------------------------------
@@ -16,6 +17,8 @@ export const day = (d) => { const t = Date.parse(d); return Number.isFinite(t) ?
 export const TIERS = [
   { id: "flag",      title: "Flags",            cls: "flag",    open: true, blurb: "Known CVEs, risky open services, weak headers, expiring certificates or domains." },
   { id: "surface",   title: "Exposed services", cls: "surface", open: true, blurb: "What answers from the internet." },
+  // Tracker and ad IDs on the home page and names inside public documents. Leads, never flags.
+  OWNERSHIP_TIER,
   { id: "inventory", title: "Subdomains",       cls: "",        collapseOver: 15, limit: 300, blurb: "From DNS checks, certificate transparency and passive sources. Each opens in a new tab." },
   { id: "lookalike", title: "Lookalike domains", cls: "",       collapseOver: 8,  limit: 120, blurb: "Registered names that resemble this one. Registered is not the same as malicious: brands register their own typos. The ones that can receive mail are listed first." },
   { id: "neighbor",  title: "Unrelated neighbours on the shared address", cls: "", open: false, limit: 200, blurb: "Other sites that answer on the same shared hosting address. They belong to other customers of the provider and say nothing about this target." },
@@ -25,7 +28,9 @@ export const lc = (s) => String(s ?? "").trim().toLowerCase().replace(/\.$/, "")
 export const VIA_WILDCARD = "resolves through the wildcard, so DNS alone does not show the host exists";
 
 // type: "domain" | "ip" | "asn". Pure: the same code ranks a live run, a saved one and a case file.
-export function buildFindings(c, target, type = "domain") {
+// opts.shared: which tracker IDs another saved Recon case also carries (sharedTrackers in
+// recondomain.js). It changes what a row says, never which rows there are or their keys.
+export function buildFindings(c, target, type = "domain", opts = {}) {
   const { items, add } = itemCollector();
   const { facts, add: fact } = factCollector();
   const exp = c.shodan;
@@ -99,6 +104,9 @@ export function buildFindings(c, target, type = "domain") {
   if (shared) add({ tier: "surface", what: `Shared ${shared.provider || "hosting"} address: ${plural(neighbors.length, "other site")} answer${neighbors.length === 1 ? "s" : ""} on this IP`, url: "", meta: neighbors.length ? "listed at the end under unrelated neighbours" : "", source: expSrc, key: "host:shared", ev: expEv });
   for (const hn of neighbors.slice(0, 200)) add({ tier: "neighbor", what: hn, url: "", meta: `unrelated site on the same ${shared.provider || "shared"} address`, source: expSrc, key: `nbr:${hn}`, ev: expEv });
 
+  // ownership leads: every row is a lead, and none is a flag whatever it says
+  if (type === "domain") for (const it of ownershipItems(c, target, opts.shared)) add(it);
+
   // inventory
   // A wildcard record is one row at the head of the list, never a row per guessed name. The
   // names under it are the ones another source attests; each says it resolves through the wildcard.
@@ -155,7 +163,7 @@ export function buildFindings(c, target, type = "domain") {
   if (cs) fact("Certificates", `${fmtNum(cs.total)} logged since ${cs.first_issued || "?"} · ${fmtNum(cs.active)} still valid`, "Certificate logs", certEv?.url);
   if (wkn?.favicon) fact("Favicon hash", String(wkn.favicon.hash), "Published files", `https://www.shodan.io/search?query=${encodeURIComponent(wkn.favicon.shodan_query)}`);
   if (wkn && !wkn.error && wkn.found) fact("security.txt", wkn.security_txt ? (wkn.security_txt.contact || []).slice(0, 2).join(", ") || "Published" : "Not published", "Published files");
-  const order = { flag: 0, surface: 1, inventory: 2, lookalike: 3, neighbor: 4 };
+  const order = { flag: 0, surface: 1, ownership: 2, inventory: 3, lookalike: 4, neighbor: 5 };
   items.sort((a, b) => order[a.tier] - order[b.tier]);
   // Every row and fact leaves with a link_kind. A row's own URL (a host, a final URL) is the thing
   // itself; an evidence link is where the claim about it can be checked.
