@@ -343,6 +343,39 @@ def _dicts(value, cap: int) -> list[dict]:
     return [x for x in (value if isinstance(value, list) else []) if isinstance(x, dict)][:cap]
 
 
+def _analysis_lines(req) -> list[str]:
+    """The identity choice, the rule-based assessment and the pivot trail, as the page built them.
+    A picked identity is named as the investigator's judgment with the automatic choice beside it,
+    so the model never reports a pick as a finding. Every value is inert text."""
+    ca = req.case_analysis if isinstance(getattr(req, "case_analysis", None), dict) else None
+    if not ca:
+        return []
+    lines: list[str] = []
+    ic = ca.get("identity_choice") if isinstance(ca.get("identity_choice"), dict) else {}
+    mode, who = ic.get("mode"), _cell(ic.get("primary"), 120)
+    sites = ", ".join(_cell(x, 40) for x in (ic.get("primary_accounts") or [])[:12] if isinstance(x, str))
+    auto, why = _cell(ic.get("automatic_choice"), 120), _cell(ic.get("automatic_reason"), 200)
+    if mode == "picked_by_investigator" and who:
+        lines.append(
+            f"PRIMARY IDENTITY: {who}" + (f" ({sites})" if sites else "") + ". PICKED BY THE INVESTIGATOR as the person this case is about. "
+            "That is their judgment, not a finding of the tool: say so, and do not present it as established. Every account status above is filed against this pick. "
+            + (f"The tool's automatic choice would have been {auto}, because {why}." if auto else "Automatically the tool would have chosen nobody: nothing ties any profile to the target.")
+        )
+    elif mode == "automatic" and who:
+        lines.append(f"PRIMARY IDENTITY: {who}" + (f" ({sites})" if sites else "") + f". Chosen by the tool's rules{', because ' + why if why else ''}. The investigator has not picked anyone.")
+    elif mode == "none":
+        lines.append("PRIMARY IDENTITY: none. Nothing ties any profile to the target, and the investigator has not picked anyone.")
+    head = _cell(ca.get("headline"), 400)
+    if head:
+        lines.append("RULE-BASED ASSESSMENT (built by the tool with no model; start from it, and do not claim more than it does). How firmly the accounts are tied to one identity: " + head)
+    for x in [x for x in (ca.get("lines") or []) if isinstance(x, str)][:12]:
+        lines.append("- " + _cell(x, 700))
+    trail = _cell(ca.get("pivot_trail"), 600)
+    if trail:
+        lines.append("HOW THIS CASE WAS REACHED (each step was a lead the investigator chose to follow): " + trail)
+    return lines
+
+
 def _deep_lines(req) -> list[str]:
     """The profile sources, the accounts and keys behind an address, and GitHub activity. Every
     line says how its values are known, and a site or a lookup that did not answer is listed as
@@ -660,6 +693,10 @@ class AnalyzeRequest(BaseModel):
     profile_sources: Optional[dict] = None
     email_accounts: Optional[dict] = None
     github_activity: Optional[dict] = None
+    # What the page's own rules worked out (analysisForAi in static/v2/js/analysis.js): whether the
+    # primary identity was chosen by the rules or picked by the investigator, how firmly the
+    # accounts are tied together, and how the case was reached.
+    case_analysis: Optional[dict] = None
     active_techniques: bool = False
 
 
@@ -674,6 +711,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
     prompt_parts = [f"Target: {req.target}\n"]
 
     prompt_parts.extend(_account_lines(req))
+    prompt_parts.extend(_analysis_lines(req))
     prompt_parts.extend(_adult_lines(req))
     prompt_parts.extend(_adult_block_lines(req))
     prompt_parts.extend(_name_candidate_lines(req))
