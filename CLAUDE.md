@@ -40,6 +40,7 @@ node tests/js/similar.test.mjs
 node tests/js/modes.test.mjs
 node tests/js/wildcard.test.mjs
 node tests/js/casework.test.mjs
+node tests/js/caserules.test.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Python 3.11. Use 3.11 locally to match `runtime.txt`.
