@@ -422,3 +422,22 @@ def test_rate_limit_entry():
 
 def test_no_em_dash_in_the_module():
     assert chr(0x2014) not in Path(ad.__file__).read_text(encoding="utf-8")
+
+
+def test_a_failed_comparison_can_be_tried_again_after_a_minute():
+    """The archive often fails once and answers on the next try, so a failure is kept only briefly,
+    while a rate limit is kept for the longer soft time."""
+    assert ad.CACHE_TTL_FAILED <= 60 < ad.CACHE_TTL_SOFT
+    key = ("https://codeplace.example/mara", "20200101000000", "20210101000000")
+    now = ad.time.time()
+    for state, later, kept in (("failed", ad.CACHE_TTL_FAILED + 1, False), ("failed", ad.CACHE_TTL_FAILED - 5, True),
+                               ("rate_limited", ad.CACHE_TTL_FAILED + 1, True), ("rate_limited", ad.CACHE_TTL_SOFT + 1, False)):
+        ad.clear_cache_for_tests()
+        side = {"text": [], "text_total": 0, "links": [], "links_total": 0}
+        ad._cache_put(key, {"state": state, "from": {}, "to": {}, "removed": dict(side), "added": dict(side)})
+        real = ad.time.time
+        try:
+            ad.time.time = lambda: now + later
+            assert (ad._cache_get(key) is not None) is kept, (state, later)
+        finally:
+            ad.time.time = real

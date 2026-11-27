@@ -101,7 +101,8 @@ ROW_CLIP = 16 * LINE_MAX      # characters of one line that are looked at; a rea
 PIECES = 4096                 # pieces of text held one by one before they are joined into one string
 
 CACHE_TTL = int(os.getenv("ARCHIVE_DIFF_CACHE_TTL", str(24 * 3600)))    # ok, same, none: a capture does not change
-CACHE_TTL_SOFT = 600                                                     # rate_limited, failed
+CACHE_TTL_SOFT = 600                                                     # rate_limited
+CACHE_TTL_FAILED = 60                                                    # failed: the archive often answers on a second try
 CACHE_MAX = 300
 
 REFUSALS = {
@@ -552,7 +553,8 @@ def _cache_get(key: tuple) -> dict | None:
     hit = _cache.get(key)
     if not hit:
         return None
-    ttl = CACHE_TTL if hit[1]["state"] in ("ok", "same", "none") else min(CACHE_TTL, CACHE_TTL_SOFT)
+    state = hit[1]["state"]
+    ttl = CACHE_TTL if state in ("ok", "same", "none") else min(CACHE_TTL, CACHE_TTL_FAILED if state == "failed" else CACHE_TTL_SOFT)
     if time.time() - hit[0] > ttl:
         _cache.pop(key, None)
         return None
