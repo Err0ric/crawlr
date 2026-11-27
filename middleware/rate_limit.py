@@ -41,9 +41,12 @@ RATE_LIMITS = {
     "/api/recon/avatar-hash": (10, 60),
     "/api/recon/platform-check": (10, 60),   # up to 6 page fetches plus canaries, and one request each to Reddit and Discord
     "/api/recon/handle-probe": (10, 60),     # one similar handle per click: about 9 requests plus canaries and up to 3 pictures, cached for a day
+    "/api/recon/profiles": (10, 60),         # 16 keyless profile APIs at once: up to 20 requests and one picture per profile, cached for a day
     "/api/recon/adult-check": (10, 60),      # opt-in: up to 7 fetches plus a canary per call, 300 KB each, cached for a day
     "/api/recon/verify-links": (12, 60),     # up to 25 page fetches per call, 300 KB each, cached for a day
     "/api/recon/name-search": (6, 60),       # 6 requests to 5 public APIs per call; GitHub search allows 10 a minute
+    "/api/recon/email-accounts": (5, 60),    # 3 requests per call, 2 of them GitHub searches (10 a minute without a token); cached for a day
+    "/api/recon/github-activity": (10, 60),  # 1 to 3 GitHub API calls per uncached account, cached for a day
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),

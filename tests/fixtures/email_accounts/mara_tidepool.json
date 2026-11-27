@@ -1,0 +1,547 @@
+{
+ "email": "mara@tidepool.example",
+ "commits": {
+  "total_count": 10,
+  "incomplete_results": false,
+  "items": [
+   {
+    "url": "https://api.github.com/repos/harbor-works/tide-tables/commits/a544af123662c61ae0664b4d41457639d24ed7f1",
+    "sha": "a544af123662c61ae0664b4d41457639d24ed7f1",
+    "html_url": "https://github.com/harbor-works/tide-tables/commit/a544af123662c61ae0664b4d41457639d24ed7f1",
+    "commit": {
+     "author": {
+      "date": "2023-04-02T21:10:05.000+02:00",
+      "name": "Mara L.",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2023-04-02T21:10:05.000+02:00",
+      "name": "Mara L.",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "committer": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "tide-tables",
+     "full_name": "harbor-works/tide-tables",
+     "private": false,
+     "owner": {
+      "login": "harbor-works",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/harbor-works",
+      "html_url": "https://github.com/harbor-works",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/harbor-works/tide-tables"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/mara-lind/tidepool/commits/6cd8d9c318182ea01857331f7cee7bc8b0740384",
+    "sha": "6cd8d9c318182ea01857331f7cee7bc8b0740384",
+    "html_url": "https://github.com/mara-lind/tidepool/commit/6cd8d9c318182ea01857331f7cee7bc8b0740384",
+    "commit": {
+     "author": {
+      "date": "2021-06-14T09:30:00.000+02:00",
+      "name": "Mara Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2021-06-14T09:30:00.000+02:00",
+      "name": "Mara Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "committer": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "tidepool",
+     "full_name": "mara-lind/tidepool",
+     "private": false,
+     "owner": {
+      "login": "mara-lind",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/mara-lind",
+      "html_url": "https://github.com/mara-lind",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/mara-lind/tidepool"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/mara-lind/tidepool/commits/17d20ffda073bc843e57ebbea50406c289ced33a",
+    "sha": "17d20ffda073bc843e57ebbea50406c289ced33a",
+    "html_url": "https://github.com/mara-lind/tidepool/commit/17d20ffda073bc843e57ebbea50406c289ced33a",
+    "commit": {
+     "author": {
+      "date": "2024-11-03T18:45:12.000+01:00",
+      "name": "Mara Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2024-11-03T18:45:12.000+01:00",
+      "name": "Mara Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": {
+     "login": "Mara-Lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/Mara-Lind",
+     "html_url": "https://github.com/Mara-Lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "committer": {
+     "login": "Mara-Lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/Mara-Lind",
+     "html_url": "https://github.com/Mara-Lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "tidepool",
+     "full_name": "mara-lind/tidepool",
+     "private": false,
+     "owner": {
+      "login": "mara-lind",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/mara-lind",
+      "html_url": "https://github.com/mara-lind",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/mara-lind/tidepool"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/mara-lind/gauge-notes/commits/2cfb071471b3677fb3a58693c9872b8c4a16f9ba",
+    "sha": "2cfb071471b3677fb3a58693c9872b8c4a16f9ba",
+    "html_url": "https://github.com/mara-lind/gauge-notes/commit/2cfb071471b3677fb3a58693c9872b8c4a16f9ba",
+    "commit": {
+     "author": {
+      "date": "2025-02-20T08:05:00.000+01:00",
+      "name": "Mara Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2025-02-20T08:05:00.000+01:00",
+      "name": "Mara Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "committer": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "gauge-notes",
+     "full_name": "mara-lind/gauge-notes",
+     "private": false,
+     "owner": {
+      "login": "mara-lind",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/mara-lind",
+      "html_url": "https://github.com/mara-lind",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/mara-lind/gauge-notes"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/driftwood-labs/scratch/commits/0cf6a0048ea1c355212b6630ebcd34f463691845",
+    "sha": "0cf6a0048ea1c355212b6630ebcd34f463691845",
+    "html_url": "https://github.com/driftwood-labs/scratch/commit/0cf6a0048ea1c355212b6630ebcd34f463691845",
+    "commit": {
+     "author": {
+      "date": "2060-03-30T17:06:28.000+01:00",
+      "name": "not mara",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2060-03-30T17:06:28.000+01:00",
+      "name": "not mara",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "committer": {
+     "login": "mara-lind",
+     "id": 9001,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+     "url": "https://api.github.com/users/mara-lind",
+     "html_url": "https://github.com/mara-lind",
+     "type": "User",
+     "site_admin": false
+    },
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "scratch",
+     "full_name": "driftwood-labs/scratch",
+     "private": false,
+     "owner": {
+      "login": "driftwood-labs",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/driftwood-labs",
+      "html_url": "https://github.com/driftwood-labs",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/driftwood-labs/scratch"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/saltmarsh-coop/survey/commits/7f76a3ee92aa63bf9f9e3228edc4ab81527fee37",
+    "sha": "7f76a3ee92aa63bf9f9e3228edc4ab81527fee37",
+    "html_url": "https://github.com/saltmarsh-coop/survey/commit/7f76a3ee92aa63bf9f9e3228edc4ab81527fee37",
+    "commit": {
+     "author": {
+      "date": "2019-09-01T12:00:00.000Z",
+      "name": "M. Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2019-09-01T12:00:00.000Z",
+      "name": "M. Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": null,
+    "committer": null,
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "survey",
+     "full_name": "saltmarsh-coop/survey",
+     "private": false,
+     "owner": {
+      "login": "saltmarsh-coop",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/saltmarsh-coop",
+      "html_url": "https://github.com/saltmarsh-coop",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/saltmarsh-coop/survey"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/saltmarsh-coop/survey/commits/b69b7b18d3b0a89bc6eb97f7a9ffd7d487e6790d",
+    "sha": "b69b7b18d3b0a89bc6eb97f7a9ffd7d487e6790d",
+    "html_url": "https://github.com/saltmarsh-coop/survey/commit/b69b7b18d3b0a89bc6eb97f7a9ffd7d487e6790d",
+    "commit": {
+     "author": {
+      "date": "2019-09-03T07:15:00.000Z",
+      "name": "root",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2019-09-03T07:15:00.000Z",
+      "name": "root",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": null,
+    "committer": null,
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "survey",
+     "full_name": "saltmarsh-coop/survey",
+     "private": false,
+     "owner": {
+      "login": "saltmarsh-coop",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/saltmarsh-coop",
+      "html_url": "https://github.com/saltmarsh-coop",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/saltmarsh-coop/survey"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/saltmarsh-coop/archive/commits/4ca3c90db05e786e65a1e753bc5ada1fff3c7c1a",
+    "sha": "4ca3c90db05e786e65a1e753bc5ada1fff3c7c1a",
+    "html_url": "https://github.com/saltmarsh-coop/archive/commit/4ca3c90db05e786e65a1e753bc5ada1fff3c7c1a",
+    "commit": {
+     "author": {
+      "date": "2018-01-10T23:59:59.000-05:00",
+      "name": "M. Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2018-01-10T23:59:59.000-05:00",
+      "name": "M. Lindqvist",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": null,
+    "committer": null,
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "archive",
+     "full_name": "saltmarsh-coop/archive",
+     "private": false,
+     "owner": {
+      "login": "saltmarsh-coop",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/saltmarsh-coop",
+      "html_url": "https://github.com/saltmarsh-coop",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/saltmarsh-coop/archive"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/mara-lind/tidepool/commits/6ae7a6553a4db5795776f8e7323b06b136c91626",
+    "sha": "6ae7a6553a4db5795776f8e7323b06b136c91626",
+    "html_url": "https://github.com/mara-lind/tidepool/commit/6ae7a6553a4db5795776f8e7323b06b136c91626",
+    "commit": {
+     "author": {
+      "date": "2025-03-01T00:00:00.000Z",
+      "name": "tidepool-sync",
+      "email": "mara@tidepool.example"
+     },
+     "committer": {
+      "date": "2025-03-01T00:00:00.000Z",
+      "name": "tidepool-sync",
+      "email": "mara@tidepool.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": {
+     "login": "tidepool-sync[bot]",
+     "id": 9003,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9003?v=4",
+     "url": "https://api.github.com/users/tidepool-sync[bot]",
+     "html_url": "https://github.com/tidepool-sync[bot]",
+     "type": "Bot",
+     "site_admin": false
+    },
+    "committer": {
+     "login": "tidepool-sync[bot]",
+     "id": 9003,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9003?v=4",
+     "url": "https://api.github.com/users/tidepool-sync[bot]",
+     "html_url": "https://github.com/tidepool-sync[bot]",
+     "type": "Bot",
+     "site_admin": false
+    },
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "tidepool",
+     "full_name": "mara-lind/tidepool",
+     "private": false,
+     "owner": {
+      "login": "mara-lind",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/mara-lind",
+      "html_url": "https://github.com/mara-lind",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/mara-lind/tidepool"
+    },
+    "score": 1.0
+   },
+   {
+    "url": "https://api.github.com/repos/kelp-forest/atlas/commits/fa5592b076a0b6f0f5ad26ebe69151dddbf4d169",
+    "sha": "fa5592b076a0b6f0f5ad26ebe69151dddbf4d169",
+    "html_url": "https://github.com/kelp-forest/atlas/commit/fa5592b076a0b6f0f5ad26ebe69151dddbf4d169",
+    "commit": {
+     "author": {
+      "date": "2025-03-02T00:00:00.000Z",
+      "name": "Jonas Berg",
+      "email": "jonas@kelp.example"
+     },
+     "committer": {
+      "date": "2025-03-02T00:00:00.000Z",
+      "name": "Jonas Berg",
+      "email": "jonas@kelp.example"
+     },
+     "message": "Tidy the gauge reader",
+     "comment_count": 0
+    },
+    "author": {
+     "login": "jonas-berg",
+     "id": 9004,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9004?v=4",
+     "url": "https://api.github.com/users/jonas-berg",
+     "html_url": "https://github.com/jonas-berg",
+     "type": "User",
+     "site_admin": false
+    },
+    "committer": {
+     "login": "jonas-berg",
+     "id": 9004,
+     "avatar_url": "https://avatars.githubusercontent.com/u/9004?v=4",
+     "url": "https://api.github.com/users/jonas-berg",
+     "html_url": "https://github.com/jonas-berg",
+     "type": "User",
+     "site_admin": false
+    },
+    "parents": [],
+    "repository": {
+     "id": 77,
+     "name": "atlas",
+     "full_name": "kelp-forest/atlas",
+     "private": false,
+     "owner": {
+      "login": "kelp-forest",
+      "id": 9005,
+      "avatar_url": "https://avatars.githubusercontent.com/u/9005?v=4",
+      "url": "https://api.github.com/users/kelp-forest",
+      "html_url": "https://github.com/kelp-forest",
+      "type": "User",
+      "site_admin": false
+     },
+     "html_url": "https://github.com/kelp-forest/atlas"
+    },
+    "score": 1.0
+   }
+  ]
+ },
+ "users": {
+  "total_count": 2,
+  "incomplete_results": false,
+  "items": [
+   {
+    "login": "mara-lind",
+    "id": 9001,
+    "avatar_url": "https://avatars.githubusercontent.com/u/9001?v=4",
+    "url": "https://api.github.com/users/mara-lind",
+    "html_url": "https://github.com/mara-lind",
+    "type": "User",
+    "site_admin": false,
+    "score": 1.0
+   },
+   {
+    "login": "tidepool-lab",
+    "id": 9002,
+    "avatar_url": "https://avatars.githubusercontent.com/u/9002?v=4",
+    "url": "https://api.github.com/users/tidepool-lab",
+    "html_url": "https://github.com/tidepool-lab",
+    "type": "Organization",
+    "site_admin": false,
+    "score": 1.0
+   }
+  ]
+ },
+ "empty": {
+  "total_count": 0,
+  "incomplete_results": false,
+  "items": []
+ },
+ "rate_limit_body": {
+  "message": "API rate limit exceeded for 203.0.113.9. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)",
+  "documentation_url": "https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"
+ },
+ "openpgp_404": "No key found for email address mara@tidepool.example"
+}

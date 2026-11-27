@@ -94,6 +94,40 @@ def _headers() -> dict:
     return h
 
 
+# ---- shared with the other GitHub modules (github_email.py, github_activity.py) ------------
+
+LOGIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
+REPO_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$")
+
+
+def api_headers() -> dict:
+    """Headers for api.github.com only. The token never goes to another host."""
+    return _headers()
+
+
+def retry_after(resp: httpx.Response) -> int:
+    return _retry_after(resp)
+
+
+def is_rate_limit(resp: httpx.Response) -> bool:
+    """
+    True when a response is GitHub's rate limit and not another refusal. A 429 always is. A 403
+    is one when the allowance is spent, when GitHub says how long to wait, or when the message
+    says so (the secondary limit sends a 403 with allowance left).
+    """
+    if resp.status_code == 429:
+        return True
+    if resp.status_code != 403:
+        return False
+    if resp.headers.get("x-ratelimit-remaining") == "0" or resp.headers.get("retry-after"):
+        return True
+    try:
+        message = str((resp.json() or {}).get("message") or "").lower()
+    except (ValueError, AttributeError):
+        return False
+    return "rate limit" in message or "abuse" in message
+
+
 async def run_github(username: str, timeout: int = 10) -> dict:
     key = username.lower()
     cached = _cache_get(key)
