@@ -1,0 +1,23 @@
+{
+ "status": "OK",
+ "result": [
+  {
+   "lastName": "Example",
+   "country": "Portugal",
+   "lastOnlineTimeSeconds": 1795656877,
+   "city": "Lisbon",
+   "rating": 1761,
+   "friendOfCount": 91,
+   "titlePhoto": "https://userpic.codeforces.org/1000001/title/0000000000000000.jpg",
+   "handle": "SamExample",
+   "avatar": "https://userpic.codeforces.org/1000001/avatar/0000000000000000.jpg",
+   "firstName": "Sam",
+   "contribution": -3,
+   "organization": "Example University",
+   "rank": "expert",
+   "maxRating": 1815,
+   "registrationTimeSeconds": 1265987288,
+   "maxRank": "expert"
+  }
+ ]
+}

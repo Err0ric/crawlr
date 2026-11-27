@@ -146,15 +146,23 @@ def test_the_page_and_the_server_read_the_same_text_from_the_same_answers():
                                   {"platform": "OnlyFans", "url": f"https://onlyfans.com/{h}", "bio": "i'm 15"},
                                   {"platform": "Empty", "url": "https://empty.example/u", "display_name": "", "bio": ""}]},
     }
+    # The profile sources (POST /api/recon/profiles): scanned after the ordered sources, on both sides.
+    profiles = {"profiles": [
+        {"site": "Mastodon", "source": "mastodon", "state": "found", "url": f"https://mastodon.social/@{h}", "display_name": "River S.", "bio": long_bio[:300], "company": "Lincoln High", "location": "Leeds", "guard": {"bio": long_bio}},
+        {"site": "Lichess", "source": "lichess", "state": "found", "url": f"https://lichess.org/@/{h}", "display_name": "", "bio": "class of 2029"},
+        {"site": "Keybase", "source": "keybase", "state": "blocked", "url": f"https://keybase.io/{h}", "bio": "i'm 15"},
+        {"site": "Empty", "source": "npm", "state": "found", "url": "https://www.npmjs.com/~x", "display_name": "", "bio": ""},
+    ], "sources": {}}
     engine = mr.load()
-    server = [e for name, _ in engine.text_order for e in pr.entries_of(name, answers[name])]
-    collected = {page: answers[name] for name, page in [("sherlock", "sherlock"), *engine.text_order]}
+    server = [e for name, _ in engine.text_order for e in pr.entries_of(name, answers[name])] + pr.entries_of("profiles", profiles)
+    collected = {page: answers[name] for name, page in [("sherlock", "sherlock"), *engine.text_order]} | {"profiles": profiles}
     node = shutil.which("node")
     assert node, "node is not installed: the parity test needs it"
     done = subprocess.run([node, str(ROOT / "tests" / "js" / "texts_runner.mjs")], input=json.dumps(collected), capture_output=True, text=True, timeout=60, cwd=str(ROOT))
     assert done.returncode == 0, done.stderr[-600:]
     page = json.loads(done.stdout)
-    assert [e["source"] for e in server] == ["Gitlab", "GitHub", "Reddit", "Instagram"]
+    assert [e["source"] for e in server] == ["Gitlab", "GitHub", "Reddit", "Instagram", "Mastodon", "Lichess"]
+    assert server[4]["bio"] == long_bio and server[4]["text"] == "Lincoln High\nLeeds"
     assert page == server
     assert server[0]["bio"] == long_bio and server[0]["text"] == "Leeds\nabout me\nLincoln High" and server[1]["text"] == "Lincoln High School\n9th grade"
     # And both then reach the same verdict from it.

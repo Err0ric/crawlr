@@ -59,8 +59,8 @@ const noImages = (html, what) => {
 
 // ---- 1. the source plan and the request bodies, both ways ------------------------------------
 {
-  ok(sourcePlan("username", T).join() === "sherlock,maigret,github,platform" && !sourcePlan("username", T, { adult: false }).includes("adult"), "mode off: the adult site check is not in the plan");
-  ok(sourcePlan("username", T, { adult: true }).join() === "sherlock,maigret,github,platform,adult", "mode on: it is its own source, after the others");
+  ok(sourcePlan("username", T).join() === "sherlock,maigret,github,platform,profiles" && !sourcePlan("username", T, { adult: false }).includes("adult"), "mode off: the adult site check is not in the plan");
+  ok(sourcePlan("username", T, { adult: true }).join() === "sherlock,maigret,github,platform,profiles,adult", "mode on: it is its own source, after the others");
   ok(!sourcePlan("username", T, { adult: "true" }).includes("adult") && !sourcePlan("username", T, { adult: 1 }).includes("adult"), "only the literal true turns it on");
   for (const t of ["email", "hash", "phone", "name"]) ok(!sourcePlan(t, t === "email" ? "jdoe_example@example.org" : T, { adult: true }).includes("adult"), `a ${t} case never plans it`);
   ok(JSON.stringify(A.usernameBody(T, false)) === JSON.stringify({ username: T, nsfw: false }) && A.usernameBody(T, undefined).nsfw === false && A.usernameBody(T, "yes").nsfw === false, "mode off sends nsfw false to Sherlock and Maigret");

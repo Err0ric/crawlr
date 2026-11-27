@@ -1,0 +1,13 @@
+{
+ "id": "00000000000000000000000000000000",
+ "uuid": "00000000-0000-0000-0000-000000000001",
+ "username": "samexample",
+ "full_name": "Sam Example",
+ "location": "Lisbon",
+ "company": "Example Maps",
+ "profile_url": "http://sam.example.org/",
+ "date_joined": "2014-05-02T16:11:11.652437Z",
+ "gravatar_url": "https://www.gravatar.com/avatar/00000000000000000000000000000001?s=80&r=g&d=mm",
+ "gravatar_email": "",
+ "type": "User"
+}

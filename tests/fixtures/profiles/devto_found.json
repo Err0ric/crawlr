@@ -1,0 +1,13 @@
+{
+ "type_of": "user",
+ "id": 1000001,
+ "username": "samexample",
+ "name": "Sam Example",
+ "twitter_username": "sam_example",
+ "github_username": "samexample",
+ "summary": "Maps and bread. Invented person for a test fixture.",
+ "location": "Lisbon",
+ "website_url": "http://sam.example.org",
+ "joined_at": "Dec 27, 2015",
+ "profile_image": "https://media2.dev.to/dynamic/image/width=320,height=320,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1000001%2F00000000.png"
+}

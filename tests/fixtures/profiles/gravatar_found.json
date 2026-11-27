@@ -1,0 +1,53 @@
+{
+ "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+ "display_name": "Sam Example",
+ "profile_url": "https://gravatar.com/samexample",
+ "avatar_url": "https://0.gravatar.com/avatar/0000000000000000000000000000000000000000000000000000000000000004",
+ "avatar_alt_text": "",
+ "location": "Lisbon",
+ "description": "Maps and bread. Invented person for a test fixture.",
+ "job_title": "Cartographer",
+ "company": "Example Maps",
+ "verified_accounts": [
+  {
+   "service_type": "wordpress",
+   "service_label": "WordPress",
+   "service_icon": "https://gravatar.com/icons/wordpress.svg",
+   "url": "https://samexample.wordpress.com",
+   "is_hidden": false
+  },
+  {
+   "service_type": "twitter",
+   "service_label": "X",
+   "service_icon": "https://gravatar.com/icons/x.svg",
+   "url": "https://x.com/sam_example",
+   "is_hidden": false
+  },
+  {
+   "service_type": "linkedin",
+   "service_label": "LinkedIn",
+   "service_icon": "https://gravatar.com/icons/linkedin.svg",
+   "url": "https://www.linkedin.com/in/sam-example",
+   "is_hidden": false
+  },
+  {
+   "service_type": "tumblr",
+   "service_label": "Tumblr",
+   "service_icon": "https://gravatar.com/icons/tumblr.svg",
+   "url": "https://samexample.tumblr.example",
+   "is_hidden": false
+  },
+  {
+   "service_type": "github",
+   "service_label": "GitHub",
+   "service_icon": "https://gravatar.com/icons/github.svg",
+   "url": "https://github.com/hidden-sam",
+   "is_hidden": true
+  }
+ ],
+ "pronunciation": "",
+ "pronouns": "",
+ "section_visibility": {
+  "hidden_contact_info": false
+ }
+}

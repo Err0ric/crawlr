@@ -295,15 +295,16 @@ const BUILT = "this handle was built from the name on the primary profile";
 const STRONG = new Set(["cross-link", "avatar", "shared-link"]);
 const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 const sameWords = (a, b) => a.length >= 2 && b.length >= 2 && a.length === b.length && a.every((t) => b.includes(t));
-export function lineUp(pp, baseProfiles, { handle = "", fromName = false } = {}) {
+// opts.pick: the member ids of the identity the investigator picked (identity.js, rule 9).
+export function lineUp(pp, baseProfiles, { handle = "", fromName = false, pick = null } = {}) {
   const base = (baseProfiles || []).filter((p) => p && p.id !== pp?.id && !p.similar);
   const res = (outcome, text, extra = {}) => ({ outcome, strength: LINEUP_TIER[outcome] === "linked" ? "strong" : outcome === "name" ? "supporting" : "", why: "", text, reason: "", canAdd: !!LINEUP_TIER[outcome], tier: LINEUP_TIER[outcome] || "", ...extra });
   const nothing = (why, text) => res("nothing", text, { why });
   if (!pp || !pp.id) return nothing("unreadable", "Read, but nothing to compare.");
-  const before = clusterIdentities(base, { handle });
+  const before = clusterIdentities(base, { handle, pick });
   const primary = before.clusters.find((c) => c.primary);
   if (!primary) return nothing("no_primary", "Read, but nothing to compare: this case has no primary identity.");
-  const after = clusterIdentities([...base, pp], { handle });
+  const after = clusterIdentities([...base, pp], { handle, pick });
   const prim = after.clusters.find((c) => c.primary);
   const byId = (id) => base.find((p) => p.id === id);
   const siteOf = (id) => byId(id)?.site || "another";
@@ -352,14 +353,14 @@ export function lineUp(pp, baseProfiles, { handle = "", fromName = false } = {})
 // handle: the searched handle as the identity rules use it ("" for an email case).
 // own: the handle the variants were built from, which is never a variant of itself.
 // name: the primary identity's name, when it has one: a variant built from it is marked.
-export function evaluateSimilar(similar, baseProfiles, { handle = "", own = handle, name = "" } = {}) {
+export function evaluateSimilar(similar, baseProfiles, { handle = "", own = handle, name = "", pick = null } = {}) {
   const out = {};
   const built = new Set(name ? nameVariants(name, own).map((x) => x.value) : []);
   for (const [k, e] of Object.entries(readSimilar(similar, own))) {
     const fromName = built.has(k), file = e.from_file === true;
     const profiles = (e.probe?.profiles || []).map((p) => {
       const profile = asProfile(e.variant, p);
-      const lineup = lineUp(profile, baseProfiles, { handle, fromName });
+      const lineup = lineUp(profile, baseProfiles, { handle, fromName, pick });
       // What a file says was read is not something this browser saw: nothing is added on it.
       if (file) lineup.canAdd = false;
       return { ...p, id: profile.id, profile, lineup, added: lineup.canAdd && e.added.includes(profile.id) };

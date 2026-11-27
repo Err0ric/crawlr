@@ -100,3 +100,21 @@ def test_github_route_validates_the_username():
     with TestClient(app) as c:
         for bad in ("", "--proxy=http://x", "a b", "a/b", "x" * 65, "../etc"):
             assert c.post("/api/recon/github", json={"username": bad}).status_code in (400, 422), bad
+
+
+# A name GitHub cannot hold is answered here and never becomes a request path.
+import pytest as _pytest
+from modules import github as _gh
+
+
+@_pytest.mark.parametrize("name", ["..", ".", "a.b", "x_y", "-lead", "a" * 40])
+def test_a_name_github_cannot_hold_makes_no_request(monkeypatch, name):
+    import asyncio
+
+    def boom(*a, **k):
+        raise AssertionError("no request may be made")
+
+    monkeypatch.setattr(_gh.httpx, "AsyncClient", boom)
+    for fn in (_gh.run_github, _gh.run_github_deep):
+        out = asyncio.run(fn(name))
+        assert out["found"] is False and out["username"] == name and "note" in out

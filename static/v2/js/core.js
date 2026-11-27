@@ -175,6 +175,10 @@ export function sourceOutcome(d) {
 // so "nothing found" means the same thing everywhere.
 export function sourceHasResults(d) {
   if (!d || typeof d !== "object" || d.error || d.error_code || d.skipped || d.found === false) return false;
+  // GitHub activity: an account with no public events answered, and has nothing to show.
+  if (Array.isArray(d.hours_utc) && typeof d.events === "number") return d.events > 0;
+  // The accounts and keys behind an address: an account, a key, or commits that carry the address.
+  if (Array.isArray(d.accounts) && Array.isArray(d.keys)) return d.accounts.length > 0 || d.keys.length > 0 || (d.unattributed?.commits_seen || 0) > 0;
   if (d.found === true) return true;
   // A source that answers per site (platform check, adult site check): only a page that was read
   // is a result. Its own "total" may count the sites asked, not the pages found.
@@ -228,13 +232,35 @@ export function sourceCoverage(d) {
     const v = Object.values(d.sources).filter((s) => s && typeof s.state === "string");
     return { answered: v.filter((s) => s.state === "ok" || s.state === "none").length, total: v.length, unit: "directories", failedText: "no directory could be asked" };
   }
+  // The profile sources ask up to 16 sites in one request. Only "found" and "not found" say
+  // whether the account is there (npm's "cannot tell" with its note is the site's own answer).
+  // Blocked, rate limited, failed and unknown did not answer, and a site that was not asked (the
+  // handle cannot exist there) is not part of the count. Unlike the platform check, a site that
+  // did not answer has no row in the ledger, so a partial answer can hide a profile.
+  if (Array.isArray(d.profiles) && d.sources && typeof d.sources === "object" && !Array.isArray(d.sources) && Object.values(d.sources).some((x) => x && typeof x.state === "string")) {
+    const v = Object.values(d.sources).filter((x) => x && typeof x.state === "string" && x.state !== "not_asked");
+    // No site was asked at all (the handle cannot exist on any of them): nothing answered, and
+    // nothing failed. The lookup was not made, which is never "not found".
+    if (!v.length) return { answered: 0, total: 0, unit: "profile sites", failedText: "no profile site answered", notAsked: "not asked: this handle cannot exist on any of the profile sites" };
+    return { answered: v.filter((x) => x.state === "found" || x.state === "not_found" || (x.state === "unknown" && !!x.note && !x.error_code)).length, total: v.length, unit: "profile sites", failedText: "no profile site answered" };
+  }
+  // The accounts and keys behind an address: GitHub commit search, GitHub user search and the key
+  // server. One that failed or was rate limited is unknown, never "no account" or "no key".
+  if (Array.isArray(d.accounts) && Array.isArray(d.keys) && d.sources && typeof d.sources === "object") {
+    const v = Object.values(d.sources).filter((x) => x && typeof x.state === "string");
+    // only_skipped: GitHub returned commits for the address and none could be counted. The
+    // lookup did not say "no commits", so it is not an answer: the source is partial.
+    if (v.length) return { answered: v.filter((x) => (x.state === "ok" && x.only_skipped !== true) || x.state === "none").length, total: v.length, unit: "lookups", failedText: "no lookup gave a usable answer" };
+  }
+  // GitHub activity reads up to three pages of events. A later page that failed leaves a gap.
+  if (Array.isArray(d.hours_utc) && d.complete === false && Number.isInteger(d.pages) && d.pages > 0) return { answered: d.pages, total: d.pages + 1, unit: "pages", failedText: "no page could be read" };
   if (d.sections && typeof d.sections === "object" && Object.keys(d.sections).length) {
     const v = Object.values(d.sections);
     return { answered: v.filter((x) => x === "ok").length, total: v.length, unit: "sections", failedText: "no section could be read" };
   }
   return null;
 }
-export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv.unit} ${cv.unit === "images" || cv.unit === "sections" ? "read" : cv.unit === "links" ? "checked" : "answered"}`;
+export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv.unit} ${cv.unit === "images" || cv.unit === "sections" || cv.unit === "pages" ? "read" : cv.unit === "links" ? "checked" : "answered"}`;
 
 // The one place that counts sources, for the case header, the run log summary and the
 // "By source" tab in both modes. `names` maps a key in `collected` to the source's name.
@@ -244,7 +270,9 @@ export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv
 //   failed       ran and failed, or none of its parts answered (unknown, never "not found")
 //   skipped      deliberately not run (not part of ran)
 // Row states: "results", "none" (answered in full, nothing found), "partial" (answered in part,
-// with or without results; never read as "nothing found"), "failed", "skipped".
+// with or without results; never read as "nothing found"), "failed", "skipped". A source whose
+// every part was left unasked (sourceCoverage `notAsked`) is "skipped" with `notAsked: true`: it
+// is not part of ran, and the AI is told "not asked", never "not found".
 // Follow-up lookups (GitHub details, Avatar comparison, Profile enrichment) are sources like any
 // other: each is a request that can fail, has its own run log row and its own card. Values the
 // browser makes itself (search links, the IP to ASN map for the graph) are not sources.
@@ -259,13 +287,15 @@ export function sourceTally(collected, names) {
     const has = sourceHasResults(d);
     let state = d.skipped ? "skipped" : o.state === "error" && d.error_code !== "not_found" ? "failed" : has ? "results" : "none";
     let text = o.text;
+    let notAsked = false;
     if (cv && state !== "skipped" && state !== "failed") {
-      if (cv.total > 0 && cv.answered === 0) { state = "failed"; text = cv.failedText; }
+      if (cv.notAsked && cv.total === 0) { state = "skipped"; text = cv.notAsked; notAsked = true; }
+      else if (cv.total > 0 && cv.answered === 0) { state = "failed"; text = cv.failedText; }
       else if (cv.answered < cv.total) { state = "partial"; text = coverageText(cv); }
     }
     // listed: the parts that did not answer are sites (or, for the link check, links), and each is a row of its own in the
     // ledger ("Blocked by site", "Could not tell"). Nothing is missing from any count.
-    rows.push({ key, name, state, hasResults: state !== "failed" && state !== "skipped" && has, text, detail: o.detail || "", code: o.code || "", ...(state === "partial" && (cv.unit === "sites" || cv.unit === "links") ? { listed: true } : {}) });
+    rows.push({ key, name, state, hasResults: state !== "failed" && state !== "skipped" && has, text, detail: o.detail || "", code: o.code || "", ...(notAsked ? { notAsked: true } : {}), ...(state === "partial" && (cv.unit === "sites" || cv.unit === "links") ? { listed: true } : {}) });
   }
   const n = (s) => rows.filter((r) => r.state === s).length;
   const failed = n("failed"), skipped = n("skipped"), partial = n("partial");
@@ -281,7 +311,8 @@ export function sourceTally(collected, names) {
 export const partialGaps = (rows) => (rows || []).filter((r) => r.state === "partial" && !r.listed);
 export const tallyText = (t) => [`${plural(t.ran, "source")} ran`, t.ran ? `${fmtNum(t.withResults)} with results` : "", t.partial ? `${fmtNum(t.partial)} partial` : "", t.failed ? `${fmtNum(t.failed)} failed` : "", t.skipped ? `${fmtNum(t.skipped)} skipped` : ""].filter(Boolean).join(" · ");
 // What the AI is told about one source: never "not found" for a source that did not answer.
-export const statusForAi = (r) => (r.state === "failed" ? (/^blocked/.test(r.text) ? `blocked: ${r.text}` : `failed: ${r.text}`) : r.state === "partial" ? r.text : r.state === "none" ? "not found" : "ok");
+// A source that was not asked is told as that: it says nothing either way.
+export const statusForAi = (r) => (r.notAsked ? r.text : r.state === "failed" ? (/^blocked/.test(r.text) ? `blocked: ${r.text}` : `failed: ${r.text}`) : r.state === "partial" ? r.text : r.state === "none" ? "not found" : "ok");
 
 export function aiHeaders() {
   const hdr = { "X-Ai-Provider": getProvider() };
@@ -372,6 +403,16 @@ export function detect(input) {
 export const TYPE_LABEL = { email: "Email", username: "Username", domain: "Domain", ip: "IP address", asn: "ASN", hash: "Hash", phone: "Phone", name: "Name", headers: "Email headers", multi: "Multiple targets" };
 export const INVESTIGATE_TYPES = ["username", "email", "hash", "phone", "name"];
 export const RECON_TYPES = ["domain", "ip", "asn"];
+// The type of a Recon target whose kind is already KNOWN. detect() calls a dotted name a domain
+// only when its last label is on the list of top-level domains above, so that typed text such as
+// "maria.co" or "word.word" is not opened as a domain by accident. A lead is different: it came
+// from a website field or from the part of an address after the @, so it IS a domain whatever its
+// last label is (a newer TLD, a private one). For a value known to be a domain that has the shape
+// of one, the known type stands. Typed input never passes `known`, so detection is not loosened.
+export const reconType = (target, known = "") => {
+  const t = String(target ?? "").trim(), d = detect(t);
+  return RECON_TYPES.includes(d) ? d : known === "domain" && RE.domain.test(t) && t.length <= 253 ? "domain" : d;
+};
 
 // ---- keyboard helpers -------------------------------------------------------------
 // Roving tabindex for a group of tabs or radios: one tab stop, arrows move, Home/End jump.

@@ -1,7 +1,7 @@
 // Identity clusters: which of the profiles found under one handle belong to the same person.
 // Pure functions, no DOM and no network, so the rules can be tested exactly.
 //
-// A profile: { id, site, url, handle, name, location, avatarHash, avatarDefault, links[], websites[], bio, anchor? }
+// A profile: { id, site, url, handle, name, location, avatarHash, avatarDefault, links[], websites[], proven[], bio, anchor? }
 //   anchor: "github" for GitHub's API record of the searched handle, "gravatar" for the Gravatar
 //   record of the searched email. An anchor is the authoritative record for the target itself.
 //   websites: the links that came from a personal-site field (GitHub blog, a profile's website).
@@ -11,6 +11,9 @@
 //        cross-link    each links to the other, or the linking profile is the anchor (or already
 //                      tied to the anchor by a strong signal). The link must be the other's exact
 //                      URL, or have the other's handle as the first path segment on that site.
+//                      A link the other side has confirmed joins by itself: a Keybase proof, or
+//                      a link Mastodon marks as verified (`proven` on the profile). An account a
+//                      profile only lists is an ordinary link and follows the rule above.
 //        same avatar   both have a real picture (not a default, not a near-blank hash) and the
 //                      64-bit dHashes differ by at most 6 bits
 //        shared link   both link to the same page (host and path; on a multi-user site, the same
@@ -34,6 +37,24 @@
 //   8. The primary cluster is the one holding the GitHub anchor, else the Gravatar anchor, else the
 //      one with the most members joined by a strong signal. With no anchor and no strong signal
 //      there is no primary: nothing ties any profile to the target, and nobody is picked.
+//   9. The investigator may pick the person the case is about (opts.pick: the member ids of the
+//      cluster they chose). The pick changes which cluster is primary and nothing else: clusters
+//      are evidence and are built the same way with or without it. A pick is matched by members,
+//      so it survives a re-run; it holds only while exactly one cluster carries its members, and
+//      otherwise the automatic choice of rule 8 stands. A pick that names the automatic choice is
+//      no pick at all: the result is the automatic one and is never worded as a judgment. The
+//      result says which of the two it is (`picked`) and what the automatic choice is (`auto`,
+//      `autoWhy`), so the page can say so. opts.pickFile: the pick came with a case file, so it is
+//      its author's and is never worded as "you picked".
+//  10. A profile outside the primary cluster is compared with the fullest names the primary
+//      carries. A one-word name beside a full one ("Sam" beside "Sam Example") is ignored for
+//      this: it fits almost anything, so it must not rescue a profile whose full name conflicts
+//      with the identity's full name. When the primary carries one-word names only, a profile
+//      with an unrelated full name is neither a match nor a conflict: it stays in "matches" and
+//      is marked `unsettled`, and the row says the name could not be compared.
+//      A one-word name of the primary that does fit the profile's name ("Petra" on a profile tied
+//      to the identity, beside "Petra Novak") is the one case where it counts against the full
+//      name: the two disagree, so the profile is `unsettled` (with `mixed`), never `different`.
 
 const fold = (s) => String(s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -102,6 +123,9 @@ export function linkParts(u) {
   let path = url.pathname;
   try { path = decodeURIComponent(path); } catch { /* keep the raw path */ }
   path = path.replace(/\/+$/, "").toLowerCase();
+  // Hacker News has one path for every user and names the user in the query (see ownProfileQuery
+  // in links.js), so the name is part of what the link points at.
+  if (host === "news.ycombinator.com" && path === "/user" && /^[A-Za-z0-9_-]{2,15}$/.test(url.searchParams.get("id") || "")) path = `/user?id=${url.searchParams.get("id").toLowerCase()}`;
   return { host, path, key: host + path, platform: PLATFORM_HOSTS.has(host) || MULTI_USER.test(host) };
 }
 export const isPlatformHost = (host) => { const h = String(host || "").toLowerCase().replace(/^www\./, ""); return PLATFORM_HOSTS.has(HOST_ALIAS[h] || h) || MULTI_USER.test(h); };
@@ -112,14 +136,28 @@ export const urlsIn = (text) => (String(text ?? "").match(/\bhttps?:\/\/[^\s<>"'
 // Does profile a link to profile b? Returns the link that does, or "".
 // The link is b's exact URL, or has b's handle as the FIRST path segment on b's site:
 // github.com/mallory/torvalds is mallory's repository, not a link to torvalds.
-function crossLink(a, b) {
+function crossLink(a, b, links = a._links) {
   const target = linkParts(b.url);
   if (!target) return "";
   const hk = fold(b.handle).replace(/^@/, "");
-  for (const l of a._links) {
+  for (const l of links) {
     if (l.key === target.key && l.path) return l.raw;
     if (hk && l.host === target.host && (l.path.split("/")[1] || "").replace(/^[@~]/, "") === hk && l.path.split("/").length === 2) return l.raw;
   }
+  return "";
+}
+// A link from a to b that the other side has confirmed, so it does not need the anchor to vouch
+// for it. A profile carries these as `proven: [{ url, proof }]` (see collectProfiles):
+//   keybase        the owner of the other account published a signed statement there, and
+//                  Keybase checked it
+//   verified_link  Mastodon found a rel="me" link back on the page it links to
+// An account a profile merely lists is not one of these: it is an ordinary link, and a lead.
+export const PROOF_DETAIL = {
+  keybase: (a, b) => `a Keybase proof ties the ${b} account to the ${a} profile`,
+  verified_link: (a, b) => `${a} shows a verified link to the ${b} profile, which links back`,
+};
+function provenLink(a, b) {
+  for (const proof of Object.keys(PROOF_DETAIL)) if (crossLink(a, b, a._proven.filter((l) => l.proof === proof))) return proof;
   return "";
 }
 // A link both profiles carry. { strong, detail } or null.
@@ -169,7 +207,8 @@ export function clusterIdentities(profiles, opts = {}) {
     const sites = new Set((p.websites || []).map((w) => linkParts(w)?.key).filter(Boolean));
     const links = [...(p.links || []), ...(p.websites || []), ...urlsIn(p.bio)].map((raw0) => { const l = linkParts(raw0); return l ? { ...l, raw: String(raw0), site: sites.has(l.key) } : null; }).filter(Boolean);
     const self = linkParts(p.url);
-    return { ...p, _i: i, _tokens: meaningfulName(p.name, [p.handle, ...searched]), _links: links.filter((l) => !self || l.key !== self.key) };
+    const proven = (Array.isArray(p.proven) ? p.proven : []).map((x) => { const l = x && Object.hasOwn(PROOF_DETAIL, x.proof) ? linkParts(x.url) : null; return l ? { ...l, raw: String(x.url), proof: x.proof } : null; }).filter((l) => l && (!self || l.key !== self.key));
+    return { ...p, _i: i, _tokens: meaningfulName(p.name, [p.handle, ...searched]), _links: links.filter((l) => !self || l.key !== self.key), _proven: proven };
   });
   const keys = [...searched, ...ps.map((p) => p.handle)];
   const rel2 = (a, b) => compareNames(a, b, keys);
@@ -185,6 +224,10 @@ export function clusterIdentities(profiles, opts = {}) {
   const oneWay = [];   // [from, to]
   for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
     const a = ps[i], b = ps[j];
+    // A proof or a verified link is confirmed from the other side already: it joins by itself.
+    const pf = provenLink(a, b), pb = pf ? "" : provenLink(b, a);
+    if (pf) note(i, j, "cross-link", PROOF_DETAIL[pf](a.site, b.site));
+    else if (pb) note(i, j, "cross-link", PROOF_DETAIL[pb](b.site, a.site));
     const fwd = crossLink(a, b), back = crossLink(b, a);
     if (fwd && back) note(i, j, "cross-link", `${a.site} and ${b.site} link to each other`);
     else if (fwd) oneWay.push([i, j]);
@@ -269,18 +312,31 @@ export function clusterIdentities(profiles, opts = {}) {
   clusters.sort(cmp);
   const top = clusters[0];
   const tie = top && !top.anchor && clusters[1] && !clusters[1].anchor && clusters[1].strong === top.strong;
-  const primary = top && (top.anchor || (top.strong > 0 && !tie)) ? top : null;
-  if (primary) {
-    primary.primary = true;
-    primary.why = primary.anchor === "github" ? "it holds GitHub's own record for this handle" : primary.anchor === "gravatar" ? "it holds the Gravatar record for this email" : "it is the only group of profiles tied together by a strong signal";
-  }
+  const auto = top && (top.anchor || (top.strong > 0 && !tie)) ? top : null;
+  if (auto) auto.why = auto.anchor === "github" ? "it holds GitHub's own record for this handle" : auto.anchor === "gravatar" ? "it holds the Gravatar record for this email" : "it is the only group of profiles tied together by a strong signal";
+  const autoWhy = auto ? auto.why : "";
+  // 9. the investigator's pick, matched by members. Zero or several clusters: the pick is void.
+  const want = new Set([].concat(opts.pick || []).filter((x) => typeof x === "string"));
+  const hit = want.size ? clusters.filter((c) => c.members.some((id) => want.has(id))) : [];
+  const picked = hit.length === 1 && hit[0] !== auto;
+  const primary = picked ? hit[0] : auto;
+  if (primary) { primary.primary = true; if (picked) { primary.picked = true; if (opts.pickFile === true) primary.pickFile = true; primary.why = opts.pickFile === true ? PICK_WHY_FILE : PICK_WHY; } }
   const byProfile = {};
   for (const c of clusters) for (const id of c.members) byProfile[id] = c.id;
   for (const c of clusters) delete c.first;
   // Signals between profiles that did not end up together: support, shown but never joining.
   const supports = [];
   for (const [k, signals] of pairs) { const [i, j] = k.split("|").map(Number); if (find(i) !== find(j)) supports.push({ a: ps[i].id, b: ps[j].id, signals }); }
-  return { clusters, primary: primary ? primary.id : null, unassigned, byProfile, supports, handles: keys };
+  return { clusters, primary: primary ? primary.id : null, auto: auto ? auto.id : null, autoWhy, picked, unassigned, byProfile, supports, handles: keys };
+}
+
+export const PICK_WHY = "you picked this person";
+export const PICK_WHY_FILE = "the case file picked this person";
+// The member ids a stored pick names: at most 40 account ids, or null. Outside data is read here.
+export function readPick(v) {
+  const m = v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.members) ? [...new Set(v.members.filter((x) => typeof x === "string" && /^acct:[^\u0000-\u001f]{1,80}$/.test(x)))].slice(0, 40) : [];
+  if (!m.length) return null;
+  return { members: m, at: Number.isFinite(v.at) && v.at > 0 ? v.at : 0, ...(v.file === true ? { file: true } : {}) };
 }
 
 // How one profile stands to the primary cluster: "linked" | "matches" | "different".
@@ -289,6 +345,12 @@ export function clusterIdentities(profiles, opts = {}) {
 //   different  its name conflicts with every name the primary identity carries
 // With no primary cluster nothing is tied to the target, so every profile is "matches" and
 // nobody is called a different person.
+// via, tie: the profile is called different because it is grouped with another person (via: that
+// person's name; tie: the signals that group them), not because of a name of its own.
+// unsettled: the profile carries a full name and the primary identity only one-word names that
+// share nothing with it (rule 10). against: the names the profile was compared with.
+// mixed (with unsettled): the name fits a one-word name of the identity (`fits`) and conflicts
+// with its full name (`against`), so neither settles it.
 export const NO_PRIMARY = "exists, nothing ties it to the target";
 export function standing(profile, result, opts = {}) {
   const primary = result.clusters.find((c) => c.primary);
@@ -301,14 +363,41 @@ export function standing(profile, result, opts = {}) {
     const link = primary.links.find((l) => (l.a === profile.id || l.b === profile.id) && l.signals.some((s) => STRONG.has(s.type)));
     if (link) return { tier: "linked", why: link.signals.filter((s) => STRONG.has(s.type)).map((s) => s.detail).join(", ") };
     const byName = primary.links.find((l) => l.a === profile.id || l.b === profile.id);
-    return { tier: "matches", why: byName ? byName.signals.map((s) => s.detail).join(", ") : "" };
+    return { tier: "matches", why: byName ? byName.signals.map((s) => s.detail).join(", ") : primary.picked ? (primary.pickFile ? (primary.members.length > 1 ? "part of the identity picked in the case file" : "the profile picked in the case file; nothing else ties it to the target") : primary.members.length > 1 ? "part of the identity you picked" : "the profile you picked; nothing else ties it to the target") : "" };
   }
   const tokens = meaningfulName(profile.name, [profile.handle, ...keys]);
   const extra = support.length ? support.join(", ") : "";
+  // 10. the fullest names decide. One-word names count only when the identity has nothing fuller.
+  const full = primary.tokens.filter(personal);
+  const against = (full.length ? primary.names.filter((n) => personal(meaningfulName(n, keys) || [])) : primary.names).slice(0, 3);
+  const conflicts = (t) => full.length > 0 && full.every((f) => compareNames(f, t, keys) === "conflict");
+  // Does a name of the primary fit this one? Equal, contained, an initial, or a shared stem.
+  const fitsName = (p, t) => ["same", "subset"].includes(compareNames(p, t, keys)) || p.some((x) => t.some((y) => tokenMatch(x, y) || (x.length >= 3 && y.startsWith(x)) || (y.length >= 3 && x.startsWith(y))));
+  // The one-word names of an identity that also has a full one, and the ones among them that fit `t`.
+  const short = full.length ? primary.tokens.filter((t) => !personal(t)) : [];
+  const fitting = (t) => short.filter((p) => fitsName(p, t));
+  const shortNames = (list) => primary.names.filter((n) => { const m = meaningfulName(n, keys); return m && list.some((p) => p.join(" ") === m.join(" ")); }).slice(0, 3);
+  // A profile grouped with another person stands where that person stands: an account with no
+  // name of its own that a proof ties to "Sam Example" is not Petra Novak's because it is silent.
+  const own = result.clusters.find((c) => c.id === result.byProfile[profile.id]) || null;
+  if (own && own !== primary && !(tokens && conflicts(tokens))) {
+    const theirs = own.tokens.filter(personal);
+    if (theirs.length && theirs.every(conflicts) && !theirs.some((t) => fitting(t).length)) {
+      const tie = own.links.filter((l) => l.a === profile.id || l.b === profile.id).flatMap((l) => l.signals.map((s) => s.detail));
+      return { tier: "different", why: "", against, via: own.label, tie: [...new Set(tie)].slice(0, 2).join(", ") };
+    }
+  }
   if (!tokens) return { tier: "matches", why: extra || "no name on the profile" };
   if (!primary.tokens.length) return { tier: "matches", why: extra || "the primary record carries no name to compare" };
-  if (primary.tokens.some((t) => compareNames(t, tokens, keys) !== "conflict")) return { tier: "matches", why: extra || "name does not conflict" };
-  return { tier: "different", why: "" };
+  if (full.length) {
+    if (!conflicts(tokens)) return { tier: "matches", why: extra || "name does not conflict" };
+    const fit = fitting(tokens);
+    if (fit.length) return { tier: "matches", why: extra, unsettled: true, mixed: true, against, fits: shortNames(fit).length ? shortNames(fit) : fit.map((p) => p.join(" ")).slice(0, 3) };
+    return { tier: "different", why: "", against };
+  }
+  const related = primary.tokens.some((t) => fitsName(t, tokens));
+  if (personal(tokens) && !related && primary.tokens.every((t) => script(t) === script(tokens))) return { tier: "matches", why: extra, unsettled: true, against };
+  return { tier: "matches", why: extra || "name does not conflict" };
 }
 
 // Old saved runs hold bios the backend had not yet filtered. These are the same tells, kept

@@ -41,9 +41,18 @@ RATE_LIMITS = {
     "/api/recon/avatar-hash": (10, 60),
     "/api/recon/platform-check": (10, 60),   # up to 6 page fetches plus canaries, and one request each to Reddit and Discord
     "/api/recon/handle-probe": (10, 60),     # one similar handle per click: about 9 requests plus canaries and up to 3 pictures, cached for a day
+    "/api/recon/profiles": (10, 60),         # 16 keyless profile APIs at once: up to 20 requests and one picture per profile, cached for a day
     "/api/recon/adult-check": (10, 60),      # opt-in: up to 7 fetches plus a canary per call, 300 KB each, cached for a day
     "/api/recon/verify-links": (12, 60),     # up to 25 page fetches per call, 300 KB each, cached for a day
     "/api/recon/name-search": (6, 60),       # 6 requests to 5 public APIs per call; GitHub search allows 10 a minute
+    # GitHub's keyless allowances belong to the whole server, not to one visitor: 10 searches a
+    # minute and 60 other API calls an hour. One visitor at the limit may spend at most about
+    # half of either, so one visitor alone cannot use it up for everyone. Past that, a spent
+    # allowance is remembered from GitHub's headers (modules.github.note_quota) and answered
+    # as rate_limited without another request.
+    "/api/recon/email-accounts": (3, 60),    # 3 requests per call, 2 of them GitHub searches: at most 6 of the 10 a minute; cached for a day
+    "/api/recon/github-activity": (10, 3600),  # 1 to 3 GitHub API calls per uncached account: at most 30 of the 60 an hour; cached for a day
+    "/api/recon/profile-archive": (10, 60),  # 1 request to the Wayback CDX index per uncached profile URL, cached for a day
     # AI (the free tier has its own daily quota on top of this)
     "/api/analyze": (20, 60),
     "/api/infra/summarize": (20, 60),

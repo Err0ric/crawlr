@@ -5,6 +5,7 @@ import { classifyLink, applyCheck, evidenceUrl, CHECK_TEXT } from "./links.js";
 import { readNameResult, DIRECTORIES, NAME_NOTICE, NAME_SOURCE } from "./names.js";
 import { isAdultRow, adultListHtml, adultCounts, adultCheckText, adultFound, ADULT_SOURCE } from "./adult.js";
 import { phoneView, phoneSourceRows, PHONE_SOURCE, OWNER_NOTE, AREA_NOTE, PORTED_NOTE } from "./phone.js";
+import { readProfileSources, readEmailAccounts, profileCoverage, emailLookupsDown, lookupName, commitNames, activityView, dayOf, PROFILE_SOURCE, PROOF_TEXT, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE, HOW_TEXT, SELF_DECLARED_NOTE, KEY_NOTE } from "./deep.js";
 
 // A profile link in a card carries the same link kind as its ledger row: a URL the source read
 // is solid, a templated one is marked unverified, a homepage is plain text. `checks` is the
@@ -59,7 +60,66 @@ export function harvestCard(d) {
     + (!em.length && !ho.length ? h`<p class="muted">Answered, nothing found: no public source returned anything for this domain.</p>` : ""));
 }
 
+// ---- GitHub activity: two strips and their words -------------------------------------------
+// The strips are plain elements sized by a percentage. Each is an image with a text alternative
+// that reads out every count, and the busiest hours are also written under them. The offset is a
+// range, drawn with a dashed edge (an estimate, not a reading), with what it rests on beside it.
+const strip = (cols, cls, alt, labels) => h`<div class="act-strip ${cls}" role="img" aria-label="${alt}">${raw(cols.map((c) => `<span class="act-col${c.count ? "" : " zero"}"><i style="height:${Math.max(c.count ? 6 : 0, Math.min(100, Math.round(c.pct)))}%"></i></span>`).join(""))}</div><div class="act-axis ${cls}" aria-hidden="true">${raw(labels.map((l) => h`<span>${l}</span>`).join(""))}</div>`;
+export function activityHtml(d) {
+  const v = activityView(d);
+  if (!v) return "";
+  if (v.state !== "ok") return h`<p class="muted">${v.text}</p>`;
+  return h`<p class="act-sum">${v.text}</p>
+    <div class="act-grid">
+      <figure class="act"><figcaption>By hour of day, UTC</figcaption>${raw(strip(v.hours, "h24", v.hoursAlt, ["00", "06", "12", "18", "23"]))}</figure>
+      <figure class="act"><figcaption>By weekday, UTC</figcaption>${raw(strip(v.days, "d7", v.daysAlt, v.days.map((x) => x.day.slice(0, 3))))}</figure>
+    </div>
+    ${v.busiest ? raw(h`<p class="muted small">${v.busiest}</p>`) : ""}`
+    + kv([["Most active in", v.repos.slice(0, 5).map((r) => h`${raw(ev(r.url, r.name))} <span class="dim">${fmtNum(r.count)}</span>`).join("<br>")], ["Kinds of event", esc(v.types.slice(0, 6).map((t) => `${t.word} ${fmtNum(t.count)}`).join(", "))]])
+    + (v.estimate
+      ? h`<div class="act-est"><p><b>UTC offset estimate</b> <span class="mono">${v.estimate.label}</span> <span class="tag">a hint, not a fact</span></p><p class="muted small">${v.estimate.basis} ${v.estimate.quiet}</p><p class="muted small">${v.estimate.assumption}</p><p class="muted small">${v.estimate.caveat} A range of time offsets is not a place: many countries share each one.</p></div>`
+      : h`<div class="act-est"><p><b>UTC offset estimate</b> <span class="tag">none made</span></p><p class="muted small">${v.noEstimate}</p></div>`);
+}
+
 const CARDS = {
+  // One line per profile that was read, then every site by what it answered. A site that was
+  // blocked, rate limited or failed is unknown, and is never listed under "not found".
+  profiles: (d) => {
+    const r = readProfileSources(d);
+    if (!r) return "";
+    const c = profileCoverage(r);
+    const rows = r.profiles.map((p) => li(h`${raw(read(p.url, p.site))}${p.name ? h` · ${p.name}` : ""}${raw(h`<div class="dim small">${[p.location, p.company, dayOf(p.created) ? `joined ${dayOf(p.created).slice(0, 4)}` : "", ...p.accounts.filter((a) => a.proof !== "listed").map((a) => `${a.site} ${PROOF_TEXT[a.proof]}`)].filter(Boolean).join(" · ")}</div>`)}`));
+    const sites = (st) => esc((c.by[st] || []).join(", "));
+    const notes = c.notes.map((n) => h`${n.site}: ${n.note}`).join("<br>");
+    return card(PROFILE_SOURCE, tag(`${fmtNum(c.read)} read`, c.read ? "ok" : "") + (c.down.length ? " " + tag(`${fmtNum(c.down.length)} did not answer`, "warn") : ""),
+      (rows.length ? list(rows) : none(c.asked ? "No site that answered has a record for this handle." : "No site was asked."))
+      + kv([["Not found", sites("not_found")], ["Blocked by site", sites("blocked")], ["Rate limited", sites("rate_limited")], ["Could not tell", [sites("unknown"), notes].filter(Boolean).join("<br>")], ["Failed", sites("failed")], ["Not asked", (c.by.not_asked || []).length ? h`${(c.by.not_asked || []).join(", ")} <span class="dim">the handle cannot exist there</span>` : ""]])
+      + h`<p class="muted small">"Read" means the site's own API returned the record for this handle. Blocked, rate limited, failed and "could not tell" are unknown, not absent. A record that exists is not proof of who owns it.</p>`);
+  },
+  // The accounts and keys behind an address, with each lookup's state. The words for each tie
+  // are deep.js's own, so the card, the ledger and the exports say the same thing.
+  emailAccounts: (d) => {
+    const r = readEmailAccounts(d);
+    if (!r) return "";
+    const down = emailLookupsDown(r);
+    const word = (s) => (s.state === "ok" && s.only_skipped ? "unknown: commits were returned and none could be counted" : s.state === "ok" ? "answered" : s.state === "none" ? "answered, nothing found" : s.state === "rate_limited" ? "unknown: rate limited" : `unknown: ${s.error || "failed"}`);
+    const gc = r.sources.github_commits;
+    const seen = gc && gc.state === "ok" && gc.seen != null ? `${fmtNum(gc.seen)} commits read${gc.incomplete ? ", and GitHub has more than it returned" : ""}${gc.skipped ? `, ${fmtNum(gc.skipped)} left out` : ""}` : "";
+    const acc = r.accounts.map((a) => li(h`${raw(read(a.url, a.login))} ${raw(tag(a.how === "commit_author" ? "commit author" : a.account_type === "Organization" ? "organization, unconfirmed" : "search match, profile not read", a.how === "commit_author" ? "ok" : ""))}<div class="dim small">${a.how === "commit_author" ? HOW_TEXT.commit_author : a.account_type === "Organization" ? HOW_TEXT.organization : HOW_TEXT.public_profile_email}${a.how === "commit_author" && commitNames(a).length ? ` Names in its commits (self-declared): ${commitNames(a).slice(0, 3).map((n) => n.name).join(", ")}.` : ""}</div>`));
+    const keys = r.keys.map((k) => li(k.parsed ? h`${raw(ev(k.url, k.fingerprint.replace(/(.{4})/g, "$1 ").trim()))}<div class="dim small">${[[k.algorithm, k.curve].filter(Boolean).join(" "), dayOf(k.created) ? `created ${dayOf(k.created)} (self-declared)` : "", k.revoked ? "revoked" : "", k.user_ids.map((u) => u.email).filter(Boolean).join(", ")].filter(Boolean).join(" · ")}</div>` : h`A version ${k.version || "unknown"} key CrawlR cannot read<div class="dim small">${k.reason}</div>`));
+    return card(EMAIL_ACCOUNTS_SOURCE, tag(`${fmtNum(r.accounts.length)} ${r.accounts.length === 1 ? "account" : "accounts"}`, r.accounts.length ? "ok" : "") + " " + tag(`${fmtNum(r.keys.length)} ${r.keys.length === 1 ? "key" : "keys"}`, r.keys.length ? "ok" : "") + (down.length ? " " + tag(`${fmtNum(down.length)} not asked`, "warn") : ""),
+      (acc.length ? list(acc) : none(r.sources.github_commits?.state === "none" || r.sources.github_users?.state === "none" ? "Answered, nothing found: GitHub ties no account to this address." : "No GitHub account was found."))
+      + (r.unattributed ? h`<p class="muted small">${fmtNum(r.unattributed.commits_seen)} ${r.unattributed.commits_seen === 1 ? "commit carries" : "commits carry"} this address and belong to no account.${commitNames(r.unattributed).length ? ` Names written in them (self-declared): ${commitNames(r.unattributed).slice(0, 3).map((n) => n.name).join(", ")}.` : ""}</p>` : "")
+      + (keys.length ? h`<p class="muted small">OpenPGP keys published for this address:</p>` + list(keys) : "")
+      + h`<p class="muted small">Lookups in this source:</p>` + kv(Object.entries(r.sources).map(([id, s]) => [lookupName(id), esc([word(s), id === "github_commits" ? seen : ""].filter(Boolean).join(" · "))]))
+      + h`<p class="muted small">${SELF_DECLARED_NOTE}${r.keys.length ? ` ${KEY_NOTE}` : ""} A lookup that could not be made is unknown: it never means "no account" or "no key".</p>`);
+  },
+  githubActivity: (d) => {
+    const v = activityView(d);
+    if (!v) return "";
+    if (v.state === "not_found") return card(ACTIVITY_SOURCE, tag("not found"), none("Answered, nothing found: GitHub has no account with this name."));
+    return card(ACTIVITY_SOURCE, tag(v.state === "ok" ? `${fmtNum(v.events)} events` : "no public events", v.state === "ok" ? "ok" : "") + (v.state === "ok" && !v.complete ? " " + tag("partial", "warn") : ""), activityHtml(d));
+  },
   sherlock: (d, checks) => accountCard("Sherlock", d, checks),
   maigret: (d, checks) => accountCard("Maigret", d, checks),
   holehe: (d) => {
@@ -245,5 +305,5 @@ function githubDeepBody(dp) {
   ]);
 }
 
-const TITLES = { nameResult: NAME_SOURCE, adultCheck: ADULT_SOURCE, linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
+const TITLES = { profiles: PROFILE_SOURCE, emailAccounts: EMAIL_ACCOUNTS_SOURCE, githubActivity: ACTIVITY_SOURCE, nameResult: NAME_SOURCE, adultCheck: ADULT_SOURCE, linkCheck: "Link check", githubDeep: "GitHub details", avatarHash: "Avatar comparison", sherlock: "Sherlock", maigret: "Maigret", holehe: "Holehe", platformCheck: "Platform check", hibp: "Breaches", github: "GitHub", gravatar: "Gravatar", enricher: "Profile enrichment", profileScrape: "Scraped profiles", harvester: "Domain harvest", hunter: "Hunter.io", hash: "Hash lookup", phone: "Phone lookup" };
 export const sourceCards = Object.fromEntries(Object.entries(CARDS).map(([id, fn]) => [id, (d, extra, opts) => (d && typeof d === "object" && sourceOutcome(d).state === "error" ? errorCard(TITLES[id] || id, d) : fn(d, extra, opts))]));

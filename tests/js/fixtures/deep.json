@@ -1,0 +1,946 @@
+{
+ "_note": "Invented people. Answers of the three record sources (profile sources, the accounts and keys behind an address, GitHub activity) beside the usual ones, as the mock server in the review scratchpad returns them. No real account is described.",
+ "cases": [
+  {
+   "name": "username with profile sources",
+   "target": "samexample",
+   "type": "username",
+   "collected": {
+    "sherlock": {
+     "username": "samexample",
+     "total": 14,
+     "possible": 14,
+     "results": [
+      {
+       "site": "GitHub",
+       "url": "https://github.com/samexample",
+       "response_time": 0.4,
+       "confidence": "major_platform"
+      },
+      {
+       "site": "HackerNews",
+       "url": "https://news.ycombinator.com/user?id=samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "GitLab",
+       "url": "https://gitlab.com/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Instagram",
+       "url": "https://www.instagram.com/samexample/",
+       "response_time": 0.4,
+       "confidence": "major_platform"
+      },
+      {
+       "site": "Reddit",
+       "url": "https://www.reddit.com/user/samexample",
+       "response_time": 0.4,
+       "confidence": "major_platform"
+      },
+      {
+       "site": "Pinterest",
+       "url": "https://www.pinterest.com/samexample/",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Twitch",
+       "url": "https://www.twitch.tv/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Medium",
+       "url": "https://medium.com/@samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Patreon",
+       "url": "https://www.patreon.com/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Spotify",
+       "url": "https://open.spotify.com/user/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Strava",
+       "url": "https://www.strava.com/athletes/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Lichess",
+       "url": "https://lichess.org/@/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "Flickr",
+       "url": "https://www.flickr.com/people/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      },
+      {
+       "site": "SoundCloud",
+       "url": "https://soundcloud.com/samexample",
+       "response_time": 0.4,
+       "confidence": "normal"
+      }
+     ],
+     "nsfw": false,
+     "adult_checked": 0
+    },
+    "maigret": {
+     "username": "samexample",
+     "total": 4,
+     "possible": 4,
+     "verified": 2,
+     "results": [
+      {
+       "site": "Gitlab",
+       "url": "https://gitlab.com/samexample",
+       "confidence": "normal",
+       "category": "coding",
+       "verified": true,
+       "profile": {
+        "name": "Petra Novak",
+        "bio": "Embedded firmware."
+       }
+      },
+      {
+       "site": "Strava",
+       "url": "https://www.strava.com/athletes/samexample",
+       "confidence": "normal",
+       "category": "sport",
+       "verified": true,
+       "profile": {
+        "name": "Sam Example",
+        "location": "Leeds",
+        "created_at": "2018-06-02"
+       }
+      },
+      {
+       "site": "Wattpad",
+       "url": "https://www.wattpad.com/user/samexample",
+       "confidence": "normal",
+       "category": "reading",
+       "verified": false
+      },
+      {
+       "site": "Duolingo",
+       "url": "https://www.duolingo.com/profile/samexample",
+       "confidence": "normal",
+       "category": "learning",
+       "verified": false
+      }
+     ],
+     "nsfw": false,
+     "sites_checked": 500,
+     "adult_checked": 0,
+     "adult_errors": []
+    },
+    "github": {
+     "found": true,
+     "username": "samexample",
+     "name": "Sam Example",
+     "bio": "Small tools for maps.",
+     "profile_url": "https://github.com/samexample",
+     "public_repos": 23,
+     "followers": 148,
+     "avatar_url": "https://avatars.example.invalid/u/1",
+     "created_at": "2014-02-19T10:04:00Z",
+     "location": "Leeds",
+     "company": "Tidepool Lab",
+     "blog": "https://samexample.example",
+     "email": "",
+     "twitter_username": "sam_rides"
+    },
+    "profiles": {
+     "username": "samexample",
+     "profiles": [
+      {
+       "site": "Keybase",
+       "source": "keybase",
+       "handle": "samexample",
+       "url": "https://keybase.io/samexample",
+       "state": "found",
+       "display_name": "Sam Example",
+       "name": "Sam Example",
+       "bio": "Maps, bikes and small tools. Leeds.",
+       "location": "Leeds, UK",
+       "company": "",
+       "website": "",
+       "links": [],
+       "emails": [],
+       "created": "",
+       "last_active": "",
+       "accounts": [
+        {
+         "site": "GitHub",
+         "handle": "samexample",
+         "url": "https://github.com/samexample",
+         "proof": "keybase",
+         "proof_url": "https://gist.github.com/samexample/0f3c9a7e51b24d6e8a1c"
+        },
+        {
+         "site": "Hacker News",
+         "handle": "samexample",
+         "url": "https://news.ycombinator.com/user?id=samexample",
+         "proof": "keybase",
+         "proof_url": "https://news.ycombinator.com/user?id=samexample"
+        },
+        {
+         "site": "tidepool.example",
+         "handle": "",
+         "url": "https://tidepool.example",
+         "proof": "keybase"
+        }
+       ],
+       "stats": {
+        "followers": 41,
+        "following": 38
+       },
+       "followers": 41,
+       "items": [],
+       "note": "",
+       "avatar_hash": "c3a59e1d2b4f6870",
+       "avatar_default": false,
+       "thumb": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAAAAADFHGIkAAAAzElEQVR42m3P4WaCARgG0OdykvkkSSZJkkySJEmSJEmSJEmSJEmSJEkmSSbJJEmSJEmSJJmuZt7/zw0cDlSK7tNsc7h9wUg8lS2Ua81OfziZLaDRGy12p8cfiibSuWKl3uoORj/z5QYGk/XL5Q2EY8lMvlRttHvf4+nvansAY9a74wWM2Z+uDzDmfHu+wZj7S6WAMX9qjR6M+dAaTGCMlMEYKYMxUgZjpAzGSBmMkTIYI2UwRspgjJTBGCmDMVIGY6QMxkgZjJEyGCPlfyczH8hLGk0tAAAAAElFTkSuQmCC",
+       "avatar_state": "ok"
+      },
+      {
+       "site": "Mastodon",
+       "source": "mastodon",
+       "handle": "samexample",
+       "url": "https://mastodon.social/@samexample",
+       "state": "found",
+       "display_name": "Sam Example",
+       "name": "Sam Example",
+       "bio": "Cartography nerd. Writes small command line tools. He/him.",
+       "location": "",
+       "company": "",
+       "website": "https://samexample.example",
+       "links": [
+        "https://samexample.example",
+        "https://github.com/samexample",
+        "https://x.com/sam_rides"
+       ],
+       "emails": [],
+       "created": "2017-04-03T00:00:00Z",
+       "last_active": "2026-11-21",
+       "accounts": [
+        {
+         "site": "GitHub",
+         "handle": "samexample",
+         "url": "https://github.com/samexample",
+         "proof": "verified_link"
+        },
+        {
+         "site": "X",
+         "handle": "sam_rides",
+         "url": "https://x.com/sam_rides",
+         "proof": "listed"
+        }
+       ],
+       "stats": {
+        "followers": 312,
+        "following": 190,
+        "posts": 2841
+       },
+       "followers": 312,
+       "items": [],
+       "note": "",
+       "avatar_hash": "c3a59e1d2b4f6870",
+       "avatar_default": false,
+       "thumb": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAAAAADFHGIkAAAAzElEQVR42m3P4WaCARgG0OdykvkkSSZJkkySJEmSJEmSJEmSJEmSJEkmSSbJJEmSJEmSJJmuZt7/zw0cDlSK7tNsc7h9wUg8lS2Ua81OfziZLaDRGy12p8cfiibSuWKl3uoORj/z5QYGk/XL5Q2EY8lMvlRttHvf4+nvansAY9a74wWM2Z+uDzDmfHu+wZj7S6WAMX9qjR6M+dAaTGCMlMEYKYMxUgZjpAzGSBmMkTIYI2UwRspgjJTBGCmDMVIGY6QMxkgZjJEyGCPlfyczH8hLGk0tAAAAAElFTkSuQmCC",
+       "avatar_state": "ok"
+      },
+      {
+       "site": "Hacker News",
+       "source": "hackernews",
+       "handle": "samexample",
+       "url": "https://news.ycombinator.com/user?id=samexample",
+       "state": "found",
+       "display_name": "",
+       "name": "",
+       "bio": "Tools for maps. sam at samexample dot example",
+       "location": "",
+       "company": "",
+       "website": "",
+       "links": [
+        "https://samexample.example"
+       ],
+       "emails": [],
+       "created": "2013-09-12T08:31:00Z",
+       "last_active": "",
+       "accounts": [],
+       "stats": {
+        "karma": 3187,
+        "submissions": 96
+       },
+       "followers": null,
+       "items": [],
+       "note": "",
+       "avatar_hash": "",
+       "avatar_default": false,
+       "thumb": "",
+       "avatar_state": "none"
+      },
+      {
+       "site": "npm",
+       "source": "npm",
+       "handle": "samexample",
+       "url": "https://www.npmjs.com/~samexample",
+       "state": "found",
+       "display_name": "",
+       "name": "",
+       "bio": "",
+       "location": "",
+       "company": "",
+       "website": "",
+       "links": [],
+       "emails": [
+        "sam@samexample.example"
+       ],
+       "created": "",
+       "last_active": "2026-10-02T11:20:00Z",
+       "accounts": [],
+       "stats": {
+        "packages": 3
+       },
+       "followers": null,
+       "items": [
+        {
+         "name": "tilecut",
+         "url": "https://www.npmjs.com/package/tilecut",
+         "kind": "package"
+        },
+        {
+         "name": "gpx-lint",
+         "url": "https://www.npmjs.com/package/gpx-lint",
+         "kind": "package"
+        },
+        {
+         "name": "@tidepool/shoreline",
+         "url": "https://www.npmjs.com/package/@tidepool/shoreline",
+         "kind": "package"
+        }
+       ],
+       "note": "",
+       "avatar_hash": "",
+       "avatar_default": false,
+       "thumb": "",
+       "avatar_state": "none"
+      },
+      {
+       "site": "GitLab",
+       "source": "gitlab",
+       "handle": "samexample",
+       "url": "https://gitlab.com/samexample",
+       "state": "found",
+       "display_name": "Petra Novak",
+       "name": "Petra Novak",
+       "bio": "Embedded firmware.",
+       "location": "Brno",
+       "company": "Kovo Labs",
+       "website": "",
+       "links": [],
+       "emails": [],
+       "created": "2020-02-11T00:00:00Z",
+       "last_active": "",
+       "accounts": [],
+       "stats": {
+        "followers": 4
+       },
+       "followers": 4,
+       "items": [],
+       "note": "",
+       "avatar_hash": "",
+       "avatar_default": true,
+       "thumb": "",
+       "avatar_state": "default"
+      },
+      {
+       "site": "Lichess",
+       "source": "lichess",
+       "handle": "samexample",
+       "url": "https://lichess.org/@/samexample",
+       "state": "found",
+       "display_name": "",
+       "name": "",
+       "bio": "",
+       "location": "",
+       "company": "",
+       "website": "",
+       "links": [],
+       "emails": [],
+       "created": "2019-01-05T00:00:00Z",
+       "last_active": "2026-11-25T21:02:00Z",
+       "accounts": [],
+       "stats": {
+        "games": 1840,
+        "rating": 1712
+       },
+       "followers": null,
+       "items": [],
+       "note": "",
+       "avatar_hash": "",
+       "avatar_default": false,
+       "thumb": "",
+       "avatar_state": "none"
+      },
+      {
+       "site": "Hugging Face",
+       "source": "huggingface",
+       "handle": "samexample",
+       "url": "https://huggingface.co/samexample",
+       "state": "found",
+       "display_name": "Sam Example",
+       "name": "Sam Example",
+       "bio": "",
+       "location": "",
+       "company": "",
+       "website": "",
+       "links": [],
+       "emails": [],
+       "created": "",
+       "last_active": "",
+       "accounts": [],
+       "stats": {
+        "models": 2,
+        "followers": 9
+       },
+       "followers": 9,
+       "items": [
+        {
+         "name": "Tidepool Lab",
+         "url": "https://huggingface.co/tidepool-lab",
+         "kind": "organization"
+        }
+       ],
+       "note": "",
+       "avatar_hash": "",
+       "avatar_default": false,
+       "thumb": "",
+       "avatar_state": "failed"
+      }
+     ],
+     "sources": {
+      "keybase": {
+       "site": "Keybase",
+       "state": "found"
+      },
+      "mastodon": {
+       "site": "Mastodon",
+       "state": "found"
+      },
+      "hackernews": {
+       "site": "Hacker News",
+       "state": "found"
+      },
+      "npm": {
+       "site": "npm",
+       "state": "found"
+      },
+      "gitlab": {
+       "site": "GitLab",
+       "state": "found"
+      },
+      "lichess": {
+       "site": "Lichess",
+       "state": "found"
+      },
+      "huggingface": {
+       "site": "Hugging Face",
+       "state": "found"
+      },
+      "dockerhub": {
+       "site": "Docker Hub",
+       "state": "not_found"
+      },
+      "devto": {
+       "site": "dev.to",
+       "state": "not_found"
+      },
+      "codeberg": {
+       "site": "Codeberg",
+       "state": "not_found"
+      },
+      "wikipedia": {
+       "site": "Wikipedia",
+       "state": "not_found"
+      },
+      "gravatar": {
+       "site": "Gravatar",
+       "state": "not_found"
+      },
+      "lobsters": {
+       "site": "Lobsters",
+       "state": "blocked"
+      },
+      "bluesky": {
+       "site": "Bluesky",
+       "state": "not_found"
+      },
+      "codeforces": {
+       "site": "Codeforces",
+       "state": "failed",
+       "error": "The source took too long to answer.",
+       "error_code": "timeout",
+       "error_detail": "TimeoutError"
+      },
+      "chesscom": {
+       "site": "Chess.com",
+       "state": "rate_limited",
+       "error": "The source is rate limiting requests. Try again in a minute.",
+       "error_code": "rate_limited",
+       "error_detail": "HTTP 429"
+      }
+     },
+     "cached": false
+    },
+    "enricher": {
+     "username": "samexample",
+     "profiles": [
+      {
+       "platform": "Instagram",
+       "url": "https://www.instagram.com/samexample/",
+       "display_name": "Sam",
+       "bio": "Photos and bikes."
+      }
+     ],
+     "total": 1
+    },
+    "platformCheck": {
+     "username": "samexample",
+     "checked": 2,
+     "total": 1,
+     "results": [
+      {
+       "platform": "Reddit",
+       "state": "found",
+       "url": "https://www.reddit.com/user/samexample",
+       "evidence": "Reddit's own record",
+       "display_name": "",
+       "bio": "",
+       "created": "2015-08-30",
+       "karma": 5210
+      },
+      {
+       "platform": "Twitch",
+       "state": "blocked",
+       "url": "https://www.twitch.tv/samexample",
+       "evidence": "the site answered with a bot check"
+      }
+     ]
+    },
+    "githubDeep": {
+     "found": true,
+     "username": "samexample",
+     "orgs": [
+      {
+       "login": "tidepool-lab",
+       "url": "https://github.com/tidepool-lab"
+      }
+     ],
+     "languages": [
+      "Rust",
+      "TypeScript"
+     ],
+     "top_repos": [
+      {
+       "name": "tilecut",
+       "url": "https://github.com/samexample/tilecut",
+       "language": "Rust",
+       "stars": 412,
+       "fork": false
+      }
+     ],
+     "commit_emails": [],
+     "social_accounts": [],
+     "readme_links": [],
+     "keys": {},
+     "sections": {
+      "orgs": "ok",
+      "top_repos": "ok",
+      "commit_emails": "ok"
+     }
+    },
+    "githubActivity": {
+     "username": "samexample",
+     "found": true,
+     "state": "ok",
+     "cached": false,
+     "complete": true,
+     "pages": 2,
+     "events": 137,
+     "window": {
+      "first": "2026-09-01T08:16:52Z",
+      "last": "2026-11-24T16:14:09Z",
+      "days": 85,
+      "active_days": 61
+     },
+     "hours_utc": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      4,
+      11,
+      14,
+      12,
+      9,
+      6,
+      10,
+      13,
+      15,
+      12,
+      9,
+      8,
+      6,
+      4,
+      2,
+      1,
+      0
+     ],
+     "weekdays_utc": [
+      29,
+      31,
+      27,
+      24,
+      19,
+      4,
+      3
+     ],
+     "weekday_labels": [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday"
+     ],
+     "types": [
+      {
+       "type": "PushEvent",
+       "count": 75
+      },
+      {
+       "type": "PullRequestEvent",
+       "count": 22
+      },
+      {
+       "type": "IssueCommentEvent",
+       "count": 19
+      },
+      {
+       "type": "WatchEvent",
+       "count": 11
+      },
+      {
+       "type": "CreateEvent",
+       "count": 10
+      }
+     ],
+     "repos": [
+      {
+       "name": "samexample/tilecut",
+       "url": "https://github.com/samexample/tilecut",
+       "count": 71
+      },
+      {
+       "name": "tidepool-lab/shoreline",
+       "url": "https://github.com/tidepool-lab/shoreline",
+       "count": 38
+      },
+      {
+       "name": "samexample/gpx-lint",
+       "url": "https://github.com/samexample/gpx-lint",
+       "count": 19
+      }
+     ],
+     "estimate": {
+      "utc_offset_from": -1,
+      "utc_offset_to": 2,
+      "utc_offsets": [
+       -1,
+       0,
+       1,
+       2
+      ],
+      "label": "UTC-1 to UTC+2",
+      "quiet_start_hour": 23,
+      "quiet_end_hour": 6,
+      "quiet_hours": 7,
+      "quiet_events": 0,
+      "basis": "Based on 137 public events over 85 days, with no event between 23:00 and 06:00 UTC.",
+      "assumption": "It assumes the quiet stretch is the night, between about 23:00 and 07:00 local time.",
+      "caveat": "A hint, not a fact. Night work, scheduled jobs and travel all change the picture."
+     },
+     "estimate_reason": null
+    },
+    "avatarHash": {
+     "results": [
+      {
+       "id": "acct:github",
+       "hash": "c3a59e1d2b4f6870",
+       "default": false,
+       "thumb": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAAAAADFHGIkAAAAzElEQVR42m3P4WaCARgG0OdykvkkSSZJkkySJEmSJEmSJEmSJEmSJEkmSSbJJEmSJEmSJJmuZt7/zw0cDlSK7tNsc7h9wUg8lS2Ua81OfziZLaDRGy12p8cfiibSuWKl3uoORj/z5QYGk/XL5Q2EY8lMvlRttHvf4+nvansAY9a74wWM2Z+uDzDmfHu+wZj7S6WAMX9qjR6M+dAaTGCMlMEYKYMxUgZjpAzGSBmMkTIYI2UwRspgjJTBGCmDMVIGY6QMxkgZjJEyGCPlfyczH8hLGk0tAAAAAElFTkSuQmCC"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "email with accounts and keys",
+   "target": "mara@tidepool.example",
+   "type": "email",
+   "collected": {
+    "emailAccounts": {
+     "email": "mara@tidepool.example",
+     "cached": false,
+     "accounts": [
+      {
+       "login": "mara-lind",
+       "url": "https://github.com/mara-lind",
+       "how": "commit_author",
+       "hows": [
+        "commit_author",
+        "public_profile_email"
+       ],
+       "account_type": "User",
+       "commits_seen": 5,
+       "own_repo_commits": 3,
+       "names": [
+        {
+         "name": "Mara Lindqvist",
+         "commits": 3,
+         "own_repo": true
+        },
+        {
+         "name": "mara",
+         "commits": 2,
+         "own_repo": false
+        }
+       ],
+       "first_commit": "2021-06-14T07:30:00Z",
+       "last_commit": "2025-02-20T07:05:00Z",
+       "dates_ignored": 1,
+       "commit_utc_offsets": [
+        {
+         "offset": "+01:00",
+         "commits": 3
+        },
+        {
+         "offset": "+02:00",
+         "commits": 2
+        }
+       ],
+       "evidence": [
+        "https://github.com/mara-lind/tidepool/commit/9f2c1e7ab04d5566778899aabbccddeeff001122",
+        "https://github.com/tidepool-lab/shoreline/commit/1a2b3c4d5e6f77889900aabbccddeeff00112233"
+       ]
+      },
+      {
+       "login": "tidepool-lab",
+       "url": "https://github.com/tidepool-lab",
+       "how": "public_profile_email",
+       "hows": [
+        "public_profile_email"
+       ],
+       "account_type": "Organization"
+      }
+     ],
+     "unattributed": {
+      "commits_seen": 3,
+      "own_repo_commits": 0,
+      "names": [
+       {
+        "name": "M. Lindqvist",
+        "commits": 2,
+        "own_repo": false
+       },
+       {
+        "name": "build-bot",
+        "commits": 1,
+        "own_repo": false
+       }
+      ],
+      "first_commit": "2019-11-02T18:00:00Z",
+      "last_commit": "2020-03-09T09:12:00Z",
+      "dates_ignored": 0,
+      "commit_utc_offsets": [
+       {
+        "offset": "+01:00",
+        "commits": 3
+       }
+      ],
+      "evidence": [
+       "https://github.com/old-fork/tides/commit/77aa88bb99cc00dd11ee22ff33445566778899aa"
+      ]
+     },
+     "keys": [
+      {
+       "parsed": true,
+       "version": 4,
+       "fingerprint": "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+       "key_id": "6D7E8F9012345678",
+       "created": "2022-05-17T10:30:00Z",
+       "algorithm": "EdDSA",
+       "bits": null,
+       "curve": "Ed25519",
+       "url": "https://keys.openpgp.org/vks/v1/by-fingerprint/A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+       "user_ids": [
+        {
+         "name": "Mara Lindqvist",
+         "email": "mara@tidepool.example",
+         "comment": ""
+        },
+        {
+         "name": "Mara Lindqvist",
+         "email": "mara@lindqvist.example",
+         "comment": "personal"
+        }
+       ],
+       "subkeys": 1,
+       "revoked": false,
+       "how": "keyserver_verified_address"
+      },
+      {
+       "parsed": false,
+       "version": 6,
+       "reason": "Version 6 keys are not read yet.",
+       "user_ids": [
+        {
+         "name": "",
+         "email": "mara@tidepool.example",
+         "comment": ""
+        }
+       ]
+      }
+     ],
+     "sources": {
+      "github_commits": {
+       "state": "ok",
+       "total": 10,
+       "seen": 8,
+       "incomplete": false,
+       "skipped": 2
+      },
+      "github_users": {
+       "state": "ok",
+       "total": 2,
+       "seen": 2
+      },
+      "openpgp": {
+       "state": "ok",
+       "count": 2
+      }
+     }
+    },
+    "holehe": {
+     "email": "mara@tidepool.example",
+     "total": 3,
+     "results": [
+      {
+       "site": "Spotify",
+       "domain": "spotify.com"
+      },
+      {
+       "site": "Strava",
+       "domain": "strava.com"
+      },
+      {
+       "site": "Adobe",
+       "domain": "adobe.com"
+      }
+     ]
+    },
+    "hibp": {
+     "email": "mara@tidepool.example",
+     "source": "XposedOrNot",
+     "breaches": [
+      {
+       "name": "MapForum",
+       "date": "2019-03-14",
+       "year": 2019,
+       "data_classes": [
+        "Email addresses",
+        "Passwords"
+       ],
+       "records": 812000,
+       "verified": true,
+       "domain": "mapforum.example",
+       "url": ""
+      },
+      {
+       "name": "TrailShare",
+       "date": "",
+       "year": 2022,
+       "data_classes": [
+        "Email addresses",
+        "Usernames"
+       ],
+       "records": 91000,
+       "verified": true,
+       "domain": "trailshare.example",
+       "url": ""
+      }
+     ]
+    },
+    "gravatar": {
+     "found": true,
+     "profile_url": "https://gravatar.com/maralind",
+     "display_name": "maralind",
+     "name": "Mara Lindqvist",
+     "location": "Gothenburg",
+     "avatar_url": ""
+    },
+    "harvester": {
+     "domain": "tidepool.example",
+     "hosts": [
+      "docs.tidepool.example",
+      "api.tidepool.example",
+      "mail.tidepool.example"
+     ],
+     "emails": [
+      "hello@tidepool.example"
+     ],
+     "total_hosts": 3,
+     "host_sources": {
+      "docs.tidepool.example": [
+       "crtsh"
+      ],
+      "api.tidepool.example": [
+       "crtsh"
+      ],
+      "mail.tidepool.example": [
+       "hackertarget"
+      ]
+     },
+     "sources": {
+      "crtsh": {
+       "hosts": 2
+      },
+      "hackertarget": {
+       "hosts": 1
+      }
+     }
+    }
+   }
+  }
+ ]
+}

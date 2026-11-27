@@ -1,7 +1,7 @@
 // Entry point: navigation, landing, settings, history drawer, AI pill, theme, terms.
-import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, plural, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
+import { HOW_LEGEND, $, $$, h, raw, esc, store, toast, plural, looksLikeHeaders, refreshQuota, quota, aiLabel, KEYS, getKey, setKey, getProvider, setProvider, detect, reconType, TYPE_LABEL, INVESTIGATE_TYPES, RECON_TYPES, roving } from "./core.js";
 import { openModal, closeModal, openDrawer, closeDrawer, openSheet, closeSheet } from "./ui.js";
-import { run, cancel, renderSources, refreshModes, loadHistory, getHistory, clearCase, exportCase, state } from "./investigate.js";
+import { run, cancel, renderSources, refreshModes, loadHistory, getHistory, clearCase, exportCase, trailFrom, state } from "./investigate.js";
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
 import { parseCaseFile, MAX_CASE_BYTES } from "./casefile.js";
@@ -135,7 +135,11 @@ $("#landingInput").addEventListener("input", (e) => { const t = detect(e.target.
 // opts: how the run was started (see run() in investigate.js). A pivot button passes it; a target
 // that was typed does not.
 function startInvestigate(v, type = "", opts = {}) { $("#targetInput").value = v; typeOverride = INVESTIGATE_TYPES.includes(type) && detect(v) !== type ? type : ""; onTargetInput(); show("investigate", { focus: false }); run(v, typeOverride || undefined, opts).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
-function startRecon(v) { show("recon", { focus: false }); recon.run(v).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
+// opts.from "case": the button was on the Investigate case on screen, so the Recon case records
+// the trail that led to it, and the lead is marked as followed there.
+// opts.type: "domain" when the button knows its value is one (a lead from a website or an email
+// field), so a name whose last label the detector does not list still opens in Recon.
+function startRecon(v, opts = {}) { const type = reconType(v, opts.type); const trail = opts.from === "case" ? trailFrom(v, type, opts.via, { stays: true }) : null; show("recon", { focus: false }); recon.run(v, { ...(trail ? { trail } : {}), ...(opts.type ? { type: opts.type } : {}) }).then(syncIdle); syncIdle(); $("#content").focus({ preventScroll: true }); }
 $("#landingForm").addEventListener("submit", (e) => {
   e.preventDefault();
   const v = $("#landingInput").value.trim(); if (!v) return;
@@ -151,7 +155,10 @@ document.addEventListener("click", (e) => {
   // Where the button was: a pivot from the Investigate case on screen carries that case's standing
   // with the minor guard into the new case (its handle, or what its profiles said). A Recon run started here is a pivot, so it never scans.
   const from = current === "investigate" ? "case" : "other";
-  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v); else startInvestigate(v, b.dataset.pivotType || "", { pivot: true, from }); };
+  // via: what the pivot trail of the new case says about this hop (the lead, where it was found,
+  // and the suggestion it came from, so the case it leaves can mark it as followed).
+  const via = { label: b.dataset.via || "", source: b.dataset.viaSource || "", step: b.dataset.step || "", title: b.dataset.stepTitle || "" };
+  const go = () => { window.scrollTo({ top: 0, behavior: "smooth" }); if (b.dataset.pivot === "recon") startRecon(v, { from, via, type: b.dataset.pivotType === "domain" ? "domain" : "" }); else startInvestigate(v, b.dataset.pivotType || "", { pivot: true, from, via }); };
   if (state.running || recon.state.running) {
     // A lead button asks before it ends a run in flight; other pivots just say why they wait.
     if (!b.dataset.confirmRun) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
@@ -164,6 +171,14 @@ document.addEventListener("click", (e) => {
     return;
   }
   go();
+});
+// A step of a pivot trail opens the earlier case it names, from History. Nothing is run.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-open-case]"); if (!b) return;
+  if (state.running || recon.state.running) { toast("A run is in progress. Cancel it or wait for it to finish."); return; }
+  const entry = getHistory().find((x) => x.id === b.dataset.openCase);
+  if (!entry) { toast("That case is no longer in History."); return; }
+  openEntry(entry); window.scrollTo({ top: 0 }); $("#content").focus({ preventScroll: true });
 });
 // Pasted email headers lose their newlines in a one-line input, so catch the paste itself.
 ["#landingInput", "#targetInput"].forEach((sel) => $(sel).addEventListener("paste", (e) => {
@@ -301,7 +316,7 @@ $("#historyBtn").addEventListener("click", openHistory);
 const KIND = { INVESTIGATE: "Investigate", RECON: "Recon", email_headers: "Email headers" };
 // The finding keys of one saved run, built by the code that draws the case, for "what changed".
 function runKeys(e) {
-  if (e.type === "RECON") return buildFindings(e.results || {}, e.target, detect(e.target)).items.map((i) => i.key);
+  if (e.type === "RECON") return buildFindings(e.results || {}, e.target, reconType(e.target, e.kind)).items.map((i) => i.key);
   if (e.type !== "INVESTIGATE") return null;
   const kind = e.kind || detect(e.target);
   if (kind === "name") return null;       // candidates, not findings: nothing to compare

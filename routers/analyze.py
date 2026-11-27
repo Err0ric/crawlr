@@ -291,10 +291,16 @@ def _status_lines(req) -> list[str]:
     bad = ("failed", "blocked")
     failed = {k: v for k, v in status.items() if v.lower().startswith(bad)}
     partial = {k: v for k, v in status.items() if v.lower().startswith("partial")}
-    ok = [k for k, v in status.items() if not v.lower().startswith(bad + ("partial",))]
+    unasked = [k for k, v in status.items() if v.lower().startswith("not asked")]
+    ok = [k for k, v in status.items() if not v.lower().startswith(bad + ("partial", "not asked"))]
     lines = []
     if ok:
         lines.append(f"Sources that ran successfully: {', '.join(sorted(ok))}")
+    if unasked:
+        lines.append(
+            "Sources that were NOT ASKED (the lookup could not apply to this target): " + ", ".join(sorted(unasked))
+            + ". Nothing is known from them either way. Do not report them as 'not found'."
+        )
     if partial:
         lines.append(
             "Sources that answered only IN PART: "
@@ -309,6 +315,176 @@ def _status_lines(req) -> list[str]:
             "and do not read a failure as evidence that an account does or does not exist. List each under Gaps."
         )
     return lines
+
+
+DEEP_PROVENANCE = (
+    "How to read the lines below: SITE RECORD is what the site itself recorded (a join date, a count, an attribution, "
+    "a proof it checked). SELF-DECLARED is what the account holder wrote, or what is written inside a commit or a key, "
+    "and can be false or forged. Say which one a statement rests on. A profile's status (linked, matches, different, "
+    "unverified) is the one the investigator's ledger gave it: a profile that is not linked is not the target's."
+)
+
+
+def _pairs(d, cap: int = 12, width: int = 240) -> str:
+    """A small dict as 'key: value' cells, each inert text."""
+    if not isinstance(d, dict):
+        return ""
+    return "; ".join(f"{_cell(k, 30).replace('_', ' ')}: {_cell(v, width)}" for k, v in list(d.items())[:cap] if v not in (None, "", [], {}))
+
+
+_COUNT_MAX = 10 ** 6
+
+
+def _count(value) -> int:
+    """A count from the payload: a whole number in a sane range, else 0. Never text."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < _COUNT_MAX else 0
+
+
+def _list(value, cap: int) -> list:
+    """A list from the payload, capped. Anything that is not a list is no rows."""
+    return value[:cap] if isinstance(value, list) else []
+
+
+def _dicts(value, cap: int) -> list[dict]:
+    return [x for x in (value if isinstance(value, list) else []) if isinstance(x, dict)][:cap]
+
+
+def _analysis_lines(req) -> list[str]:
+    """The identity choice, the rule-based assessment and the pivot trail, as the page built them.
+    A picked identity is named as the investigator's judgment with the automatic choice beside it,
+    so the model never reports a pick as a finding. Every value is inert text."""
+    ca = req.case_analysis if isinstance(getattr(req, "case_analysis", None), dict) else None
+    if not ca:
+        return []
+    lines: list[str] = []
+    ic = ca.get("identity_choice") if isinstance(ca.get("identity_choice"), dict) else {}
+    mode, who = ic.get("mode"), _cell(ic.get("primary"), 120)
+    sites = ", ".join(_cell(x, 40) for x in _list(ic.get("primary_accounts"), 12) if isinstance(x, str))
+    auto, why = _cell(ic.get("automatic_choice"), 120), _cell(ic.get("automatic_reason"), 200)
+    if mode == "picked_by_investigator" and who:
+        lines.append(
+            f"PRIMARY IDENTITY: {who}" + (f" ({sites})" if sites else "") + ". PICKED BY THE INVESTIGATOR as the person this case is about. "
+            "That is their judgment, not a finding of the tool: say so, and do not present it as established. Every account status above is filed against this pick. "
+            + (f"The tool's automatic choice would have been {auto}, because {why}." if auto else "Automatically the tool would have chosen nobody: nothing ties any profile to the target.")
+        )
+    elif mode == "picked_in_case_file" and who:
+        lines.append(
+            f"PRIMARY IDENTITY: {who}" + (f" ({sites})" if sites else "") + ". PICKED IN THE CASE FILE this case was opened from, by whoever made that file. "
+            "That is their judgment, not a finding of the tool and not the choice of the person asking: say so, and do not present it as established. Every account status above is filed against this pick. "
+            + (f"The tool's automatic choice would have been {auto}, because {why}." if auto else "Automatically the tool would have chosen nobody: nothing ties any profile to the target.")
+        )
+    elif mode == "automatic" and who:
+        lines.append(f"PRIMARY IDENTITY: {who}" + (f" ({sites})" if sites else "") + f". Chosen by the tool's rules{', because ' + why if why else ''}. The investigator has not picked anyone.")
+    elif mode == "none":
+        lines.append("PRIMARY IDENTITY: none. Nothing ties any profile to the target, and the investigator has not picked anyone.")
+    head = _cell(ca.get("headline"), 400)
+    if head:
+        lines.append("RULE-BASED ASSESSMENT (built by the tool with no model; start from it, and do not claim more than it does). How firmly the accounts are tied to one identity: " + head)
+    for x in [x for x in _list(ca.get("lines"), 12) if isinstance(x, str)]:
+        lines.append("- " + _cell(x, 700))
+    trail = _cell(ca.get("pivot_trail"), 600)
+    if trail:
+        lines.append("HOW THIS CASE WAS REACHED (each step was a lead the investigator chose to follow): " + trail)
+    return lines
+
+
+def _deep_lines(req) -> list[str]:
+    """The profile sources, the accounts and keys behind an address, and GitHub activity. Every
+    line says how its values are known, and a site or a lookup that did not answer is listed as
+    unknown. Nothing is added when a case has none of the three, so older prompts are unchanged.
+
+    The three payloads are outside data: every list is checked to be a list, every count is a
+    whole number in range (`_count`) and every other value is an inert cell (`_cell`)."""
+    lines: list[str] = []
+    ps = req.profile_sources if isinstance(req.profile_sources, dict) else None
+    if ps:
+        for p in _dicts(ps.get("profiles"), 16):
+            status = _cell(p.get("status"), 20) or "unverified"
+            if status == "different":
+                # Another person's record: the page sends the site and the status only, and
+                # anything else that arrives is not written into the prompt.
+                lines.append(f"{_cell(p.get('site'), 40)} record [status: different]: a record was read and the ledger files it as a different person. "
+                             "Its name, bio, location, addresses and accounts are left out, because they are not the target's.")
+                continue
+            head = f"{_cell(p.get('site'), 40)} record ({_cell(p.get('url'), 300)}) [status: {status}]"
+            said, rec = _pairs(p.get("self_declared"), cap=8), _pairs(p.get("site_record"), cap=12, width=300)
+            lines.append((head + (f" SELF-DECLARED: {said}." if said else "") + (f" SITE RECORD: {rec}." if rec else "") + ("" if said or rec else " The record carries nothing but the handle."))[:DEEP_LINE_MAX])
+        absent = [c for c in (_cell(x, 40) for x in _list(ps.get("not_found"), 16)) if c]
+        if absent:
+            lines.append("Profile sources that answered and have no record for this handle: " + ", ".join(absent))
+        down = [c for c in (_cell(x, 80) for x in _list(ps.get("not_answered"), 16)) if c]
+        if down:
+            lines.append("Profile sources that did NOT answer (unknown, not absent; list under Gaps): " + "; ".join(down))
+        notes = [c for c in (_cell(x, 240) for x in _list(ps.get("notes"), 6)) if c]
+        if notes:
+            lines.append("Notes from profile sources: " + "; ".join(notes))
+    ea = req.email_accounts if isinstance(req.email_accounts, dict) else None
+    if ea:
+        def commits(a: dict) -> str:
+            names = ", ".join(f"{_cell(n.get('name'), 100)} ({_count(n.get('commits'))} commits{', in a repository the account owns' if n.get('own_repo') is True else ''})" for n in _dicts(a.get("self_declared_names"), 5))
+            offsets = ", ".join(f"UTC{_cell(o.get('offset'), 8)} ({_count(o.get('commits'))})" for o in _dicts(a.get("self_declared_utc_offsets"), 4))
+            span = " to ".join(x for x in (_cell(a.get("self_declared_first_commit"), 12), _cell(a.get("self_declared_last_commit"), 12)) if x)
+            return (f" SELF-DECLARED inside the commits (forgeable): names {names or 'none'}" + (f"; dates {span}" if span else "") + (f"; time zone offsets {offsets}" if offsets else "") + ".")
+        for a in _dicts(ea.get("accounts"), 10):
+            login, kind = _cell(a.get("login"), 40), _cell(a.get("account_type"), 20)
+            if a.get("tie") == "commit_author":
+                lines.append(f"SITE RECORD: GitHub attributes {_count(a.get('commits_seen'))} commits that carry the searched address to the account {login} ({_cell(a.get('url'), 120)}). "
+                             "That account has the address confirmed, which is a strong tie between the address and the account." + commits(a))
+            else:
+                # A user search hit carries no address, so the profile was not seen to show it.
+                lines.append(f"GitHub's user search matched the searched address on the public profile of {login} ({kind or 'account'}); the profile itself was not read to confirm it. Weaker than a commit attribution"
+                             + (", and unconfirmed: GitHub does not verify an organization's address." if kind == "Organization" else "."))
+        un = ea.get("unattributed_commits")
+        if isinstance(un, dict) and _count(un.get("commits_seen")):
+            lines.append(f"{_count(un.get('commits_seen'))} commits carry the searched address and belong to NO GitHub account. Anyone can write any address in a commit, so they prove nothing about who wrote them." + commits(un))
+        for k in _dicts(ea.get("keys"), 10):
+            if k.get("unread"):
+                lines.append("An OpenPGP key is published for the searched address that could not be read (unknown contents).")
+                continue
+            verified = ", ".join(c for c in (_cell(e, 254) for e in _list(k.get("verified_addresses"), 6)) if c)
+            key_names = ", ".join(c for c in (_cell(n, 100) for n in _list(k.get("self_declared_names"), 6)) if c)
+            lines.append(f"SITE RECORD: keys.openpgp.org publishes OpenPGP key {_cell(k.get('fingerprint'), 40)} ({_cell(k.get('algorithm'), 60)}{', revoked' if k.get('revoked') is True else ''}) for the searched address; "
+                         f"it verified by mail: {verified or 'this address'}. "
+                         f"SELF-DECLARED in the key: created {_cell(k.get('self_declared_created'), 12) or 'unknown'}; names {key_names or 'none'}.")
+        down = [c for c in (_cell(x, 80) for x in _list(ea.get("not_answered"), 4)) if c]
+        if down:
+            lines.append("Address lookups that did NOT answer (unknown, never 'no account' or 'no key'; list under Gaps): " + "; ".join(down))
+    ga = req.github_activity if isinstance(req.github_activity, dict) and _github_is_target(req) else None
+    if ga:
+        if ga.get("state") != "ok":
+            lines.append(f"GitHub activity: {_cell(ga.get('note'), 240)}")
+        else:
+            # A count that is not a whole number in range is left out, never written as text.
+            hours = [str(x) for x in _list(ga.get("hours_utc"), 24) if isinstance(x, int) and not isinstance(x, bool) and 0 <= x < _COUNT_MAX]
+            repos = ", ".join(c for c in (_cell(x, 120) for x in _list(ga.get("top_repositories"), 5)) if c)
+            lines.append(f"SITE RECORD, GitHub activity: {_cell(ga.get('summary'), 300)} Events per UTC hour 00 to 23: {', '.join(hours)}. "
+                         f"Most active in: {repos or 'none listed'}.")
+            est = ga.get("utc_offset_estimate")
+            if isinstance(est, dict):
+                lines.append(f"UTC offset ESTIMATE from those hours: {_cell(est.get('range'), 40)}. {_cell(est.get('basis'), 400)} {_cell(est.get('assumption'), 400)} {_cell(est.get('caveat'), 400)} "
+                             "Report it only as a range of UTC offsets with this caveat. Never name a country, a city or a time zone from it.")
+            else:
+                lines.append(f"No UTC offset estimate was made: {_cell(ga.get('no_estimate_reason'), 300)} Do not infer one.")
+    return [DEEP_PROVENANCE, *_within(lines, DEEP_TOTAL_MAX)] if lines else []
+
+
+# The record sources are capped as a whole and line by line: a request can carry far more text than
+# any real case, and on the house key that text is paid for by CrawlR.
+DEEP_LINE_MAX = 2400
+DEEP_TOTAL_MAX = 16000
+
+
+def _within(lines: list[str], budget: int) -> list[str]:
+    """The lines that fit the budget, each clipped, then one line that says the rest was left out."""
+    out, used = [], 0
+    for i, line in enumerate(lines):
+        line = line[:DEEP_LINE_MAX]
+        if used + len(line) > budget:
+            out.append(f"({len(lines) - i} further record lines were left out to keep this prompt short. Treat what they held as unknown.)")
+            break
+        out.append(line)
+        used += len(line) + 1
+    return out
 
 
 # Old clients and saved prompts used two statuses. They map onto the weakest group that fits.
@@ -331,6 +507,52 @@ def _breach_names(hibp: Optional[dict], limit: int = 20) -> list[str]:
 
 _HANDLE_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 TAKEN_NOTE = "handle taken, owner unknown"
+
+_GITHUB_OTHER = {
+    "different": "the ledger files it as a different person from the primary identity",
+    "matches": "nothing ties it to the primary identity",
+    "unread": "the case holds no profile record that ties it to the primary identity",
+}
+
+
+def _github_other(req) -> str:
+    """Why the GitHub account is not the target's, or "" when it is (or when nothing says).
+
+    GitHub's profile, its details and its activity describe one account. After the investigator
+    picks another person, that account is not the one the case is about. The page then sends none
+    of the three and says so in `github_not_target`. The account list is asked as well, so a
+    payload that still carries the data never has it written as the target's."""
+    flag = getattr(req, "github_not_target", None)
+    if isinstance(flag, str) and flag in _GITHUB_OTHER:
+        return _GITHUB_OTHER[flag]
+    for a in getattr(req, "accounts", None) or []:
+        if str(a.site).strip().lower() == "github" and _STATUS_ALIAS.get(a.status, a.status) == "different":
+            return _GITHUB_OTHER["different"]
+    return ""
+
+
+def _github_is_target(req) -> bool:
+    return not _github_other(req)
+
+
+def _github_other_lines(req) -> list[str]:
+    why = _github_other(req)
+    if not why:
+        return []
+    return [
+        f"GitHub: an account with this handle exists and was read, and {why}. Its name, bio, location, employer, email, "
+        "repositories, organisations, commit emails, linked accounts and activity hours are NOT the target's and are left out. "
+        "Attribute nothing from GitHub to the primary identity."
+    ]
+
+
+def _others(req) -> set[str]:
+    """Lowercased site names of the accounts the ledger files as a different person."""
+    return {str(a.site).strip().lower() for a in (getattr(req, "accounts", None) or []) if _STATUS_ALIAS.get(a.status, a.status) == "different"}
+
+
+def _is_other(req, site) -> bool:
+    return isinstance(site, str) and site.strip().lower() in _others(req)
 
 
 def _account_lines(req) -> list[str]:
@@ -550,6 +772,19 @@ class AnalyzeRequest(BaseModel):
     name_search: Optional[dict] = None
     hash: Optional[dict] = None
     phone: Optional[dict] = None
+    # The record sources, as the page's deepForAi builds them (static/v2/js/evidence.js): each
+    # value arrives already marked as the site's record or as self-declared.
+    profile_sources: Optional[dict] = None
+    email_accounts: Optional[dict] = None
+    github_activity: Optional[dict] = None
+    # What the page's own rules worked out (analysisForAi in static/v2/js/analysis.js): whether the
+    # primary identity was chosen by the rules or picked by the investigator, how firmly the
+    # accounts are tied together, and how the case was reached.
+    case_analysis: Optional[dict] = None
+    # Set by the page when the GitHub account is not the person the case is about (after a pick of
+    # somebody else): "different", "matches" or "unread". The page then sends no GitHub data, and
+    # any that still arrives is not written into a prompt.
+    github_not_target: Optional[str] = Field(default=None, max_length=20)
     active_techniques: bool = False
 
 
@@ -564,6 +799,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
     prompt_parts = [f"Target: {req.target}\n"]
 
     prompt_parts.extend(_account_lines(req))
+    prompt_parts.extend(_analysis_lines(req))
     prompt_parts.extend(_adult_lines(req))
     prompt_parts.extend(_adult_block_lines(req))
     prompt_parts.extend(_name_candidate_lines(req))
@@ -608,7 +844,9 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
             parts.append(f"profile: {g['profile_url']}")
         prompt_parts.append(f"Gravatar profile found: {', '.join(parts)}")
 
-    if _ok(req.github) and req.github.get("found"):
+    prompt_parts.extend(_github_other_lines(req))
+
+    if _ok(req.github) and req.github.get("found") and _github_is_target(req):
         gh = req.github
         parts = []
         if gh.get("name"):
@@ -628,6 +866,9 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
 
     if req.enricher and req.enricher.get("profiles"):
         for p in req.enricher["profiles"]:
+            # Another person's name and bio are not written beside the target's.
+            if _is_other(req, p.get("platform")):
+                continue
             parts = []
             if p.get("display_name"):
                 parts.append(f"display name: {p['display_name']}")
@@ -647,7 +888,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
             if read:
                 prompt_parts.append(
                     "Platform check read a profile page (a marker on the page matched) on: "
-                    + ", ".join(named(r) + (f" [name on profile: {r['display_name']}]" if r.get("display_name") else "") for r in read)
+                    + ", ".join(named(r) + (f" [name on profile: {r['display_name']}]" if r.get("display_name") and not _is_other(req, r.get("platform")) else "") for r in read)
                 )
             if blocked:
                 prompt_parts.append(
@@ -671,7 +912,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
             if not_found:
                 prompt_parts.append(f"Platform existence check found no profile on: {', '.join(not_found)}")
 
-    if _ok(req.github_deep) and req.github_deep.get("found") is not False:
+    if _ok(req.github_deep) and req.github_deep.get("found") is not False and _github_is_target(req):
         gd = req.github_deep
         sections = gd.get("sections") or {}
         parts = []
@@ -692,6 +933,8 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
         unknown = sorted(k for k, v in sections.items() if v in ("rate_limited", "failed"))
         if unknown:
             prompt_parts.append(f"GitHub details that could not be read (unknown, not empty): {', '.join(unknown)}")
+
+    prompt_parts.extend(_deep_lines(req))
 
     if _ok(req.hash):
         hs = req.hash
@@ -730,7 +973,7 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
             "\n== LIVE PROFILE SCRAPE DATA (Active Techniques - visited each profile URL) =="
         )
         for p in req.profile_scrape["results"]:
-            if p.get("error"):
+            if p.get("error") or _is_other(req, p.get("site")):
                 continue
             parts = [f"Site: {p.get('site', '')}"]
             if p.get("display_name"):
@@ -836,11 +1079,41 @@ async def summarize(req: AnalyzeRequest, request: Request, x_api_key: str | None
 @router.post("/deep-dive")
 async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None = Header(default=None), x_ai_provider: str = Header(default="anthropic")):
     bucket = "deepdive"
+    recon_data = deep_dive_data(req)
 
-    # Build recon context (same data assembly as summarize)
+    t0 = time.time()
+
+    ai = await run_ai(
+        request, x_api_key, x_ai_provider, bucket,
+        max_tokens=2048,
+        messages=[{"role": "user", "content": DEEP_DIVE_PROMPT + f"Recon data:\n{recon_data}"}],
+    )
+
+    elapsed = round(time.time() - t0, 1)
+    text = ai.text
+
+    return {
+        "summary": text,
+        "elapsed": elapsed,
+        **ai.meta(),
+    }
+
+
+def deep_dive_data(req: AnalyzeRequest) -> str:
+    """The collected data a Deep Dive is written from. The page sends the same payload as for the
+    investigation report, so the same things are said first: each account with the status the
+    ledger gave it, who the primary identity is and whether the investigator picked it, the
+    rule-based assessment, which sources did not answer, and the record sources with how each
+    value is known. Per-site data follows, and never for an account that is another person's."""
     prompt_parts = [f"Target: {req.target}\n"]
+    ledger = bool(req.accounts)
+    prompt_parts.extend(_account_lines(req) if ledger else [])
+    prompt_parts.extend(_analysis_lines(req))
+    prompt_parts.extend(_status_lines(req))
+    prompt_parts.extend(_github_other_lines(req))
+    prompt_parts.extend(_deep_lines(req))
 
-    if req.sherlock and req.sherlock.get("results"):
+    if not ledger and req.sherlock and req.sherlock.get("results"):
         results = req.sherlock["results"]
         verified = [r["site"] for r in results if r.get("verified")]
         possible = [r["site"] for r in results if r.get("confidence") != "false_positive" and not r.get("verified")]
@@ -865,7 +1138,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
         if parts:
             prompt_parts.append(f"Gravatar: {', '.join(parts)}")
 
-    if _ok(req.github) and req.github.get("found"):
+    if _ok(req.github) and req.github.get("found") and _github_is_target(req):
         gh = req.github
         parts = []
         for k in ("name", "bio", "location", "company", "email", "blog"):
@@ -876,6 +1149,8 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
 
     if req.enricher and req.enricher.get("profiles"):
         for p in req.enricher["profiles"]:
+            if _is_other(req, p.get("platform")):
+                continue
             parts = []
             if p.get("display_name"):
                 parts.append(f"display name: {p['display_name']}")
@@ -910,7 +1185,7 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
     if req.profile_scrape and req.profile_scrape.get("results"):
         scrape_parts = ["\n== SCRAPED PROFILE DATA (live page visits) =="]
         for p in req.profile_scrape["results"]:
-            if p.get("error"):
+            if p.get("error") or _is_other(req, p.get("site")):
                 continue
             lines = [f"\n[{p.get('site', '?')}] {p.get('url', '')}"]
             if p.get("display_name"):
@@ -929,77 +1204,63 @@ async def deep_dive(req: AnalyzeRequest, request: Request, x_api_key: str | None
     recon_data = "\n".join(prompt_parts)
     if scrape_section:
         recon_data += "\n" + scrape_section
+    return recon_data
 
-    t0 = time.time()
 
-    ai = await run_ai(
-        request, x_api_key, x_ai_provider, bucket,
-        max_tokens=2048,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    "You are a senior OSINT intelligence analyst writing a classified-style dossier. "
-                    "You have access to OSINT recon data AND live-scraped profile page content below. "
-                    "Write a deep analytical report, NOT bullet points, but a proper intelligence dossier.\n\n"
-                    "Produce EXACTLY these five sections with these EXACT headers (use ** bold for headers):\n\n"
-                    "**SUBJECT PROFILE**\n"
-                    "Write 2-3 flowing paragraphs describing this person's digital identity. "
-                    "Synthesize ALL available data into a narrative: who they likely are, what they do online, "
-                    "their technical sophistication, geographic indicators, professional profile, interests, "
-                    "and behavioral patterns. Cross-reference display names, bios, and linked accounts "
-                    "from the scraped profile data to build a coherent picture. "
-                    "Do NOT use bullet points: write in analytical prose.\n\n"
-                    "**CONFIDENCE MATRIX**\n"
-                    "Present a table of identity inferences. Each row should be:\n"
-                    "| Inference | Confidence | Evidence |\n"
-                    "Include rows for: Probable Real Name, Location, Occupation/Industry, Age Range, "
-                    "Primary Email, Technical Skill Level, and any other strong inferences. "
-                    "Confidence must be HIGH, MEDIUM, or LOW. Evidence column must cite specific data points.\n\n"
-                    "**PLATFORM CORRELATION**\n"
-                    "Analyze which platforms corroborate each other. For each cluster of corroborating platforms, "
-                    "explain WHAT matches (same display name? same bio text? same linked URL? same avatar?) "
-                    "and what intelligence that yields. Identify any contradictions between platforms. "
-                    "If scraped profile data is available, use the actual display names and bios to correlate.\n\n"
-                    "**OPSEC ASSESSMENT**\n"
-                    "Evaluate the target's operational security. What personal information have they leaked? "
-                    "What are they doing well (separate identities, no real name, etc.)? "
-                    "Rate their overall OPSEC as POOR, FAIR, MODERATE, or STRONG with justification. "
-                    "Note specific mistakes: real name in username, same handle everywhere, "
-                    "location in bio, employer visible, email exposed in breaches, etc.\n\n"
-                    "**READY-TO-USE QUERIES**\n"
-                    "Provide 5-8 copy-paste-ready search queries for manual follow-up. "
-                    "Each on its own line prefixed with →. Include:\n"
-                    "- Google dorks: site:, inurl:, intitle:, \"exact match\" operators\n"
-                    "- Platform-specific searches\n"
-                    "- Reverse email/username lookups\n"
-                    "Make these SPECIFIC to the target: use their actual username, email, "
-                    "inferred name, and discovered platforms. No generic templates.\n\n"
-                    "IMPORTANT ANALYSIS RULES:\n"
-                    "- Previous OSINT findings take priority over single-source web content. "
-                    "Do not override multi-source conclusions with data from a single visited page. "
-                    "If a visited page contradicts earlier findings, note the discrepancy rather than replacing the earlier conclusion.\n\n"
-                    "IMPORTANT FORMATTING RULES:\n"
-                    "- Use **bold** for section headers and key terms\n"
-                    "- Do NOT use # markdown headers\n"
-                    "- Do NOT use → bullets except in READY-TO-USE QUERIES\n"
-                    "- Write SUBJECT PROFILE and OPSEC ASSESSMENT as flowing prose paragraphs\n"
-                    "- Use | pipe-delimited table rows for CONFIDENCE MATRIX\n"
-                    "- Keep total length 600-900 words\n\n"
-                    f"Recon data:\n{recon_data}"
-                ),
-            }
-        ],
-    )
-
-    elapsed = round(time.time() - t0, 1)
-    text = ai.text
-
-    return {
-        "summary": text,
-        "elapsed": elapsed,
-        **ai.meta(),
-    }
+DEEP_DIVE_PROMPT = (
+    "You are a senior OSINT intelligence analyst writing a classified-style dossier. "
+    "You have access to OSINT recon data AND live-scraped profile page content below. "
+    "Write a deep analytical report, NOT bullet points, but a proper intelligence dossier.\n\n"
+    "Produce EXACTLY these five sections with these EXACT headers (use ** bold for headers):\n\n"
+    "**SUBJECT PROFILE**\n"
+    "Write 2-3 flowing paragraphs describing this person's digital identity. "
+    "Synthesize ALL available data into a narrative: who they likely are, what they do online, "
+    "their technical sophistication, geographic indicators, professional profile, interests, "
+    "and behavioral patterns. Cross-reference display names, bios, and linked accounts "
+    "from the scraped profile data to build a coherent picture. "
+    "Do NOT use bullet points: write in analytical prose.\n\n"
+    "**CONFIDENCE MATRIX**\n"
+    "Present a table of identity inferences. Each row should be:\n"
+    "| Inference | Confidence | Evidence |\n"
+    "Include rows for: Probable Real Name, Location, Occupation/Industry, Age Range, "
+    "Primary Email, Technical Skill Level, and any other strong inferences. "
+    "Confidence must be HIGH, MEDIUM, or LOW. Evidence column must cite specific data points.\n\n"
+    "**PLATFORM CORRELATION**\n"
+    "Analyze which platforms corroborate each other. For each cluster of corroborating platforms, "
+    "explain WHAT matches (same display name? same bio text? same linked URL? same avatar?) "
+    "and what intelligence that yields. Identify any contradictions between platforms. "
+    "If scraped profile data is available, use the actual display names and bios to correlate.\n\n"
+    "**OPSEC ASSESSMENT**\n"
+    "Evaluate the target's operational security. What personal information have they leaked? "
+    "What are they doing well (separate identities, no real name, etc.)? "
+    "Rate their overall OPSEC as POOR, FAIR, MODERATE, or STRONG with justification. "
+    "Note specific mistakes: real name in username, same handle everywhere, "
+    "location in bio, employer visible, email exposed in breaches, etc.\n\n"
+    "**READY-TO-USE QUERIES**\n"
+    "Provide 5-8 copy-paste-ready search queries for manual follow-up. "
+    "Each on its own line prefixed with →. Include:\n"
+    "- Google dorks: site:, inurl:, intitle:, \"exact match\" operators\n"
+    "- Platform-specific searches\n"
+    "- Reverse email/username lookups\n"
+    "Make these SPECIFIC to the target: use their actual username, email, "
+    "inferred name, and discovered platforms. No generic templates.\n\n"
+    "IMPORTANT ANALYSIS RULES:\n"
+    "- Previous OSINT findings take priority over single-source web content. "
+    "Do not override multi-source conclusions with data from a single visited page. "
+    "If a visited page contradicts earlier findings, note the discrepancy rather than replacing the earlier conclusion.\n\n"
+    "- Each account above carries the status the investigator's ledger gave it. Build the subject profile from LINKED accounts "
+    "and treat EXISTS (MATCHES) as consistent, not proven. An account marked EXISTS (DIFFERENT PERSON) is somebody else: "
+    "never use its name, bio, location or links for the subject.\n"
+    "- When the data says the primary identity was PICKED, say whose judgment that is and do not present it as established.\n"
+    "- A source listed as failed, blocked, partial or not asked is unknown. Never read it as 'not found'.\n\n"
+    "IMPORTANT FORMATTING RULES:\n"
+    "- Use **bold** for section headers and key terms\n"
+    "- Do NOT use # markdown headers\n"
+    "- Do NOT use → bullets except in READY-TO-USE QUERIES\n"
+    "- Write SUBJECT PROFILE and OPSEC ASSESSMENT as flowing prose paragraphs\n"
+    "- Use | pipe-delimited table rows for CONFIDENCE MATRIX\n"
+    "- Keep total length 600-900 words\n\n"
+)
 
 
 class EmailHeaderAnalyzeRequest(BaseModel):

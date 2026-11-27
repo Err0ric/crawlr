@@ -229,12 +229,19 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
       tile("notable", "Public figure", n("notable"), { ...o, feeds: ["nameResult"], jump: { tier: "notable" }, sub: "exact match in Wikidata" }),
     ];
   }
-  const people = ["github", "githubDeep", "gravatar", "maigret", "enricher", "platformCheck", "holehe", "avatarHash"];
+  const people = ["github", "githubDeep", "gravatar", "maigret", "enricher", "platformCheck", "holehe", "avatarHash", "profiles", "emailAccounts"];
   // A templated URL the link check found is still Unverified (nothing was read about who owns it),
   // and the tile says how many of those pages were checked.
   const pages = items.filter((i) => i.tier === "unverified" && i.check === "verified").length;
-  const linked = tile("linked", "Linked", n("linked"), { ...o, tone: "linked", feeds: people, jump: { tier: "linked" }, sub: "tied to the primary identity" });
-  const unverified = tile("unverified", "Unverified", n("unverified"), { ...o, tone: "unverified", line: "dashed", feeds: ["sherlock", "maigret", "platformCheck", "hunter", "harvester"], jump: { tier: "unverified" }, sub: pages ? `reported, ${pages} ${pages === 1 ? "page" : "pages"} checked` : "reported, nothing read" });
+  // An email case: a record ties an account or a key to the ADDRESS, which is not the same as
+  // tying it to a person. The tile says what it counts, keys included.
+  const keyRows = type === "email" ? items.filter((i) => i.tier === "linked" && String(i.key || "").startsWith("pgp:")).length : 0;
+  const acctRows = n("linked") - keyRows;
+  const linkedSub = type !== "email" ? "tied to the primary identity" : keyRows ? `${acctRows} ${acctRows === 1 ? "account" : "accounts"} and ${keyRows} ${keyRows === 1 ? "key" : "keys"}, tied to this address` : "tied to this address";
+  const linked = tile("linked", "Linked", n("linked"), { ...o, tone: "linked", feeds: people, jump: { tier: "linked" }, sub: linkedSub });
+  // The accounts and keys lookup feeds Unverified in an email case (a search match that was not
+  // read, commits tied to no account): when it answered in part the count is a lower bound.
+  const unverified = tile("unverified", "Unverified", n("unverified"), { ...o, tone: "unverified", line: "dashed", feeds: ["sherlock", "maigret", "platformCheck", "hunter", "harvester", ...(type === "email" ? ["emailAccounts"] : [])], jump: { tier: "unverified" }, sub: pages ? `reported, ${pages} ${pages === 1 ? "page" : "pages"} checked` : "reported, nothing read" });
   const leads = tile("lead", "Leads", n("lead"), { ...o, feeds: people, jump: { tier: "lead" }, sub: "places to look next" });
   if (type === "email") {
     const breaches = items.filter((i) => String(i.key || "").startsWith("breach:")).length;
@@ -246,7 +253,7 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
   }
   const diff = n("different");
   return [linked,
-    tile("exists", "Exists", n("matches") + diff, { ...o, tone: "match", feeds: ["sherlock", "maigret", "platformCheck", "enricher", "github"], jump: { tier: n("matches") ? "matches" : "different" }, sub: diff ? `profiles read, ${diff} a different person` : "profiles read" }),
+    tile("exists", "Exists", n("matches") + diff, { ...o, tone: "match", feeds: ["sherlock", "maigret", "platformCheck", "enricher", "github", "profiles"], jump: { tier: n("matches") ? "matches" : "different" }, sub: diff ? `profiles read, ${diff} a different person` : "profiles read" }),
     unverified, leads];
 }
 

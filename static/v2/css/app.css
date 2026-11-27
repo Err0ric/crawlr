@@ -1367,3 +1367,129 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .sim-card.tone-unverified { --tone: var(--unverified); } .sim-card.line-dashed { border-left-style: dashed; }
 /* Facts of profiles added from a similar handle sit apart from every identity, under their own heading. */
 .who-added { margin: var(--s-4) 0 var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--line); font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); }
+
+/* ---- what a record carries: the disclosure on an evidence card -------------------------------
+   Closed, a card stays one card. Open, it lists every value a source read, in two groups by how
+   the value is known: written by the account holder, or the site's own record. The group label
+   carries the provenance word, so it is never color alone. Values sit on an inset. */
+.ev .what > .ev-more { flex: 1 1 100%; min-width: 0; margin-top: 2px; }
+.ev-more > summary { display: inline-flex; align-items: center; gap: 8px; min-height: 24px; cursor: pointer; color: var(--ink-2); font-size: var(--fs-0); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.ev-more > summary:hover { color: var(--ink); }
+.ev-more-n { color: var(--ink-3); text-decoration: none; display: inline-block; }
+.ev-more[open] > summary { margin-bottom: 6px; }
+.ed-g { background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--r-2); padding: 8px 10px; margin-bottom: 6px; max-width: 90ch; }
+.ed-h { margin: 0 0 4px; font-size: var(--fs-0); font-weight: 600; color: var(--ink-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.ed-prov { font-weight: 400; color: var(--ink-3); border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 7px; line-height: 18px; white-space: nowrap; }
+.ed { margin: 0; display: grid; gap: 2px 0; }
+.ed-row { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 0 12px; align-items: baseline; }
+.ed-row dt { color: var(--ink-3); font-size: var(--fs-0); }
+.ed-row dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.ed-how { color: var(--ink-3); font-size: var(--fs-0); margin-left: 8px; }
+.ev:hover .ed-g { background: var(--bg-sunken); }
+@media (max-width: 760px) { .ed-row { grid-template-columns: 88px minmax(0, 1fr); } .ed-how { display: block; margin-left: 0; } .ed-row dd a.ev-link { margin-left: 0; } }
+@media print { .ev-more > summary { text-decoration: none; } }
+
+/* ---- a person case's timeline: how each date is known ---------------------------------------
+   The dot is solid for a record and dashed for a self-declared date, and the word says which. */
+.tl-ev.self::before { border-style: dashed; }
+.tl-basis { color: var(--ink-3); }
+.tl-basis.self { color: var(--ink-2); font-style: italic; }
+@media print { #panelTimeline::before { content: "Timeline"; display: block; font-weight: 600; font-size: 13pt; margin: 16px 0 8px; } }
+
+/* ---- GitHub activity: counts by hour and by weekday ------------------------------------------
+   Neutral ink bars on an inset; no tier color, because a count is not a verdict. An hour with no
+   events keeps a hairline so the strip reads as 24 slots. The estimate has a dashed edge: it is
+   inferred, and says what from. */
+.act-card { padding: var(--s-4); }
+.act-h { margin: 0 0 var(--s-2); font-size: var(--fs-3); font-weight: 600; color: var(--ink); }
+/* The GitHub account is not the person the case is about: the heading carries a pill and a note says whose activity this is. */
+.act-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.act-other { margin: 0 0 var(--s-3); padding: var(--s-2) var(--s-3); border-left: 2px solid var(--different); color: var(--ink-2); font-size: var(--fs-1); }
+.act-sum { margin: 0 0 var(--s-3); color: var(--ink-2); font-size: var(--fs-1); }
+.act-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: var(--s-4); margin-bottom: var(--s-2); }
+.sources-grid .act-grid { grid-template-columns: minmax(0, 1fr); }
+.act { margin: 0; min-width: 0; }
+.act figcaption { font-size: var(--fs-0); color: var(--ink-3); margin-bottom: 4px; }
+.act-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; align-items: end; height: 64px; padding: 6px 6px 0; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--r-2) var(--r-2) 0 0; }
+.act-col { display: flex; align-items: flex-end; height: 100%; border-bottom: 1px solid var(--line-strong); }
+.act-col i { display: block; width: 100%; background: var(--ink-2); border-radius: 2px 2px 0 0; }
+.act-axis { display: flex; justify-content: space-between; padding: 2px 6px 0; font-family: var(--mono); font-size: var(--fs-0); color: var(--ink-3); }
+.act-axis.d7 { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; text-align: center; font-family: inherit; }
+.act-axis.d7 span { overflow: hidden; }
+.act-est { margin-top: var(--s-3); padding: 8px 10px; border: 1px dashed var(--line-strong); border-radius: var(--r-2); max-width: 90ch; }
+.act-est p { margin: 0 0 4px; } .act-est p:last-child { margin-bottom: 0; }
+.act-est .mono { color: var(--ink); margin: 0 6px; }
+.act-card .kv, .act-est { font-size: var(--fs-1); }
+@media (max-width: 760px) { .act-grid { grid-template-columns: minmax(0, 1fr); } }
+/* A timeline row on a phone: the text column may shrink, and the when, source and basis wrap. */
+@media (max-width: 760px) {
+  .tl-ev, .tl-now { grid-template-columns: 92px minmax(0, 1fr); }
+  .tl-meta { flex-wrap: wrap; white-space: normal; gap: 2px 8px; }
+}
+
+/* ---- the person a case is about, what the evidence says, next steps, the trail, archived copies ----
+   No new color: a pick is the investigator's judgment, so its pill is neutral ink (never the
+   green of a confirmed tie), a check is the amber tag the brief already uses, and an archive
+   that could not be asked has a dashed edge like everything else that is unknown. */
+.who-tag { margin-left: 6px; padding-left: 6px; border-left: 1px solid currentColor; font-weight: 400; }
+.who-hint { flex: 1 1 100%; font-size: var(--fs-0); color: var(--ink-3); }
+.who-hint:empty { display: none; }
+.who-auto { text-decoration: underline; text-underline-offset: 3px; color: var(--ink-2); }
+
+.trail { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: var(--fs-0); color: var(--ink-3); padding-top: var(--s-3) !important; padding-bottom: var(--s-3) !important; }
+.trail[hidden] { display: none; }
+.trail-k { color: var(--ink-3); }
+.trail-list { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 0; margin: 0; padding: 0; min-width: 0; }
+.trail-list li { display: inline-flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; min-width: 0; }
+.trail-list li + li::before { content: "\203A"; margin: 0 8px; color: var(--ink-3); }
+.trail-step { background: none; border: 0; padding: 0; min-height: 24px; font: inherit; font-family: var(--mono); color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+.trail-step:hover { text-decoration-color: var(--ink); }
+.trail-step:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.trail-t { font-family: var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+.trail-list li[aria-current] .trail-t { color: var(--ink); font-weight: 600; }
+.casesheet:has(> .trail:not([hidden])) > .main-head { border-top-color: transparent; padding-top: 0; }
+
+.casesheet > .analysis-row { padding: 0; border-top: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.analysis-row:not(:has(> .brief:not([hidden]))) { display: none; }
+.analysis-row > .brief { padding: var(--s-4) var(--s-5); min-width: 0; }
+.analysis-row > .brief[hidden] { display: none; }
+@media (min-width: 1280px) {
+  .analysis-row:not(:has(> [hidden])) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .analysis-row:not(:has(> [hidden])) > .brief + .brief { border-left: 1px solid var(--line-soft); }
+}
+.an-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; margin: 0 0 var(--s-3); font-size: var(--fs-2); color: var(--ink); line-height: 1.45; }
+.an-k { flex: 1 1 100%; font-size: var(--fs-0); color: var(--ink-3); }
+.an-head .tag { font-weight: 600; }
+.an-head .tag.warn { color: var(--flag); background: var(--flag-bg); }
+
+.next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: next; }
+.next-more .next-list { counter-reset: next 6; margin-top: 10px; }
+.next { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 4px 8px; align-items: start; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+.next:last-child { border-bottom: 0; padding-bottom: 0; }
+.next::before { counter-increment: next; content: counter(next); font: 600 var(--fs-0) var(--mono); color: var(--ink-3); padding-top: 3px; }
+.next.held::before { content: ""; }
+.next-main { min-width: 0; }
+.next-t { display: block; font-size: var(--fs-2); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.next-t .tag { margin-left: 8px; font-weight: 400; }
+.next-r { display: block; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.45; overflow-wrap: anywhere; }
+.next-q { font-family: var(--mono); font-size: var(--fs-0); background: var(--bg-sunken); padding: 1px 6px; border-radius: var(--r-1); overflow-wrap: anywhere; }
+.next-act { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.next-act:empty { display: none; }
+.next-act a.btn { text-decoration: none; }
+.next-more { margin-top: 10px; }
+.next-more > summary { cursor: pointer; min-height: 24px; font-size: var(--fs-1); color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.next-note { margin: 0; font-size: var(--fs-1); color: var(--ink-2); }
+
+.fact .v .how { display: block; margin-top: 2px; color: var(--ink-3); font-size: var(--fs-0); line-height: 1.5; }
+.fact .v .how .ed-prov { margin-right: 6px; }
+
+.ev .what > .ev-relate, .ev .what > .ev-arch { flex: 1 1 100%; min-width: 0; }
+.ev-relate { display: flex; gap: 8px; align-items: baseline; margin-top: 2px; color: var(--ink-2); font-size: var(--fs-0); overflow-wrap: anywhere; }
+.ev .what .ev-relate .tag { margin-left: 0; flex: none; color: var(--flag); background: var(--flag-bg); }
+.ev-arch { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; margin-top: 4px; padding: 6px 10px; border-left: 2px solid var(--line-strong); border-radius: 0 var(--r-2) var(--r-2) 0; background: var(--bg-sunken); color: var(--ink-2); font-size: var(--fs-0); overflow-wrap: anywhere; }
+.ev-arch.unknown { border-left-style: dashed; }
+.ev-arch b { font-weight: 600; color: var(--ink); }
+.ev-snaps { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.ev .what .ev-snaps a.ev-link { margin-left: 0; font-family: var(--mono); min-height: 24px; display: inline-flex; align-items: center; }
+.ev .src .tag { margin-right: 2px; }
+@media print { .next-act, .who-auto, .who-hint { display: none !important; } .analysis-row { display: block !important; } }

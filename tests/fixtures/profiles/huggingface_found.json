@@ -1,0 +1,34 @@
+{
+ "_id": "000000000000000000000000",
+ "avatarUrl": "https://cdn-avatars.huggingface.co/v1/production/uploads/000000000000000000000001/0000000000000000000000.jpeg",
+ "isPro": false,
+ "fullname": "Sam Example",
+ "numModels": 5,
+ "numDatasets": 2,
+ "numSpaces": 3,
+ "numDiscussions": 18,
+ "numPapers": 0,
+ "numUpvotes": 10,
+ "numLikes": 21,
+ "numFollowers": 53,
+ "numFollowing": 6,
+ "orgs": [
+  {
+   "id": "000000000000000000000000",
+   "name": "example-maps",
+   "fullname": "Example Maps",
+   "avatarUrl": "https://cdn-avatars.huggingface.co/v1/production/uploads/0000000000000-000000000000000000000002.png"
+  },
+  {
+   "id": "111111111111111111111111",
+   "name": "bad/../name",
+   "fullname": "Bad",
+   "avatarUrl": "https://www.gravatar.com/avatar/00000000000000000000000000000009?d=retro&size=100"
+  }
+ ],
+ "user": "SamExample",
+ "type": "user",
+ "isFollowing": false,
+ "details": "<3 maps and bread for everyone",
+ "createdAt": "2019-11-23T17:38:57.000Z"
+}
