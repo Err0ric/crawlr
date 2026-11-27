@@ -311,6 +311,85 @@ def _status_lines(req) -> list[str]:
     return lines
 
 
+DEEP_PROVENANCE = (
+    "How to read the lines below: SITE RECORD is what the site itself recorded (a join date, a count, an attribution, "
+    "a proof it checked). SELF-DECLARED is what the account holder wrote, or what is written inside a commit or a key, "
+    "and can be false or forged. Say which one a statement rests on. A profile's status (linked, matches, different, "
+    "unverified) is the one the investigator's ledger gave it: a profile that is not linked is not the target's."
+)
+
+
+def _pairs(d, cap: int = 12, width: int = 240) -> str:
+    """A small dict as 'key: value' cells, each inert text."""
+    if not isinstance(d, dict):
+        return ""
+    return "; ".join(f"{_cell(k, 30).replace('_', ' ')}: {_cell(v, width)}" for k, v in list(d.items())[:cap] if v not in (None, "", [], {}))
+
+
+def _deep_lines(req) -> list[str]:
+    """The profile sources, the accounts and keys behind an address, and GitHub activity. Every
+    line says how its values are known, and a site or a lookup that did not answer is listed as
+    unknown. Nothing is added when a case has none of the three, so older prompts are unchanged."""
+    lines: list[str] = []
+    ps = req.profile_sources if isinstance(req.profile_sources, dict) else None
+    if ps:
+        for p in [x for x in (ps.get("profiles") or []) if isinstance(x, dict)][:16]:
+            head = f"{_cell(p.get('site'), 40)} record ({_cell(p.get('url'), 300)}) [status: {_cell(p.get('status'), 20) or 'unverified'}]"
+            said, rec = _pairs(p.get("self_declared")), _pairs(p.get("site_record"), width=500)
+            lines.append(head + (f" SELF-DECLARED: {said}." if said else "") + (f" SITE RECORD: {rec}." if rec else "") + ("" if said or rec else " The record carries nothing but the handle."))
+        absent = [_cell(x, 40) for x in (ps.get("not_found") or [])[:16]]
+        if absent:
+            lines.append("Profile sources that answered and have no record for this handle: " + ", ".join(absent))
+        down = [_cell(x, 80) for x in (ps.get("not_answered") or [])[:16]]
+        if down:
+            lines.append("Profile sources that did NOT answer (unknown, not absent; list under Gaps): " + "; ".join(down))
+        notes = [_cell(x, 240) for x in (ps.get("notes") or [])[:6]]
+        if notes:
+            lines.append("Notes from profile sources: " + "; ".join(notes))
+    ea = req.email_accounts if isinstance(req.email_accounts, dict) else None
+    if ea:
+        def commits(a: dict) -> str:
+            names = ", ".join(f"{_cell(n.get('name'), 100)} ({n.get('commits', 0)} commits{', in a repository the account owns' if n.get('own_repo') else ''})" for n in (a.get("self_declared_names") or [])[:5] if isinstance(n, dict))
+            offsets = ", ".join(f"UTC{_cell(o.get('offset'), 8)} ({o.get('commits', 0)})" for o in (a.get("self_declared_utc_offsets") or [])[:4] if isinstance(o, dict))
+            span = " to ".join(x for x in (_cell(a.get("self_declared_first_commit"), 12), _cell(a.get("self_declared_last_commit"), 12)) if x)
+            return (f" SELF-DECLARED inside the commits (forgeable): names {names or 'none'}" + (f"; dates {span}" if span else "") + (f"; time zone offsets {offsets}" if offsets else "") + ".")
+        for a in [x for x in (ea.get("accounts") or []) if isinstance(x, dict)][:10]:
+            login, kind = _cell(a.get("login"), 40), _cell(a.get("account_type"), 20)
+            if a.get("tie") == "commit_author":
+                lines.append(f"SITE RECORD: GitHub attributes {a.get('commits_seen', 0)} commits that carry the searched address to the account {login} ({_cell(a.get('url'), 120)}). "
+                             "That account has the address confirmed, which is a strong tie between the address and the account." + commits(a))
+            else:
+                lines.append(f"The public GitHub profile of {login} ({kind or 'account'}) shows the searched address. Weaker than a commit attribution"
+                             + (", and unconfirmed: GitHub does not verify an organization's address." if kind == "Organization" else "."))
+        un = ea.get("unattributed_commits")
+        if isinstance(un, dict) and un.get("commits_seen"):
+            lines.append(f"{un.get('commits_seen')} commits carry the searched address and belong to NO GitHub account. Anyone can write any address in a commit, so they prove nothing about who wrote them." + commits(un))
+        for k in [x for x in (ea.get("keys") or []) if isinstance(x, dict)][:10]:
+            if k.get("unread"):
+                lines.append("An OpenPGP key is published for the searched address that could not be read (unknown contents).")
+                continue
+            lines.append(f"SITE RECORD: keys.openpgp.org publishes OpenPGP key {_cell(k.get('fingerprint'), 40)} ({_cell(k.get('algorithm'), 60)}{', revoked' if k.get('revoked') else ''}) for the searched address; "
+                         f"it verified by mail: {', '.join(_cell(e, 254) for e in (k.get('verified_addresses') or [])[:6]) or 'this address'}. "
+                         f"SELF-DECLARED in the key: created {_cell(k.get('self_declared_created'), 12) or 'unknown'}; names {', '.join(_cell(n, 100) for n in (k.get('self_declared_names') or [])[:6]) or 'none'}.")
+        down = [_cell(x, 80) for x in (ea.get("not_answered") or [])[:4]]
+        if down:
+            lines.append("Address lookups that did NOT answer (unknown, never 'no account' or 'no key'; list under Gaps): " + "; ".join(down))
+    ga = req.github_activity if isinstance(req.github_activity, dict) else None
+    if ga:
+        if ga.get("state") != "ok":
+            lines.append(f"GitHub activity: {_cell(ga.get('note'), 240)}")
+        else:
+            lines.append(f"SITE RECORD, GitHub activity: {_cell(ga.get('summary'), 300)} Events per UTC hour 00 to 23: {', '.join(str(int(x)) for x in (ga.get('hours_utc') or [])[:24] if isinstance(x, (int, float)))}. "
+                         f"Most active in: {', '.join(_cell(x, 120) for x in (ga.get('top_repositories') or [])[:5]) or 'none listed'}.")
+            est = ga.get("utc_offset_estimate")
+            if isinstance(est, dict):
+                lines.append(f"UTC offset ESTIMATE from those hours: {_cell(est.get('range'), 40)}. {_cell(est.get('basis'), 400)} {_cell(est.get('assumption'), 400)} {_cell(est.get('caveat'), 400)} "
+                             "Report it only as a range of UTC offsets with this caveat. Never name a country, a city or a time zone from it.")
+            else:
+                lines.append(f"No UTC offset estimate was made: {_cell(ga.get('no_estimate_reason'), 300)} Do not infer one.")
+    return [DEEP_PROVENANCE, *lines] if lines else []
+
+
 # Old clients and saved prompts used two statuses. They map onto the weakest group that fits.
 _STATUS_ALIAS = {"confirmed": "matches", "possible": "unverified"}
 
@@ -550,6 +629,11 @@ class AnalyzeRequest(BaseModel):
     name_search: Optional[dict] = None
     hash: Optional[dict] = None
     phone: Optional[dict] = None
+    # The record sources, as the page's deepForAi builds them (static/v2/js/evidence.js): each
+    # value arrives already marked as the site's record or as self-declared.
+    profile_sources: Optional[dict] = None
+    email_accounts: Optional[dict] = None
+    github_activity: Optional[dict] = None
     active_techniques: bool = False
 
 
@@ -692,6 +776,8 @@ def investigation_prompt(req: AnalyzeRequest) -> str:
         unknown = sorted(k for k, v in sections.items() if v in ("rate_limited", "failed"))
         if unknown:
             prompt_parts.append(f"GitHub details that could not be read (unknown, not empty): {', '.join(unknown)}")
+
+    prompt_parts.extend(_deep_lines(req))
 
     if _ok(req.hash):
         hs = req.hash
