@@ -974,6 +974,7 @@ details.more[open] > summary { margin-bottom: 6px; }
 .casebar-sub .detected { margin-top: 0; flex: 0 1 auto; }
 .casebar-sub .detected:empty { display: none; }
 .modes { display: flex; flex-wrap: wrap; gap: 6px var(--s-5); padding-top: 3px; }
+.landing-modes { margin-top: var(--s-3); }
 .mode { display: flex; align-items: flex-start; gap: 8px; max-width: 100%; }
 .mode .switch { margin-top: 3px; }
 .mode-text { display: flex; flex-direction: column; min-width: 0; }

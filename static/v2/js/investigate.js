@@ -2,7 +2,7 @@
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, partialGaps, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
 import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, caseAnalysis, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal, githubStanding, storedCase } from "./evidence.js";
 import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, handleOf, readiness, stripGuard, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, GUARD_VERDICT, NOT_RUN_KINDS, NOT_CHECKED_BLURB, NOT_RUN_BLURB } from "./adult.js";
-import { session, MODE, normHandle, adultFor, startAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
+import { session, MODE, normHandle, adultFor, startAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml, RUN_IN_PROGRESS_CASE } from "./modes.js";
 import { paintBar, paintStatus } from "./modeui.js";
 import { sourceCards } from "./renderers.js";
 import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseReply } from "./ai.js";
@@ -65,6 +65,8 @@ const setSrc = (id, v) => { if (!mayStore(id)) return; srcState[id] = v; saveSrc
 const suspended = makeSuspended();
 const adultView = (type, target = $("#targetInput").value) => adultFor({ on: session.on("adult"), type, target, suspended }).view;
 const activeView = (type) => activeCase(session.on("active"), type);
+// The same two switches for the landing form, so they can be set before the first run starts.
+export const modeRows = (type, target, prefix = "") => [{ id: "adult", view: adultView(type, target), desc: MODE.adult.desc, prefix }, { id: "active", view: activeView(type), desc: MODE.active.desc, prefix }];
 // The two switches in the case bar, the status line under them, and the same two rows in the sheet.
 function paintModes() {
   // For the case on screen the reason is the one its run was given (it may have been opened by a pivot).
@@ -78,7 +80,7 @@ function paintModes() {
   paintBar($("#modes"), rows);
   // The line stays in view at every width, is repeated in the Case details drawer, and also names
   // Recon's mode while that is on: it is on for the session wherever the investigator is.
-  paintStatus([$("#modeStatus"), $("#modeEcho")], [...rows, { id: "portscan", view: portscanCase(session.on("portscan"), ""), foreign: "Recon" }], { running: state.running });
+  paintStatus([$("#modeStatus"), $("#modeEcho")], [...rows, { id: "portscan", view: portscanCase(session.on("portscan"), ""), foreign: "Recon" }], { running: state.running, wait: RUN_IN_PROGRESS_CASE });
   for (const r of rows) $(`#sources [data-mode-row="${r.id}"]`)?.classList.toggle("off", !r.view.on);
 }
 
@@ -149,7 +151,9 @@ $("#sources").addEventListener("change", (e) => {
 
 // A mode changed: the bar and the sheet follow in place (no redraw, so focus stays on the switch),
 // and Deep Dive in the AI panel becomes available or not.
-session.subscribe((id) => { paintModes(); paintCount(); if (id === "active" && state.ai && !state.aiBusy) renderAiPanel(); });
+// Active techniques gates Deep Dive only, so it applies the moment it is switched: no run is needed.
+// Adult sites switched on with a finished case on screen offers to add the check to that case.
+session.subscribe((id) => { paintModes(); paintCount(); if (id === "active" && state.target && !state.aiBusy) renderAiPanel(); if (id === "adult" && state.target && !state.running) renderLedger({ keep: true }); });
 
 // ---- run log + result tabs -----------------------------------------------------
 const log = makeLog($("#runlog"));
@@ -183,6 +187,7 @@ const hasAdult = () => adultAllowed(state.collected, state.target, state.type);
 function adultNotice() {
   if (state.type === "username" && isBlocked(state.collected)) return `<div class="notice" role="note" id="adultNotice">${blockHtml(state.collected.adultBlock, handleOf(state.target))}${NOT_RUN_KINDS.includes(readBlock(state.collected.adultBlock)?.kind) ? "" : " The other sources ran as usual."}</div>`;
   if (state.adultBlocked) return h`<div class="notice" role="note" id="adultNotice">${state.adultBlocked}</div>`;
+  if (canAddAdult()) return `<div class="notice" role="note" id="adultNotice">Adult sites is on, and this case ran without it. The case does not need to run again. <button type="button" class="btn btn-sm" data-adult-add>Check adult and dating sites for this case</button></div>`;
   if (!hasAdult()) return "";
   // A part of the adult pass that failed is unknown, never "not found". (A case saved before the
   // pass was its own request keeps Maigret's failure inside its ordinary answer.)
@@ -744,6 +749,10 @@ function dropAdult() {
 // What the run does with a refusal is decided in evidence.js (adultRefusal): what the case
 // records, and the words. Here it is applied to the page.
 let adultRow = null;      // the run log's one "Adult sites" row, for the run in flight
+// What the last run's sources returned, as it came (with the text only the content check reads),
+// and which sources were switched on. Memory only, never stored, and only for the run it belongs
+// to: it lets the adult pass be added to a finished case with the same content check, unweakened.
+let guardRaw = null;
 // The page's own check blocked the adult pass, so no adult request goes out and the server
 // would never hear of it. This asks the server for its verdict (it contacts no site), so the
 // block is counted there by rule ID. The answer changes nothing here: the page's block stands.
@@ -808,6 +817,60 @@ async function runSource(label, url, body, headers, key, opts = {}) {
   }
 }
 
+// The adult pass. Everything that returns profile text has answered, so the decision can be made
+// (adultPassPlan in evidence.js): cancelled, nothing to read, a sign of a minor in a profile, or
+// clean. Only a clean check has requests to send. `read` is what the content check reads: the
+// run's answers as they came. Used by a run, and by addAdult() for a case that ran with the mode off.
+async function runAdultPass({ planned, read, target, type, handle, switched }) {
+  const c = state.collected;
+  const pass = adultPassPlan({ planned, cancelled: state.cancelled, collected: read, target, type, switched });
+  if (pass.state === "none") return;
+  log.set(adultRow, pass.log, pass.state === "clean" ? "done" : "skip");
+  adultSay(pass.notice || pass.log);
+  if (pass.state === "cancelled") { state.adultBlocked = pass.notice; return; }
+  if (pass.block) {
+    c.adultBlock = pass.block;
+    if (pass.state === "blocked") { state.minor = suspendContent(suspended, target, pass.block); reportBlock(handle); }
+    renderSources(type); renderLedger();
+    return;
+  }
+  c.adultMode = true; state.adultMode = true;
+  await Promise.all(pass.requests.map((r) => runSource(r.label, r.url, r.body, {}, r.key)));
+}
+// May the adult pass be added to the case on screen? Only a live username case whose run finished
+// without one (mode off when it started, not cancelled, nothing blocked or suspended), while the
+// mode is on now and the run's answers are still in memory. Both stages of the minor guard run
+// again in addAdult(); nothing here overrides either.
+const canAddAdult = () => !state.running && state.live && !state.cancelled && state.type === "username" && !!guardRaw && guardRaw.ran === state.ran && guardRaw.target === state.target
+  && session.on("adult") && !state.adultMode && !state.adultBlocked && !state.minor && !("adultBlock" in state.collected)
+  && adultFor({ on: true, type: state.type, target: state.target, suspended }).adult;
+// Adult sites was switched on during or after a run: the check is added to that case on a click,
+// without running the other sources again. Stage 1 (the handle) is asked again, then the same
+// pass a run makes: the content check over what the run read, then the requests. The server runs
+// its own two stages as always, and says so if its record of the run has lapsed.
+async function addAdult() {
+  if (!canAddAdult()) return;
+  const target = state.target, type = state.type, handle = target.replace(/^@/, "");
+  const mode = startAdult({ on: session.on("adult"), type, target, suspended });
+  if (!adultOn(type, target, mode.adult) || !sourcePlan(type, target, { adult: true }).includes("adult")) { state.minor = mode.minor; renderSources(type); renderLedger(); return; }
+  const kept = guardRaw; guardRaw = null;   // one pass per run
+  Object.assign(state, { cancelled: false, controller: new AbortController() });
+  setRunning(true);
+  adultRow = log.add(ADULT_LOG.waiting);
+  await runAdultPass({ planned: true, read: kept.c, target, type, handle, switched: kept.switched });
+  const c = state.collected;
+  if (state.cancelled && ADULT_PASS_KEYS.some((k) => asked.has(k) && !(k in c)) && !("adultCheck" in c)) c.notAnswered = { keys: [...new Set([...(c.notAnswered?.keys || []), "adultCheck"])] };
+  { const bare = stripGuard(c); for (const k of Object.keys(bare)) c[k] = bare[k]; }
+  adultRow = null;
+  setRunning(false);
+  const sum = summary();
+  log.finish(sum.log, sum.t.failed);
+  renderHead(sum.head);
+  renderLedger(); renderSourceCards(); renderAiPanel();
+  saveHistory();
+}
+$("#notices").addEventListener("click", (e) => { if (e.target.closest("[data-adult-add]")) addAdult(); });
+
 function setRunning(on) {
   state.running = on;
   const b = $("#runBtn");
@@ -838,7 +901,7 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   let prev = null;
   if (last) { const ev = buildEvidence(last.results || {}, last.target, last.kind); prev = { keys: ev.items.filter(isFinding).map((i) => i.key), ts: last.timestamp, ai: last.ai || null, sig: aiSignature(scrubNames(last.results || {}, last.target), last.target, last.kind) }; }
 
-  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear();
+  checker.reset(); linkRow = null; nameError(""); state.nameInvalid = ""; pending.clear(); asked.clear(); guardRaw = null;
   // The session mode as it applies to this target, decided once and kept for the whole run
   // (startAdult in modes.js): a username, and only if nothing suspends it. A pivot, a similar
   // handle or a re-run reads the same session state, with no click. A case opened by a pivot from
@@ -956,27 +1019,10 @@ export async function run(targetRaw, typeOverride, opts = {}) {
     // Compare profile pictures once every profile is in. A passive read of public CDN images;
     // it needs at least two to say anything. If it fails, clusters fall back to the other signals.
     const images = state.cancelled ? [] : avatarImages(c, target, type);
-    // The adult pass. Everything that returns profile text has answered by now, so the decision
-    // can be made (adultPassPlan in evidence.js): cancelled, nothing to read, a sign of a minor
-    // in a profile, or clean. Only a clean check has requests to send.
-    const adultPass = async () => {
-      const pass = adultPassPlan({ planned: wantAdult, cancelled: state.cancelled, collected: c, target, type, switched: { sherlock: on("sherlock"), maigret: on("maigret"), platformCheck: on("platform") } });
-      if (pass.state === "none") return;
-      log.set(adultRow, pass.log, pass.state === "clean" ? "done" : "skip");
-      adultSay(pass.notice || pass.log);
-      if (pass.state === "cancelled") { state.adultBlocked = pass.notice; return; }
-      if (pass.block) {
-        c.adultBlock = pass.block;
-        if (pass.state === "blocked") { state.minor = suspendContent(suspended, target, pass.block); reportBlock(handle); }
-        renderSources(type); renderLedger();
-        return;
-      }
-      c.adultMode = true; state.adultMode = true;
-      await Promise.all(pass.requests.map((r) => runSource(r.label, r.url, r.body, {}, r.key)));
-    };
+    // The adult pass (runAdultPass). Everything that returns profile text has answered by now.
     // One picture is still fetched: it cannot be compared, but its thumbnail is shown on the card.
     // The avatar comparison returns no text, so the adult pass does not wait for it.
-    await Promise.all([images.length > 0 ? runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash") : null, handleOk ? adultPass() : null]);
+    await Promise.all([images.length > 0 ? runSource("Avatar comparison", "/api/recon/avatar-hash", { images }, {}, "avatarHash") : null, handleOk ? runAdultPass({ planned: wantAdult, read: c, target, type, handle, switched: { sherlock: on("sherlock"), maigret: on("maigret"), platformCheck: on("platform") } }) : null]);
     const img = [target, ...(withoutAdult(c).maigret?.results || []).map((r) => r.profile?.image)].find((u) => /^https?:\/\/\S+\.(jpe?g|png|gif|webp)(\?|$)/i.test(String(u || "")));
     if (img) { c.reverseImage = img; renderSourceCards(); }
   }
@@ -986,6 +1032,8 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   // (The adult pass of Sherlock and of Maigret are parts of the one adult site check.)
   const silent = state.cancelled ? [...new Set([...asked].filter((k) => !(k in c)).map((k) => (ADULT_PASS_KEYS.includes(k) ? "adultCheck" : k)))].filter((k) => !(k in c)) : [];
   if (silent.length) c.notAnswered = { keys: silent };
+  // Kept in memory for this run only, so the adult pass can be added on a click (addAdult).
+  guardRaw = handleOk && !state.cancelled ? { ran: state.ran, target, c: { ...c }, switched: { sherlock: on("sherlock"), maigret: on("maigret"), platformCheck: on("platform") } } : null;
   // Guard-only text has been read by now (or the mode is off): it is not kept with the case.
   { const bare = stripGuard(c); for (const k of Object.keys(bare)) c[k] = bare[k]; }
   // The record sources are kept in their checked, bounded shape (deep.js), so History, exports and
@@ -1158,7 +1206,7 @@ export function loadHistory(idOrEntry) {
   return true;
 }
 export function clearCase() {
-  cancel(); checker.reset(); linkRow = null; nameError(""); setQualifiers(null);
+  cancel(); guardRaw = null; checker.reset(); linkRow = null; nameError(""); setQualifiers(null);
   Object.assign(state, { nameInvalid: "", live: false, imported: false, adultMode: false, adultBlocked: "", minor: null, target: "", type: "", collected: {}, ai: null, deepDive: null, historyId: null, prev: null, aiBusy: false, view: "" });
   $("#targetInput").value = ""; $("#mainHead").hidden = true; $("#runlog").hidden = true; $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#bySource").hidden = true;
   $("#emptyState").hidden = false; $("#facts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#notes").value = ""; $("#purpose").value = ""; updateNotesMeta();

@@ -96,6 +96,9 @@ export const contentText = (block) => `Adult and dating sites are not checked fo
 export const PORTSCAN_PIVOT_NOTE = "Port scan not run: this case was opened from a link. Press Run recon to scan this host.";
 export const DEEP_DIVE_OFF = "Active techniques was switched off, so no profile page was fetched.";
 export const RUN_IN_PROGRESS = "A run is in progress: a change applies from the next run.";
+// Investigate: neither mode needs the run cancelled. Active techniques gates Deep Dive, which is
+// asked when it would fetch; the adult pass can be added to the finished case on a click.
+export const RUN_IN_PROGRESS_CASE = "A run is in progress, and there is no need to cancel it. Active techniques applies as soon as it is on. Adult sites switched on now can be added to this case when the run finishes.";
 
 // ---- the session ------------------------------------------------------------------------------
 export function makeSessionModes() {
@@ -277,9 +280,9 @@ export function barSwitchHtml(id, v, { prefix = "", desc = MODE[id].desc } = {})
 // and one click to switch it off. A row with `foreign` is a mode of the other workbench: it is on
 // for the session, so it is said here too ("Port scan on (Recon)."). While a run is in flight the
 // line says that a change applies from the next run.
-export function statusHtml(rows, { running = false } = {}) {
+export function statusHtml(rows, { running = false, wait = RUN_IN_PROGRESS } = {}) {
   const lines = rows.filter((r) => r.view.on).map((r) => h`<p class="mode-line" data-mode-line="${r.id}"><span>${r.foreign ? `${MODE[r.id].label} on (${r.foreign}).` : MODE[r.id].status}${r.foreign ? "" : r.view.state === "suspended" ? ` ${r.view.reason}` : r.view.state === "unused" ? ` ${NOT_USED}` : ""}</span> <button type="button" class="linklike" data-mode-off="${r.id}" aria-label="${MODE[r.id].off}">Turn off</button></p>`);
-  return lines.join("") + (lines.length && running ? h`<p class="mode-line mode-wait">${RUN_IN_PROGRESS}</p>` : "");
+  return lines.join("") + (lines.length && running ? h`<p class="mode-line mode-wait">${wait}</p>` : "");
 }
 // The same control as a row of the Sources sheet.
 export function sheetRowHtml(id, v, { prefix = "", name = MODE[id].label, desc = MODE[id].sheet, tag = CAUTIONED.includes(id) ? "caution" : "" } = {}) {
