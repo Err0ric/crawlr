@@ -1,5 +1,6 @@
 // Pieces shared by every workbench mode: run log, tiered ledger, facts panel, run diff.
 import { $$, h, raw, esc, link, linkOf, mark, store, fmtNum, fmtAgo, plural, roving } from "./core.js";
+import { trailFromFile } from "./casework.js";
 import { rowCertainty, mayFavicon } from "./present.js";
 import { checkText } from "./links.js";
 import { ADULT_SECTION, adultHost } from "./adult.js";
@@ -372,7 +373,7 @@ const pickView = ({ views, primary, noPrimary }, pick) => views.find((v) => v.id
 export function renderIdentityFacts(el, id, factsOf, pick, emptyText) {
   const { views, noPrimary } = id;
   const view = pickView(id, pick);
-  const label = (v) => `${v.label}${v.primary ? (v.picked ? " (your pick)" : " (primary)") : ""} · ${v.sites.slice(0, 3).join(", ")}${v.sites.length > 3 ? ` +${v.sites.length - 3}` : ""}`;
+  const label = (v) => `${v.label}${v.primary ? (v.picked ? (id.pickFile ? " (picked in the case file)" : " (your pick)") : " (primary)") : ""} · ${v.sites.slice(0, 3).join(", ")}${v.sites.length > 3 ? ` +${v.sites.length - 3}` : ""}`;
   const box = document.createElement("div");
   const select = (first) => h`<div class="who-pick"><label for="${el.id}Pick">Showing</label><select class="input" id="${el.id}Pick" data-cluster-pick>${raw(first)}${raw(views.map((v) => h`<option value="${v.id}" ${view && v.id === view.id ? "selected" : ""}>${label(v)}</option>`).join(""))}</select></div>`;
   // No anchor record and no strong signal: nobody is picked, and no one's facts are shown as the target's.
@@ -383,8 +384,11 @@ export function renderIdentityFacts(el, id, factsOf, pick, emptyText) {
     return null;
   }
   renderFacts(box, factsOf(view.id), view.id === "unassigned" ? "These profiles carry no facts." : "No facts on these profiles.");
+  // A pick is explained in the identity header and in the assessment's headline. This panel
+  // names it in one short line and does not say the whole statement a third time.
+  const why = view.primary && view.picked ? `${id.pickFile ? "Picked in the case file" : "Your pick"}: every row is filed against this identity. The header above says what the automatic choice would be.` : viewWhy(view, id);
   el.innerHTML = (views.length > 1 || noPrimary ? select(noPrimary ? h`<option value="">No primary identity</option>` : "") : h`<p class="who-one">${label(view)}</p>`)
-    + none + h`<p class="who-why">${viewWhy(view, id)}</p>` + box.innerHTML;
+    + none + h`<p class="who-why">${why}</p>` + box.innerHTML;
   return view.id;
 }
 
@@ -400,7 +404,7 @@ export function identityHead(id, pick) {
   if (!views.length) return "";
   const view = pickView(id, pick);
   const pill = !view ? '<span class="cp tone-unverified line-dashed">No primary identity</span>'
-    : view.primary ? (view.picked ? '<span class="cp">Your pick</span>' : '<span class="cp tone-linked">Primary identity</span>')
+    : view.primary ? (view.picked ? (id.pickFile ? '<span class="cp">Picked in the case file</span>' : '<span class="cp">Your pick</span>') : '<span class="cp tone-linked">Primary identity</span>')
       : view.id === "unassigned" ? '<span class="cp tone-unverified line-dashed">No name on these profiles</span>'
         : noPrimary ? '<span class="cp tone-unverified line-dashed">Not tied to the target</span>' : '<span class="cp tone-different">Different person</span>';
   const who = view ? h`<span>${view.label}</span>` : "<span>Nobody is selected</span>";
@@ -408,7 +412,7 @@ export function identityHead(id, pick) {
   const can = views.filter((v) => v.pickable);
   const people = can.length > 1 || noPrimary || id.picked ? h`<div class="id-row who-switch" role="group" aria-label="The person this case is about">
       <span class="id-k">This case is about</span>${raw(can.map((v) => h`<button type="button" class="who-btn" data-pick="${v.id}" aria-pressed="${v.primary}">${v.label}${v.auto ? raw('<span class="who-tag">automatic choice</span>') : ""}<span class="sr-only">, ${plural(v.sites.length, "account")}</span></button>`).join(""))}
-      ${id.picked ? raw(h`<button type="button" class="btn btn-sm btn-ghost who-auto" data-pick-auto>${id.autoLabel ? "Back to the automatic choice" : "Clear my pick"}</button>`) : ""}
+      ${id.picked ? raw(h`<button type="button" class="btn btn-sm btn-ghost who-auto" data-pick-auto>${id.autoLabel ? "Back to the automatic choice" : id.pickFile ? "Clear the pick" : "Clear my pick"}</button>`) : ""}
       <span class="who-hint">${id.picked ? "" : noPrimary ? "Pick a name to file the case around that person." : "Pick another name to file the whole case around that person. Nothing is removed."}</span>
     </div>` : "";
   return mark(view ? view.label : "?", { thumb: view?.thumb || "", favicon: false, cls: "id-mark" })
@@ -421,7 +425,8 @@ export function identityHead(id, pick) {
 // has(id): is that case still in History?
 export function trailHtml(view, has = () => false) {
   if (!view.length) return "";
-  return h`<span class="trail-k">How you got here</span><ol class="trail-list">${raw(view.map((s) => (s.here
+  // A trail that came with a case file is its author's: it is never worded as "you".
+  return h`<span class="trail-k">${trailFromFile(view) ? "How this case was reached, according to the case file" : "How you got here"}</span><ol class="trail-list">${raw(view.map((s) => (s.here
     ? h`<li aria-current="step"><span class="trail-t">${s.target}</span><span class="trail-via">this case</span></li>`
     : h`<li>${s.id && has(s.id) ? raw(h`<button type="button" class="trail-step" data-open-case="${s.id}">${s.target}<span class="sr-only">, ${s.type_word}: open this earlier case</span></button>`) : raw(h`<span class="trail-t">${s.target}</span>`)}<span class="trail-via">${s.type_word}${s.via ? `, then ${s.via}` : ""}</span></li>`)).join(""))}</ol>`;
 }

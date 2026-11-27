@@ -102,7 +102,7 @@ const CARDS = {
     const r = readEmailAccounts(d);
     if (!r) return "";
     const down = emailLookupsDown(r);
-    const word = (s) => (s.state === "ok" ? "answered" : s.state === "none" ? "answered, nothing found" : s.state === "rate_limited" ? "unknown: rate limited" : `unknown: ${s.error || "failed"}`);
+    const word = (s) => (s.state === "ok" && s.only_skipped ? "unknown: commits were returned and none could be counted" : s.state === "ok" ? "answered" : s.state === "none" ? "answered, nothing found" : s.state === "rate_limited" ? "unknown: rate limited" : `unknown: ${s.error || "failed"}`);
     const gc = r.sources.github_commits;
     const seen = gc && gc.state === "ok" && gc.seen != null ? `${fmtNum(gc.seen)} commits read${gc.incomplete ? ", and GitHub has more than it returned" : ""}${gc.skipped ? `, ${fmtNum(gc.skipped)} left out` : ""}` : "";
     const acc = r.accounts.map((a) => li(h`${raw(read(a.url, a.login))} ${raw(tag(a.how === "commit_author" ? "commit author" : a.account_type === "Organization" ? "organization, unconfirmed" : "search match, profile not read", a.how === "commit_author" ? "ok" : ""))}<div class="dim small">${a.how === "commit_author" ? HOW_TEXT.commit_author : a.account_type === "Organization" ? HOW_TEXT.organization : HOW_TEXT.public_profile_email}${a.how === "commit_author" && commitNames(a).length ? ` Names in its commits (self-declared): ${commitNames(a).slice(0, 3).map((n) => n.name).join(", ")}.` : ""}</div>`));

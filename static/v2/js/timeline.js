@@ -158,7 +158,9 @@ export function personTimeline(collected, target, type, today = new Date().toISO
   }
   if (type === "username") {
     const act = readActivity(collected?.githubActivity);
-    if (act && act.state === "ok" && rowOf("acct:github")?.tier === "linked") {
+    // Only while the GitHub account is the person this case is about (githubStanding in evidence.js).
+    const gh = rowOf("acct:github");
+    if (act && act.state === "ok" && gh && (gh.tier === "linked" || gh.inPrimary === true)) {
       add(act.window.first, "Oldest public GitHub event still listed", ACTIVITY_SOURCE, "record", `GitHub lists about 90 days of public events, ${act.events} here.`);
       if (dayOf(act.window.last) !== dayOf(act.window.first)) add(act.window.last, "Latest public GitHub event", ACTIVITY_SOURCE, "record");
     }

@@ -13,7 +13,7 @@ import { adultBriefText } from "./adult.js";
 import { nameBrief } from "./names.js";
 import { phoneBrief } from "./phone.js";
 import { wildcardOf, wildcardText } from "./present.js";
-import { profileCoverage, readProfileSources, readEmailAccounts, emailLookupsDown, activityView, commitNames, commitsNote, PROFILE_STATE_WORD, SELF_DECLARED_NOTE } from "./deep.js";
+import { profileCoverage, readProfileSources, readEmailAccounts, activityView, commitNames, commitsNote } from "./deep.js";
 import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -27,7 +27,9 @@ const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 // "at least" and never calls a zero good. A per-site check that some sites blocked is not in it:
 // those sites are rows, and the "blocked the check" line below names them.
 // similarLine: one sentence on the similar handles that were checked ("" when none was).
-export function investigateBrief({ collected: c, items, facts, identity, failed, incomplete = [], type, target, similarLine = "" }) {
+// first: the title of the top suggested next step (suggestNext in analysis.js), for the one
+// "check first" line of a person case. "" when the caller has none.
+export function investigateBrief({ collected: c, items, facts, identity, failed, incomplete = [], type, target, similarLine = "", first = "" }) {
   const rows = [], actions = [];
   const add = (level, text, ev) => rows.push(sealLink({ level, text, ev }, { subjects: [target] }));
   // A profile added from a similar handle has its own line (similarLine) and is in none of these counts.
@@ -60,58 +62,61 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     // Candidates, never findings: how many, where from, what could not be asked, one next step.
     for (const r of nameBrief(c, target)) add(r.level, r.text, r.ev);
   } else {
+    // A person case (a username or an email). The brief is short on purpose: what was found, and
+    // the one thing to check first. Three things are said elsewhere and are NOT repeated here:
+    //   the pick           the identity header, and the headline of "What the evidence says"
+    //   what could not be asked (failed, blocked, rate limited)   "What the evidence says"
+    //   other people who use the handle                           "What the evidence says"
+    // The count line still says "at least" and names the sources when a count is a lower bound.
     const read = linked.length + matches.length + different.length;
     const noPrimary = !!identity?.noPrimary;
-    // A picked identity comes first: every count below is filed against the investigator's choice.
-    if (identity?.picked) { const mine = identity.views.find((v) => v.primary); add("info", `${identity.pickFile ? "The case file picked" : "You picked"} ${mine?.label || "this person"} as the person this case is about, so everything below is filed against that pick. It is ${identity.pickFile ? "its author's" : "your"} judgment, not a finding. ${identity.autoLabel ? `The automatic choice would be ${identity.autoLabel}, because ${identity.autoWhy}.` : "Automatically nobody would be chosen."}`); }
+    const isEmail = type === "email";
+    // An email case counts what the tiles count: every Linked and Unverified row, keys and
+    // unattributed commits included. A record ties an account or a key to the ADDRESS.
+    const keyRows = isEmail ? items.filter((i) => i.tier === "linked" && String(i.key || "").startsWith("pgp:")).length : 0;
+    const unread = isEmail ? items.filter((i) => i.tier === "unverified" && !i.similar).length : unverified.length;
+    const tiedText = `${plural(linked.length, "account")}${keyRows ? ` and ${plural(keyRows, "key")}` : ""}`;
+    const tiedNote = "Tied to the address means a record says so (a commit attribution, a verified key, a sign-up check). It names an account or a key, not a person.";
     if (accounts.length && noPrimary) add("info", `${plural(matches.length, "profile")} ${matches.length === 1 ? "was" : "were"} read and ${unverified.length} ${unverified.length === 1 ? "account is" : "accounts are"} unverified. Each read profile exists, and nothing ties it to the target.`);
-    else if (accounts.length && incomplete.length) add("info", `At least ${[linked.length && plural(linked.length, "linked account"), matches.length && `${matches.length} that exist and match`, different.length && `${different.length} that belong to a different person`, unverified.length && `${unverified.length} unverified`].filter(Boolean).join(", ")}. ${list(incomplete)} did not fully answer, so these are lower bounds and any count not listed is unknown, not zero.`);
+    else if ((accounts.length || keyRows) && incomplete.length) add("info", `At least ${[isEmail ? (linked.length + keyRows ? `${tiedText} tied to this address` : "") : linked.length && plural(linked.length, "linked account"), matches.length && `${matches.length} that exist and match`, different.length && `${different.length} that belong to a different person`, unread && `${unread} unverified`].filter(Boolean).join(", ")}. ${list(incomplete)} did not fully answer, so these are lower bounds and any count not listed is unknown, not zero.`);
+    else if (isEmail && (accounts.length || keyRows)) add(linked.length + keyRows ? "ok" : "info", `${tiedText} tied to this address, ${matches.length} that exist and match, ${different.length} that belong to a different person, and ${unread} unverified. ${tiedNote}`);
     else if (accounts.length) add(linked.length ? "ok" : "info", `${plural(linked.length, "linked account")}, ${matches.length} that exist and match, ${different.length} that belong to a different person, and ${unverified.length} unverified. A profile that exists shows the handle is taken there; only a linked one is tied to this identity.`);
     // People, not names: "Eric" and "Eric Henderson" are one person, two unrelated names are two.
     const views = identity?.views || [];
     const people = views.filter((v) => v.named);
     const main = views.find((v) => v.primary);
     const who = (v) => `${v.label} on ${list(v.sites, 3)}`;
-    if (noPrimary && people.length > 1) add("flag", `${plural(people.length, "different name")} appear under this handle (${list(people.map(who), 4)}), and none is tied to the target. There is no record for the target itself and no strong signal between the profiles, so no one is treated as the target.`);
-    else if (noPrimary && people.length === 1) add("info", `One name appears under this handle (${who(people[0])}). Nothing ties it to the target: there is no record for the target itself and no strong signal.`);
-    else if (main?.named && main.sites.length > 1) add("ok", `${main.sites.length} profiles carry the name "${main.label}" or are tied to it (${list(main.sites)}), which supports them being one person.`);
+    if (main?.named && main.sites.length > 1) add("ok", `${main.sites.length} profiles carry the name "${main.label}" or are tied to it (${list(main.sites)}), which supports them being one person.`);
     else if (main?.named) add("info", `The primary identity is "${main.label}", from ${main.sites[0]}.`);
-    // Only clusters whose name conflicts with the primary identity are other people. A name that
-    // does not conflict ("L. Torvalds", a nickname) is not counted as someone else.
+    // A record with no name, and names on other profiles: nothing compares them, so it is said here.
     const others = people.filter((v) => !v.primary && (v.different || !main?.named));
-    if (main?.named && others.length) add("flag", `${plural(others.length + 1, "different person", "different people")} use this handle: ${list([main, ...others].map(who), 4)}. Only the first is treated as the target. Do not read the others' accounts as the same person.`);
-    else if (main && !main.named && others.length) add("info", `The ${main.sites[0]} record carries no name. ${others.length === 1 ? `One name appears on other profiles (${who(others[0])})` : `${others.length} unrelated names appear on other profiles (${list(others.map(who), 4)})`}, and nothing ties ${others.length === 1 ? "it" : "any of them"} to that record yet.`);
-    const blocked = unverified.filter((i) => /^Blocked by site/.test(i.meta || ""));
-    if (blocked.length) add("info", `${list(blocked.map((i) => i.what))} blocked the check, so ${blocked.length === 1 ? "that account is" : "those accounts are"} unknown, not absent.`);
+    if (main && !main.named && others.length) add("info", `The ${main.sites[0]} record carries no name. ${others.length === 1 ? `One name appears on other profiles (${who(others[0])})` : `${others.length} unrelated names appear on other profiles (${list(others.map(who), 4)})`}, and nothing ties ${others.length === 1 ? "it" : "any of them"} to that record yet.`);
     // A sign-up check that says "taken" read nothing: the handle is in use, by nobody we can name.
     const taken = unverified.filter((i) => i.taken);
     if (taken.length) add("info", `The handle is taken on ${list(taken.map((i) => i.what))} according to the site's sign-up check. Nothing was read there, so who holds it is unknown.`);
 
-    // The profile sources: how many records were read, what ties them, and which sites did not say.
+    // The profile sources: how many records were read.
     const ps = type === "username" ? readProfileSources(c.profiles) : null;
     if (ps && !ps.error && !ps.error_code) {
       const cov = profileCoverage(ps);
-      const proven = accounts.filter((i) => /Keybase proof|verified link/.test(i.card?.why || ""));
       if (cov.read) add("info", `${plural(cov.read, "profile")} ${cov.read === 1 ? "was" : "were"} read from the site's own record (${list(ps.profiles.map((p) => p.site), 6)}). Open a row's "What was read" for the name, links, dates and linked accounts on it.`);
-      if (proven.length) add("ok", `${list(proven.map((i) => i.what))} ${proven.length === 1 ? "is" : "are"} tied to the primary identity by a proof the other side confirmed (a Keybase proof or a verified link), not by a name.`);
-      if (cov.down.length) add("info", `${list(cov.down.map((x) => `${x.site} (${PROFILE_STATE_WORD[x.state]})`), 6)} did not answer the profile lookup, so ${cov.down.length === 1 ? "that site is" : "those sites are"} unknown, not absent.`);
     }
-    // GitHub activity: the window, and the offset range with its limit said every time.
-    const act = type === "username" ? activityView(c.githubActivity) : null;
+    // GitHub activity, only while the GitHub account is the person this case is about: its row is
+    // Linked or part of the primary identity. After a pick of someone else it is that other
+    // person's activity, and the brief says nothing of it (the Timeline tab shows it, labelled).
+    const ghRow = items.find((i) => i.key === "acct:github");
+    const act = type === "username" && ghRow && (ghRow.tier === "linked" || ghRow.inPrimary === true) ? activityView(c.githubActivity) : null;
     if (act?.state === "ok") add("info", `GitHub lists ${act.text.replace(/ Times are UTC\./, "")}${act.estimate ? ` The hours they fall on fit a UTC offset of ${act.estimate.label}. That is a hint from ${act.events} events, not a fact, and a range of offsets is never a place.` : ` No UTC offset is estimated: ${act.noEstimate}`} See the Timeline tab.`);
     // An email case: the account and the keys behind the address.
     const ea = type === "email" ? readEmailAccounts(c.emailAccounts) : null;
     if (ea && !ea.error && !ea.error_code) {
       const authors = ea.accounts.filter((a) => a.how === "commit_author"), shown = ea.accounts.filter((a) => a.how !== "commit_author");
       for (const a of authors) add("ok", `GitHub attributes commits that carry this address to the account ${a.login} (${plural(a.commits_seen, "commit")} seen), so that account has this address confirmed.${commitNames(a)[0] ? ` The name written in its commits is "${commitNames(a)[0].name}", which is self-declared.` : ""}`, a.evidence[0] ? { url: a.evidence[0], label: "Evidence commit" } : null);
-      if (shown.length) add("info", `${list(shown.map((a) => `${a.login}${a.account_type === "Organization" ? " (an organization, unconfirmed)" : ""}`))} ${shown.length === 1 ? "was" : "were"} matched to this address by GitHub's search of public profiles. The profile was not read to confirm it, so that is weaker than a commit attribution.`);
+      if (shown.length) add("info", `${list(shown.map((a) => `${a.login}${a.account_type === "Organization" ? " (an organization, unconfirmed)" : ""}`))} ${shown.length === 1 ? "was" : "were"} matched to this address by GitHub's search of public profiles. The profile was not read to confirm it, so ${shown.length === 1 ? "it is" : "they are"} listed under Unverified.`);
       if (commitsNote(ea)) add("info", `${commitsNote(ea)} That is not the same as no commits.`);
       if (ea.unattributed) add("info", `${plural(ea.unattributed.commits_seen, "commit")} ${ea.unattributed.commits_seen === 1 ? "carries" : "carry"} this address and ${ea.unattributed.commits_seen === 1 ? "belongs" : "belong"} to no GitHub account. Anyone can write any address in a commit, so ${ea.unattributed.commits_seen === 1 ? "it proves" : "they prove"} nothing about who wrote ${ea.unattributed.commits_seen === 1 ? "it" : "them"}.`);
       const keys = ea.keys.filter((k) => k.parsed);
       if (ea.keys.length) add("info", `${plural(ea.keys.length, "OpenPGP key")} ${ea.keys.length === 1 ? "is" : "are"} published for this address on keys.openpgp.org, which verifies an address by mail before it lists it.${keys.some((k) => k.revoked) ? " At least one is revoked." : ""}`, keys[0] ? { url: keys[0].url, label: "Key" } : null);
-      if (authors.length || ea.unattributed) add("info", SELF_DECLARED_NOTE);
-      const down = emailLookupsDown(ea);
-      if (down.length) add("info", `${list(down.map((x) => `${x.name} (${x.state === "rate_limited" ? "rate limited" : "failed"})`))} could not be asked, so whether an account or a key exists there is unknown.`);
       for (const a of authors.slice(0, 2)) actions.push({ label: `Investigate ${a.login}`, pivot: "investigate", value: a.login });
     }
 
@@ -124,34 +129,31 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     else if (c.hibp && !c.hibp.error) add("ok", "Not in any breach known to the breach source.");
     const holehe = c.holehe && !c.holehe.error ? c.holehe.results || [] : [];
     if (holehe.length) add("info", `Registered on ${plural(holehe.length, "service")} according to Holehe (${list(holehe.map((r) => r.site || r.domain), 6)}).`);
-    if (c.sherlock || c.maigret) {
-      // The platform check asking Reddit or Discord itself is not a second tool reporting the handle.
-      const two = unverified.filter((i) => !i.taken && (i.tools ?? (i.sources || []).length) > 1).length;
-      if (two) add("info", `${plural(two, "unverified account")} ${two === 1 ? "was" : "were"} reported by two tools. That is worth more than one, but still not verification.`);
-    }
     if (!accounts.length && !breaches.length && !holehe.length && !failed.length && (c.sherlock || c.maigret || c.holehe)) add("info", "No source found anything for this target. Check the spelling, or try a variant of the handle.");
 
-    // next steps: only things CrawlR can do or the investigator can check directly
+    // The buttons a caller may show. A person case has its next steps in their own ranked list
+    // (analysis.js), so the page shows none of these there.
     const email = facts.find((f) => f.k === "Email")?.v;
     if (email && norm(email) !== norm(target)) actions.push({ label: `Investigate ${email}`, pivot: "investigate", value: email });
     const site = facts.find((f) => f.k === "Website")?.v;
     try { const host = site ? new URL(/^https?:/.test(site) ? site : `https://${site}`).hostname.replace(/^www\./, "") : ""; if (host && !/(github|twitter|x|linkedin|instagram|facebook|youtube|medium|linktr)\./.test(host + ".")) actions.push({ label: `Recon ${host}`, pivot: "recon", value: host }); } catch { /* not a URL */ }
-    if (type === "email") {
-      const { handle, domain } = emailParts(target);
+    if (isEmail) {
+      const { domain } = emailParts(target);
       if (domain && !c.harvester?.skipped && !isFreeMail(domain)) actions.push({ label: `Recon ${domain}`, pivot: "recon", value: domain });
       const hosts = c.harvester && !c.harvester.error && !c.harvester.skipped ? (c.harvester.hosts || []).length : 0;
       if (hosts) add("info", `${plural(hosts, "host")} on ${domain} ${hosts === 1 ? "is" : "are"} listed at the end of the findings. They describe the organisation, not this person.`);
-      if (handle) add("info", `Username tools were not run on "${handle}", the part before the @: it is a guess at a handle, not a finding. It is listed under Leads from profiles if you want to follow it.`);
     }
-    const leads = items.filter((i) => i.tier === "lead").length;
-    if (leads && type !== "email") add("info", `${plural(leads, "lead")} from profiles (handles, addresses, domains, links) ${leads === 1 ? "is" : "are"} listed under the findings. Nothing is followed until you click.`);
     // Similar handles: one line, and only once the investigator has checked one.
     if (similarLine) add("info", similarLine);
-    if (unverified.length || read > linked.length) add("info", "Next: open the accounts that matter and tick them off as you check them. The review boxes are saved with the case.");
+    // The one thing to check first: the top of the ranked next steps, when the caller has it.
+    if (first) add("info", `Check first: ${String(first).replace(/[.\s]+$/, "")}. It is first under "Suggested next steps".`);
+    else if (unverified.length || read > linked.length) add("info", "Next: open the accounts that matter and tick them off as you check them. The review boxes are saved with the case.");
   }
   // A run that was cancelled before its sources answered: nothing is known, and that is said.
   if (incomplete.length && !failed.length && !items.length && (type === "username" || type === "email")) add("info", `${list(incomplete)} did not answer, so nothing is known about this target yet. Run it again.`);
-  if (failed.length) add("flag", `${plural(failed.length, "source")} failed (${list(failed.map((f) => f.name))}), so this picture has gaps. Re-run to fill them.`);
+  // A person case names what could not be asked in "What the evidence says", once. The other
+  // kinds of case have no such panel, so the failure is said here.
+  if (failed.length && type !== "username" && type !== "email") add("flag", `${plural(failed.length, "source")} failed (${list(failed.map((f) => f.name))}), so this picture has gaps. Re-run to fill them.`);
   return { rows, actions };
 }
 

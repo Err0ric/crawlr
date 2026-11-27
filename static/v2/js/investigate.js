@@ -1,6 +1,6 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, partialGaps, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
-import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, caseAnalysis, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal } from "./evidence.js";
+import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, caseAnalysis, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal, githubStanding, storedCase } from "./evidence.js";
 import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, handleOf, readiness, stripGuard, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, GUARD_VERDICT, NOT_RUN_KINDS, NOT_CHECKED_BLURB, NOT_RUN_BLURB } from "./adult.js";
 import { session, MODE, normHandle, adultFor, startAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
 import { paintBar, paintStatus } from "./modeui.js";
@@ -269,7 +269,10 @@ function paintSummary(ev) {
   const missing = (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string");
   renderVerdict($("#verdict"), !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: keysOf("failed"), partialKeys: partialGaps(rows).map((r) => r.key), missingKeys: missing, extra: tileExtra() }));
   // The written brief waits for the run to finish, so it never describes half a picture.
-  const brief = state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed").map((r) => r.name), ...partialGaps(rows).map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine });
+  // A person case's brief ends on the one thing to check first: the top of the ranked next steps.
+  const quiet = state.running || !state.target || state.nameInvalid;
+  const first = !quiet && person() ? analysisOf(ev).suggestions.top[0]?.title || "" : "";
+  const brief = quiet ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed").map((r) => r.name), ...partialGaps(rows).map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine, first });
   // A person case has its next steps in their own ranked list, so the brief carries no buttons.
   renderBrief($("#brief"), $("#briefBody"), person() ? { ...brief, actions: [] } : brief);
   paintAnalysis(ev);
@@ -317,9 +320,15 @@ function renderTimeline() {
   box.innerHTML = events.length ? `<p class="tl-note">Every date below was reported by a source in this run, for an account the findings file as Linked or Exists (matches). "Site record" means the site or the index wrote the date. "Self-declared" means the account holder, a commit or a key says so, and it can be false. A source that failed leaves a gap, not a clean record.</p>
     <ol class="tl">${past.map(row).join("")}<li class="tl-now"><span class="tl-year"></span><time datetime="${esc(today)}">${esc(today)}</time><b>Today</b></li>${future.map((e, i, all) => row(e, i, all)).join("")}</ol>`
     : `<p class="empty flat">${state.running ? "Collecting…" : "No dated facts in this case. Profiles that state when they were made, commits, keys and breaches supply them."}</p>`;
+  // The hours are the GitHub account's. They are shown as the case's own only while that account
+  // is the person the case is about (githubStanding). After a pick of someone else they stay on
+  // the page, under a heading and a note that say whose account this is.
   const a = state.type === "username" ? activityHtml(withoutAdult(state.collected).githubActivity) : "";
+  const gh = a ? githubStanding(evidence()) : null;
   act.hidden = !a;
-  act.innerHTML = a ? h`<h3 class="act-h">When the GitHub account is active</h3>${raw(a)}` : "";
+  act.classList.toggle("other", !!a && !gh.own);
+  act.innerHTML = !a ? "" : gh.own ? h`<h3 class="act-h">When the GitHub account is active</h3>${raw(a)}`
+    : h`<h3 class="act-h">When the GitHub account is active<span class="cp tone-different">not the person this case is about</span></h3><p class="act-other" role="note">${gh.text}</p>${raw(a)}`;
 }
 // What the tiles of a hash, phone or name case show, from the same functions the cards use.
 function tileExtra() {
@@ -624,11 +633,16 @@ function openReport(which) {
 }
 
 // Everything the model is told about what ran and how it went.
-function aiPayload(extra = {}) {
-  const source_status = Object.fromEntries(tally().rows.filter((r) => r.state !== "skipped").map((r) => [r.name, statusForAi(r)]));
+function aiPayload(extra = {}, opts = {}) {
+  // A source that was not asked (no site could hold the handle) is told as that, never left out
+  // as if it had answered. The failed list is the tally's own, so the assessment the model reads
+  // names the same sources as the one on screen.
+  const rows = tally().rows;
+  const source_status = Object.fromEntries(rows.filter((r) => r.state !== "skipped" || r.notAsked).map((r) => [r.name, statusForAi(r)]));
   // Built in evidence.js so it can be tested: adult and dating site rows travel only as their
-  // own field, and only for a case that had the mode on.
-  return { ...aiPayloadFor(state.collected, state.target, state.type, { source_status, active: session.on("active") }), ...extra };
+  // own field, and only for a case that had the mode on. A Deep Dive's page reads go through it
+  // too (opts.profileScrape), so another person's page is never sent as the target's.
+  return { ...aiPayloadFor(state.collected, state.target, state.type, { source_status, active: session.on("active"), failed: rows.filter((r) => r.state === "failed").map((r) => r.name), profileScrape: opts.profileScrape || null }), ...extra };
 }
 
 // Runs only from the "Analyze with AI" button. One click, one credit, and the cost is on screen first.
@@ -673,7 +687,7 @@ async function runDeepDive(urls) {
     renderLedger(); renderSourceCards();
     const row2 = log.add(`Deep Dive (${providerName()})`);
     try {
-      const data = await postAi("/api/analyze/deep-dive", aiPayload({ shodan: null, name_search: null, profile_scrape: scraped, active_techniques: true, adult_sites: null }));
+      const data = await postAi("/api/analyze/deep-dive", aiPayload({ shodan: null, name_search: null, active_techniques: true, adult_sites: null }, { profileScrape: scraped }));
       state.deepDive = normalizeAi(data);
       log.set(row2, "Deep Dive complete", "done");
       saveHistory();
@@ -769,6 +783,7 @@ async function runSource(label, url, body, headers, key, opts = {}) {
     const cv = sourceCoverage(data);
     if (o.state === "error") log.set(row, `${label}: ${o.text}`, "err", o.detail);
     else if (o.state === "skipped") log.set(row, `${label} · skipped`, "skip");
+    else if (cv && cv.notAsked && cv.total === 0) log.set(row, `${label} · ${cv.notAsked}`, "skip");
     else if (cv && cv.total > 0 && cv.answered === 0) log.set(row, `${label} · ${cv.failedText}${key === "nameResult" && found ? ` (${found})` : ""}`, "err");
     else if (cv && cv.answered < cv.total) log.set(row, `${label} · ${[found, coverageText(cv)].filter(Boolean).join(" · ")}`, "done");
     else if (!sourceHasResults(key === "sherlock" || key === "maigret" ? withoutAdult({ [key]: data })[key] : data)) log.set(row, `${label} · nothing found${found ? ` (${found})` : ""}`, "none");
@@ -1099,9 +1114,12 @@ $("#ledger").addEventListener("click", (e) => {
 // ---- history ------------------------------------------------------------------------
 const HISTORY_KEY = "crawlr_history", HISTORY_MAX = 50;
 export const getHistory = () => store.get(HISTORY_KEY, []);
+// What is stored is always the cleaned form of the case (storedCase in evidence.js): guard-only
+// text is gone and the record sources are in their checked shape, whoever calls this and when.
+// A step parked or a note typed while a run is in flight saves the same form as the end of it.
 function saveHistory() {
   const list = getHistory();
-  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "INVESTIGATE", kind: state.type, timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai || null, deepDive: state.deepDive || null, notes: $("#notes").value, purpose: $("#purpose").value.trim(), v2: true };
+  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "INVESTIGATE", kind: state.type, timestamp: Date.now(), results: storedCase(state.collected), aiSummary: state.ai?.summary || null, ai: state.ai || null, deepDive: state.deepDive || null, notes: $("#notes").value, purpose: $("#purpose").value.trim(), v2: true };
   state.historyId = entry.id;
   const idx = list.findIndex((e) => e.id === entry.id);
   if (idx >= 0) { entry.timestamp = list[idx].timestamp; if (list[idx].imported) entry.imported = list[idx].imported; list[idx] = entry; } else list.unshift(entry);

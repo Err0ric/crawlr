@@ -1402,6 +1402,9 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
    inferred, and says what from. */
 .act-card { padding: var(--s-4); }
 .act-h { margin: 0 0 var(--s-2); font-size: var(--fs-3); font-weight: 600; color: var(--ink); }
+/* The GitHub account is not the person the case is about: the heading carries a pill and a note says whose activity this is. */
+.act-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.act-other { margin: 0 0 var(--s-3); padding: var(--s-2) var(--s-3); border-left: 2px solid var(--different); color: var(--ink-2); font-size: var(--fs-1); }
 .act-sum { margin: 0 0 var(--s-3); color: var(--ink-2); font-size: var(--fs-1); }
 .act-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: var(--s-4); margin-bottom: var(--s-2); }
 .sources-grid .act-grid { grid-template-columns: minmax(0, 1fr); }

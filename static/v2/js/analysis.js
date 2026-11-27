@@ -49,7 +49,7 @@ export function factHow({ kinds = [], sites = 1, sources = [], weak = false } = 
 
 // ---- what the evidence says ------------------------------------------------------------------------
 const STRENGTH_WORD = { strong: "Strong", moderate: "Moderate", thin: "Thin", none: "None" };
-export const strengthWord = (s) => STRENGTH_WORD[s] || "";
+export const strengthWord = (s) => (Object.hasOwn(STRENGTH_WORD, s) ? STRENGTH_WORD[s] : "");
 const PROOF = /Keybase proof|verified link/;
 const MINOR_KINDS = ["age", "school", "birth", "soft", "handle", "word", "pivot"];
 
@@ -103,15 +103,23 @@ export function assessCase(ev, { collected = {}, type = ev?.type || "", failed =
     else strength = "thin";
   }
   const who = main ? main.label : "";
+  // A pick is said here, once, as whose judgment it is. A pick that came with a case file is its
+  // author's: it is never worded as "your pick".
+  const byFile = !!id.pickFile;
+  const pickHead = id.picked ? `Filed around ${who || "the picked identity"}, ${byFile ? "the person picked in the case file" : "your pick"}${id.autoLabel ? `, not the automatic choice (${id.autoLabel})` : ""}. ` : "";
+  // The one record of an email case, named for what it is: a key ties a key to the address, not an account.
+  const oneRecord = authors.length ? `GitHub's commit attribution ties the account ${authors[0].login} to this address.` : keys.length ? "One OpenPGP key is verified for this address by the key server. It ties a key to the address, not an account." : "One record ties an account to this address.";
+  const readCount = accounts.filter((i) => i.tier !== "unverified").length;
   const head = {
     strong: tied >= 3 ? `${plural(tied, "account")} are tied into one identity by signals that do not depend on a name.` : `${plural(records, "record")} tie this ${type === "email" ? "address" : "handle"} to an account or a key. Each is the site's own statement, not a guess.`,
-    moderate: tied >= 2 ? `${plural(tied, "account")} are tied together by at least one strong signal. One more independent tie would make this firm.` : "One record ties an account to this address. A second, independent tie would make this firm.",
-    thin: id.picked && !main?.anchor && !tied ? `The identity rests on your pick${names.length ? " and on a matching name" : ""}. No link, picture, proof or record ties these profiles to the target.`
+    moderate: tied >= 2 ? `${plural(tied, "account")} are tied together by at least one strong signal. One more independent tie would make this firm.` : `${oneRecord} A second, independent tie would make this firm.`,
+    thin: id.picked && !main?.anchor && !tied ? `The identity rests on ${byFile ? "that pick" : "your pick"}${names.length ? " and on a matching name" : ""}. No link, picture, proof or record ties these profiles to the target.`
       : main?.anchor && !tied ? `The identity rests on one record (${main.sites[0]}). No other account is tied to it by a link, a picture or a proof${names.length ? "; names agree, and a name alone is supporting, not proof" : ""}.`
         : "The identity rests on a name. A name alone is supporting, not proof.",
-    none: accounts.length ? "No identity is established: profiles were read, and nothing ties any of them to the target." : "No identity is established: no profile was read.",
+    // A row nothing read (a tool's report, a search match) is not a profile that was read.
+    none: readCount ? "No identity is established: profiles were read, and nothing ties any of them to the target." : accounts.length ? "No identity is established: accounts were reported, and no profile was read." : "No identity is established: no profile was read.",
   }[strength];
-  const headline = `${STRENGTH_WORD[strength]}. ${head}`;
+  const headline = `${STRENGTH_WORD[strength]}. ${pickHead}${head}`;
   if (ties.length) add(strength === "strong" ? "ok" : "info", `What holds it together: ${ties.map((t) => t.text).join("; ")}.`);
 
   // -- what corroborates what --
@@ -131,7 +139,9 @@ export function assessCase(ev, { collected = {}, type = ev?.type || "", failed =
     add("flag", `${plural(different.length, "account")} ${different.length === 1 ? "belongs" : "belong"} to ${by.size === 1 ? "another person" : `${by.size} other people`} whose name conflicts with ${who || "the primary identity"}: ${list([...by].map(([name, sites]) => `${name} (${list(sites, 4)})`), 3)}. Nothing is removed. Check whether ${by.size === 1 ? "that person is" : "they are"} connected to ${who || "this identity"} before leaving ${different.length === 1 ? "it" : "them"} out.`);
   }
   const unsettled = accounts.filter((i) => i.unsettled);
-  if (unsettled.length) add("flag", `${plural(unsettled.length, "profile")} ${unsettled.length === 1 ? "carries" : "carry"} a full name that could not be compared, because the primary identity has only a one-word name (${list(unsettled.map((i) => i.what), 3)}). Pick the person you mean.`);
+  const bare = unsettled.filter((i) => !i.unsettled.mixed), mixed = unsettled.filter((i) => i.unsettled.mixed);
+  if (bare.length) add("flag", `${plural(bare.length, "profile")} ${bare.length === 1 ? "carries" : "carry"} a full name that could not be compared, because the primary identity has only a one-word name (${list(bare.map((i) => i.what), 3)}). Pick the person you mean.`);
+  if (mixed.length) add("flag", `${plural(mixed.length, "profile")} ${mixed.length === 1 ? "carries" : "carry"} a name that fits a one-word name of the primary identity and conflicts with its full name (${list(mixed.map((i) => `${i.what}: "${i.unsettled.name}"`), 3)}). Neither settles it, so ${mixed.length === 1 ? "it is" : "they are"} not filed as a different person. Check ${mixed.length === 1 ? "it" : "them"} by hand.`);
   // -- self-declared only --
   if (facts.length) {
     const self = facts.filter((f) => f.how.kinds.every((k) => k === "self")), rec = facts.filter((f) => f.how.kinds.includes("record")), tool = facts.filter((f) => f.how.kinds.every((k) => k === "tool"));
@@ -176,7 +186,7 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
   const unsettled = accounts.filter((i) => i.unsettled);
   if (!id.picked) {
     if (id.noPrimary && people.length) put({ id: "pick:none", score: 100, title: "Choose who this case is about", reason: `${people.length === 1 ? "One name appears" : `${people.length} names appear`} under this handle (${list(people.map((v) => v.label), 3)}) and nothing ties ${people.length === 1 ? "it" : "any of them"} to the target, so nobody was chosen. Pick the person you mean and the case is filed around them.`, action: { kind: "focus", where: "identity", label: "Go to the names" } });
-    else if (unsettled.length) put({ id: "pick:unsettled", score: 85, title: "Choose who this case is about", reason: `The primary identity carries only a one-word name, which cannot be compared with ${list(unsettled.map((i) => `${i.unsettled.name || "the name"} on ${i.what}`), 2)}. Pick the person you mean.`, action: { kind: "focus", where: "identity", label: "Go to the names" } });
+    else if (unsettled.length) put({ id: "pick:unsettled", score: 85, title: "Choose who this case is about", reason: `${unsettled.every((i) => i.unsettled.mixed) ? "The names on the primary identity do not settle" : "The primary identity carries only a one-word name, which cannot be compared with"} ${list(unsettled.map((i) => `${i.unsettled.name || "the name"} on ${i.what}`), 2)}. Pick the person you mean.`, action: { kind: "focus", where: "identity", label: "Go to the names" } });
     else if (main && people.filter((v) => !v.primary && v.different).length) { const others = people.filter((v) => !v.primary && v.different); put({ id: "pick:others", score: 40, title: "Confirm who this case is about", reason: `${main.label} was chosen automatically. ${list(others.map((v) => v.label), 3)} ${others.length === 1 ? "uses" : "use"} this handle too. If you mean ${others.length === 1 ? "that person" : "one of them"}, pick the name and the case is filed around it.`, action: { kind: "focus", where: "identity", label: "Go to the names" } }); }
   }
 
@@ -186,7 +196,7 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
     if (kind === "handle" && (!HANDLE_OK.test(value) || minorGuard(value).blocked)) continue;
     if (kind === "domain" && (adultHost(`https://${value}`) || isPlatformHost(value))) continue;
     const record = /site record/.test(from), proven = /proven on Keybase|verified link/.test(from), guess = /the part before the @/.test(from), shown = /search matched to this address/.test(from);
-    const base = { id: l.key, action: { kind: "pivot", pivot: l.action.pivot, value, ...(kind === "handle" ? { type: "username" } : {}), label: l.action.label, via: `${kind === "handle" ? "the handle" : kind === "email" ? "the address" : "the domain"} ${value}`, source: from || src } };
+    const base = { id: l.key, action: { kind: "pivot", pivot: l.action.pivot, value, ...(kind === "handle" ? { type: "username" } : kind === "domain" ? { type: "domain" } : {}), label: l.action.label, via: `${kind === "handle" ? "the handle" : kind === "email" ? "the address" : "the domain"} ${value}`, source: from || src } };
     if (kind === "handle") put({ ...base, score: record ? 95 : proven ? 90 : guess ? 45 : shown ? (/unconfirmed/.test(from) ? 58 : 72) : l.tied ? 80 : 55, title: `Investigate ${value}`,
       reason: record ? "GitHub attributes commits that carry this address to this account. That is GitHub's own record, and the strongest lead in the case."
         : proven ? `Another handle the other side has confirmed (${from}). It is very likely the same person under another name.`
@@ -259,15 +269,17 @@ export function analysisMarkdown(a, s) {
 }
 // What the model is told. The pick is named as the investigator's judgment, with the automatic
 // choice beside it, and the assessment is given as the place to start from.
+// A pick that came with a case file is told as that: its author picked, not the person asking.
 export function analysisForAi(a, identity, trail = "") {
   if (!a || (!a.headline && !identity?.views?.length)) return null;
   const main = identity?.views?.find((v) => v.primary) || null;
+  const byFile = !!(identity?.picked && identity.pickFile);
   return {
     identity_choice: {
-      mode: identity?.picked ? "picked_by_investigator" : main ? "automatic" : "none",
+      mode: identity?.picked ? (byFile ? "picked_in_case_file" : "picked_by_investigator") : main ? "automatic" : "none",
       primary: main ? main.label : "", primary_accounts: main ? main.sites.slice(0, 12) : [],
       automatic_choice: identity?.autoLabel || "", automatic_reason: identity?.autoWhy || "",
-      note: identity?.picked ? "The investigator picked this identity as the person the case is about. It is their judgment, not a finding of the tool. Account statuses are filed against the picked identity." : main ? "Chosen by the tool's rules, not by the investigator." : "Nobody is chosen: nothing ties any profile to the target.",
+      note: byFile ? "This identity was picked in the case file the case was opened from. It is the judgment of whoever made that file, not a finding of the tool. Account statuses are filed against the picked identity." : identity?.picked ? "The investigator picked this identity as the person the case is about. It is their judgment, not a finding of the tool. Account statuses are filed against the picked identity." : main ? "Chosen by the tool's rules, not by the investigator." : "Nobody is chosen: nothing ties any profile to the target.",
     },
     strength: a.strength, headline: a.headline, lines: a.lines.map((l) => `${l.level === "flag" ? "CHECK: " : ""}${l.text}`).slice(0, 12),
     ...(trail ? { pivot_trail: trail } : {}),
