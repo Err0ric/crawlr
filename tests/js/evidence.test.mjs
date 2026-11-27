@@ -99,10 +99,10 @@ const tv = fx("torvalds"), er = fx("err0ric"), em = fx("email"), hs = fx("hash")
 }
 
 // ---- G. email flow -------------------------------------------------------------------
-ok(sourcePlan("email", "torvalds@linux-foundation.org").join() === "holehe,hibp,gravatar,harvester,hunter", "an email runs no username tools");
+ok(sourcePlan("email", "torvalds@linux-foundation.org").join() === "holehe,hibp,gravatar,emailaccounts,harvester,hunter", "an email runs no username tools");
 ok(!sourcePlan("email", "someone@gmail.com").includes("harvester") && !sourcePlan("email", "a@GMX.de").includes("harvester"), "the domain harvest is skipped for mail providers");
 ok(["gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "proton.me", "protonmail.com", "gmx.net", "aol.com", "live.com", "me.com", "mail.com", "yandex.ru"].every(isFreeMail) && !isFreeMail("linux-foundation.org") && !isFreeMail("notgmail.com"), "free-mail list");
-ok(sourcePlan("username", "jdoe").join() === "sherlock,maigret,github,platform" && sourcePlan("hash", "x").join() === "hash", "other types keep their sources");
+ok(sourcePlan("username", "jdoe").join() === "sherlock,maigret,github,platform,profiles" && sourcePlan("hash", "x").join() === "hash", "other types keep their sources");
 {
   const ev = buildEvidence(em.collected, em.target, em.type);
   const h = row(ev, "lead:handle:torvalds");

@@ -14,7 +14,8 @@ const { buildEvidence, accountsFor, ledgerTiers } = await import(J + "evidence.j
 const { buildFindings } = await import(J + "reconfindings.js");
 const { investigateBrief, reconBrief } = await import(J + "brief.js");
 const { reconTimeline } = await import(J + "timeline.js");
-const { evWhat, renderFacts, renderBrief, renderTiers, patchRow } = await import(J + "workbench.js");
+const { evWhat, evDetail, renderFacts, renderBrief, renderTiers, patchRow } = await import(J + "workbench.js");
+const { personTimeline } = await import(J + "timeline.js");
 const { sourceCards, profileLink } = await import(J + "renderers.js");
 const { reportHtml } = await import(J + "report.js");
 const { parseCaseFile, buildCaseFile } = await import(J + "casefile.js");
@@ -79,7 +80,9 @@ function checkLink(t, c, where, it, html, subjects) {
     let u; try { u = new URL(href); } catch { continue; }
     if (it.link_kind === "evidence") {
       t.note("no evidence URL holds an email address", !EMAIL.test(decodeURIComponent(href)), `${where} ${href}`);
-      t.note("no evidence URL has the username or email in its query", !personal(c).some((p) => decodeURIComponent(u.search).toLowerCase().includes(p)), `${where} ${href}`);
+      // The one exception is a profile's own address on its own site, where the site has no path
+      // form for it (Hacker News). ownProfileQuery admits that exact shape and nothing else.
+      t.note("no evidence URL has the username or email in its query", !!L.ownProfileQuery(href) || !personal(c).some((p) => decodeURIComponent(u.search).toLowerCase().includes(p)), `${where} ${href}`);
     }
   }
   for (const a of anchors(html)) t.note("every anchor opens in a new tab, says so, and has the icon", /target="_blank"/.test(a) && /rel="noopener noreferrer nofollow"/.test(a) && /<svg class="ext"/.test(a) && /opens in a new tab/.test(a), where);
@@ -88,7 +91,7 @@ const el = () => ({ innerHTML: "", hidden: false, id: "t" });
 const factHtml = (f) => { const e = el(); renderFacts(e, [f]); return e.innerHTML; };
 const HOST_ROW = /^(host|sub|tko|redir):/;
 
-let rows = 0, facts = 0, leads = 0, findings = 0;
+let rows = 0, facts = 0, leads = 0, findings = 0, details = 0;
 for (const c of cases) {
   const t = tracker(c);
   if (RECON.has(c.type)) {
@@ -107,6 +110,14 @@ for (const c of cases) {
       if (it.tier === "lead") leads++; else rows++;
       const subjects = it.key.startsWith("acct:") ? [handleOf(c)] : it.tier === "lead" ? [it.lead.value] : it.tier === "hosts" ? [it.what] : [handleOf(c)];
       checkLink(t, c, `row ${it.key}`, it, evWhat(it), subjects);
+      // What a record carries, behind the row's disclosure: each value is held to the same rules.
+      // A value may link to the site it names (a website, a listed account), and to nothing barer.
+      for (const g of it.detail?.groups || []) for (const r of g.rows) {
+        details++; checkLink(t, c, `detail ${it.key} ${r.k}`, r, link(r.url, r.v, "", { kind: r.link_kind }), [handleOf(c), r.v, L.hostOf(r.url)]);
+        t.note("a detail link is evidence or nothing", r.link_kind === "evidence" || r.link_kind === "none", `${it.key} ${r.k}`);
+        if (r.more) checkLink(t, c, `detail ${it.key} ${r.k} proof`, r.more, link(r.more.url, r.more.label, "", { kind: r.more.link_kind }), [handleOf(c)]);
+      }
+      if (it.detail) t.note("the disclosure renders every value it counts", (evDetail(it).match(/<dt>/g) || []).length === it.detail.count, it.key);
       if (it.link_kind === "none" && it.key.startsWith("acct:")) t.note("an account row with no link says how to check", typeof it.hint === "string" && it.hint.length > 20, it.key);
       if (it.link_kind === "templated_unverified") t.note("an unverified URL is marked for sighted and screen reader users", /class="lk lk-unverified"/.test(evWhat(it)) && /title="unverified URL"/.test(evWhat(it)) && /<span class="lk-flag" aria-hidden="true">unverified URL<\/span>/.test(evWhat(it)) && /\(unverified URL, opens in a new tab\)/.test(evWhat(it)), it.key);
     }
@@ -115,6 +126,7 @@ for (const c of cases) {
     for (const x of all) { facts++; checkLink(t, c, `fact ${x.k}`, x, factHtml(x), [handleOf(c), ...(x.k === "Website" ? [x.v, L.hostOf(x.v)] : [])]); }
     const b = investigateBrief({ collected: c.collected, items: ev.items, facts: ev.facts, identity: ev.identity, failed: [], type: c.type, target: c.target });
     for (const r of b.rows) { const one = el(); renderBrief(el(), one, { rows: [r], actions: [] }); checkLink(t, c, `brief row "${r.text.slice(0, 30)}"`, r, one.innerHTML, [handleOf(c)]); }
+    for (const e of personTimeline(c.collected, c.target, c.type, "2026-11-26").events) { findings++; checkLink(t, c, `timeline "${e.title}"`, e, link(e.url, e.title, "", { kind: e.link_kind }), [handleOf(c)]); }
     // The AI payload and the cards say the same thing about each URL as the ledger does.
     for (const a of accountsFor(ev.items)) t.note("each AI account carries link_kind, and no URL when there is none", L.LINK_KINDS.includes(a.link_kind) && (a.link_kind !== "none" || a.url === ""), a.site);
     for (const id of ["sherlock", "maigret", "platformCheck"]) {
@@ -127,6 +139,7 @@ for (const c of cases) {
   }
   t.flush();
 }
+ok(details > 40, `the record details are among the links checked (${details})`);
 ok(rows > 100 && facts > 20 && leads > 3 && findings > 30 && looked > 2000, `the fixtures exercise rows, facts, leads and findings (${rows}, ${facts}, ${leads}, ${findings}; ${looked} row-level looks)`);
 
 // ---- link kinds on the audit targets ---------------------------------------------------------
@@ -162,6 +175,19 @@ const row = (ev, key) => ev.items.find((i) => i.key === key);
 }
 ok(L.isBareHome("https://discord.com") && L.isBareHome("https://discord.com/") && L.isBareHome("https://www.site.com/?ref=home", ["jdoe"]) && !L.isBareHome("https://site.com/jdoe") && !L.isBareHome("https://site.com/?user=jdoe", ["jdoe"]) && !L.isBareHome("https://github.com/github", ["github"]) && L.isBareHome("https://github.com", ["github"]), "the homepage rule");
 ok(L.classifyLink({ url: "javascript:alert(1)", want: "verified_profile" }).link_kind === "none" && L.classifyLink({ url: "discord.com/x", want: "templated_unverified" }).link_kind === "none" && L.classifyLink({ url: "", want: "evidence" }).link_kind === "none", "only absolute http(s) URLs are links");
+// ---- a profile's own address that exists only as a query (Hacker News) ----------------------
+{
+  const hn = "https://news.ycombinator.com/user?id=jdoe_old", sec = { want: "evidence", secrets: ["jdoe_old"], subjects: ["jdoe_old"] };
+  ok(L.ownProfileQuery(hn) === "jdoe_old" && L.classifyLink({ url: hn, ...sec }).link_kind === "evidence", "the Hacker News profile address is allowed as evidence, with the handle in its query");
+  const no = ["https://news.ycombinator.com/user?id=jdoe_old&q=jdoe_old", "https://news.ycombinator.com/user?q=jdoe_old", "https://news.ycombinator.com/from?id=jdoe_old", "https://news.ycombinator.com/user?id=jdoe_old#x", "http://news.ycombinator.com/user?id=jdoe_old",
+    "https://hn.algolia.com/?id=jdoe_old", "https://news.ycombinator.com.evil.example/user?id=jdoe_old", "https://x:y@news.ycombinator.com/user?id=jdoe_old", "https://news.ycombinator.com:8443/user?id=jdoe_old", "https://news.ycombinator.com/user?id=jdoe%40example.org", "https://www.google.com/search?id=jdoe_old", "https://news.ycombinator.com/user?id="];
+  ok(no.every((u) => L.ownProfileQuery(u) === ""), "and nothing looser: another parameter, path, host, scheme, port, fragment, credentials or an address as the value");
+  ok(no.filter((u) => /jdoe_old/.test(u)).every((u) => L.classifyLink({ url: u, ...sec }).link_kind === "none"), "every other URL with the handle in its query is still refused");
+  ok(L.classifyLink({ url: "https://news.ycombinator.com/user?id=jdoe_old", want: "evidence", secrets: ["jdoe@example.org", "jdoe_old"] }).link_kind === "evidence" && L.classifyLink({ url: "https://example.org/find?u=jdoe_old", want: "evidence", secrets: ["jdoe_old"] }).link_kind === "none", "the rule is unchanged for every other site");
+  const dp = cases.find((c) => c.name === "deep: username with profile sources"), ev = buildEvidence(dp.collected, dp.target, dp.type);
+  const row = ev.items.find((i) => i.key === "acct:hackernews");
+  ok(row && row.url === "https://news.ycombinator.com/user?id=samexample" && row.link_kind === "verified_profile" && /href="https:\/\/news\.ycombinator\.com\/user\?id=samexample"/.test(evWhat(row)), "the Hacker News row links to the profile the record was read from");
+}
 ok(L.classifyLink({ url: "https://example.org/find?q=jdoe@example.org", want: "evidence", secrets: ["jdoe@example.org"] }).link_kind === "none" && L.classifyLink({ url: "https://example.org/find?u=JDoe_Old", want: "evidence", secrets: ["jdoe_old"] }).link_kind === "none", "an evidence link never carries the email or the username in its query");
 
 // ---- link markup ------------------------------------------------------------------------------

@@ -32,6 +32,7 @@ node tests/js/identity.test.mjs
 node tests/js/evidence.test.mjs
 node tests/js/links.test.mjs
 node tests/js/adult.test.mjs
+node tests/js/deep.test.mjs
 node tests/js/minorscan.test.mjs
 node tests/js/names.test.mjs
 node tests/js/design.test.mjs
