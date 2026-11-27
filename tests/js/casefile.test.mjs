@@ -8,6 +8,16 @@ const ok = (cond, name) => { n++; if (!cond) { bad++; console.log("FAIL", name);
 const file = (o) => JSON.stringify(o);
 const recon = () => buildCaseFile({ mode: "recon", target: "example.com", type: "domain", ran: 1700000000000, collected: { dns: { records: { A: ["93.184.216.34"] } }, whois: { found: true }, ipAsn: { "93.184.216.34": { asn: "AS15133" } } }, ai: { summary: "# Report", short_summary: ["one"], model: "m" }, deep: null, notes: "my notes", purpose: "Authorized test for the owner" });
 
+// ---- "This is me" never arrives in a file ---------------------------------------
+{
+  const inv = (collected) => parseCaseFile(file(buildCaseFile({ mode: "investigate", target: "samexample", type: "username", ran: 1700000000000, collected })));
+  const r = inv({ github: { found: true, profile_url: "https://github.com/samexample" }, selfAudit: { on: true, at: 1700000000000 } });
+  ok(r.ok && !("selfAudit" in r.entry.results) && r.entry.results.github.found === true, "a case file's selfAudit is dropped: the statement is the person's at the browser");
+  ok(!inv({ selfAudit: { on: true, at: 1 } }).ok, "and it is not a result");
+  const rc = parseCaseFile(file({ ...recon(), collected: { ...recon().collected, selfAudit: { on: true, at: 1 } } }));
+  ok(rc.ok && !("selfAudit" in rc.entry.results), "a recon case never carries one either");
+}
+
 // ---- round trip --------------------------------------------------------------
 {
   const r = parseCaseFile(file(recon()));

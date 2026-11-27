@@ -125,6 +125,17 @@ const withBio = (bio, base = MAIN) => { const c = clone(base); c.enricher.profil
   // a similar handle's probe is not part of this case's check
   const sim = { ...clone(MAIN), similar: { riverstone: { variant: "riverstone", probe: { profiles: [{ site: "GitHub", bio: "i'm 15", name: "x" }] } } } };
   ok(JSON.stringify(profileTexts(sim)) === JSON.stringify(t), "what a similar handle's check found is not read");
+  // the names on commits (collected.commitEmails, keyed by the account row): names only, found answers with rows only
+  const mail = (email, name) => ({ email, name, how: "author_line_match" });
+  const forge = (over = {}) => ({ site: "gitlab", site_name: "GitLab", state: "found", profile_url: `https://gitlab.com/${H}`, display_name: "River S", emails: [mail("river@example.org", "River S"), mail("r2@example.org", "River Stone"), mail("r3@example.org", "River Stone")], ...over });
+  const withCommits = (a) => ({ ...clone(MAIN), commitEmails: { "acct:gitlab": a } });
+  const ct = profileTexts(withCommits(forge()));
+  ok(ct.length === t.length + 1 && JSON.stringify(ct[4]) === JSON.stringify({ source: "GitLab", url: `https://gitlab.com/${H}`, name: "River S", bio: "River Stone", text: "" }), "the names on commits are read after the profile sources: the profile's name, then each other author name once");
+  const aged = contentCheck(withCommits(forge({ emails: [mail("river@example.org", "River, 15yo")] })), H, "username", TODAY);
+  ok(aged.blocked && aged.signal.source === "GitLab", "an author name that states an age under 18 blocks, and the message names the site");
+  ok(!contentCheck(withCommits(forge({ emails: [mail("im15yo@example.org", "River S")] })), H, "username", TODAY).signals.length, "a commit address is never scanned");
+  ok([forge({ state: "not_found" }), forge({ state: "failed", error: "x", error_code: "timeout" }), forge({ emails: [] }), forge({ emails: "x" }), null, "x"].every((a) => JSON.stringify(profileTexts(withCommits(a))) === JSON.stringify(t)) && JSON.stringify(profileTexts({ ...clone(MAIN), commitEmails: [forge()] })) === JSON.stringify(t), "an answer that is not a found account with rows adds no text");
+  ok(profileTexts(withCommits(forge({ display_name: "", emails: Array.from({ length: 14 }, (_, i) => mail(`m${i}@example.org`, `${i}`.padStart(2, "0") + "n".repeat(200))) })))[4].bio.length === 1009, "at most ten rows and 100 characters of each name are read");
   // addresses and handles are not scanned
   const urlOnly = clone(MAIN); urlOnly.github.profile_url = "https://github.com/im-15-years-old"; urlOnly.github.blog = "https://example.org/class-of-2031";
   ok(!contentCheck(urlOnly, "river_stone", "username", TODAY).signals.length, "an address is never scanned");

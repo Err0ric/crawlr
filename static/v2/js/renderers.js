@@ -5,7 +5,7 @@ import { classifyLink, applyCheck, evidenceUrl, CHECK_TEXT } from "./links.js";
 import { readNameResult, DIRECTORIES, NAME_NOTICE, NAME_SOURCE } from "./names.js";
 import { isAdultRow, adultListHtml, adultCounts, adultCheckText, adultFound, ADULT_SOURCE } from "./adult.js";
 import { phoneView, phoneSourceRows, PHONE_SOURCE, OWNER_NOTE, AREA_NOTE, PORTED_NOTE } from "./phone.js";
-import { readProfileSources, readEmailAccounts, profileCoverage, emailLookupsDown, lookupName, commitNames, activityView, dayOf, PROFILE_SOURCE, PROOF_TEXT, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE, HOW_TEXT, SELF_DECLARED_NOTE, KEY_NOTE } from "./deep.js";
+import { unclaimedProfile, profileNoteText, readProfileSources, readEmailAccounts, profileCoverage, emailLookupsDown, lookupName, commitNames, activityView, dayOf, PROFILE_SOURCE, PROOF_TEXT, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE, HOW_TEXT, SELF_DECLARED_NOTE, KEY_NOTE } from "./deep.js";
 
 // A profile link in a card carries the same link kind as its ledger row: a URL the source read
 // is solid, a templated one is marked unverified, a homepage is plain text. `checks` is the
@@ -65,22 +65,32 @@ export function harvestCard(d) {
 // that reads out every count, and the busiest hours are also written under them. The offset is a
 // range, drawn with a dashed edge (an estimate, not a reading), with what it rests on beside it.
 const strip = (cols, cls, alt, labels) => h`<div class="act-strip ${cls}" role="img" aria-label="${alt}">${raw(cols.map((c) => `<span class="act-col${c.count ? "" : " zero"}"><i style="height:${Math.max(c.count ? 6 : 0, Math.min(100, Math.round(c.pct)))}%"></i></span>`).join(""))}</div><div class="act-axis ${cls}" aria-hidden="true">${raw(labels.map((l) => h`<span>${l}</span>`).join(""))}</div>`;
-export function activityHtml(d) {
-  const v = activityView(d);
+// One renderer for every activity reading: GitHub's public events (activityView in deep.js) and
+// the posts of a Hacker News, Mastodon or Lobsters account (postActivityView). Both views carry
+// the same keys; a post reading adds its unit word, what was counted (the footnote) and whether
+// the site marks the account as automated. Every sentence is the page's own, written in deep.js.
+const cap1 = (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1);
+export function activityViewHtml(v) {
   if (!v) return "";
-  if (v.state !== "ok") return h`<p class="muted">${v.text}</p>`;
-  return h`<p class="act-sum">${v.text}</p>
+  if (v.state !== "ok") return h`<p class="muted${v.retry ? " act-unknown" : ""}">${v.text}</p>${v.footnote ? raw(h`<p class="muted small">${v.footnote}</p>`) : ""}`;
+  const post = !!v.unit, things = post ? cap1(v.unit) : "";
+  return h`<p class="act-sum">${v.text}${v.bot ? raw(' <span class="tag">automated account</span>') : ""}</p>
     <div class="act-grid">
-      <figure class="act"><figcaption>By hour of day, UTC</figcaption>${raw(strip(v.hours, "h24", v.hoursAlt, ["00", "06", "12", "18", "23"]))}</figure>
+      <figure class="act"><figcaption>${things ? `${things} by hour of day, UTC` : "By hour of day, UTC"}</figcaption>${raw(strip(v.hours, "h24", v.hoursAlt, ["00", "06", "12", "18", "23"]))}</figure>
       <figure class="act"><figcaption>By weekday, UTC</figcaption>${raw(strip(v.days, "d7", v.daysAlt, v.days.map((x) => x.day.slice(0, 3))))}</figure>
     </div>
     ${v.busiest ? raw(h`<p class="muted small">${v.busiest}</p>`) : ""}`
-    + kv([["Most active in", v.repos.slice(0, 5).map((r) => h`${raw(ev(r.url, r.name))} <span class="dim">${fmtNum(r.count)}</span>`).join("<br>")], ["Kinds of event", esc(v.types.slice(0, 6).map((t) => `${t.word} ${fmtNum(t.count)}`).join(", "))]])
+    + kv([["Most active in", v.repos.slice(0, 5).map((r) => h`${raw(ev(r.url, r.name))} <span class="dim">${fmtNum(r.count)}</span>`).join("<br>")], [post ? "Kinds of post" : "Kinds of event", esc(v.types.slice(0, 6).map((t) => `${t.word} ${fmtNum(t.count)}`).join(", "))]])
+    + (v.footnote ? h`<p class="muted small act-foot">${v.footnote}</p>` : "")
     + (v.estimate
       ? h`<div class="act-est"><p><b>UTC offset estimate</b> <span class="mono">${v.estimate.label}</span> <span class="tag">a hint, not a fact</span></p><p class="muted small">${v.estimate.basis} ${v.estimate.quiet}</p><p class="muted small">${v.estimate.assumption}</p><p class="muted small">${v.estimate.caveat} A range of time offsets is not a place: many countries share each one.</p></div>`
       : h`<div class="act-est"><p><b>UTC offset estimate</b> <span class="tag">none made</span></p><p class="muted small">${v.noEstimate}</p></div>`);
 }
+// GitHub's reading from the stored answer (the card under By source).
+export const activityHtml = (d) => activityViewHtml(activityView(d));
 
+// What the Profile sources card says beside a record Launchpad made by itself.
+const UNCLAIMED_CARD = "a record the site made by itself for a name in an imported bug, translation or package. Not an account anybody claimed.";
 const CARDS = {
   // One line per profile that was read, then every site by what it answered. A site that was
   // blocked, rate limited or failed is unknown, and is never listed under "not found".
@@ -88,12 +98,17 @@ const CARDS = {
     const r = readProfileSources(d);
     if (!r) return "";
     const c = profileCoverage(r);
-    const rows = r.profiles.map((p) => li(h`${raw(read(p.url, p.site))}${p.name ? h` · ${p.name}` : ""}${raw(h`<div class="dim small">${[p.location, p.company, dayOf(p.created) ? `joined ${dayOf(p.created).slice(0, 4)}` : "", ...p.accounts.filter((a) => a.proof !== "listed").map((a) => `${a.site} ${PROOF_TEXT[a.proof]}`)].filter(Boolean).join(" · ")}</div>`)}`));
+    // A record nobody claimed is listed, and never as a profile that was read. A note the page
+    // knows (moved, a team, an organization) is said in the page's own sentence.
+    const claimed = r.profiles.filter((p) => !unclaimedProfile(p)), loose = r.profiles.filter(unclaimedProfile);
+    const rows = claimed.map((p) => li(h`${raw(read(p.url, p.site))}${p.name ? h` · ${p.name}` : ""}${profileNoteText(p.note) ? raw(h` <span class="dim small">${profileNoteText(p.note)}</span>`) : ""}${raw(h`<div class="dim small">${[p.location, p.company, dayOf(p.created) ? `joined ${dayOf(p.created).slice(0, 4)}` : "", ...p.accounts.filter((a) => a.proof !== "listed").map((a) => `${a.site} ${PROOF_TEXT[a.proof]}`)].filter(Boolean).join(" · ")}</div>`)}`));
     const sites = (st) => esc((c.by[st] || []).join(", "));
     const notes = c.notes.map((n) => h`${n.site}: ${n.note}`).join("<br>");
-    return card(PROFILE_SOURCE, tag(`${fmtNum(c.read)} read`, c.read ? "ok" : "") + (c.down.length ? " " + tag(`${fmtNum(c.down.length)} did not answer`, "warn") : ""),
-      (rows.length ? list(rows) : none(c.asked ? "No site that answered has a record for this handle." : "No site was asked."))
-      + kv([["Not found", sites("not_found")], ["Blocked by site", sites("blocked")], ["Rate limited", sites("rate_limited")], ["Could not tell", [sites("unknown"), notes].filter(Boolean).join("<br>")], ["Failed", sites("failed")], ["Not asked", (c.by.not_asked || []).length ? h`${(c.by.not_asked || []).join(", ")} <span class="dim">the handle cannot exist there</span>` : ""]])
+    const nRead = c.read - loose.length;
+    return card(PROFILE_SOURCE, tag(`${fmtNum(nRead)} read`, nRead ? "ok" : "") + (c.down.length ? " " + tag(`${fmtNum(c.down.length)} did not answer`, "warn") : ""),
+      h`<p class="muted small">${fmtNum(c.asked)} of ${fmtNum(Object.keys(r.sources).length)} sites were asked. Each Mastodon instance is a site of its own.</p>`
+      + (rows.length ? list(rows) : none(c.asked ? (loose.length ? "No site that answered has a claimed account for this handle." : "No site that answered has a record for this handle.") : "No site was asked."))
+      + kv([["Not a claimed account", loose.map((p) => h`${raw(read(p.url, p.site))} <span class="dim">${UNCLAIMED_CARD}</span>`).join("<br>")], ["Not found", sites("not_found")], ["Blocked by site", sites("blocked")], ["Rate limited", sites("rate_limited")], ["Could not tell", [sites("unknown"), notes].filter(Boolean).join("<br>")], ["Failed", sites("failed")], ["Not asked", (c.by.not_asked || []).length ? h`${(c.by.not_asked || []).join(", ")} <span class="dim">the handle cannot exist there</span>` : ""]])
       + h`<p class="muted small">"Read" means the site's own API returned the record for this handle. Blocked, rate limited, failed and "could not tell" are unknown, not absent. A record that exists is not proof of who owns it.</p>`);
   },
   // The accounts and keys behind an address, with each lookup's state. The words for each tie

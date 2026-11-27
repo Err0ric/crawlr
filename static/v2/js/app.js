@@ -4,6 +4,7 @@ import { openModal, closeModal, openDrawer, closeDrawer, openSheet, closeSheet }
 import { run, cancel, renderSources, refreshModes, loadHistory, getHistory, clearCase, exportCase, trailFrom, modeRows, state } from "./investigate.js";
 import * as recon from "./recon.js";
 import * as tools from "./tools.js";
+import "./imagemeta.js";
 import { parseCaseFile, MAX_CASE_BYTES } from "./casefile.js";
 import { groupHistory, lastRunDiff, diffText } from "./present.js";
 import { buildEvidence, isFinding } from "./evidence.js";
@@ -46,10 +47,10 @@ new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => n.nod
 
 // ---- views ---------------------------------------------------------------------
 const BENCHES = ["investigate", "recon"];
-const TOOLS = ["headers", "dorks", "decoders"];
+const TOOLS = ["headers", "dorks", "decoders", "imagemeta"];
 const VIEWS = [...BENCHES, ...TOOLS];
-const TITLES = { landing: "CrawlR: OSINT investigation in your browser", investigate: "Investigate · CrawlR", recon: "Recon · CrawlR", headers: "Email headers · CrawlR", dorks: "Search query builder · CrawlR", decoders: "Decoders · CrawlR" };
-const FOCUS = { landing: "#landingInput", headers: "#hdrInput", dorks: "#dkName", decoders: "#b64In" };
+const TITLES = { landing: "CrawlR: OSINT investigation in your browser", investigate: "Investigate · CrawlR", recon: "Recon · CrawlR", headers: "Email headers · CrawlR", dorks: "Search query builder · CrawlR", decoders: "Decoders · CrawlR", imagemeta: "Image metadata · CrawlR" };
+const FOCUS = { landing: "#landingInput", headers: "#hdrInput", dorks: "#dkName", decoders: "#b64In", imagemeta: "#imgFile" };
 let current = "";
 function show(view, { focus = true } = {}) {
   current = view;

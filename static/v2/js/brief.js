@@ -13,7 +13,7 @@ import { adultBriefText } from "./adult.js";
 import { nameBrief } from "./names.js";
 import { phoneBrief } from "./phone.js";
 import { wildcardOf, wildcardText } from "./present.js";
-import { profileCoverage, readProfileSources, readEmailAccounts, activityView, commitNames, commitsNote } from "./deep.js";
+import { profileCoverage, readProfileSources, readEmailAccounts, activityView, commitNames, commitsNote, unclaimedProfile } from "./deep.js";
 import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -95,11 +95,15 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     const taken = unverified.filter((i) => i.taken);
     if (taken.length) add("info", `The handle is taken on ${list(taken.map((i) => i.what))} according to the site's sign-up check. Nothing was read there, so who holds it is unknown.`);
 
-    // The profile sources: how many records were read.
+    // A record Launchpad made by itself is nobody's account: it is said once, and counted as no profile.
+    const unclaimed = unverified.filter((i) => i.unclaimed);
+    if (unclaimed.length) add("info", `${list(unclaimed.map((i) => i.what))} holds a record under this handle that is not a claimed account. The site makes such a record by itself for a person named in an imported bug, translation or package, so it says nothing about who holds the name.`);
+
+    // The profile sources: how many records were read (a record nobody claimed is not one of them).
     const ps = type === "username" ? readProfileSources(c.profiles) : null;
     if (ps && !ps.error && !ps.error_code) {
-      const cov = profileCoverage(ps);
-      if (cov.read) add("info", `${plural(cov.read, "profile")} ${cov.read === 1 ? "was" : "were"} read from the site's own record (${list(ps.profiles.map((p) => p.site), 6)}). Open a row's "What was read" for the name, links, dates and linked accounts on it.`);
+      const claimed = ps.profiles.filter((p) => !unclaimedProfile(p)), asked = profileCoverage(ps).asked;
+      if (claimed.length) add("info", `${plural(claimed.length, "profile")} ${claimed.length === 1 ? "was" : "were"} read from the site's own record, of ${plural(asked, "site")} asked (${list(claimed.map((p) => p.site), 6)}). Open a row's "What was read" for the name, links, dates and linked accounts on it.`);
     }
     // GitHub activity, only while the GitHub account is the person this case is about: its row is
     // Linked or part of the primary identity. After a pick of someone else it is that other
