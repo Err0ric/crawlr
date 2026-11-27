@@ -41,6 +41,14 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Breaches | Known breaches for an email (XposedOrNot), with date, data classes, record count and a link, newest first | None |
 | GitHub | Profile, repos, linked email. A details lookup adds organisations, top repositories and languages, linked social accounts, README links, key fingerprints and public commit emails. Rate limits are reported as rate limits | None (optional server `GITHUB_TOKEN`) |
 | Gravatar | Profile and avatar for an email | None |
+| Profile sources | Reads the handle's public record on 16 sites with an open API (GitLab, Keybase, Hacker News, Mastodon, Docker Hub, npm, dev.to, Lichess, Chess.com, Codeberg, Bluesky, Wikipedia, Gravatar, Codeforces, Lobsters, Hugging Face): name, bio, links, dates, counts and linked accounts. A Keybase proof or a verified Mastodon link ties two accounts; a listed account is only a lead. Each site keeps its own state, and a site that did not answer is unknown, never "not found" | None |
+| Accounts and keys | For an email: the GitHub account that GitHub attributes commits with the address to, accounts GitHub's search matched to it (the profile is not read, so those are weaker), commits tied to no account, and OpenPGP keys on keys.openpgp.org. Names, dates and time zones written inside a commit or a key are labeled self-declared | None |
+| GitHub activity | When the account's public events happen, by hour and weekday (UTC), with a UTC offset estimate that is labeled a hint and is never turned into a place | None |
+| Profile archive | On a click, for one read profile: whether the Internet Archive holds copies of the page, the first and last capture, on how many days it was captured, and links to a few snapshots you open yourself. Never for an adult or dating site, and never for an address that carries a query | None |
+| Pick the person | When more than one person uses a handle, pick the name you mean in the case header. The whole case is filed again around that person (tiers, tiles, facts, brief, leads, timeline, exports, AI input). Nothing is removed: the other person's rows stay, each with a check on whether that person is connected. The pick is labeled as yours, with one click back to the automatic choice | None |
+| What the evidence says | A rule-based assessment, no AI: how firmly the accounts are tied to one identity and by what (records, proofs, pictures, links, names), what corroborates what, what is self-declared only, what could not be asked, how much is unread. Every fact in "What we know" says how it is known | None |
+| Suggested next steps | A ranked list built from what the case holds: a handle or address to investigate, a domain to open in Recon, archived copies, a blocked site to open by hand, a reverse-confirm search copied as text, a source to run again, and self-audit hints. One hop per click, and any step can be parked | None |
+| Pivot trail | A case opened from a lead shows how it was reached (seed, lead, this case), with links back to the earlier cases in History. Kept in the browser only | None |
 | Name search | Type a name, with an optional location, employer or keyword that only ranks the answer. CrawlR lists the people with that name on Wikidata (with the Wikipedia link), GitHub, ORCID, OpenAlex and Bluesky as candidates, says how each name fits and which details it matches, and suggests handles such a person might use. Nothing is followed on its own: "Show profile" loads one GitHub profile, "Investigate this" starts a username case for one handle, and the people-search and search engine links only open in a new tab. A directory that could not be asked is shown as unknown. Text only, no pictures | None (optional server `GITHUB_TOKEN`) |
 | Platform check | Instagram, X, Threads, TikTok, Facebook and LinkedIn, decided from what the page says, not from the status code. A site that walls the request is shown as "Blocked by site". Reddit and Discord are asked directly and are always listed: Reddit refuses servers, so without the optional credentials its row says "Blocked by site" and links the profile to open by hand; Discord has no profile page, so its sign-up check can only say "Handle taken", with the owner unknown | None (optional server `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`) |
 | Similar handles | A username or email case lists up to 16 handles close to the searched one (a digit read as a letter, a separator or a number taken off, a decoration removed, handles built from the name on the primary profile). Nothing is requested until you click "Check" on one, and one click checks one handle: GitHub, the platform check and Bluesky, never Sherlock or Maigret. Each profile that was read says whether its picture, a link or its name lines up with the case, by the same rules that group the case's own profiles. One that lines up can be added to the case with a click, and removed again | None |
@@ -125,6 +133,9 @@ node tests/js/design.test.mjs
 node tests/js/phone.test.mjs
 node tests/js/similar.test.mjs
 node tests/js/wildcard.test.mjs
+node tests/js/minorscan.test.mjs
+node tests/js/deep.test.mjs
+node tests/js/casework.test.mjs
 ```
 
 ## How it is built
@@ -139,6 +150,9 @@ FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and 
 - Each case has an optional purpose line that is saved with it and printed on every export.
 - The server keeps no record of what you look up: targets are not written to its logs. When the minor check blocks, one log line names the rule that fired and nothing about the target. Short-lived in-memory caches (AI answers, GitHub profiles, and for 30 minutes the profile text a username run returned, which the minor check reads) are lost on restart.
 - One random session cookie keeps the minor check tied to your own run. It identifies nothing about you and ends with the browser session.
+- What leaves the server for a lookup, and to whom. A username case asks the 16 profile sites' public APIs about the handle (the handle goes to each of those sites, as it does to every site Sherlock and Maigret check). An email case sends the address to GitHub's commit and user search and to keys.openpgp.org, besides the breach and registration checks. "Archived copies" sends one profile's address to the Internet Archive's index, only when you click it. None of these is a paid service or a data broker.
+- Who a case is about (your pick), the pivot trail and parked steps are kept with the case in your browser and in a case file you export. They are never sent to the server, except as part of the text you choose to send for an AI analysis.
+- A reverse-confirm search is offered as text to copy. CrawlR builds no search engine link with a username or an email in it.
 - Active techniques that connect to the target's own systems (the port scan, profile scraping for deep dive) are off on every page load, never stored, and labeled.
 
 ## Responsible use
