@@ -41,14 +41,20 @@
 //      cluster they chose). The pick changes which cluster is primary and nothing else: clusters
 //      are evidence and are built the same way with or without it. A pick is matched by members,
 //      so it survives a re-run; it holds only while exactly one cluster carries its members, and
-//      otherwise the automatic choice of rule 8 stands. The result says which of the two it is
-//      (`picked`) and what the automatic choice is (`auto`, `autoWhy`), so the page can say so.
+//      otherwise the automatic choice of rule 8 stands. A pick that names the automatic choice is
+//      no pick at all: the result is the automatic one and is never worded as a judgment. The
+//      result says which of the two it is (`picked`) and what the automatic choice is (`auto`,
+//      `autoWhy`), so the page can say so. opts.pickFile: the pick came with a case file, so it is
+//      its author's and is never worded as "you picked".
 //  10. A profile outside the primary cluster is compared with the fullest names the primary
 //      carries. A one-word name beside a full one ("Sam" beside "Sam Example") is ignored for
 //      this: it fits almost anything, so it must not rescue a profile whose full name conflicts
 //      with the identity's full name. When the primary carries one-word names only, a profile
 //      with an unrelated full name is neither a match nor a conflict: it stays in "matches" and
 //      is marked `unsettled`, and the row says the name could not be compared.
+//      A one-word name of the primary that does fit the profile's name ("Petra" on a profile tied
+//      to the identity, beside "Petra Novak") is the one case where it counts against the full
+//      name: the two disagree, so the profile is `unsettled` (with `mixed`), never `different`.
 
 const fold = (s) => String(s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -312,9 +318,9 @@ export function clusterIdentities(profiles, opts = {}) {
   // 9. the investigator's pick, matched by members. Zero or several clusters: the pick is void.
   const want = new Set([].concat(opts.pick || []).filter((x) => typeof x === "string"));
   const hit = want.size ? clusters.filter((c) => c.members.some((id) => want.has(id))) : [];
-  const picked = hit.length === 1;
+  const picked = hit.length === 1 && hit[0] !== auto;
   const primary = picked ? hit[0] : auto;
-  if (primary) { primary.primary = true; if (picked) { primary.picked = true; primary.why = PICK_WHY; } }
+  if (primary) { primary.primary = true; if (picked) { primary.picked = true; if (opts.pickFile === true) primary.pickFile = true; primary.why = opts.pickFile === true ? PICK_WHY_FILE : PICK_WHY; } }
   const byProfile = {};
   for (const c of clusters) for (const id of c.members) byProfile[id] = c.id;
   for (const c of clusters) delete c.first;
@@ -325,6 +331,7 @@ export function clusterIdentities(profiles, opts = {}) {
 }
 
 export const PICK_WHY = "you picked this person";
+export const PICK_WHY_FILE = "the case file picked this person";
 // The member ids a stored pick names: at most 40 account ids, or null. Outside data is read here.
 export function readPick(v) {
   const m = v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.members) ? [...new Set(v.members.filter((x) => typeof x === "string" && /^acct:[^\u0000-\u001f]{1,80}$/.test(x)))].slice(0, 40) : [];
@@ -342,6 +349,8 @@ export function readPick(v) {
 // person's name; tie: the signals that group them), not because of a name of its own.
 // unsettled: the profile carries a full name and the primary identity only one-word names that
 // share nothing with it (rule 10). against: the names the profile was compared with.
+// mixed (with unsettled): the name fits a one-word name of the identity (`fits`) and conflicts
+// with its full name (`against`), so neither settles it.
 export const NO_PRIMARY = "exists, nothing ties it to the target";
 export function standing(profile, result, opts = {}) {
   const primary = result.clusters.find((c) => c.primary);
@@ -354,7 +363,7 @@ export function standing(profile, result, opts = {}) {
     const link = primary.links.find((l) => (l.a === profile.id || l.b === profile.id) && l.signals.some((s) => STRONG.has(s.type)));
     if (link) return { tier: "linked", why: link.signals.filter((s) => STRONG.has(s.type)).map((s) => s.detail).join(", ") };
     const byName = primary.links.find((l) => l.a === profile.id || l.b === profile.id);
-    return { tier: "matches", why: byName ? byName.signals.map((s) => s.detail).join(", ") : primary.picked ? (primary.members.length > 1 ? "part of the identity you picked" : "the profile you picked; nothing else ties it to the target") : "" };
+    return { tier: "matches", why: byName ? byName.signals.map((s) => s.detail).join(", ") : primary.picked ? (primary.pickFile ? (primary.members.length > 1 ? "part of the identity picked in the case file" : "the profile picked in the case file; nothing else ties it to the target") : primary.members.length > 1 ? "part of the identity you picked" : "the profile you picked; nothing else ties it to the target") : "" };
   }
   const tokens = meaningfulName(profile.name, [profile.handle, ...keys]);
   const extra = support.length ? support.join(", ") : "";
@@ -362,12 +371,18 @@ export function standing(profile, result, opts = {}) {
   const full = primary.tokens.filter(personal);
   const against = (full.length ? primary.names.filter((n) => personal(meaningfulName(n, keys) || [])) : primary.names).slice(0, 3);
   const conflicts = (t) => full.length > 0 && full.every((f) => compareNames(f, t, keys) === "conflict");
+  // Does a name of the primary fit this one? Equal, contained, an initial, or a shared stem.
+  const fitsName = (p, t) => ["same", "subset"].includes(compareNames(p, t, keys)) || p.some((x) => t.some((y) => tokenMatch(x, y) || (x.length >= 3 && y.startsWith(x)) || (y.length >= 3 && x.startsWith(y))));
+  // The one-word names of an identity that also has a full one, and the ones among them that fit `t`.
+  const short = full.length ? primary.tokens.filter((t) => !personal(t)) : [];
+  const fitting = (t) => short.filter((p) => fitsName(p, t));
+  const shortNames = (list) => primary.names.filter((n) => { const m = meaningfulName(n, keys); return m && list.some((p) => p.join(" ") === m.join(" ")); }).slice(0, 3);
   // A profile grouped with another person stands where that person stands: an account with no
   // name of its own that a proof ties to "Sam Example" is not Petra Novak's because it is silent.
   const own = result.clusters.find((c) => c.id === result.byProfile[profile.id]) || null;
   if (own && own !== primary && !(tokens && conflicts(tokens))) {
     const theirs = own.tokens.filter(personal);
-    if (theirs.length && theirs.every(conflicts)) {
+    if (theirs.length && theirs.every(conflicts) && !theirs.some((t) => fitting(t).length)) {
       const tie = own.links.filter((l) => l.a === profile.id || l.b === profile.id).flatMap((l) => l.signals.map((s) => s.detail));
       return { tier: "different", why: "", against, via: own.label, tie: [...new Set(tie)].slice(0, 2).join(", ") };
     }
@@ -376,9 +391,11 @@ export function standing(profile, result, opts = {}) {
   if (!primary.tokens.length) return { tier: "matches", why: extra || "the primary record carries no name to compare" };
   if (full.length) {
     if (!conflicts(tokens)) return { tier: "matches", why: extra || "name does not conflict" };
+    const fit = fitting(tokens);
+    if (fit.length) return { tier: "matches", why: extra, unsettled: true, mixed: true, against, fits: shortNames(fit).length ? shortNames(fit) : fit.map((p) => p.join(" ")).slice(0, 3) };
     return { tier: "different", why: "", against };
   }
-  const related = primary.tokens.some((t) => ["same", "subset"].includes(compareNames(t, tokens, keys)) || t.some((x) => tokens.some((y) => tokenMatch(x, y) || (x.length >= 3 && y.startsWith(x)) || (y.length >= 3 && x.startsWith(y)))));
+  const related = primary.tokens.some((t) => fitsName(t, tokens));
   if (personal(tokens) && !related && primary.tokens.every((t) => script(t) === script(tokens))) return { tier: "matches", why: extra, unsettled: true, against };
   return { tier: "matches", why: extra || "name does not conflict" };
 }

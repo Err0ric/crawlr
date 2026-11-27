@@ -7,32 +7,43 @@
 // collected.trail      [{ target, type, id, at, via, source }]   the earlier cases, seed first.
 //                      `via` says which lead led from that case to the next one, `source` where
 //                      that lead came from. The case on screen is the end of the trail and is not
-//                      in the list.
+//                      in the list. A step that came with a case file carries `file: true`: it is
+//                      what the file says, not something done in this browser, and the page never
+//                      words it as "you".
 // collected.nextSteps  { [step id]: { state: "parked" | "followed", title, at } }
 //                      parked: "not now". It stays listed as parked and is not suggested again.
 //                      followed: a case was opened from it. It is listed as followed.
 // (The pick of the person a case is about is collected.pick: see readPick in identity.js.)
+//
+// A case file brings its pick and its trail, each marked as the file's. It does not bring
+// nextSteps: a file that could park or mark a step as followed could hide a suggestion from the
+// person who opens it, so the steps are dropped on import (readCasework with file: true) and
+// every suggestion the case supports is offered again.
 
 import { readPick } from "./identity.js";
+import { cleanText } from "./deep.js";
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-const line = (v, n) => (typeof v === "string" ? Array.from(v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim()).slice(0, n).join("") : "");
+const line = (v, n) => (typeof v === "string" ? Array.from(cleanText(v).replace(/\s+/g, " ").trim()).slice(0, n).join("") : "");
 const stamp = (v) => (Number.isFinite(v) && v > 0 && v <= Date.now() + 86400000 ? v : 0);
 
 export const TRAIL_TYPES = ["username", "email", "hash", "phone", "name", "domain", "ip", "asn"];
 export const TRAIL_MAX = 12;
-const TYPE_WORD = { username: "username", email: "email address", hash: "file hash", phone: "phone number", name: "name", domain: "domain", ip: "IP address", asn: "ASN" };
+const TYPE_WORD = { __proto__: null, username: "username", email: "email address", hash: "file hash", phone: "phone number", name: "name", domain: "domain", ip: "IP address", asn: "ASN" };
 
-export function readTrail(v) {
+// opts.file: the trail is read from a case file, so every step is marked as the file's.
+export function readTrail(v, { file = false } = {}) {
   if (!Array.isArray(v)) return [];
   const out = [];
   for (const s of v.slice(-TRAIL_MAX)) {
     const target = isObj(s) ? line(s.target, 253) : "";
     if (!target || !TRAIL_TYPES.includes(s.type)) continue;
-    out.push({ target, type: s.type, id: typeof s.id === "string" && /^[A-Za-z0-9_]{1,40}$/.test(s.id) ? s.id : "", at: stamp(s.at), via: line(s.via, 160), source: line(s.source, 80) });
+    out.push({ target, type: s.type, id: typeof s.id === "string" && /^[A-Za-z0-9_]{1,40}$/.test(s.id) ? s.id : "", at: stamp(s.at), via: line(s.via, 160), source: line(s.source, 80), ...(file || s.file === true ? { file: true } : {}) });
   }
   return out;
 }
+// Does any step of the trail come from a case file?
+export const trailFromFile = (view) => (view || []).some((s) => s.file === true);
 // The trail of a case opened from `from` (the case on screen when the button was pressed).
 //   from  { target, type, id, at, trail }     via  { label, source }: the lead that was followed
 // A case opened from itself adds nothing, and the list is bounded: the oldest steps go first.
@@ -46,11 +57,11 @@ export function extendTrail(from, via = {}) {
 export function trailView(trail, target, type) {
   const steps = readTrail(trail);
   if (!steps.length) return [];
-  return [...steps.map((s) => ({ target: s.target, type_word: TYPE_WORD[s.type], via: [s.via, s.source && !s.via.includes(s.source) ? `from ${s.source}` : ""].filter(Boolean).join(", "), id: s.id, at: s.at, here: false })),
+  return [...steps.map((s) => ({ target: s.target, type_word: TYPE_WORD[s.type], via: [s.via, s.source && !s.via.includes(s.source) ? `from ${s.source}` : ""].filter(Boolean).join(", "), id: s.id, at: s.at, here: false, ...(s.file ? { file: true } : {}) })),
     { target: String(target ?? ""), type_word: TYPE_WORD[type] || "", via: "", id: "", at: 0, here: true }];
 }
-export const trailText = (view) => view.map((s) => (s.here ? `${s.target} (this case)` : `${s.target} (${s.type_word})${s.via ? `, then ${s.via}` : ""}`)).join(" > ");
-export const trailMarkdown = (view) => (view.length ? ["## How this case was reached", "_Each step was a click by the investigator on a lead of the case before it. Recorded in the browser only._", ...view.map((s, i) => `${i + 1}. ${s.here ? `**${s.target}** (this case)` : `**${s.target}** (${s.type_word})${s.via ? `: followed ${s.via}` : ""}`}`), ""] : []);
+export const trailText = (view) => (trailFromFile(view) ? "As recorded in the case file this case was opened from: " : "") + view.map((s) => (s.here ? `${s.target} (this case)` : `${s.target} (${s.type_word})${s.via ? `, then ${s.via}` : ""}`)).join(" > ");
+export const trailMarkdown = (view) => (view.length ? ["## How this case was reached", trailFromFile(view) ? "_As recorded in the case file this case was opened from: each step is a lead its author followed from the case before it._" : "_Each step was a click by the investigator on a lead of the case before it. Recorded in the browser only._", ...view.map((s, i) => `${i + 1}. ${s.here ? `**${s.target}** (this case)` : `**${s.target}** (${s.type_word})${s.via ? `: followed ${s.via}` : ""}`}`), ""] : []);
 
 export const STEP_STATES = ["parked", "followed"];
 const STEP_ID = /^[a-z]{2,12}:[^\u0000-\u001f]{1,200}$/;
@@ -73,8 +84,9 @@ export function readCasework(results, { file = false } = {}) {
   if (!isObj(results)) return results;
   const out = { ...results };
   if ("pick" in out) { const p = readPick(out.pick); if (p) out.pick = file ? { ...p, file: true } : p; else delete out.pick; }
-  if ("trail" in out) { const t = readTrail(out.trail); if (t.length) out.trail = t; else delete out.trail; }
-  if ("nextSteps" in out) { const s = readSteps(out.nextSteps); if (Object.keys(s).length) out.nextSteps = s; else delete out.nextSteps; }
+  if ("trail" in out) { const t = readTrail(out.trail, { file }); if (t.length) out.trail = t; else delete out.trail; }
+  // A case file never parks or follows a step for the person who opens it.
+  if ("nextSteps" in out) { const s = file ? {} : readSteps(out.nextSteps); if (Object.keys(s).length) out.nextSteps = s; else delete out.nextSteps; }
   return out;
 }
 export const CASEWORK_KEYS = ["pick", "trail", "nextSteps", "archives"];
