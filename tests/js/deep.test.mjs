@@ -63,15 +63,16 @@ ok(!["sherlock", "maigret", "platform", "profiles"].some((s) => sourcePlan("emai
 
 // ---- 3. a record becomes a profile, one row per site ---------------------------------------------
 const ev = buildEvidence(U.collected, H, "username");
-// The same case without the enrichment's one-word name "Sam": with it in the primary identity the
-// identity rules call no name a conflict, so GitLab's "Petra Novak" is filed under Exists (matches).
+// The same case without the enrichment's one-word name "Sam". A one-word name beside a full one
+// no longer rescues a profile whose full name conflicts (identity.js, rule 10), so GitLab's
+// "Petra Novak" is a different person with it and without it.
 const NOENR = (({ enricher, ...rest }) => rest)(U.collected), evD = buildEvidence(NOENR, H, "username");
 {
   ok(canonSite("Hacker News") === canonSite("HackerNews") && canonSite("GitLab") === canonSite("Gitlab") && canonSite("dev.to") === canonSite("DEV Community") && canonSite("Mastodon") === canonSite("mastodon.social") && canonSite("Chess.com") === canonSite("Chess"), "the sites' own names and the tools' spellings are one site");
   const hn = row(ev, "acct:hackernews"), gl = row(ev, "acct:gitlab"), li = row(ev, "acct:lichess");
   ok(ev.items.filter((i) => /hacker ?news/i.test(i.what)).length === 1 && hn.what === "Hacker News" && hn.source === "Profile sources, Sherlock", "a site a tool also reported is one row, named by the record, with every source on it");
   ok(hn.link_kind === "verified_profile" && gl.link_kind === "verified_profile" && li.link_kind === "verified_profile" && li.url === `https://lichess.org/@/${H}`, "the record's address is the row's link, and it is a read profile's link");
-  ok(row(evD, "acct:gitlab").tier === "different" && row(evD, "acct:gitlab").person === "Petra Novak" && gl.source.startsWith("Profile sources") && gl.tier !== "linked" && /Petra Novak/.test(gl.meta), "the record wins over a tool's row for the same site, and a conflicting name is still a different person");
+  ok(row(evD, "acct:gitlab").tier === "different" && row(evD, "acct:gitlab").person === "Petra Novak" && gl.tier === "different" && gl.source.startsWith("Profile sources") && /Petra Novak/.test(gl.meta), "the record wins over a tool's row for the same site, and a conflicting name is still a different person");
   ok(hn.card.facts.includes("3,187 karma") && hn.card.facts.includes("joined 2013") && row(ev, "acct:mastodon.social").card.facts.includes("312 followers"), "the card's one line carries the record's counts and year");
   const ps = collectProfiles(U.collected, H, "username");
   const ma = ps.find((p) => p.id === "acct:mastodon.social");
@@ -230,7 +231,7 @@ const ee = buildEvidence(E.collected, E.target, "email");
   ok(tl.length >= 10 && tl.every((e, i) => !i || tl[i - 1].date <= e.date), "dated facts, oldest first");
   ok(tl[0].title === "Hacker News account created" && tl[0].date === "2013-09-12" && tl[0].basis === "record" && tl[0].basis_text === "site record" && tl[0].source === "Profile sources" && tl[0].link_kind === "evidence", "each names its source, how the date is known, and where to check it");
   ok(tl.some((e) => e.title === "GitHub account created" && e.date === "2014-02-19") && tl.some((e) => e.title === "Last seen active on Lichess" && e.date === "2026-11-25") && tl.some((e) => e.title === "Latest public GitHub event" && e.source === "GitHub activity"), "joined dates, last active and the activity window are all there");
-  ok(!personTimeline(NOENR, H, "username", "2026-11-26").events.some((e) => /GitLab/.test(e.title)) && /not proven to be the same person/.test(tl.find((e) => /GitLab/.test(e.title)).detail), "a profile filed as a different person is left out, and one that only matches says it is not proven");
+  ok(!personTimeline(NOENR, H, "username", "2026-11-26").events.some((e) => /GitLab/.test(e.title)) && !tl.some((e) => /GitLab/.test(e.title)) && /not proven to be the same person/.test(tl.find((e) => /Lichess account/.test(e.title)).detail), "a profile filed as a different person is left out, and one that only matches says it is not proven");
   ok(tl.find((e) => e.title === "Strava account created").detail.includes("Read from the profile page by a tool") && /not proven to be the same person/.test(tl.find((e) => e.title === "Lichess account created").detail) && tl.find((e) => e.title === "GitHub account created").detail === "", "a matching account says it is not proven, and a tool's reading says so");
   ok(tl.every((e) => !e.future) && tl.at(-1).when === "1 day ago", "nothing is in the future, and each says how long ago");
   const te = personTimeline(E.collected, E.target, "email", "2026-11-26").events;
@@ -293,7 +294,7 @@ const ee = buildEvidence(E.collected, E.target, "email");
   ok(!/\u2014/.test(md + me), "no em dash in an export");
   const ai = aiPayloadFor(U.collected, H, "username", { source_status: { "Profile sources": "partial: 13 of 16 profile sites answered" } });
   const kb = ai.profile_sources.profiles.find((p) => p.site === "Keybase"), gl = ai.profile_sources.profiles.find((p) => p.site === "GitLab");
-  ok(kb.status === "linked" && gl.status === "matches" && aiPayloadFor(NOENR, H, "username").profile_sources.profiles.find((p) => p.site === "GitLab").status === "different" && kb.self_declared.name === "Sam Example" && /proven on Keybase/.test(kb.site_record.proven_accounts) && ai.profile_sources.profiles.find((p) => p.site === "Mastodon").site_record.joined === "2017-04-03", "the model gets each record with its standing, split into self-declared and site record");
+  ok(kb.status === "linked" && gl.status === "different" && aiPayloadFor(NOENR, H, "username").profile_sources.profiles.find((p) => p.site === "GitLab").status === "different" && kb.self_declared.name === "Sam Example" && /proven on Keybase/.test(kb.site_record.proven_accounts) && ai.profile_sources.profiles.find((p) => p.site === "Mastodon").site_record.joined === "2017-04-03", "the model gets each record with its standing, split into self-declared and site record");
   ok(ai.profile_sources.not_answered.join("; ") === "Chess.com: rate limited; Codeforces: failed; Lobsters: blocked by site" && !ai.profile_sources.not_found.some((s) => /Chess|Codeforces|Lobsters/.test(s)), "and the silent sites as not answered, never as not found");
   ok(ai.github_activity.utc_offset_estimate.range === "UTC-1 to UTC+2" && ai.github_activity.utc_offset_estimate.caveat && ai.github_activity.hours_utc.length === 24 && !("email_accounts" in ai), "the activity goes with its caveat; an email-only field is absent");
   ok(!JSON.stringify(ai.profile_sources).includes("data:image") && !("thumb" in ai.profile_sources.profiles[0]), "no picture is sent");

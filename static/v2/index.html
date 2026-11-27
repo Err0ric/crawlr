@@ -154,6 +154,7 @@
   <div class="workspace">
   <main class="main" id="main" aria-busy="false">
     <section class="casesheet" aria-label="Case">
+      <nav class="trail" id="trail" aria-label="How this case was reached" hidden></nav>
       <div class="main-head" id="mainHead" hidden>
         <h1 id="caseTarget"></h1>
         <span class="meta" id="caseMeta"></span>
@@ -170,6 +171,16 @@
         <div class="brief-head"><h2 id="briefH">At a glance</h2><span class="tag">no AI</span></div>
         <div id="briefBody"></div>
       </section>
+      <div class="analysis-row" id="analysisRow">
+        <section class="brief analysis" id="analysis" hidden aria-labelledby="analysisH">
+          <div class="brief-head"><h2 id="analysisH">What the evidence says</h2><span class="tag">rules, no AI</span></div>
+          <div id="analysisBody"></div>
+        </section>
+        <section class="brief nextsteps" id="nextSteps" hidden aria-labelledby="nextH" tabindex="-1">
+          <div class="brief-head"><h2 id="nextH">Suggested next steps</h2><span class="tag">one hop per click</span></div>
+          <div id="nextBody"></div>
+        </section>
+      </div>
     </section>
     <div class="print-only case-print" id="casePrint"></div>
     <div class="runlog collapsed" id="runlog" hidden></div>
@@ -267,6 +278,7 @@
   <div class="workspace">
   <main class="main" id="rMain" aria-busy="false">
     <section class="casesheet" aria-label="Case">
+      <nav class="trail" id="rTrail" aria-label="How this case was reached" hidden></nav>
       <div class="main-head" id="rMainHead" hidden>
         <h1 id="rCaseTarget"></h1>
         <span class="meta" id="rCaseMeta"></span>

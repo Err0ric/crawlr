@@ -1,6 +1,6 @@
 // Investigate mode: run sources, build the ledger, AI on request, deep dive, history, notes, export.
 import { howTag, $, $$, h, raw, esc, link, store, toast, post, postAi, ApiError, getKey, aiAvailable, aiCost, freeLeft, userAiKey, providerName, detect, TYPE_LABEL, fmtNum, fmtAgo, plural, partialGaps, sourceOutcome, sourceHasResults, sourceCoverage, coverageText, statusForAi, sourceTally, tallyText, download, slug } from "./core.js";
-import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal } from "./evidence.js";
+import { buildEvidence, ledgerTiers, aiSignature, isFinding, factsFor, avatarImages, hashView, hashCoverage, sourcePlan, emailParts, isFreeMail, aiPayloadFor, caseMarkdown, caseAnalysis, deepDiveUrls, ordinaryRequests, adultPassPlan, adultRefusal } from "./evidence.js";
 import { adultHost, adultOn, adultAllowed, usernameBody, withoutAdult, scrubResponse, scrubCollected, tallyView, reportForExport, isAdultRow, adultSummary, adultCheckText, guardText, adultFound, isBlockRow, isBlocked, readBlock, blockText, blockHtml, handleOf, readiness, stripGuard, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, ADULT_PASS_KEYS, GUARD_VERDICT, NOT_RUN_KINDS, NOT_CHECKED_BLURB, NOT_RUN_BLURB } from "./adult.js";
 import { session, MODE, normHandle, adultFor, startAdult, suspendContent, activeCase, portscanCase, deepDiveFor, makeSuspended, cleanPrefs, mayStore, sheetRowHtml } from "./modes.js";
 import { paintBar, paintStatus } from "./modeui.js";
@@ -12,12 +12,14 @@ import { openModal, closeModal } from "./ui.js";
 import { pendingChecks, mergeChecks, linkCheckSource, checkPolicy, checkConfirmText } from "./links.js";
 import { makeLinkChecker } from "./linkcheck.js";
 import { nameCase, nameNotices, nameKnown, nameTierView, profileStatus, directoryText, readNameResult, readProfile, readProfiles, readQualifiers, scrubNames, QUALIFIERS, NAME_SOURCE, NAME_SOURCE_DESC, NAME_NOT_USABLE } from "./names.js";
-import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards, addedFactsHtml } from "./workbench.js";
+import { renderNameKnown, nameNoticesHtml, patchRow, makeLog, renderTiers, bindLedger, renderFacts, renderIdentityFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, identityHead, skeletonCards, addedFactsHtml, renderAnalysis, renderNext, trailHtml, archHtml } from "./workbench.js";
 import { investigateTiles, writeHistory, boundAvatarHash } from "./present.js";
 import { readPhone, phoneTileExtra, readRegion, needsCountry, defaultRegion, PHONE_REGIONS, PHONE_SOURCE, PHONE_SOURCE_DESC, PHONE_NOT_USABLE } from "./phone.js";
 import { buildCaseFile } from "./casefile.js";
 import { readSimilar, readProbe, similarBase, probeStatus, similarBlurb } from "./similar.js";
-import { readDeep, profileSourcesText, emailAccountsText, activityView, DEEP_READERS, PROFILE_SOURCE, PROFILE_SOURCE_DESC, EMAIL_ACCOUNTS_SOURCE, EMAIL_ACCOUNTS_DESC, ACTIVITY_SOURCE } from "./deep.js";
+import { readPick } from "./identity.js";
+import { readCasework, readSteps, setStep, extendTrail, trailView, CASEWORK_KEYS } from "./casework.js";
+import { readDeep, readArchive, readArchives, archivable, archiveView, ARCHIVE_SOURCE, profileSourcesText, emailAccountsText, activityView, DEEP_READERS, PROFILE_SOURCE, PROFILE_SOURCE_DESC, EMAIL_ACCOUNTS_SOURCE, EMAIL_ACCOUNTS_DESC, ACTIVITY_SOURCE } from "./deep.js";
 import { personTimeline } from "./timeline.js";
 import { activityHtml } from "./renderers.js";
 
@@ -192,8 +194,9 @@ function adultNotice() {
 }
 
 // ---- ledger + facts -------------------------------------------------------------
-// Similar handles whose check is in flight (see simCheck).
+// Similar handles whose check is in flight (see simCheck), and rows whose archive lookup is.
 const simBusy = new Set();
+const archBusy = new Set();
 function evidence() {
   const ev = buildEvidence(state.collected, state.target, state.type);
   // Leads and host inventory are not findings, so they are not part of "what changed".
@@ -204,6 +207,10 @@ function evidence() {
   // name on the primary profile, which is not known until the sources have answered.
   // A handle whose check is in flight says so in every redraw, not only on the button that was pressed.
   for (const it of ev.items) if (it.sim && simBusy.has(it.sim.variant)) it.sim.busy = true;
+  // A lead the investigator parked or followed says so on its row, and an archive lookup in
+  // flight says so on its button, in every redraw.
+  const steps = readSteps(state.collected.nextSteps);
+  for (const it of ev.items) { if (it.tier === "lead" && steps[it.key]) it.step = steps[it.key].state; if (it.archive && archBusy.has(it.key)) it.archive.busy = true; }
   return { ...ev, items: state.running ? ev.items.filter((i) => i.tier !== "similar") : ev.items, diff };
 }
 // opts.keep: a redraw after the investigator changed one row (added or removed a profile from a
@@ -211,6 +218,7 @@ function evidence() {
 function renderLedger(opts = {}) {
   const ev = evidence();
   const open = opts.keep ? new Map($$("#ledger .tier").map((t) => [t.dataset.tier, !t.classList.contains("collapsed")])) : null;
+  if (open && opts.openTier) open.delete(opts.openTier);
   const { items, facts, diff } = ev;
   $("#emptyState").hidden = true;
   // A name case opens with its caveat, always, then says how the search went.
@@ -227,7 +235,9 @@ function renderLedger(opts = {}) {
   // The adult group says what its count is made of, under its heading.
   // A case the minor guard stopped has one row in that group's place, open, saying why.
   const stopped = adultItems(items).some(isBlockRow);
-  const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? (stopped ? { ...t, open: true, count: "not checked", blurb: NOT_RUN_KINDS.includes(readBlock(state.collected.adultBlock)?.kind) ? NOT_RUN_BLURB : NOT_CHECKED_BLURB } : { ...t, note: adultSummary(adultItems(items)) }) : t.id === "similar" ? { ...t, blurb: similarBlurb(items) } : t)), items);
+  const tiers = nameTierView(ledgerTiers(state.target, state.type).map((t) => (t.id === "adult" ? (stopped ? { ...t, open: true, count: "not checked", blurb: NOT_RUN_KINDS.includes(readBlock(state.collected.adultBlock)?.kind) ? NOT_RUN_BLURB : NOT_CHECKED_BLURB } : { ...t, note: adultSummary(adultItems(items)) }) : t.id === "similar" ? { ...t, blurb: similarBlurb(items) }
+    // After a pick the rows that moved to another person are shown, not folded away.
+    : t.id === "different" && ev.identity.picked ? { ...t, open: true } : t)), items);
   renderTiers($("#ledger"), items, tiers, checked(), nothing, { check: (tier) => checker.waiting(tier), pending: state.running ? [...pending.values()] : [], imported: state.imported, handle: state.type === "username" ? state.target.replace(/^@/, "") : "", open });
   paintSummary(ev);
   renderTimeline();
@@ -259,7 +269,29 @@ function paintSummary(ev) {
   const missing = (state.collected.notAnswered?.keys || []).filter((k) => typeof k === "string");
   renderVerdict($("#verdict"), !state.target || state.nameInvalid ? [] : investigateTiles({ items, collected: state.collected, type: state.type, running: state.running, failedKeys: keysOf("failed"), partialKeys: partialGaps(rows).map((r) => r.key), missingKeys: missing, extra: tileExtra() }));
   // The written brief waits for the run to finish, so it never describes half a picture.
-  renderBrief($("#brief"), $("#briefBody"), state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed").map((r) => r.name), ...partialGaps(rows).map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine }));
+  const brief = state.running || !state.target || state.nameInvalid ? { rows: [], actions: [] } : investigateBrief({ collected: state.collected, items, facts, identity: ev.identity, failed: failedSources(), incomplete: [...rows.filter((r) => r.state === "failed").map((r) => r.name), ...partialGaps(rows).map((r) => r.name), ...missing.map((k) => SRC_NAME[k] || k)], type: state.type, target: state.target, similarLine: ev.similarLine });
+  // A person case has its next steps in their own ranked list, so the brief carries no buttons.
+  renderBrief($("#brief"), $("#briefBody"), person() ? { ...brief, actions: [] } : brief);
+  paintAnalysis(ev);
+  paintTrail();
+}
+// What the evidence says and what to do next (analysis.js): rules only, and like the brief they
+// wait for the run to finish. Drawn with the summary and again when a step is parked or followed.
+const analysisOf = (ev) => caseAnalysis(ev, { collected: state.collected, target: state.target, type: state.type, failed: failedSources().map((f) => f.name) });
+function paintAnalysis(ev = evidence()) {
+  const show = person() && !state.running && !!state.target;
+  const a = show ? analysisOf(ev) : null;
+  const was = (sel) => !!$(`#nextBody ${sel}`)?.open;
+  const more = was(".next-more:not(.next-held)"), held = was(".next-held");
+  renderAnalysis($("#analysis"), $("#analysisBody"), a?.assessment);
+  renderNext($("#nextSteps"), $("#nextBody"), a?.suggestions, { busy: archBusy, open: more, held });
+}
+// How the case was reached. An earlier case is a button while it is still in History.
+function paintTrail() {
+  const el = $("#trail"), view = state.target ? trailView(state.collected.trail, state.target, state.type) : [];
+  const ids = new Set(getHistory().map((e) => e.id));
+  el.innerHTML = trailHtml(view, (id) => ids.has(id));
+  el.hidden = !view.length;
 }
 bindLedger($("#ledger"), checkKey);
 // ---- timeline -----------------------------------------------------------------------------------
@@ -306,7 +338,111 @@ function showIdentity(id, focusSel) {
   $(focusSel)?.focus({ preventScroll: true });
 }
 $("#facts").addEventListener("change", (e) => { if (e.target.matches("[data-cluster-pick]")) showIdentity(e.target.value, "#factsPick"); });
-$("#identity").addEventListener("click", (e) => { const b = e.target.closest("[data-cluster-btn]"); if (b) showIdentity(b.dataset.clusterBtn, `#identity [data-cluster-btn="${CSS.escape(b.dataset.clusterBtn)}"]`); });
+// ---- the person the case is about ----------------------------------------------------------------
+// A name in the identity header picks that person: the pick is kept with the case
+// (collected.pick, the member ids of the cluster) and the whole case is filed again around it:
+// tiers, tiles, facts, brief, leads, timeline, exports and what the AI is told all read it through
+// buildEvidence. Nothing is removed. Picking the automatic choice, or "Back to the automatic
+// choice", clears the pick. The pick is the investigator's judgment and is labelled as theirs.
+function setPick(viewId) {
+  if (!person() || state.running) return;
+  const id = evidence().identity, v = viewId ? id.views.find((x) => x.id === viewId && x.pickable) : null;
+  if (viewId && !v) return;
+  if (v && v.primary) return;                                    // already the person the case is about
+  const before = new Map(buildEvidence(state.collected, state.target, state.type).items.filter((i) => i.key?.startsWith("acct:")).map((i) => [i.key, i.tier]));
+  if (!v || v.auto) delete state.collected.pick; else state.collected.pick = { members: v.members.slice(0, 40), at: Date.now() };
+  state.view = "";
+  // A report written for another identity says so until it is run again.
+  if (state.ai && !state.ai.stale) state.ai = { ...state.ai, stale: true };
+  saveHistory();
+  renderLedger({ keep: true, openTier: "different" }); renderAiPanel();
+  const now = evidence(), main = now.identity.views.find((x) => x.primary);
+  const moved = now.items.filter((i) => before.has(i.key) && before.get(i.key) !== i.tier).length;
+  profileLive.textContent = now.identity.picked ? `The case is now filed around ${main.label}, your pick. ${plural(moved, "account")} changed group. Nothing was removed.` : `Back to the automatic choice${main ? `, ${main.label}` : ": nobody is chosen"}. ${plural(moved, "account")} changed group.`;
+  ($("#identity [data-pick][aria-pressed=true]") || $("#identity [data-pick]") || $("#identity"))?.focus?.({ preventScroll: true });
+}
+$("#identity").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-pick]"), auto = e.target.closest("[data-pick-auto]");
+  if (b) setPick(b.dataset.pick); else if (auto) setPick("");
+});
+
+// A case is about to be opened from a lead or a suggestion of the case on screen. Returns the
+// trail of the new case (the seed, each lead that was followed and where it was found), and marks
+// the lead as followed here, so it is not suggested again. null when there is no case to leave,
+// or the new case is this one. Recorded in the browser only.
+//   via: { label, source, step, title }   stays: the case on screen stays open (a Recon pivot)
+export function trailFrom(target, type, via = {}, { stays = false } = {}) {
+  if (!state.target || (state.target.toLowerCase() === String(target).toLowerCase() && state.type === type)) return null;
+  const trail = extendTrail({ target: state.target, type: state.type, id: state.historyId || "", at: state.ran, trail: state.collected.trail }, { label: via?.label || `the ${(TYPE_LABEL[type] || "target").toLowerCase()} ${target}`, source: via?.source || "" });
+  if (via?.step && state.historyId && !state.running) {
+    setStepState(via.step, "followed", via.title || (["domain", "ip", "asn"].includes(type) ? `Open ${target} in Recon` : `Investigate ${target}`));
+    if (stays) { paintAnalysis(); renderLedger({ keep: true }); }
+  }
+  return trail;
+}
+
+// ---- next steps: one hop per click, park, bring back ------------------------------------------------
+function setStepState(id, st, title = "") {
+  if (!state.target || !id) return;
+  const steps = setStep(state.collected.nextSteps, id, st, title);
+  if (Object.keys(steps).length) state.collected.nextSteps = steps; else delete state.collected.nextSteps;
+  saveHistory();
+}
+function jumpToTier(tier) {
+  tabs.set("findings");
+  const sec = $$("#ledger .tier").find((x) => x.dataset.tier === tier), head = sec?.querySelector(".tier-head");
+  if (!head) return;
+  if (sec.classList.contains("collapsed")) head.click();
+  sec.scrollIntoView({ block: "start" }); head.focus({ preventScroll: true });
+}
+$("#main").addEventListener("click", (e) => {
+  const park = e.target.closest("[data-step-park]"), back = e.target.closest("[data-step-back]");
+  if (park || back) {
+    const id = park ? park.dataset.stepPark : back.dataset.stepBack, inList = !!e.target.closest("#nextSteps");
+    setStepState(id, park ? "parked" : "", park?.dataset.stepTitle || "");
+    if (inList) { paintAnalysis(); if (park) { const held = $("#nextBody .next-held"); if (held) held.open = true; } ($(`#nextBody [data-step-back="${CSS.escape(id)}"]`) || $(`#nextBody [data-step-park="${CSS.escape(id)}"]`) || $("#nextSteps"))?.focus({ preventScroll: true }); renderLedger({ keep: true }); }
+    else { renderLedger({ keep: true }); $$("#ledger [data-step-back], #ledger [data-step-park]").find((x) => (x.dataset.stepBack || x.dataset.stepPark) === id)?.focus({ preventScroll: true }); }
+    profileLive.textContent = park ? "Parked. It stays listed and is not suggested while it is parked." : "Brought back.";
+    return;
+  }
+  const jump = e.target.closest("[data-next-jump]"), focus = e.target.closest("[data-next-focus]"), copy = e.target.closest("[data-next-copy]"), rerun = e.target.closest("[data-next-rerun]"), arch = e.target.closest("[data-archive]");
+  if (jump) jumpToTier(jump.dataset.nextJump);
+  else if (focus) { $("#identity").scrollIntoView({ block: "center" }); ($("#identity [data-pick]") || $("#identity"))?.focus({ preventScroll: true }); }
+  else if (copy) { const b = copy, text = b.dataset.nextCopy; navigator.clipboard?.writeText(text).then(() => { b.textContent = "Copied"; profileLive.textContent = "The search was copied. Paste it into a search engine."; setTimeout(() => { if (b.isConnected) b.textContent = "Copy search"; }, 1600); }, () => toast("Could not copy. The search text is shown beside the button.")); }
+  else if (rerun) { if (!state.running && state.target) $("#runBtn").click(); }
+  else if (arch) askArchive(arch);
+});
+
+// ---- archived copies of one read profile, on a click ------------------------------------------------
+// One request to CrawlR, which asks the Internet Archive's index about that one address (POST
+// /api/recon/profile-archive). Nothing is fetched from the archive or from the profile's own host,
+// and nothing here runs without the click. The answer is kept with the case. A lookup that failed
+// is kept as unknown, with "Try again" on the row.
+async function askArchive(b) {
+  const key = b.dataset.archive, target = state.target;
+  if (!person() || state.running || archBusy.has(key)) return;
+  const it = evidence().items.find((i) => i.key === key);
+  // Only a row this case offers the lookup for: a read profile, never an adult or dating site.
+  if (!it?.archive || (it.archive.view && !it.archive.view.retry) || !archivable(it.archive.url) || adultHost(it.archive.url)) return;
+  const url = it.archive.url, inList = !!b.closest("#nextSteps");
+  archBusy.add(key);
+  b.setAttribute("aria-disabled", "true"); b.innerHTML = h`Asking…<span class="sr-only">: archived copies of ${it.what}</span>`;
+  profileLive.textContent = `Asking the Internet Archive about the ${it.what} profile`;
+  let answer;
+  try { answer = readArchive({ ...(await post("/api/recon/profile-archive", { url })), asked_at: Date.now() }, url); }
+  catch (err) { answer = readArchive({ state: err.status === 429 || err.code === "rate_limited" ? "rate_limited" : "failed", error: err.detail || err.message, error_code: err.code || "request_failed", asked_at: Date.now() }, url); }
+  archBusy.delete(key);
+  if (state.target !== target || !person()) return;
+  answer ||= readArchive({ state: "failed", error: "The answer could not be read.", error_code: "bad_response", asked_at: Date.now() }, url);
+  state.collected.archives = { ...readArchives(state.collected.archives || {}), [key]: answer };
+  saveHistory();
+  renderLedger({ keep: true });
+  const row = $$("#ledger .ev[data-row]").find((r) => r.dataset.row === key);
+  if (inList) ($("#nextSteps [data-archive]") || $("#nextSteps"))?.focus({ preventScroll: true });
+  else (row?.querySelector("[data-archive]") || row?.querySelector(".ev-arch a") || row?.querySelector("input"))?.focus({ preventScroll: true });
+  profileLive.textContent = `${it.what}: ${archiveView(answer).text}`;
+  if (log.live) log.add(`${ARCHIVE_SOURCE} · ${it.what} · ${answer.state === "ok" ? `captured on ${plural(answer.count, "day")}` : answer.state === "none" ? "no copies" : answer.state === "refused" ? "not looked up" : "could not be asked"}`, answer.state === "ok" ? "done" : answer.state === "none" ? "none" : answer.state === "refused" ? "skip" : "err");
+}
 
 // ---- link check -----------------------------------------------------------------------
 // Templated profile URLs are checked by the server (see linkcheck.js). For a run started in this
@@ -401,7 +537,7 @@ function renderHead(meta) {
 // ---- AI panel ---------------------------------------------------------------------
 // Never an adult or dating site: Deep Dive reads the pages it is given (see deepDiveUrls).
 const profileUrls = () => deepDiveUrls(state.collected);
-const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "adultBlock", "nameQualifiers", "nameProfiles", "notAnswered", "phoneRegion", "similar"].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
+const hasData = () => Object.entries(state.collected).some(([k, v]) => !["adultMode", "adultBlock", "nameQualifiers", "nameProfiles", "notAnswered", "phoneRegion", "similar", ...CASEWORK_KEYS].includes(k) && v && (typeof v === "object" ? sourceOutcome(v).state !== "error" : true));
 
 // What the report will cover, said for the kind of target on screen.
 const AI_PITCH = {
@@ -451,7 +587,7 @@ function renderReport() {
   sec.hidden = false;
   const { items, facts } = buildEvidence(state.collected, state.target, state.type);
   $("#reportBody").innerHTML = reportHtml({ ai: state.ai, target: state.target, items, facts, collected: state.collected, imported: state.imported, type: state.type });
-  $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : state.ai.ai_source === "pasted" ? "from your own assistant" : "", state.ai.reused ? "from your last run, no credit used" : state.ai.cached ? "cached, no credit used" : ""].filter(Boolean).join(" · ");
+  $("#reportMeta").textContent = [state.ai.model, state.ai.ai_source === "house" ? "free tier" : state.ai.ai_source === "pasted" ? "from your own assistant" : "", state.ai.reused ? "from your last run, no credit used" : state.ai.cached ? "cached, no credit used" : "", state.ai.stale ? "written before you changed who this case is about" : ""].filter(Boolean).join(" · ");
 }
 $("#reportToggle").addEventListener("click", (e) => {
   const body = $("#reportBody"), open = body.hidden;
@@ -699,7 +835,16 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   // The similar handles checked in the last run of this target are the investigator's work: they
   // are carried into the new run, and every line-up is evaluated again against what it finds.
   const carried = last && last.kind === type ? readSimilar(last.results?.similar, similarBase(target, type)) : {};
-  Object.assign(state, { target, type, collected: { ...(block0 ? { adultBlock: block0 } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}) }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: false, adultBlocked: "", minor: mode.minor });
+  // So are the pick, the parked and followed steps, the archive answers and the trail. The pick
+  // is matched by members again once the profiles are in: if its cluster is gone, the automatic
+  // choice stands and the pick is dropped at the end of the run.
+  const work = last && last.kind === type ? readCasework(readDeep(Object.fromEntries(CASEWORK_KEYS.filter((k) => last.results && k in last.results).map((k) => [k, last.results[k]])))) : {};
+  // A case opened from a lead or a suggestion of the case on screen records where it came from:
+  // the seed, the lead that was followed and where that lead was found. Browser only.
+  const hop = opts.pivot === true && opts.from === "case" ? trailFrom(target, type, opts.via) : null;
+  if (hop) work.trail = hop;
+  if (work.trail && !work.trail.length) delete work.trail;
+  Object.assign(state, { target, type, collected: { ...(block0 ? { adultBlock: block0 } : {}), ...(Object.keys(carried).length ? { similar: carried } : {}), ...work }, ai: null, deepDive: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), view: "", live: true, imported: false, adultMode: false, adultBlocked: "", minor: mode.minor });
   store.del(checkKey());
   setRunning(true);
   $("#ledger").innerHTML = ""; $("#notices").innerHTML = ""; $("#emptyState").hidden = true; $("#bySource").hidden = true; $("#bySourceEmpty").hidden = false;
@@ -827,6 +972,8 @@ export async function run(targetRaw, typeOverride, opts = {}) {
   // The record sources are kept in their checked, bounded shape (deep.js), so History, exports and
   // case files hold nothing else. This comes after the content check, which reads the rows as they came.
   for (const [k, read] of Object.entries(DEEP_READERS)) if (c[k] && typeof c[k] === "object") c[k] = read(c[k]) || { error: "The answer could not be read.", error_code: "bad_response", error_detail: "" };
+  // A pick whose cluster is not there any more is dropped: the automatic choice stands.
+  if (c.pick && !buildEvidence(c, target, type).identity.picked) delete c.pick;
   adultRow = null;
   setRunning(false);
   const { items, facts } = evidence();
@@ -972,7 +1119,7 @@ export function loadHistory(idOrEntry) {
   // A case the minor guard stopped keeps why (collected.adultBlock, checked and bounded by
   // scrubCollected). It is shown as that run's record, and a case opened from this one by a pivot
   // inherits it. It does not suspend the handle for the session: running the case again checks again.
-  const kept = readDeep(scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target));
+  const kept = readCasework(readDeep(scrubNames(scrubCollected(e.results || {}, e.target, kind), e.target)));
   const stored = kind === "username" && isBlocked(kept) ? readBlock(kept.adultBlock) : null;
   const storedMinor = stored ? { kind: "stored", via: ["age", "school", "birth", "soft"].includes(stored.kind) || stored.via === "content" ? "content" : "handle", origin: handleOf(e.target), reason: blockText(stored), block: stored } : null;
   Object.assign(state, { live: false, imported: !!e.imported, target: e.target, type: kind, adultMode: false, adultBlocked: "", minor: startAdult({ on: session.on("adult"), type: kind, target: e.target, suspended }).minor || storedMinor, nameInvalid: "", collected: kept, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deepDive: e.deepDive ? normalizeAi(e.deepDive) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, view: "" });

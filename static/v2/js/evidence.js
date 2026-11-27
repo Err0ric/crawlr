@@ -43,19 +43,29 @@
 //   error is never read as "not found".
 //   key: stable id used for the checkbox state and the run diff, e.g. "acct:github"
 //
-// A fact: { k, v, source, url?, link_kind }  (name, location, employer…), shown in "What we know".
+// A fact: { k, v, source, url?, link_kind, how? }  (name, location, employer…), shown in "What we know".
 // Facts belong to an identity cluster, so one person's name is never shown beside another's.
+//   how: how the fact is known (factHow in analysis.js): the site's own record, self-declared by
+//   the account holder or a tool report, and how many of the identity's profiles say the same.
+//
+// The primary identity is chosen by the rules, or picked by the investigator (collected.pick:
+// the member ids of the cluster they chose; see rule 9 in identity.js). Everything below is
+// computed against whichever it is: the tier of every account row, the facts, the leads. Nothing
+// is removed by a pick. A row that belongs to another person stays, filed as "different", and
+// carries a check: whether that person is connected to the one the case is about.
 
 import { cardSnippet, safeThumb } from "./present.js";
 import { classifyLink, sealLink, sealFact, readChecks, applyCheck, markUnsendable, evidenceUrl, REGISTERED_HINT, BREACH_HINT, REDDIT_HINT, REDDIT_HIDDEN, TAKEN_TEXT, TAKEN_GENERIC, TAKEN_NOTE, mdLink, mdNote } from "./links.js";
 import { evaluateSimilar, addedProfiles, similarItems, similarBrief, similarBase, similarHandles, fromFile, SIMILAR_GROUP, SIMILAR_BLURB, SIMILAR_SOURCE } from "./similar.js";
 import { TYPE_LABEL } from "./core.js";
-import { clusterIdentities, standing, meaningfulName, looksBoilerplate, linkParts, urlsIn } from "./identity.js";
+import { clusterIdentities, standing, meaningfulName, nameTokens, looksBoilerplate, linkParts, urlsIn, readPick } from "./identity.js";
 import { NAME_TIERS, isNameTier, nameItems, nameForAi, nameMarkdownHead } from "./names.js";
 import { PHONE_TIERS, phoneView, phoneItems, phoneFacts, phoneForAi } from "./phone.js";
 import { withoutAdult, adultRows, adultOn, adultAllowed, adultForAi, adultFound, adultMarkdown, blockForAi, reportForExport, adultHost, handleOf, isAdultRow, readiness, adultRequests, readBlock, blockText, blockFromScan, blockFromRefusal, usernameBody, ADULT_GROUP, ADULT_NOTICE, ADULT_SOURCE, ADULT_LOG, CANCELLED_TEXT } from "./adult.js";
 import { scanProfiles, sourceRoles } from "./minorscan.js";
-import { readProfileSources, readEmailAccounts, readActivity, profileDetail, detailMarkdown, profileCoverage, emailAccountItems, emailAccountFacts, emailAccountLeads, emailAccountsForAi, emailLookupsDown, activityForAi, activityMarkdown, proofStrong, PROOF_TEXT, PROFILE_SOURCE, PROFILE_STATE_WORD, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE } from "./deep.js";
+import { readProfileSources, readEmailAccounts, readActivity, profileDetail, detailMarkdown, profileCoverage, emailAccountItems, emailAccountFacts, emailAccountLeads, emailAccountsForAi, emailLookupsDown, activityForAi, activityMarkdown, proofStrong, readArchives, archiveView, archivable, archiveMarkdown, PROOF_TEXT, PROFILE_SOURCE, PROFILE_STATE_WORD, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE } from "./deep.js";
+import { assessCase, suggestNext, factHow, analysisMarkdown, analysisForAi } from "./analysis.js";
+import { trailView, trailText, trailMarkdown } from "./casework.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 
@@ -288,9 +298,14 @@ export function collectProfiles(collected, target, type = inferType(collected, t
   };
   // A fact links to the page it was read from: evidence, never a claim about who owns the page.
   const secrets = [type === "email" ? target : "", searched].filter((x) => String(x || "").length > 2);
-  const fact = (p, k, v, source, url) => { if (p && v !== undefined && v !== null && String(v).trim()) p.facts.push(sealFact({ k, v: String(v), source, url }, { subjects: [searched], secrets })); };
+  // basis: how the value is known. A site's API says who wrote what: a join date and a list of
+  // organisations are the site's record, a name or a bio was written by the account holder. A
+  // value a tool parsed from a page is a tool report, because the tool cannot tell the two apart.
+  const RECORD_KEYS = new Set(["Active since", "Organisations", "Languages"]);
+  const fact = (p, k, v, source, url, api = false) => { if (p && v !== undefined && v !== null && String(v).trim()) p.facts.push(sealFact({ k, v: String(v), source, url, pid: p.id, basis: api ? (RECORD_KEYS.has(k) ? "record" : "self") : "tool" }, { subjects: [searched], secrets })); };
+  const afact = (p, k, v, source, url) => fact(p, k, v, source, url, true);
   const lead = (p, kind, value, from) => { if (p && value && String(value).trim()) p.leads.push({ kind, value: String(value).trim(), from }); };
-  const nameFact = (p, label, name, source, url) => { if (meaningfulName(name, [p?.handle, searched])) fact(p, label, name, source, url); };
+  const nameFact = (p, label, name, source, url, api = false) => { if (meaningfulName(name, [p?.handle, searched])) fact(p, label, name, source, url, api); };
   const cleanBio = (bio, flagged) => (flagged || !bio || looksBoilerplate(bio) ? "" : String(bio));
 
   // GitHub's API answer for the searched handle: the anchor for a username case.
@@ -298,23 +313,23 @@ export function collectProfiles(collected, target, type = inferType(collected, t
   if (gh?.found && !failed(gh)) {
     const tw = String(gh.twitter_username || "").replace(/^@/, "");
     const p = put("GitHub", "GitHub", { url: gh.profile_url, name: gh.name, location: gh.location, bio: gh.bio, image: gh.avatar_url, created: gh.created_at, repos: gh.public_repos, followers: gh.followers, company: gh.company, emails: [gh.email].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ""))), api: true, anchor: type === "email" ? "" : "github", links: [tw && `https://x.com/${tw}`].filter(Boolean), websites: [gh.blog].filter(Boolean) });
-    nameFact(p, "Name", gh.name, "GitHub", gh.profile_url);
-    fact(p, "Location", gh.location, "GitHub", gh.profile_url);
-    fact(p, "Employer", gh.company, "GitHub", gh.profile_url);
-    fact(p, "Email", gh.email, "GitHub", gh.profile_url);
-    fact(p, "Website", gh.blog, "GitHub", gh.blog);
-    fact(p, "Bio", gh.bio, "GitHub", gh.profile_url);
-    fact(p, "Active since", gh.created_at ? String(gh.created_at).slice(0, 10) : "", "GitHub", gh.profile_url);
+    nameFact(p, "Name", gh.name, "GitHub", gh.profile_url, true);
+    afact(p, "Location", gh.location, "GitHub", gh.profile_url);
+    afact(p, "Employer", gh.company, "GitHub", gh.profile_url);
+    afact(p, "Email", gh.email, "GitHub", gh.profile_url);
+    afact(p, "Website", gh.blog, "GitHub", gh.blog);
+    afact(p, "Bio", gh.bio, "GitHub", gh.profile_url);
+    afact(p, "Active since", gh.created_at ? String(gh.created_at).slice(0, 10) : "", "GitHub", gh.profile_url);
     lead(p, "url", gh.blog, "GitHub website field");
     lead(p, "handle", tw, "GitHub Twitter field");
     lead(p, "email", gh.email, "GitHub public email");
     const dp = c.githubDeep;
     if (dp && !failed(dp) && dp.found !== false) {
       const ok = (k) => !dp.sections || !dp.sections[k] || dp.sections[k] === "ok";
-      if (ok("orgs")) fact(p, "Organisations", (dp.orgs || []).map((o) => o.login).filter(Boolean).slice(0, 12).join(", "), "GitHub details", gh.profile_url);
+      if (ok("orgs")) afact(p, "Organisations", (dp.orgs || []).map((o) => o.login).filter(Boolean).slice(0, 12).join(", "), "GitHub details", gh.profile_url);
       // The top_repos section also covers languages.
-      if (ok("top_repos")) fact(p, "Languages", (dp.languages || []).slice(0, 8).join(", "), "GitHub details", gh.profile_url);
-      for (const e of ok("commit_emails") ? (dp.commit_emails || []).slice(0, 5) : []) { fact(p, "Commit email", e.email, "GitHub details", gh.profile_url); lead(p, "email", e.email, `GitHub commit${e.repo ? ` in ${e.repo}` : ""}`); }
+      if (ok("top_repos")) afact(p, "Languages", (dp.languages || []).slice(0, 8).join(", "), "GitHub details", gh.profile_url);
+      for (const e of ok("commit_emails") ? (dp.commit_emails || []).slice(0, 5) : []) { afact(p, "Commit email", e.email, "GitHub details", gh.profile_url); lead(p, "email", e.email, `GitHub commit${e.repo ? ` in ${e.repo}` : ""}`); }
       for (const k of dp.keys?.gpg || []) for (const e of k.emails || []) lead(p, "email", e, "GitHub GPG key");
       for (const s of dp.social_accounts || []) if (s?.url) { p.links.push(String(s.url)); lead(p, "url", s.url, "GitHub social accounts"); }
       // README links are leads only. A README links to documentation, projects and other people,
@@ -330,8 +345,8 @@ export function collectProfiles(collected, target, type = inferType(collected, t
     // Gravatar's display name is often the account's username, which is a handle and not a name.
     const display = norm(gr.display_name) === norm(slug) ? "" : gr.display_name;
     const p = put("Gravatar", "Gravatar", { url: gr.profile_url, handle: slug, name: gr.name || display, location: gr.location, image: gr.avatar_url, api: true, anchor: type === "email" ? "gravatar" : "" });
-    nameFact(p, "Name", gr.name || display, "Gravatar", gr.profile_url);
-    fact(p, "Location", gr.location, "Gravatar", gr.profile_url);
+    nameFact(p, "Name", gr.name || display, "Gravatar", gr.profile_url, true);
+    afact(p, "Location", gr.location, "Gravatar", gr.profile_url);
     if (slug && norm(slug) !== norm(searched)) lead(p, "handle", slug, "Gravatar username");
   }
 
@@ -350,13 +365,13 @@ export function collectProfiles(collected, target, type = inferType(collected, t
       emails: r.emails, accounts: r.accounts, items: r.items, stats: r.stats, proven: r.accounts.filter((a) => proofStrong(a.proof)).map((a) => ({ url: a.url, proof: a.proof })), api: true,
     });
     if (!p) continue;
-    nameFact(p, "Name", r.name, r.site, r.url);
-    fact(p, "Location", r.location, r.site, r.url);
-    fact(p, "Employer", r.company, r.site, r.url);
-    for (const e of r.emails) { fact(p, "Email", e, r.site, r.url); lead(p, "email", e, `${r.site} public email`); }
-    fact(p, "Website", r.website, r.site, r.website);
-    fact(p, "Bio", bio.slice(0, 160), r.site, r.url);
-    fact(p, "Active since", r.created.slice(0, 10), r.site, r.url);
+    nameFact(p, "Name", r.name, r.site, r.url, true);
+    afact(p, "Location", r.location, r.site, r.url);
+    afact(p, "Employer", r.company, r.site, r.url);
+    for (const e of r.emails) { afact(p, "Email", e, r.site, r.url); lead(p, "email", e, `${r.site} public email`); }
+    afact(p, "Website", r.website, r.site, r.website);
+    afact(p, "Bio", bio.slice(0, 160), r.site, r.url);
+    afact(p, "Active since", r.created.slice(0, 10), r.site, r.url);
     lead(p, "url", r.website, `${r.site} website field`);
     const named = new Set([r.website, ...r.accounts.map((a) => a.url)].map(norm));
     for (const u of r.links) if (!named.has(norm(u))) lead(p, "url", u, `${r.site} profile`);
@@ -438,6 +453,24 @@ export function avatarImages(c, target, type) {
 
 const inferType = (c, target) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(target ?? "").trim()) ? "email" : c?.hash ? "hash" : c?.phone ? "phone" : c?.nameSearch || c?.nameResult ? "name" : "username");
 const dedupeFacts = (facts) => { const out = []; for (const f of facts) if (!out.some((x) => x.k === f.k && norm(x.v) === norm(f.v))) out.push(f); return out; };
+// One fact per value, with how it is known: which kinds of knowledge it rests on, and on how many
+// of the identity's profiles the same value stands. Two spellings of one name are one name.
+function mergeFacts(facts, { weak = new Set() } = {}) {
+  const out = [], idx = new Map();
+  for (const f of facts) {
+    const key = `${f.k}|${f.k === "Name" ? nameTokens(f.v).sort().join(" ") : norm(f.v)}`;
+    let cur = idx.get(key);
+    if (!cur) { cur = { f, src: [], basis: new Set(), pids: new Set() }; idx.set(key, cur); out.push(cur); }
+    for (const x of String(f.source ?? "").split(", ")) if (x && !cur.src.includes(x)) cur.src.push(x);
+    if (f.basis) cur.basis.add(f.basis);
+    if (f.pid) cur.pids.add(f.pid);
+  }
+  return out.map(({ f, src, basis, pids }) => {
+    const { pid, basis: _b, ...rest } = f;
+    const how = factHow({ kinds: [...basis], sites: pids.size || 1, sources: src, weak: pids.size > 0 && [...pids].every((id) => weak.has(id)) });
+    return how ? { ...rest, how } : rest;
+  });
+}
 
 // ---- leads ---------------------------------------------------------------------------
 // Handles, addresses, domains and links found on profiles. One hop, started by a click.
@@ -481,8 +514,9 @@ function buildLeads(c, target, type, profiles, rel, accountUrls, extra = []) {
     tier: "lead", what: l.kind === "url" ? l.value.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : l.value,
     url: l.kind === "url" ? l.value : l.kind === "domain" ? `https://${l.value}` : "",
     meta: `${WORD[l.kind]} · ${l.from.join(", ")}${l.tied ? "" : " · on a profile not tied to the target"}`,
-    source: l.sources.join(", "), key: l.key, lead: { kind: l.kind, value: l.value },
-    action: l.kind === "handle" || l.kind === "email" ? { label: "Investigate this", pivot: "investigate", value: l.value } : l.kind === "domain" ? { label: "Open in Recon", pivot: "recon", value: l.value } : null,
+    source: l.sources.join(", "), key: l.key, lead: { kind: l.kind, value: l.value }, from: l.from, tied: l.tied,
+    // via, source: what the pivot trail of the case this opens will say about the hop.
+    action: l.kind === "handle" || l.kind === "email" ? { label: "Investigate this", pivot: "investigate", value: l.value, ...(l.kind === "handle" ? { type: "username" } : {}), via: `the ${WORD[l.kind]} ${l.value}`, source: l.from.join(", ") } : l.kind === "domain" ? { label: "Open in Recon", pivot: "recon", value: l.value, via: `the domain ${l.value}`, source: l.from.join(", ") } : null,
   // A lead's link is the lead itself: the domain, or the link as it was found on the profile.
   })).map((l) => sealLink(l, { subjects: [l.lead.value], secrets: [type === "email" ? target : "", searched].filter((x) => String(x || "").length > 2) }));
 }
@@ -576,8 +610,11 @@ export function buildEvidence(collected, target, typeArg) {
   const ownProfiles = person ? collectProfiles(c, target, type, { similar: false }).filter((p) => !(accounts.get(p.id.slice(5))?.kinds.has("noise") && !accounts.get(p.id.slice(5)).kinds.has("read"))) : [];
   // The identity is built from the case's own profiles and nothing else.
   const profiles = ownProfiles;
-  const result = clusterIdentities(profiles, { handle: searched });
+  // The investigator's pick, when the case has one and it still names exactly one cluster.
+  const pick = person ? readPick(c.pick) : null;
+  const result = clusterIdentities(profiles, { handle: searched, pick: pick?.members });
   const primary = result.clusters.find((x) => x.primary) || null;
+  const archives = person ? readArchives(c.archives || {}) : {};
   const byId = new Map(profiles.map((p) => [p.id, p]));
   const clusterOf = (id) => result.clusters.find((x) => x.id === result.byProfile[id]) || null;
   const rel = new Map();
@@ -590,7 +627,7 @@ export function buildEvidence(collected, target, typeArg) {
   // a full name. Its facts are kept apart (see `added` in the result).
   const simBase = similarBase(target, type);
   const primaryName = primary?.named ? primary.label : "";
-  const evaluated = person && simBase ? evaluateSimilar(c.similar, ownProfiles, { handle: searched, own: simBase, name: primaryName }) : {};
+  const evaluated = person && simBase ? evaluateSimilar(c.similar, ownProfiles, { handle: searched, own: simBase, name: primaryName, pick: pick?.members }) : {};
   const addedList = withSimilarFacts(addedProfiles(evaluated), searched, secrets);
   for (const p of addedList) {
     const row = { what: p.site, url: p.url, key: p.id, sources: [SIMILAR_SOURCE], kinds: new Set(["read"]), notes: [], readUrl: p.url, similar: p.similar };
@@ -612,7 +649,21 @@ export function buildEvidence(collected, target, typeArg) {
       if (p.anchor === "github") row.meta = ["GitHub's own record for this handle", named ? `name on profile: ${p.name}` : "", `${fmtNum(gh.public_repos)} repos`, `${fmtNum(gh.followers)} followers`].filter(Boolean).join(" · ");
       else if (p.anchor === "gravatar") row.meta = ["Gravatar's record for this email", named ? `name on profile: ${p.name}` : "", p.location].filter(Boolean).join(" · ");
       else row.meta = [row.similar ? `under the handle ${row.similar.variant}, added from a similar handle check (${row.similar.reason})` : "", "profile read", named ? `name on profile: ${p.name}` : r.tier === "matches" ? "no name on profile" : "", p.location, r.tier !== "different" && r.why && r.why !== "no name on the profile" ? r.why : "", p.evidence].filter(Boolean).join(" · ");
-      if (r.tier === "different") row.person = cl?.label || p.name;
+      // Another person's account: it stays in the ledger, with a check for the investigator and
+      // why it is thought to be someone else. Never a claim that the two are unrelated.
+      if (r.tier === "different") {
+        row.person = cl?.label || p.name;
+        const against = (r.against?.length ? r.against : [primary.label]).map((n) => `"${n}"`).join(" and ");
+        row.relate = r.via
+          ? `Check whether this account is connected to ${primary.label}. It is grouped with ${r.via}${r.tie ? ` (${r.tie})` : ""}, a name that conflicts with ${against}, and no link, picture or proof ties it to ${primary.label}.`
+          : `Check whether this account is connected to ${primary.label}. The name on it, "${p.name}", conflicts with ${against}, and no link, picture or proof ties it to that identity.`;
+        if (r.via) row.via = r.via;
+        row.meta = [row.meta, `filed as a different person: check whether this account is connected to ${primary.label}`].filter(Boolean).join(" · ");
+      } else if (r.unsettled && !row.similar) {
+        row.unsettled = { name: p.name, against: r.against || [] };
+        row.relate = `Check whether this is the person you mean. The name on it, "${p.name}", could not be compared: the primary identity carries only the one-word name ${(r.against || []).map((n) => `"${n}"`).join(" and ")}.`;
+        row.meta = [row.meta, "name not compared: the primary identity has only a one-word name"].filter(Boolean).join(" · ");
+      }
     } else if (row.kinds.has("taken")) {
       // In use according to the site's sign-up check. Unverified: nothing was read, nobody is named.
       row.tier = "unverified"; row.taken = true;
@@ -643,8 +694,9 @@ export function buildEvidence(collected, target, typeArg) {
       const snip = cardSnippet(row, p && row.kinds.has("read") ? { ...p, shownName: named } : null);
       const read = p && r && row.kinds.has("read");
       const why = row.kinds.has("registered") ? "registered with this email"
-        : read ? (p.anchor === "github" ? "GitHub's own record for this handle" : p.anchor === "gravatar" ? "Gravatar's record for this email"
-          : r.tier === "different" ? "the name on it conflicts with the primary identity" : r.why && r.why !== "no name on the profile" ? r.why : named ? "" : "no name on the profile")
+        : read ? (r.tier === "different" ? [p.anchor === "github" ? "GitHub's own record for this handle" : p.anchor === "gravatar" ? "Gravatar's record for this email" : "", r.via ? `grouped with ${r.via}, whose name conflicts with ${primary?.label || "the primary identity"}` : `the name on it conflicts with ${primary?.label || "the primary identity"}`].filter(Boolean).join(", and ")
+          : p.anchor === "github" ? "GitHub's own record for this handle" : p.anchor === "gravatar" ? "Gravatar's record for this email"
+            : r.why && r.why !== "no name on the profile" ? r.why : named ? "" : "no name on the profile")
           : "";
       // What a tool said about a row nothing read: why the check stopped, or the site's category.
       const said = read ? [] : [...new Set(reported)].filter(Boolean);
@@ -657,17 +709,23 @@ export function buildEvidence(collected, target, typeArg) {
       if (row.taken) row.card = { handle: String(searchedHandle || ""), facts: [], bio: "", basis: row.meta, why: "", note: "" };
       if (read && p.note === "suspended") row.card.note = "The site marks this account as suspended.";
       if (row.similar) row.card.why = "";
+      if (read && row.relate && !row.similar) row.card.check = row.relate;
       // What the record carries beyond the one line: opened on the row, with how each value is known.
       if (read && !row.similar) { const d = profileDetail({ ...p, fullName: named, fullBio: p.bio }, { secrets }); if (d) row.detail = d; }
       if (read && row.similar) row.card.note = [`Added from the similar handle ${row.similar.variant}: ${row.similar.reason}.`, row.card.note].filter(Boolean).join(" ");
       if (p?.thumb) row.thumb = p.thumb;
+      // Archived copies can be asked for a profile a source read, on a click, one profile at a
+      // time. Never for an address with a query (the snapshot address would carry it) and never
+      // for an adult or dating site: archivable() in deep.js. An answer is shown on the row.
+      if (read && !row.similar && row.link_kind === "verified_profile" && archivable(row.url)) { const a = archives[row.key]; row.archive = { url: row.url, ...(a && a.url === row.url ? { view: archiveView(a) } : {}) }; }
     }
     // The tools that reported the row. For Reddit and Discord the platform check asked the site
     // itself, so it is not one of them.
+    if (r?.inPrimary) row.inPrimary = true;
     row.tools = row.sources.filter((x) => !(row.pcOwn && x === "Platform check")).length;
     if (row.taken || (row.pcOwn && row.tier === "unverified" && !row.tools)) row.nofind = true;
     markUnsendable(row);
-    delete row.kinds; delete row.notes; delete row.readUrl;
+    delete row.kinds; delete row.notes; delete row.readUrl; delete row.relate;
   }
 
   // --- similar handles: one row per variant, after the leads ------------------------------
@@ -773,15 +831,28 @@ export function buildEvidence(collected, target, typeArg) {
   // A profile added from a similar handle is named with that handle, so it is never read as the target's.
   const siteName = (p) => (p?.similar ? `${p.site} (${p.handle})` : p?.site);
   const sitesOf = (ids) => ids.map((id) => siteName(byId.get(id))).filter(Boolean);
+  // The facts of one identity, each with how it is known. A profile joined to the identity by its
+  // name only is weaker ground than one tied by a link, a picture or a proof, and a fact that
+  // rests on such profiles alone says so.
+  const viewFacts = (cl, ids) => mergeFacts(ids.flatMap((id) => byId.get(id)?.facts || []), { weak: cl && cl.members.length > 1 ? new Set(cl.members.filter((id) => id !== cl.anchorId && !cl.strongIds.includes(id))) : new Set() });
+  const autoCl = result.clusters.find((cl) => cl.id === result.auto) || null;
   const views = result.clusters.map((cl) => ({
     // different: at least one of its profiles carries a name that conflicts with the primary identity.
-    id: cl.id, label: cl.label, named: cl.named, primary: cl.primary, different: cl.members.some((id) => rel.get(id)?.tier === "different"), why: cl.why || "", sites: sitesOf(cl.members), names: cl.names, locations: cl.locations, thumb: cl.members.map((id) => byId.get(id)?.thumb).find(Boolean) || "",
+    // picked: the investigator chose this identity. auto: the rules would choose it. members: the
+    // ids a pick of this identity stores.
+    id: cl.id, label: cl.label, named: cl.named, primary: cl.primary, picked: !!cl.picked, auto: cl.id === result.auto, pickable: true, anchor: cl.anchor || "", members: cl.members,
+    different: cl.members.some((id) => rel.get(id)?.tier === "different"), why: cl.why || "", sites: sitesOf(cl.members), names: cl.names, locations: cl.locations, thumb: cl.members.map((id) => byId.get(id)?.thumb).find(Boolean) || "",
     signals: cl.links.flatMap((l) => l.signals.map((s) => ({ ...s, a: siteName(byId.get(l.a)), b: siteName(byId.get(l.b)) }))),
-    facts: dedupeFacts(cl.members.flatMap((id) => byId.get(id)?.facts || [])),
+    facts: viewFacts(cl, cl.members),
   }));
-  if (result.unassigned.length) views.push({ id: "unassigned", label: "Profiles with no name", named: false, primary: false, why: "", sites: sitesOf(result.unassigned), names: [], locations: [], thumb: "", signals: [], facts: dedupeFacts(result.unassigned.flatMap((id) => byId.get(id)?.facts || [])) });
-  // noPrimary: profiles were read, but there is no anchor and no strong signal, so nobody is picked.
-  const identity = { views, primary: primary ? primary.id : null, people: views.filter((v) => v.named).length, noPrimary: !primary && views.length > 0 };
+  // Profiles with no name are a set of unrelated accounts, not a person: they can be shown, and
+  // they cannot be picked as the person the case is about.
+  if (result.unassigned.length) views.push({ id: "unassigned", label: "Profiles with no name", named: false, primary: false, picked: false, auto: false, pickable: false, anchor: "", members: result.unassigned, why: "", sites: sitesOf(result.unassigned), names: [], locations: [], thumb: "", signals: [], facts: viewFacts(null, result.unassigned) });
+  // noPrimary: profiles were read, but there is no anchor and no strong signal, and nobody was picked.
+  // picked: the primary identity is the investigator's choice. auto, autoLabel, autoWhy: what the
+  // rules would choose, so the page can always say which of the two it is showing.
+  const identity = { views, primary: primary ? primary.id : null, people: views.filter((v) => v.named).length, noPrimary: !primary && views.length > 0,
+    picked: !!result.picked, pickFile: !!(result.picked && pick?.file), auto: result.auto, autoLabel: autoCl ? autoCl.label : "", autoWhy: result.autoWhy || "" };
   // Without a primary identity no person's facts are shown as the target's.
   const facts = dedupeFacts([...(views.find((v) => v.primary)?.facts || []), ...general]);
   // added: the facts of the profiles added from a similar handle, kept apart from every identity.
@@ -812,7 +883,7 @@ export const TIERS = [
   { id: "info",       title: "Lookup result",             cls: "",          open: true,  blurb: "What the sources returned for this target." },
   { id: "linked",     title: "Linked",                    cls: "confirmed", open: true,  blurb: "Tied to the primary identity by a strong signal (a cross-link, the same avatar, a shared personal site), or the authoritative record for the target itself. Each row says which." },
   { id: "matches",    title: "Exists (matches)",          cls: "possible",  open: true,  blurb: "A profile was read. Its name fits the primary identity, or it carries no name that conflicts. Consistent is not proven: open the ones that matter." },
-  { id: "different",  title: "Exists (different person)", cls: "",          open: false, blurb: "A profile was read, and the name on it conflicts with the primary identity. These are other people who use the same handle." },
+  { id: "different",  title: "Exists (different person)", cls: "",          open: false, blurb: "A profile was read, and the name on it conflicts with the primary identity. These are other people who use the same handle. Nothing is removed: each row asks you to check whether that person is connected to the one this case is about." },
   { id: "unverified", title: "Unverified",                cls: "",          open: true,  blurb: "A tool reported the handle and nothing was read, or the site blocked the check. Many sites answer yes to any name. Open and check before relying on one." },
   { id: "adult",      title: ADULT_GROUP,                 cls: "",          open: false, blurb: `${ADULT_NOTICE} Each row says how it is known. Nothing here is tied to the target, and no picture or post is ever loaded.` },
   { id: "lead",       title: "Leads from profiles",       cls: "",          open: true,  blurb: "Handles, addresses, domains and links found on the profiles above. Each says where it came from. They are places to look next, not findings about this target, and nothing is followed until you click." },
@@ -837,10 +908,22 @@ export const tierCounts = (items) => Object.fromEntries(ACCOUNT_TIERS.map((t) =>
 // Everything the model is told about a case. Sources are sent without their adult and dating
 // site rows. Those travel only as `adult_sites` (site, category, state and link kind: no names,
 // no bios, no URLs), only for a case that had the mode on, and never inside `accounts`.
+// The assessment, the suggestions and the trail of one case, from the same evidence the ledger
+// shows. One function, so the page, the exports and the AI payload cannot drift apart.
+//   failed: the names of the sources that failed (from the source tally)
+export function caseAnalysis(ev, { collected, target, type, failed = [] } = {}) {
+  const c = withoutAdult(collected);
+  return { assessment: assessCase(ev, { collected: c, type, failed }), suggestions: suggestNext(ev, { collected: c, target, type, failed }), trail: trailView(c.trail, target, type) };
+}
+
 export function aiPayloadFor(collected, target, type, { source_status = {}, active = false } = {}) {
   const c = withoutAdult(collected);
-  const { items } = buildEvidence(collected, target, type);
+  const ev = buildEvidence(collected, target, type), { items } = ev;
   const adult = adultAllowed(collected, target, type);
+  // The rule-based assessment, the identity choice and how the case was reached, so the model
+  // starts from what the page already worked out. A pick is named as the investigator's judgment.
+  const analysis = caseAnalysis(ev, { collected, target, type, failed: Object.entries(source_status).filter(([, v]) => /^failed/.test(String(v))).map(([k]) => k) });
+  const forAi = analysisForAi(analysis.assessment, ev.identity, trailText(analysis.trail));
   return {
     target, target_type: type, accounts: accountsFor(items),
     source_status: adult ? source_status : Object.fromEntries(Object.entries(source_status).filter(([k]) => k !== ADULT_SOURCE)),
@@ -850,6 +933,7 @@ export function aiPayloadFor(collected, target, type, { source_status = {}, acti
     hunter: c.hunter || null, name_search: c.nameSearch ? { name: c.nameSearch } : null, active_techniques: !!active,
     // The three record sources, each value marked by how it is known (see deepForAi).
     ...deepForAi(c, items, type),
+    ...(forAi && (type === "username" || type === "email") ? { case_analysis: forAi } : {}),
     // A name case: the candidates as the screen shows them. Absent for every other case.
     ...(type === "name" && nameForAi(c, target) ? { name_candidates: nameForAi(c, target) } : {}),
     ...(adult ? { adult_sites: adultForAi(items.filter((i) => i.tier === "adult")) } : {}),
@@ -892,8 +976,10 @@ export function deepForAi(c, items, type) {
 // What an AI report was written from. Two runs with the same signature get the same report, so a
 // re-run can reuse the last one. Computed from the case it is given, never from the one on screen.
 export function aiSignature(collected, target, type) {
-  const { items, facts } = buildEvidence(collected, target, type);
-  return JSON.stringify([accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]),
+  const { items, facts, identity } = buildEvidence(collected, target, type);
+  // A picked identity is part of what the report was written from. Only then, so an older case
+  // keeps the signature it had.
+  return JSON.stringify([...(identity.picked ? [["picked", identity.primary]] : []), accountsFor(items), items.filter((i) => i.tier === "flag").map((i) => i.key), facts.map((f) => [f.k, f.v]),
     adultForAi(items.filter((i) => i.tier === "adult")), type === "name" ? nameForAi(withoutAdult(collected), target) : null, ...(type === "username" && blockForAi(collected) ? [blockForAi(collected)] : []),
     // Only when the case has one of the record sources, so an older case keeps the signature it had.
     ...((d) => (Object.keys(d).length ? [d] : []))(deepForAi(withoutAdult(collected), items, type))]);
@@ -914,8 +1000,11 @@ export function deepDiveUrls(collected) {
 // timeline: the events of personTimeline (timeline.js), passed in by the page. Each line says
 // whether its date is a record or self-declared.
 export function caseMarkdown({ collected, target, type, ran = 0, tallyLine = "", failed = [], purpose = "", ai = null, deep = null, notes = "", now = new Date(), timeline = [] }) {
-  const { items, facts, identity, added = [] } = buildEvidence(collected, target, type);
+  const ev = buildEvidence(collected, target, type), { items, facts, identity, added = [] } = ev;
   const c0 = withoutAdult(collected);
+  const analysis = caseAnalysis(ev, { collected, target, type, failed: failed.map((f) => f.name) });
+  const factLine = (f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source}${f.how ? ` · ${f.how.prov} · ${f.how.text}` : ""})_`;
+  const choice = identity.picked ? `_The primary identity was picked by the investigator${identity.pickFile ? " (in the case file)" : ""}. That is a judgment, not a finding. ${identity.autoLabel ? `The automatic choice would be ${identity.autoLabel}, because ${identity.autoWhy}.` : "Automatically nobody would be chosen."}_` : identity.primary ? `_The primary identity was chosen automatically because ${identity.autoWhy}._` : "";
   // A site or a lookup that did not answer is listed, so the export never reads as a clean negative.
   const downSites = type === "username" ? profileCoverage(c0.profiles).down : [];
   const downLookups = type === "email" ? emailLookupsDown(c0.emailAccounts) : [];
@@ -924,13 +1013,14 @@ export function caseMarkdown({ collected, target, type, ran = 0, tallyLine = "",
   const adult = items.filter((i) => i.tier === "adult");
   return [`# CrawlR case: ${target}`, `Generated ${now.toISOString()} · ${TYPE_LABEL[type]}${ran ? ` · collected ${new Date(ran).toISOString()}` : ""}`, tallyLine, "", ...(purpose ? [`**Purpose:** ${purpose}`, ""] : []),
     "> Findings come from third-party public sources and can be wrong. Unverified items are leads, not facts. A link marked (unverified URL) is a site address built from the handle that nothing has checked. A profile that exists is not proof of who owns it, and leads are places to look, not findings.", "",
+    ...trailMarkdown(analysis.trail),
     ...(failed.length ? ["## Sources that failed", ...failed.map((f) => `- **${f.name}:** ${f.text} (unknown, not a negative result)`), ""] : []),
     ...(downSites.length || downLookups.length ? ["## Lookups that did not answer", ...downSites.map((x) => `- **${x.site}** (${PROFILE_SOURCE}): ${PROFILE_STATE_WORD[x.state]} (unknown, not a negative result)`), ...downLookups.map((x) => `- **${x.name}** (${EMAIL_ACCOUNTS_SOURCE}): ${x.state === "rate_limited" ? "rate limited" : "failed"} (unknown, not a negative result)`), ""] : []),
     // A name case selects no one: the caveat line, then what is known about the search itself.
-    ...(type === "name" ? nameMarkdownHead(collected, target) : [`## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(facts.length ? facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`) : ["- Nothing extracted"]), ""]),
+    ...(type === "name" ? nameMarkdownHead(collected, target) : [`## What we know${main ? ` (primary identity: ${main.label}, from ${main.sites.join(", ")})` : ""}`, ...(choice ? [choice] : []), ...(facts.length ? facts.map(factLine) : ["- Nothing extracted"]), "", ...analysisMarkdown(analysis.assessment, analysis.suggestions)]),
     ...(added.length ? [`## ${ADDED_HEADING}`, ...added.flatMap((a) => a.facts.map((f) => `- **${f.k}:** ${mdLink(f, f.v)} _(${f.source})_`)), ""] : []),
-    ...(others.length ? ["## Other people using this handle", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
-    ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...(isNameTier(t.id) ? [`_${t.blurb}_`] : []), ...rows.flatMap((i) => [`- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`, ...detailMarkdown(i.detail)]), ""] : []; }),
+    ...(others.length ? ["## Other people using this handle", "_Not removed from the case. Check whether each is connected to the primary identity before leaving them out._", ...others.map((v) => `- **${v.label}:** ${v.sites.join(", ")}`), ""] : []),
+    ...ledgerTiers(target, type).filter((t) => t.id !== "adult").flatMap((t) => { const rows = items.filter((i) => i.tier === t.id); return rows.length ? [`## ${t.title} (${rows.length})`, ...(isNameTier(t.id) ? [`_${t.blurb}_`] : []), ...rows.flatMap((i) => [`- ${mdLink(i)}${mdNote(i) ? ` · ${mdNote(i)}` : ""} _(${i.source})_`, ...detailMarkdown(i.detail), ...archiveMarkdown(i.archive?.view)]), ""] : []; }),
     ...(timeline.length ? ["## Timeline", "_Every date was reported by a source in this run. A date marked self-declared was written by the account holder or inside a commit or a key, and can be false._", ...timeline.map((e) => `- ${e.date} · ${mdLink(e, e.title)}${e.detail ? ` · ${e.detail}` : ""} _(${e.source} · ${e.basis_text})_`), ""] : []),
     ...(type === "username" ? activityMarkdown(c0.githubActivity) : []),
     ...adultMarkdown(adult),

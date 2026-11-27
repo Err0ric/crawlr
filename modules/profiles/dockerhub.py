@@ -24,7 +24,9 @@ async def read(client, username: str) -> base.Result:
     org = reply.status in (301, 302, 307, 308) and reply.location.rstrip("/") == f"/v2/orgs/{name}"
     if org:
         reply = await base.get_json(client, f"{HOST}/v2/orgs/{name}")
-    stop = base.settle(reply)
+    # The first answer said there is an organization at that address. A 404 from it is a
+    # contradiction, not an absent account, so it is "unknown".
+    stop = base.settle(reply, not_found=() if org else (404,))
     if stop:
         return stop
     d = reply.data if isinstance(reply.data, dict) else {}

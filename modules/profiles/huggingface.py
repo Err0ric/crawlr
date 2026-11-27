@@ -23,9 +23,11 @@ _PATH_RE = re.compile(r"^/api/users/([^/?#]{1,64})/overview$")
 async def read(client, username: str) -> base.Result:
     reply = await base.get_json(client, URL.format(username))
     moved = _PATH_RE.fullmatch(reply.location) if reply.status in (301, 302, 307, 308) else None
-    if moved and moved.group(1).lower() == username.lower() and HANDLE_RE.fullmatch(moved.group(1)):
+    respelled = bool(moved and moved.group(1).lower() == username.lower() and HANDLE_RE.fullmatch(moved.group(1)))
+    if respelled:
         reply = await base.get_json(client, URL.format(moved.group(1)))
-    stop = base.settle(reply)
+    # The site just gave this spelling itself. A 404 for it is a contradiction: "unknown".
+    stop = base.settle(reply, not_found=() if respelled else (404,))
     if stop:
         return stop
     d = reply.data if isinstance(reply.data, dict) else {}

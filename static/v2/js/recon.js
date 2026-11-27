@@ -4,9 +4,10 @@ import { normalizeAi, markdown, summaryBlock, aiStartHtml, copyPrompt, parseRepl
 import { reconBrief, resolvedHosts, mailState, nullRecords, noMailOpen } from "./brief.js";
 import { reconTimeline } from "./timeline.js";
 import { openModal, closeModal } from "./ui.js";
-import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, skeletonCards } from "./workbench.js";
+import { makeLog, renderTiers, bindLedger, renderFacts, failedNotice, diffRuns, diffNotice, standaloneHtml, makeTabs, setTabCount, renderBrief, casePrint, renderVerdict, bindVerdict, skeletonCards, trailHtml } from "./workbench.js";
 import { reconTiles, writeHistory, wildcardOf, wildcardText } from "./present.js";
 import { buildCaseFile } from "./casefile.js";
+import { readTrail, trailView } from "./casework.js";
 import { harvestCard, errorCard } from "./renderers.js";
 import { buildFindings, takeoverForAi, takeoverInput, TIERS, RISKY, flat, day, lc } from "./reconfindings.js";
 import { findingsWithEvidence, evidenceUrl, exposureEvidence, isDomain, mdLink, mdNote } from "./links.js";
@@ -83,7 +84,7 @@ $("#rSources").addEventListener("change", (e) => {
 });
 
 // ---- state ---------------------------------------------------------------------
-export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings", ran: 0, scanNote: "" };
+export const state = { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, running: false, cancelled: false, controller: null, prev: null, aiBusy: false, tab: "findings", ran: 0, scanNote: "", trail: [] };
 const SRC_NAME = { email_posture: "Email security", dns_depth: "DNS hardening", takeover: "Takeover candidates", lookalikes: "Lookalike domains", wellknown: "Published files", dns: "DNS records", whois: "WHOIS", ssl: "TLS certificate", headers: "HTTP headers", subdomains: "Subdomains", harvest: "Passive discovery", asn: "Network owner", shodan: "Exposure", portscan: "Port scan", redirects: "Redirect chain", techfp: "Tech fingerprint", wayback: "Wayback Machine", asn_detail: "ASN detail" };
 // A source that failed is unknown. "No certificate" or "not indexed" are answers; a timeout is not.
 const isFailed = (d) => !!(d && typeof d === "object" && (d.error_code || d.error) && d.error_code !== "not_found");
@@ -501,7 +502,10 @@ export async function run(raw0, opts = {}) {
   if (!RECON_TYPES.includes(type)) { toast(`${TYPE_LABEL[type] || "That"} targets run in Investigate.`); return; }
   const last = store.get(HISTORY_KEY, []).find((e) => e.type === "RECON" && e.v2 && e.target.toLowerCase() === target.toLowerCase());
   const prev = last ? { keys: buildFindings(last.results || {}, last.target, type).items.map((i) => i.key), ts: last.timestamp } : null;
-  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), scanNote: "" });
+  // opts.trail: how this case was reached, when it was opened from a lead of an Investigate case
+  // (casework.js). A re-run of the same target keeps the trail its last run had.
+  const trail = readTrail(opts.trail).length ? readTrail(opts.trail) : readTrail(last?.trail);
+  Object.assign(state, { target, type, collected: {}, ai: null, deep: null, historyId: null, cancelled: false, controller: new AbortController(), prev, aiBusy: false, ran: Date.now(), scanNote: "", trail });
   // Decided once, when the run starts, and kept: switching Port scan on mid-run changes the next run.
   const scan = portscanFor({ on: session.on("portscan"), type, startedBy: opts.startedBy === "run" ? "run" : "pivot" });
   state.scanNote = scan.note;
@@ -564,6 +568,9 @@ export async function run(raw0, opts = {}) {
 }
 
 function head(meta) {
+  // How the case was reached, when it was opened from a lead of another case.
+  const view = trailView(state.trail, state.target, state.type), ids = new Set(store.get(HISTORY_KEY, []).map((e) => e.id));
+  $("#rTrail").innerHTML = trailHtml(view, (id) => ids.has(id)); $("#rTrail").hidden = !view.length;
   $("#rMainHead").hidden = false;
   $("#rCaseTarget").textContent = state.target;
   $("#rCaseMeta").textContent = meta || TYPE_LABEL[state.type] || "";
@@ -573,7 +580,7 @@ function head(meta) {
 const HISTORY_KEY = "crawlr_history";
 function saveHistory() {
   const list = store.get(HISTORY_KEY, []);
-  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "RECON", timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai, deep: state.deep, notes: $("#rNotes").value, purpose: $("#rPurpose").value.trim(), v2: true };
+  const entry = { id: state.historyId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, target: state.target, type: "RECON", timestamp: Date.now(), results: state.collected, aiSummary: state.ai?.summary || null, ai: state.ai, deep: state.deep, notes: $("#rNotes").value, purpose: $("#rPurpose").value.trim(), ...(state.trail?.length ? { trail: state.trail } : {}), v2: true };
   state.historyId = entry.id;
   const i = list.findIndex((e) => e.id === entry.id);
   if (i >= 0) { entry.timestamp = list[i].timestamp; if (list[i].imported) entry.imported = list[i].imported; list[i] = entry; } else list.unshift(entry);
@@ -581,7 +588,7 @@ function saveHistory() {
   writeHistory(list, entry.id, (l) => store.set(HISTORY_KEY, l));
 }
 export function loadHistory(e) {
-  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, scanNote: "" });
+  Object.assign(state, { target: e.target, type: detect(e.target), collected: e.results || {}, ai: e.ai || (e.aiSummary ? normalizeAi({ summary: e.aiSummary }) : null), deep: e.deep ? normalizeAi(e.deep) : null, historyId: e.id, running: false, prev: null, aiBusy: false, ran: e.timestamp, scanNote: "", trail: readTrail(e.trail) });
   $("#rTargetInput").value = e.target; renderSources(state.type); $("#rRunlog").hidden = true; $("#rTabs").hidden = false; setTab("findings"); hidePivot();
   head(`${TYPE_LABEL[state.type]} · ${e.imported ? "opened from a case file · collected" : "from history ·"} ${new Date(e.timestamp).toLocaleString()}`);
   $("#rNotes").value = e.notes || ""; $("#rPurpose").value = e.purpose || ""; notesMeta();
@@ -589,7 +596,8 @@ export function loadHistory(e) {
 }
 export function clearCase() {
   cancel();
-  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, prev: null, aiBusy: false, scanNote: "" });
+  Object.assign(state, { target: "", type: "", collected: {}, ai: null, deep: null, historyId: null, prev: null, aiBusy: false, scanNote: "", trail: [] });
+  $("#rTrail").hidden = true; $("#rTrail").innerHTML = "";
   $("#rTargetInput").value = ""; $("#rMainHead").hidden = true; $("#rRunlog").hidden = true; $("#rLedger").innerHTML = ""; $("#rNotices").innerHTML = ""; $("#rBySource").hidden = true;
   $("#rEmpty").hidden = false; $("#rFacts").innerHTML = `<p class="empty flat">Nothing yet.</p>`; $("#rNotes").value = ""; $("#rPurpose").value = ""; notesMeta();
   renderSources(""); renderAi(); setTab("findings"); hidePivot();

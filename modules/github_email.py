@@ -11,8 +11,11 @@ GitHub accounts tied to an email address. Two search requests, no key needed.
    A hit with `author: null` is a commit GitHub ties to no account. Those are reported apart.
 
 2. GET /search/users?q={address} in:email
-   Accounts whose public profile shows the address. A user can only show an address they
-   confirmed; an organization can type anything, so `account_type` is passed on.
+   Accounts GitHub's user search matched to the address. The search row carries no email, so
+   this module cannot see the address on the profile itself: such a row says `confirmed:
+   false` and `how_note` words it as a search match. (A user can only show an address they
+   confirmed; an organization can type anything, so `account_type` is passed on.) A row built
+   from commits says `confirmed: true`: each counted commit was checked to carry the address.
 
 Anonymous search allows 10 requests a minute per IP (30 with GITHUB_TOKEN). A 403 or 429 that
 is GitHub's rate limit is `rate_limited`, never `none`. Commit search often answers with
@@ -32,7 +35,7 @@ import httpx
 
 from core.errors import classify, error_fields
 from core.logging import get_logger
-from modules.github import LOGIN_RE, api_headers, is_rate_limit, retry_after
+from modules.github import LOGIN_RE, api_headers, is_rate_limit, note_quota, quota_wait, rate_limited_fields, retry_after
 
 log = get_logger(__name__)
 
@@ -48,6 +51,9 @@ EARLIEST = datetime(1990, 1, 1, tzinfo=timezone.utc)      # a commit dated befor
 
 _COMMIT_URL_RE = re.compile(r"^https://github\.com/[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}/commit/[0-9a-f]{7,64}$")
 _ACCOUNT_TYPES = {"User", "Organization", "Bot"}
+SEARCH_MATCH = "GitHub's search matched this address on the profile. The profile itself was not read to confirm it."
+ONLY_SKIPPED = ("GitHub returned {n} commit{s} for this address and none could be counted: each was made by an app account, "
+                "or its row was malformed or did not carry the address.")
 
 
 def _text(value, cap: int) -> str:
@@ -185,7 +191,7 @@ def read_commits(payload: dict, email: str, now: datetime | None = None) -> dict
 
     accounts = [
         {"login": logins[k], "url": profile_url(logins[k]), "how": "commit_author", "hows": ["commit_author"],
-         "account_type": g.account_type, **g.fields()}
+         "confirmed": True, "account_type": g.account_type, **g.fields()}
         for k, g in sorted(groups.items(), key=lambda kv: (-kv[1].commits, kv[0]))
     ][:MAX_ACCOUNTS]
     total = payload.get("total_count")
@@ -209,8 +215,11 @@ def read_users(payload: dict) -> dict:
             continue
         seen.add(login.casefold())
         kind = item.get("type")
+        # The field name is kept for the page. What it means is in SEARCH_MATCH: the search
+        # matched, and the profile was not read here to see the address on it.
         out.append({"login": login, "url": profile_url(login), "how": "public_profile_email",
-                    "hows": ["public_profile_email"], "account_type": kind if kind in _ACCOUNT_TYPES else ""})
+                    "hows": ["public_profile_email"], "confirmed": False, "how_note": SEARCH_MATCH,
+                    "account_type": kind if kind in _ACCOUNT_TYPES else ""})
         if len(out) >= MAX_PROFILE_ROWS:
             break
     total = payload.get("total_count")
@@ -218,7 +227,11 @@ def read_users(payload: dict) -> dict:
 
 
 async def _search(client: httpx.AsyncClient, label: str, path: str, params: dict) -> tuple[dict, dict | None]:
-    """One search request. Returns (source state, payload or None). Never raises."""
+    """One search request. Returns (source state, payload or None). Never raises. When GitHub's
+    headers have said the search allowance is spent, no request is made until it resets."""
+    wait = quota_wait("search")
+    if wait:
+        return {"state": "rate_limited", "retry_after": wait, **rate_limited_fields(wait, f"The {HOST} search allowance is spent")}, None
     try:
         resp = await client.get(f"{API}{path}", params=params, headers=api_headers(), follow_redirects=False)
     except Exception as e:
@@ -226,14 +239,11 @@ async def _search(client: httpx.AsyncClient, label: str, path: str, params: dict
         fields = error_fields(code=classify(e), detail=type(e).__name__)
         log.warning("github email search did not answer", extra={"source": label, "error_code": fields["error_code"]})
         return {"state": "failed", **fields}, None
+    note_quota(resp, "search")
     if is_rate_limit(resp):
         wait = retry_after(resp)
-        mins = max(1, round(wait / 60))
         log.warning("github email search rate limited", extra={"source": label, "retry_after_s": wait})
-        return {"state": "rate_limited", "retry_after": wait, **error_fields(
-            code="rate_limited",
-            message=f"GitHub is rate limiting CrawlR. Try again in about {mins} minute{'s' if mins != 1 else ''}.",
-            detail=f"HTTP {resp.status_code} from {HOST}")}, None
+        return {"state": "rate_limited", "retry_after": wait, **rate_limited_fields(wait, f"HTTP {resp.status_code} from {HOST}")}, None
     if resp.status_code != 200:
         log.warning("github email search did not answer", extra={"source": label, "status": resp.status_code})
         return {"state": "failed", **error_fields(code="upstream", detail=f"HTTP {resp.status_code} from {HOST}")}, None
@@ -255,12 +265,13 @@ async def commits(client: httpx.AsyncClient, email: str) -> dict:
         return {"source": source, "accounts": [], "unattributed": read_commits({}, email)["unattributed"]}
     read = read_commits(payload, email)
     found = bool(read["accounts"]) or read["unattributed"]["commits_seen"] > 0
-    return {
-        "source": {"state": "ok" if found else "none", "total": read["total"], "seen": read["seen"],
-                   "incomplete": read["incomplete"], "skipped": read["skipped"]},
-        "accounts": read["accounts"],
-        "unattributed": read["unattributed"],
-    }
+    source = {"state": "ok" if found else "none", "total": read["total"], "seen": read["seen"],
+              "incomplete": read["incomplete"], "skipped": read["skipped"]}
+    if not found and read["skipped"]:
+        # "none" because every hit was set aside is not the same as no hit at all.
+        source["only_skipped"] = True
+        source["note"] = ONLY_SKIPPED.format(n=read["skipped"], s="" if read["skipped"] == 1 else "s")
+    return {"source": source, "accounts": read["accounts"], "unattributed": read["unattributed"]}
 
 
 async def users(client: httpx.AsyncClient, email: str) -> dict:

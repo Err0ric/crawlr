@@ -17,12 +17,12 @@ that has one, through modules/avatar_hash.py and so through core.netguard.
 
 The answer:
 
-  {username, cached,
+  {username, cached, asked,
    profiles: [{site, source, handle, url, state: "found", display_name, name, bio, location,
                company, website, links, emails, created, last_active, accounts, stats,
                followers, items, note, avatar_hash, avatar_default, thumb, avatar_state
                [, guard]}],
-   sources:  {id: {site, state[, note][, error, error_code, error_detail]}}}
+   sources:  {id: {site, state[, note][, error, error_code, error_detail][, retry_after]}}}
 
 Each source keeps its own state, so a site that refused is never read as an absent account:
 found, not_found, blocked, rate_limited, unknown, failed, and not_asked for a handle the site
@@ -30,6 +30,18 @@ cannot hold. A profile carries a hash, the placeholder flag, a small grayscale t
 `avatar_state` ("ok", "default", "none" or "failed"), and never a picture address. `guard`,
 when present, is the whole bio for the minor guard's content check (core.profile_record), as
 on a Maigret row; the page reads it and does not keep it.
+
+The cache is per source, keyed on (source id, handle as typed), and each answer is kept for as
+long as its own state deserves: found and not_found for a day; blocked, rate_limited, unknown
+and failed for ten minutes, and so is a profile whose picture could not be read or whose source
+said a part of it was not read. A repeat lookup is put together from that cache and only the
+sources without a kept answer are asked again, so one site that fails does not make the other
+fifteen be asked again. `asked` lists the sources asked in this call, and `cached` is true
+when that list is empty: every answer came from the cache or needed no request.
+
+A source that answers 429 is left alone for everyone until its Retry-After has passed (five
+minutes when it names none, an hour at most). Meanwhile it is reported as `rate_limited` with
+`retry_after` in seconds and no request is made.
 
 Nothing about the handle or a profile is logged: only source IDs, states, codes and counts.
 """
@@ -52,23 +64,31 @@ log = get_logger(__name__)
 SOURCES = (gitlab, keybase, hackernews, mastodon, dockerhub, npm, devto, lichess, chesscom, codeberg, bluesky, wikipedia,
            gravatar, codeforces, lobsters, huggingface)
 STATES = ("found", "not_found", "blocked", "rate_limited", "unknown", "failed", "not_asked")
-SETTLED = ("found", "not_found", "blocked", "not_asked")     # asking again today would not change these
+# Asking again today would not change these. "blocked" is not one of them: a 403 or a challenge
+# page is usually a passing condition of the site's edge, so it is asked again soon.
+SETTLED = ("found", "not_found", "not_asked")
 
 SOURCE_TIMEOUT = 8.0          # seconds for one source, all of its requests together
 TOTAL_TIMEOUT = 12.0          # seconds for all sources
 PICTURES_TIMEOUT = 12.0       # seconds for all pictures
 
 CACHE_TTL_OK = 24 * 3600
-CACHE_TTL_PARTIAL = 600       # a source failed or was rate limited: keep it only long enough to stop a retry loop
-CACHE_MAX = 1000
-_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()   # handle as typed -> (expires_at, result)
+CACHE_TTL_PARTIAL = 600       # the source did not settle: keep it only long enough to stop a retry loop
+CACHE_MAX = 16_000            # entries, one per (source, handle): about a thousand handles
+# (source id, handle as typed) -> (expires_at, the source's entry, its profile or None)
+_cache: "OrderedDict[tuple[str, str], tuple[float, dict, dict | None]]" = OrderedDict()
+
+BACKOFF_DEFAULT = 300         # seconds a source is left alone after a 429 that names no wait
+BACKOFF_MAX = 3600
+_backoff: dict[str, float] = {}      # source id -> the time before which it is not asked, for anyone
 
 
 def clear_cache_for_tests() -> None:
     _cache.clear()
+    _backoff.clear()
 
 
-def _cache_get(key: str) -> dict | None:
+def _cache_get(key: tuple[str, str]) -> tuple[dict, dict | None] | None:
     hit = _cache.get(key)
     if not hit:
         return None
@@ -76,14 +96,33 @@ def _cache_get(key: str) -> dict | None:
         _cache.pop(key, None)
         return None
     _cache.move_to_end(key)
-    return hit[1]
+    return dict(hit[1]), dict(hit[2]) if hit[2] is not None else None
 
 
-def _cache_put(key: str, val: dict, ttl: int) -> None:
-    _cache[key] = (time.time() + ttl, val)
+def _cache_put(key: tuple[str, str], entry: dict, profile: dict | None, ttl: int) -> None:
+    _cache[key] = (time.time() + ttl, dict(entry), dict(profile) if profile is not None else None)
     _cache.move_to_end(key)
     while len(_cache) > CACHE_MAX:
         _cache.popitem(last=False)
+
+
+def _back_off(source_id: str, seconds: int | None) -> int:
+    """Leave a source alone after a 429. Returns the seconds it will be left alone."""
+    wait = min(BACKOFF_MAX, max(1, seconds)) if seconds else BACKOFF_DEFAULT
+    _backoff[source_id] = max(_backoff.get(source_id, 0.0), time.time() + wait)
+    return wait
+
+
+def _backing_off(source_id: str) -> int:
+    """Seconds until the source may be asked again, or 0."""
+    until = _backoff.get(source_id)
+    if until is None:
+        return 0
+    left = until - time.time()
+    if left <= 0:
+        _backoff.pop(source_id, None)
+        return 0
+    return max(1, int(left + 0.999))
 
 
 def _timed_out() -> base.Result:
@@ -131,50 +170,67 @@ async def _pictures(profiles: list[dict]) -> None:
 
 
 async def run_profiles(username: str) -> dict:
-    """Ask every source for one handle. See the module docstring for the answer's shape. The
-    caller validates the handle first (core.validate.username)."""
-    cached = _cache_get(username)
-    if cached is not None:
-        return {**cached, "cached": True}
+    """Ask every source for one handle. See the module docstring for the answer's shape and
+    for what is kept. The caller validates the handle first (core.validate.username)."""
+    answers: dict[str, tuple[dict, dict | None]] = {}
+    todo = []
+    for src in SOURCES:
+        if not src.HANDLE_RE.fullmatch(username):
+            answers[src.ID] = ({"site": src.SITE, "state": "not_asked"}, None)     # not a name this site can hold
+            continue
+        kept = _cache_get((src.ID, username))
+        if kept is not None:
+            answers[src.ID] = kept
+            continue
+        wait = _backing_off(src.ID)
+        if wait:
+            # The site said 429 to this server a moment ago. No request, and not "not found".
+            answers[src.ID] = ({"site": src.SITE, "state": "rate_limited", "retry_after": wait,
+                                **error_fields(code="rate_limited", detail="Waiting after HTTP 429")}, None)
+            continue
+        todo.append(src)
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(SOURCE_TIMEOUT, connect=5.0), follow_redirects=False) as client:
-        tasks = [asyncio.ensure_future(_ask(src, client, username)) for src in SOURCES]
-        _done, pending = await asyncio.wait(tasks, timeout=TOTAL_TIMEOUT)
-        for t in pending:
-            t.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-    results = [t.result() if not t.cancelled() and t.exception() is None else _timed_out() for t in tasks]
+    if todo:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(SOURCE_TIMEOUT, connect=5.0), follow_redirects=False) as client:
+            tasks = [asyncio.ensure_future(_ask(src, client, username)) for src in todo]
+            _done, pending = await asyncio.wait(tasks, timeout=TOTAL_TIMEOUT)
+            for t in pending:
+                t.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+        results = [t.result() if not t.cancelled() and t.exception() is None else _timed_out() for t in tasks]
 
-    sources: dict[str, dict] = {}
-    profiles: list[dict] = []
-    settled = True
-    for src, res in zip(SOURCES, results):
-        state = res.state if res.state in STATES else "unknown"
-        if state == "found" and not res.profile:
-            state = "unknown"
-        entry = {"site": src.SITE, "state": state}
-        if res.note:
-            entry["note"] = res.note
-        if res.error and state in ("failed", "rate_limited"):
-            entry.update(res.error)
-        sources[src.ID] = entry
-        if state == "found":
-            profiles.append(dict(res.profile))
-        if not (res.settled if res.settled is not None else state in SETTLED):
-            settled = False
-        if state in ("failed", "rate_limited"):
-            # The source and an error code only. The handle is never logged.
-            log.warning("profile source did not answer", extra={"source": src.ID, "state": state, "error_code": entry.get("error_code", "")})
+        fresh: list[tuple[object, dict, dict | None, bool]] = []
+        for src, res in zip(todo, results):
+            state = res.state if res.state in STATES else "unknown"
+            if state == "found" and not res.profile:
+                state = "unknown"
+            entry = {"site": src.SITE, "state": state}
+            if res.note:
+                entry["note"] = res.note
+            if res.error and state in ("failed", "rate_limited"):
+                entry.update(res.error)
+            if state == "rate_limited" or res.limited:
+                wait = _back_off(src.ID, res.retry_after)
+                if state == "rate_limited":
+                    entry["retry_after"] = wait
+            settled = res.settled if res.settled is not None else state in SETTLED
+            fresh.append((src, entry, dict(res.profile) if state == "found" else None, settled))
+            if state in ("failed", "rate_limited"):
+                # The source and an error code only. The handle is never logged.
+                log.warning("profile source did not answer", extra={"source": src.ID, "state": state, "error_code": entry.get("error_code", "")})
 
-    await _pictures(profiles)
-    pictures_ok = all(p["avatar_state"] != "failed" for p in profiles)
+        await _pictures([profile for _src, _entry, profile, _settled in fresh if profile is not None])
+        for src, entry, profile, settled in fresh:
+            answers[src.ID] = (entry, profile)
+            if entry["state"] == "not_asked":
+                continue
+            # A picture that could not be read is asked for again soon, with its profile.
+            whole = settled and (profile is None or profile["avatar_state"] != "failed")
+            _cache_put((src.ID, username), entry, profile, CACHE_TTL_OK if whole else CACHE_TTL_PARTIAL)
+
+    sources = {src.ID: answers[src.ID][0] for src in SOURCES}
+    profiles = [answers[src.ID][1] for src in SOURCES if answers[src.ID][1] is not None]
     tally = {s: sum(1 for e in sources.values() if e["state"] == s) for s in STATES}
-    log.info("profile sources answered", extra={"asked": len(SOURCES) - tally["not_asked"], **{k: v for k, v in tally.items() if v}})
-
-    result = {"username": username, "profiles": profiles, "sources": sources, "cached": False}
-    # "blocked" is how a site treats every server, so it is kept for the day. A source that
-    # failed, timed out or was rate limited is asked again sooner, and so is a picture that
-    # could not be read.
-    _cache_put(username, result, CACHE_TTL_OK if settled and pictures_ok else CACHE_TTL_PARTIAL)
-    return result
+    log.info("profile sources answered", extra={"asked": len(todo), **{k: v for k, v in tally.items() if v}})
+    return {"username": username, "profiles": profiles, "sources": sources, "cached": not todo, "asked": [src.ID for src in todo]}

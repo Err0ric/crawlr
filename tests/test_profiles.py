@@ -132,6 +132,11 @@ def run(username=H):
     return asyncio.run(pf.run_profiles(username))
 
 
+def ttl(source: str, handle: str = H) -> float:
+    """Seconds one source's answer for one handle is still kept."""
+    return pf._cache[(source, handle)][0] - time.time()
+
+
 def by_source(out) -> dict:
     return {p["source"]: p for p in out["profiles"]}
 
@@ -293,8 +298,9 @@ def test_a_known_placeholder_is_default_without_a_fetch_and_a_failed_picture_is_
     assert (p["mastodon"]["avatar_state"], p["mastodon"]["avatar_default"], p["mastodon"]["avatar_hash"], p["mastodon"]["thumb"]) == ("default", True, "", "")
     assert (p["gitlab"]["avatar_state"], p["gitlab"]["avatar_hash"], p["gitlab"]["thumb"]) == ("failed", "", "")
     assert (p["codeberg"]["avatar_state"], p["codeberg"]["avatar_default"], p["codeberg"]["thumb"]) == ("default", True, "")
-    # every source settled but a picture did not: asked again soon, never kept for the day
-    assert 0 < pf._cache[H][0] - time.time() <= pf.CACHE_TTL_PARTIAL
+    # the profile whose picture was not read is asked again soon; the others are kept for the day
+    assert 0 < ttl("gitlab") <= pf.CACHE_TTL_PARTIAL
+    assert all(ttl(s) > 23 * 3600 for s in ALL if s != "gitlab")
 
 
 def test_a_picture_step_that_raises_leaves_the_profiles_in_place(monkeypatch):
@@ -317,7 +323,7 @@ def test_the_apis_own_no_such_account_is_not_found(monkeypatch, source):
     # one source's answer changes nothing for the others
     assert [p["source"] for p in out["profiles"]] == [s for s in ALL if s != source]
     assert all(e["state"] == "found" for s, e in out["sources"].items() if s != source)
-    assert pf._cache[H][0] - time.time() > 23 * 3600
+    assert ttl(source) > 23 * 3600
 
 
 def test_not_found_everywhere(monkeypatch):
@@ -333,7 +339,7 @@ def test_npm_without_packages_is_unknown_not_absent_and_still_settled(monkeypatc
     world(monkeypatch, with_source("npm", j(200, fx("npm_none.json"))))
     out = run()
     assert out["sources"]["npm"] == {"site": "npm", "state": "unknown", "note": pf.npm.NO_PACKAGES}
-    assert "npm" not in by_source(out) and pf._cache[H][0] - time.time() > 23 * 3600
+    assert "npm" not in by_source(out) and ttl("npm") > 23 * 3600
 
 
 @pytest.mark.parametrize("source", ALL)
@@ -347,9 +353,12 @@ def test_a_refusal_is_blocked_or_rate_limited_and_never_not_found(monkeypatch, s
     if state == "rate_limited":
         assert entry["error_code"] == "rate_limited" and entry["error"] and H not in json.dumps(entry)
     assert sum(e["state"] == "found" for e in out["sources"].values()) == 15
-    # blocked is how a site treats every server, so it is kept; a rate limit is asked again soon
-    ttl = pf._cache[H][0] - time.time()
-    assert ttl > 23 * 3600 if state == "blocked" else 0 < ttl <= pf.CACHE_TTL_PARTIAL
+    # a refusal is usually a passing condition, so that one source is asked again soon; the
+    # other fifteen keep their answers for the day
+    assert 0 < ttl(source) <= pf.CACHE_TTL_PARTIAL
+    assert all(ttl(s) > 23 * 3600 for s in ALL if s != source)
+    if state == "rate_limited":
+        assert entry["retry_after"] == pf.BACKOFF_DEFAULT
 
 
 @pytest.mark.parametrize("source", ALL)
@@ -369,7 +378,7 @@ def test_a_source_that_fails_is_failed_with_error_fields_and_sinks_nothing_else(
     assert entry["state"] == "failed" and entry["error_code"] == code and entry["error"] and set(entry) == {"site", "state", "error", "error_code", "error_detail"}
     assert H not in json.dumps(entry) and "example.invalid" not in json.dumps(entry)      # never str(exception)
     assert sum(e["state"] == "found" for e in out["sources"].values()) == 15 and len(out["profiles"]) == 15
-    assert 0 < pf._cache[H][0] - time.time() <= pf.CACHE_TTL_PARTIAL
+    assert 0 < ttl(source) <= pf.CACHE_TTL_PARTIAL and all(ttl(s) > 23 * 3600 for s in ALL if s != source)
 
 
 @pytest.mark.parametrize("source", ALL)
@@ -445,7 +454,8 @@ def test_a_handle_a_site_cannot_hold_is_not_asked_there(monkeypatch):
     assert not_asked == {"keybase", "hackernews", "mastodon", "dockerhub", "devto", "lichess", "chesscom", "bluesky", "gravatar", "lobsters"}
     assert {c.url.host for c in calls} == {HOSTS[s] for s in ALL if s not in not_asked}
     assert all(set(out["sources"][s]) == {"site", "state"} for s in not_asked)
-    assert states["gitlab"] == "not_found" and pf._cache["sam.example"][0] - time.time() > 23 * 3600
+    assert states["gitlab"] == "not_found" and ttl("gitlab", "sam.example") > 23 * 3600
+    assert not any(k[0] in not_asked for k in pf._cache)          # nothing was asked, so nothing is kept
 
 
 @pytest.mark.parametrize("source,handle,ok", [
@@ -529,13 +539,76 @@ def test_hacker_news_about_is_plain_text_with_its_links_and_ids_keep_their_case(
         "/v0/user/SamExample/about.json", "/v0/user/SamExample/created.json", "/v0/user/SamExample/karma.json"]
 
 
-def test_hacker_news_extras_that_do_not_answer_leave_their_fields_empty(monkeypatch):
+def test_hacker_news_without_a_bio_is_a_whole_answer(monkeypatch):
     pages = found()
-    pages["hacker-news.firebaseio.com/v0/user/samexample/karma.json"] = httpx.Response(500, text="")
-    pages["hacker-news.firebaseio.com/v0/user/samexample/about.json"] = j(200, "null")
+    pages["hacker-news.firebaseio.com/v0/user/samexample/about.json"] = j(200, "null")      # the API's own "no bio"
     world(monkeypatch, pages)
-    h = by_source(run())["hackernews"]
-    assert h["bio"] == "" and h["stats"] == {} and h["created"]
+    out = run()
+    h = by_source(out)["hackernews"]
+    assert h["bio"] == "" and h["note"] == "" and h["stats"] == {"karma": 4423}
+    assert out["sources"]["hackernews"] == {"site": "Hacker News", "state": "found"} and ttl("hackernews") > 23 * 3600
+
+
+@pytest.mark.parametrize("part,answer,row_note,said", [
+    ("about", httpx.Response(500, text=""), "bio not read", "the bio"),
+    ("about", httpx.Response(429, text="slow down"), "bio not read", "the bio"),
+    ("about", httpx.ReadTimeout("timed out"), "bio not read", "the bio"),
+    ("about", httpx.Response(200, text="<html>Checking your browser</html>"), "bio not read", "the bio"),
+    ("karma", httpx.Response(503, text=""), "karma not read", "the karma"),
+    ("both", httpx.Response(502, text=""), "bio and karma not read", "the bio and the karma"),
+])
+def test_a_part_hacker_news_did_not_answer_for_is_unread_and_never_empty(monkeypatch, part, answer, row_note, said):
+    pages = found()
+    for name in ("about", "karma"):
+        if part in (name, "both"):
+            pages[f"hacker-news.firebaseio.com/v0/user/samexample/{name}.json"] = answer
+    world(monkeypatch, pages)
+    out = run()
+    h, entry = by_source(out)["hackernews"], out["sources"]["hackernews"]
+    assert h["created"] == "2007-08-18T16:35:47Z" and h["note"] == row_note
+    assert entry == {"site": "Hacker News", "state": "found", "note": f"Hacker News did not answer for {said}. Unknown, not empty."}
+    if part != "karma":
+        assert h["bio"] == ""
+    else:
+        assert h["bio"].startswith("Maps & bread") and h["stats"] == {}
+    # unsettled: asked again soon, and the other sources keep their day
+    assert 0 < ttl("hackernews") <= pf.CACHE_TTL_PARTIAL and all(ttl(s) > 23 * 3600 for s in ALL if s != "hackernews")
+    assert bool(pf._backing_off("hackernews")) == (getattr(answer, "status_code", 0) == 429)
+
+
+def test_hacker_news_whose_first_field_fails_is_failed_whole(monkeypatch):
+    pages = found()
+    pages["hacker-news.firebaseio.com/v0/user/samexample/created.json"] = httpx.ReadTimeout("timed out")
+    world(monkeypatch, pages)
+    out = run()
+    assert out["sources"]["hackernews"]["state"] == "failed" and out["sources"]["hackernews"]["error_code"] == "timeout" and "hackernews" not in by_source(out)
+
+
+@pytest.mark.parametrize("source", ["keybase", "hackernews", "gitlab", "npm", "bluesky", "wikipedia", "codeforces"])
+def test_a_404_is_not_absence_where_the_api_says_absence_another_way(monkeypatch, source):
+    world(monkeypatch, with_source(source, j(404, {"message": "Not Found"})))
+    out = run()
+    assert out["sources"][source]["state"] == "unknown" and source not in by_source(out)
+    assert 0 < ttl(source) <= pf.CACHE_TTL_PARTIAL
+
+
+def test_a_follow_up_that_contradicts_the_first_answer_is_unknown(monkeypatch):
+    # Docker Hub said "an organization, over there", and over there says 404.
+    pages = with_source("dockerhub", j(404, fx("dockerhub_not_found.json")))
+    pages["hub.docker.com/v2/users/samexample/"] = httpx.Response(308, headers={"location": "/v2/orgs/samexample"})
+    world(monkeypatch, pages)
+    assert run()["sources"]["dockerhub"]["state"] == "unknown"
+    # Hugging Face gave its own spelling, and that spelling answers 404.
+    pf.clear_cache_for_tests()
+    pages = with_source("huggingface", j(404, fx("huggingface_not_found.json")))
+    pages["huggingface.co/api/users/samexample/overview"] = httpx.Response(307, headers={"location": "/api/users/SamExample/overview"})
+    world(monkeypatch, pages)
+    assert run()["sources"]["huggingface"]["state"] == "unknown"
+    # and a follow-up that fails is a failure, never an absent account
+    pf.clear_cache_for_tests()
+    pages["huggingface.co/api/users/SamExample/overview"] = httpx.Response(503, text="")
+    world(monkeypatch, pages)
+    assert run()["sources"]["huggingface"]["state"] == "failed"
 
 
 def test_html_to_text():
@@ -687,6 +760,84 @@ def test_accounts_from_addresses():
     for other in ("https://github.com/samexample/repo", "https://github.com/", "https://sam.example.org/about", "https://reddit.com/r/maps", "javascript:x", None,
                   "https://www.pornhub.com/users/sam"):
         assert f(other, "listed") is None, other
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.youtube.com/watch?v=abc123", "https://www.youtube.com/watch", "https://youtube.com/playlist?list=PL123", "https://www.youtube.com/results?search_query=sam",
+    "https://www.youtube.com/channel/UCabc123", "https://www.youtube.com/c/samexample", "https://www.youtube.com/user/samexample", "https://www.youtube.com/samexample",
+    "https://www.youtube.com/@watch", "https://www.youtube.com/@samexample?si=abc", "https://www.youtube.com/@samexample/videos",
+    "https://www.facebook.com/profile.php?id=42", "https://www.facebook.com/profile.php", "https://www.facebook.com/sharer.php", "https://facebook.com/groups",
+    "https://www.facebook.com/marketplace", "https://www.facebook.com/sam.example?ref=share",
+    "https://github.com/sponsors", "https://github.com/orgs", "https://github.com/organizations", "https://github.com/about", "https://github.com/login",
+    "https://github.com/signup", "https://github.com/settings", "https://github.com/features", "https://github.com/pricing", "https://github.com/topics",
+    "https://github.com/marketplace", "https://github.com/notifications", "https://github.com/explore", "https://github.com/Search", "https://github.com/samexample?tab=repositories",
+    "https://x.com/search?q=alice", "https://x.com/search", "https://x.com/home", "https://x.com/explore", "https://x.com/intent", "https://twitter.com/share",
+    "https://twitter.com/hashtag", "https://x.com/i", "https://x.com/intent/tweet?text=hi", "https://twitter.com/sam_example?lang=en",
+    "https://gitlab.com/explore", "https://gitlab.com/users", "https://gitlab.com/help", "https://gitlab.com/robots.txt",
+    "https://www.instagram.com/explore", "https://www.instagram.com/p", "https://www.instagram.com/accounts", "https://www.twitch.tv/directory",
+    "https://dev.to/t", "https://dev.to/search?q=sam", "https://dev.to/settings", "https://codeberg.org/explore", "https://codeberg.org/user",
+    "https://keybase.io/docs", "https://www.reddit.com/user/sam_example?sort=top", "https://bsky.app/profile/sam.example.org?x=1",
+    "https://news.ycombinator.com/user?id=samexample&next=1", "https://news.ycombinator.com/user?name=samexample", "https://news.ycombinator.com/item?id=12345",
+    "https://news.ycombinator.com/user?id=samexample&id=other", "https://sam.wordpress.com/?p=5", "https://fosstodon.example.org/@sam?page=2",
+])
+def test_an_address_that_is_a_page_of_the_site_is_not_an_account(url):
+    assert base.account_from_url(url, "listed") is None
+    assert base.safe_link(url) == url                 # it stays an ordinary link
+
+
+def test_profile_addresses_are_still_read_as_accounts():
+    f = base.account_from_url
+    want = {
+        "https://www.youtube.com/@handle": ("YouTube", "handle", "https://www.youtube.com/@handle"),
+        "https://m.youtube.com/@handle/": ("YouTube", "handle", "https://www.youtube.com/@handle"),
+        "https://github.com/handle": ("GitHub", "handle", "https://github.com/handle"),
+        "https://github.com/handle/": ("GitHub", "handle", "https://github.com/handle"),
+        "https://github.com/handle#readme": ("GitHub", "handle", "https://github.com/handle"),
+        "https://x.com/handle": ("X", "handle", "https://x.com/handle"),
+        "https://twitter.com/handle": ("X", "handle", "https://x.com/handle"),
+        "https://mobile.twitter.com/handle": ("X", "handle", "https://x.com/handle"),
+        "https://www.facebook.com/sam.example": ("Facebook", "sam.example", "https://www.facebook.com/sam.example"),
+        "https://www.instagram.com/sam.example/": ("Instagram", "sam.example", "https://www.instagram.com/sam.example/"),
+        "https://gitlab.com/samexample": ("GitLab", "samexample", "https://gitlab.com/samexample"),
+        "https://www.twitch.tv/samexample": ("Twitch", "samexample", "https://www.twitch.tv/samexample"),
+        "https://dev.to/samexample": ("dev.to", "samexample", "https://dev.to/samexample"),
+        "https://codeberg.org/samexample": ("Codeberg", "samexample", "https://codeberg.org/samexample"),
+        "https://keybase.io/samexample": ("Keybase", "samexample", "https://keybase.io/samexample"),
+        "https://www.linkedin.com/in/sam-example": ("LinkedIn", "sam-example", "https://www.linkedin.com/in/sam-example"),
+        "https://news.ycombinator.com/user?id=samexample": ("Hacker News", "samexample", "https://news.ycombinator.com/user?id=samexample"),
+        "https://samexample.wordpress.com": ("WordPress", "samexample", "https://samexample.wordpress.com"),
+    }
+    for url, (site, handle, address) in want.items():
+        assert f(url, "listed") == {"site": site, "handle": handle, "url": address, "proof": "listed"}, url
+
+
+def test_a_reserved_word_is_not_an_account_however_it_arrives():
+    # a Keybase proof or a profile field can name one of these as a handle
+    for key, word in (("github", "sponsors"), ("github", "Settings"), ("twitter", "search"), ("twitter", "i"), ("facebook", "profile.php"),
+                      ("facebook", "index.html"), ("youtube", "watch"), ("gitlab", "explore"), ("devto", "top")):
+        assert base.known_account(key, word, "listed") is None, (key, word)
+        assert base.reserved(key, word)
+    assert not base.reserved("github", "samexample") and base.known_account("twitter", "@sam_example", "listed")["handle"] == "sam_example"
+
+
+def test_a_link_with_a_hidden_character_is_refused_whole():
+    for bad in ("https://sam.example.org/\u202egnp.exe", "https://sam.example.org/a\u200bb", "https://sam.example.org/\u2066x\u2069", "https://sam.example.org/\ufeffx",
+                "https://sam.example.org/a\u00adb", "https://sam.\u200dexample.org/", "https://sam.example.org/\ue000", "\u202ehttps://sam.example.org/"):
+        assert base.safe_link(bad) == "", ascii(bad)
+        assert base.account("Site", "sam", bad, "listed") is None and base.item("x", bad, "package") is None
+    assert base.safe_link("https://sam.example.org/caf\u00e9") == "https://sam.example.org/caf\u00e9"       # a letter is not a format character
+    row = base.profile("x", "X", "h", "https://x.example.org/h", website="https://sam.example.org/\u202egnp.exe", links=["https://ok.example.org/a\u200b", "https://fine.example.org"])
+    assert row["website"] == "" and row["links"] == ["https://fine.example.org"]
+
+
+def test_a_mastodon_field_is_a_link_only_when_it_is_written_as_one():
+    fields = [{"name": "Pronouns", "value": "she.her"}, {"name": "Site", "value": "sam.example.org/maps"}, {"name": "Rel", "value": "<a href=\"she.her\">she.her</a>"},
+              {"name": "Blog", "value": "https://blog.example.net/sam"}, {"name": "Old", "value": "HTTP://old.example.net"},
+              {"name": "Code", "value": "<a href=\"https://github.com/samexample\" rel=\"me\">github.com/samexample</a>", "verified_at": "2026-01-01T00:00:00Z"},
+              {"name": "Ftp", "value": "ftp://files.example.net"}]
+    links, accounts = mastodon.field_links(fields)
+    assert links == ["https://blog.example.net/sam", "HTTP://old.example.net", "https://github.com/samexample"]
+    assert [a and a["site"] for a in accounts] == [None, None, "GitHub"]
     assert base.account("Pornhub", "sam", "https://sam.example.org", "listed") is None and base.account("", "sam", "https://sam.example.org", "listed") is None
     assert base.known_account("nowhere", "sam", "listed") is None and base.known_account("github", None, "listed") is None
 
@@ -700,18 +851,83 @@ def test_the_answer_is_cached_for_a_day_per_handle_as_typed(monkeypatch):
     second = run()
     assert second["cached"] is True and first["cached"] is False and len(calls) == n and len(pictures) == k
     assert second["profiles"] == first["profiles"] and second["sources"] == first["sources"]
-    assert pf._cache[H][0] - time.time() > 23 * 3600
+    assert first["asked"] == ALL and second["asked"] == [] and all(ttl(s) > 23 * 3600 for s in ALL)
     run("SamExample")                # Hacker News IDs are case sensitive, so another spelling is another question
-    assert len(calls) > n and set(pf._cache) == {H, "SamExample"}
+    assert len(calls) > n and {k[1] for k in pf._cache} == {H, "SamExample"}
+
+
+def test_one_unsettled_source_is_asked_again_alone(monkeypatch):
+    calls, pictures = world(monkeypatch, with_source("lichess", httpx.Response(503, text="")))
+    first = run()
+    assert first["sources"]["lichess"]["state"] == "failed" and first["cached"] is False and first["asked"] == ALL
+    del calls[:], pictures[:]
+    second = run()                      # inside the ten minutes: everything is still kept
+    assert second["cached"] is True and calls == [] and second["sources"] == first["sources"]
+    pf._cache[("lichess", H)] = (time.time() - 1, *pf._cache[("lichess", H)][1:])       # the short keep has run out
+    world(monkeypatch, found(), calls, pictures)
+    third = run()
+    assert {c.url.host for c in calls} == {"lichess.org"} and len(calls) == 1 and pictures == []
+    assert third["asked"] == ["lichess"] and third["cached"] is False
+    assert third["sources"]["lichess"]["state"] == "found" and [p["source"] for p in third["profiles"]] == ALL
+    assert {k: v for k, v in by_source(third).items() if k != "lichess"} == by_source(first)
+    assert ttl("lichess") > 23 * 3600
+
+
+def test_a_failed_picture_is_fetched_again_with_its_profile_only(monkeypatch):
+    calls, _ = world(monkeypatch, found())
+
+    async def broken(images):
+        return {"results": [{"id": i["id"], "error": "The image could not be read.", "error_code": "bad_response"} if i["id"] == "codeberg"
+                            else {"id": i["id"], "hash": "0f1e2d3c4b5a6978", "default": False, "thumb": THUMB} for i in images]}
+    monkeypatch.setattr(pf, "run_avatar_hash", broken)
+    assert by_source(run())["codeberg"]["avatar_state"] == "failed"
+    pf._cache[("codeberg", H)] = (time.time() - 1, *pf._cache[("codeberg", H)][1:])
+    del calls[:]
+    _, pictures = world(monkeypatch, found(), calls)
+    out = run()
+    assert {c.url.host for c in calls} == {"codeberg.org"} and len(pictures) == 1 and out["asked"] == ["codeberg"]
+    assert by_source(out)["codeberg"]["avatar_state"] == "ok"
+
+
+def test_a_source_that_said_429_is_left_alone_for_everyone_for_a_while(monkeypatch):
+    limited = httpx.Response(429, text="{}", headers={"content-type": "application/json", "retry-after": "120"})
+    calls, _ = world(monkeypatch, with_source("gravatar", limited))
+    first = run()
+    assert first["sources"]["gravatar"]["state"] == "rate_limited" and first["sources"]["gravatar"]["retry_after"] == 120
+    del calls[:]
+    other = run("otherhandle")          # another handle, moments later: Gravatar is not asked
+    assert not any(c.url.host == "api.gravatar.com" for c in calls) and len(calls) > 10
+    entry = other["sources"]["gravatar"]
+    assert entry["state"] == "rate_limited" and entry["error_code"] == "rate_limited" and 0 < entry["retry_after"] <= 120
+    assert "gravatar" not in other["asked"] and ("gravatar", "otherhandle") not in pf._cache
+    # when the wait is over it is asked again
+    pf._backoff["gravatar"] = time.time() - 1
+    del calls[:]
+    world(monkeypatch, found(), calls)
+    third = run("thirdhandle")
+    assert any(c.url.host == "api.gravatar.com" for c in calls) and "gravatar" in third["asked"] and "gravatar" not in pf._backoff
+
+
+def test_the_wait_after_a_429_has_a_default_and_a_ceiling(monkeypatch):
+    for header, want in (({}, pf.BACKOFF_DEFAULT), ({"retry-after": "999999"}, pf.BACKOFF_MAX), ({"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}, pf.BACKOFF_DEFAULT),
+                         ({"retry-after": "0"}, pf.BACKOFF_DEFAULT), ({"retry-after": "-5"}, pf.BACKOFF_DEFAULT)):
+        pf.clear_cache_for_tests()
+        world(monkeypatch, with_source("lobsters", httpx.Response(429, text="", headers=header)))
+        assert run()["sources"]["lobsters"]["retry_after"] == want, header
+        assert 0 < pf._backoff["lobsters"] - time.time() <= want
+    # the API's own rate message in a 200 or a 400 counts too
+    pf.clear_cache_for_tests()
+    world(monkeypatch, with_source("codeforces", j(400, {"status": "FAILED", "comment": "Call limit exceeded"})))
+    assert run()["sources"]["codeforces"]["state"] == "rate_limited" and pf._backing_off("codeforces")
 
 
 def test_the_cache_is_bounded_and_expires(monkeypatch):
     monkeypatch.setattr(pf, "CACHE_MAX", 3)
     for i in range(6):
-        pf._cache_put(f"h{i}", {"profiles": []}, 60)
-    assert list(pf._cache) == ["h3", "h4", "h5"]
-    pf._cache_put("old", {"profiles": []}, -1)
-    assert pf._cache_get("old") is None and "old" not in pf._cache
+        pf._cache_put(("gitlab", f"h{i}"), {"site": "GitLab", "state": "not_found"}, None, 60)
+    assert list(pf._cache) == [("gitlab", "h3"), ("gitlab", "h4"), ("gitlab", "h5")]
+    pf._cache_put(("gitlab", "old"), {"site": "GitLab", "state": "not_found"}, None, -1)
+    assert pf._cache_get(("gitlab", "old")) is None and ("gitlab", "old") not in pf._cache
 
 
 # ---- the endpoint ------------------------------------------------------------------------
@@ -727,7 +943,7 @@ def test_endpoint_validates_and_answers_in_the_documented_shape(monkeypatch):
         assert c.get("/api/recon/profiles").status_code == 405
         r = c.post("/api/recon/profiles", json={"username": "@samexample"})
     body = r.json()
-    assert r.status_code == 200 and set(body) == {"username", "profiles", "sources", "cached"} and body["username"] == H
+    assert r.status_code == 200 and set(body) == {"username", "profiles", "sources", "cached", "asked"} and body["username"] == H
     assert list(body["sources"]) == ALL and len(body["profiles"]) == 16
     assert all(set(e) >= {"site", "state"} and e["state"] in pf.STATES for e in body["sources"].values())
     assert match_limit("/api/recon/profiles") == ("/api/recon/profiles", 10, 60)

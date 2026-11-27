@@ -326,52 +326,75 @@ def _pairs(d, cap: int = 12, width: int = 240) -> str:
     return "; ".join(f"{_cell(k, 30).replace('_', ' ')}: {_cell(v, width)}" for k, v in list(d.items())[:cap] if v not in (None, "", [], {}))
 
 
+_COUNT_MAX = 10 ** 6
+
+
+def _count(value) -> int:
+    """A count from the payload: a whole number in a sane range, else 0. Never text."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < _COUNT_MAX else 0
+
+
+def _list(value, cap: int) -> list:
+    """A list from the payload, capped. Anything that is not a list is no rows."""
+    return value[:cap] if isinstance(value, list) else []
+
+
+def _dicts(value, cap: int) -> list[dict]:
+    return [x for x in (value if isinstance(value, list) else []) if isinstance(x, dict)][:cap]
+
+
 def _deep_lines(req) -> list[str]:
     """The profile sources, the accounts and keys behind an address, and GitHub activity. Every
     line says how its values are known, and a site or a lookup that did not answer is listed as
-    unknown. Nothing is added when a case has none of the three, so older prompts are unchanged."""
+    unknown. Nothing is added when a case has none of the three, so older prompts are unchanged.
+
+    The three payloads are outside data: every list is checked to be a list, every count is a
+    whole number in range (`_count`) and every other value is an inert cell (`_cell`)."""
     lines: list[str] = []
     ps = req.profile_sources if isinstance(req.profile_sources, dict) else None
     if ps:
-        for p in [x for x in (ps.get("profiles") or []) if isinstance(x, dict)][:16]:
+        for p in _dicts(ps.get("profiles"), 16):
             head = f"{_cell(p.get('site'), 40)} record ({_cell(p.get('url'), 300)}) [status: {_cell(p.get('status'), 20) or 'unverified'}]"
             said, rec = _pairs(p.get("self_declared")), _pairs(p.get("site_record"), width=500)
             lines.append(head + (f" SELF-DECLARED: {said}." if said else "") + (f" SITE RECORD: {rec}." if rec else "") + ("" if said or rec else " The record carries nothing but the handle."))
-        absent = [_cell(x, 40) for x in (ps.get("not_found") or [])[:16]]
+        absent = [c for c in (_cell(x, 40) for x in _list(ps.get("not_found"), 16)) if c]
         if absent:
             lines.append("Profile sources that answered and have no record for this handle: " + ", ".join(absent))
-        down = [_cell(x, 80) for x in (ps.get("not_answered") or [])[:16]]
+        down = [c for c in (_cell(x, 80) for x in _list(ps.get("not_answered"), 16)) if c]
         if down:
             lines.append("Profile sources that did NOT answer (unknown, not absent; list under Gaps): " + "; ".join(down))
-        notes = [_cell(x, 240) for x in (ps.get("notes") or [])[:6]]
+        notes = [c for c in (_cell(x, 240) for x in _list(ps.get("notes"), 6)) if c]
         if notes:
             lines.append("Notes from profile sources: " + "; ".join(notes))
     ea = req.email_accounts if isinstance(req.email_accounts, dict) else None
     if ea:
         def commits(a: dict) -> str:
-            names = ", ".join(f"{_cell(n.get('name'), 100)} ({n.get('commits', 0)} commits{', in a repository the account owns' if n.get('own_repo') else ''})" for n in (a.get("self_declared_names") or [])[:5] if isinstance(n, dict))
-            offsets = ", ".join(f"UTC{_cell(o.get('offset'), 8)} ({o.get('commits', 0)})" for o in (a.get("self_declared_utc_offsets") or [])[:4] if isinstance(o, dict))
+            names = ", ".join(f"{_cell(n.get('name'), 100)} ({_count(n.get('commits'))} commits{', in a repository the account owns' if n.get('own_repo') is True else ''})" for n in _dicts(a.get("self_declared_names"), 5))
+            offsets = ", ".join(f"UTC{_cell(o.get('offset'), 8)} ({_count(o.get('commits'))})" for o in _dicts(a.get("self_declared_utc_offsets"), 4))
             span = " to ".join(x for x in (_cell(a.get("self_declared_first_commit"), 12), _cell(a.get("self_declared_last_commit"), 12)) if x)
             return (f" SELF-DECLARED inside the commits (forgeable): names {names or 'none'}" + (f"; dates {span}" if span else "") + (f"; time zone offsets {offsets}" if offsets else "") + ".")
-        for a in [x for x in (ea.get("accounts") or []) if isinstance(x, dict)][:10]:
+        for a in _dicts(ea.get("accounts"), 10):
             login, kind = _cell(a.get("login"), 40), _cell(a.get("account_type"), 20)
             if a.get("tie") == "commit_author":
-                lines.append(f"SITE RECORD: GitHub attributes {a.get('commits_seen', 0)} commits that carry the searched address to the account {login} ({_cell(a.get('url'), 120)}). "
+                lines.append(f"SITE RECORD: GitHub attributes {_count(a.get('commits_seen'))} commits that carry the searched address to the account {login} ({_cell(a.get('url'), 120)}). "
                              "That account has the address confirmed, which is a strong tie between the address and the account." + commits(a))
             else:
-                lines.append(f"The public GitHub profile of {login} ({kind or 'account'}) shows the searched address. Weaker than a commit attribution"
+                # A user search hit carries no address, so the profile was not seen to show it.
+                lines.append(f"GitHub's user search matched the searched address on the public profile of {login} ({kind or 'account'}); the profile itself was not read to confirm it. Weaker than a commit attribution"
                              + (", and unconfirmed: GitHub does not verify an organization's address." if kind == "Organization" else "."))
         un = ea.get("unattributed_commits")
-        if isinstance(un, dict) and un.get("commits_seen"):
-            lines.append(f"{un.get('commits_seen')} commits carry the searched address and belong to NO GitHub account. Anyone can write any address in a commit, so they prove nothing about who wrote them." + commits(un))
-        for k in [x for x in (ea.get("keys") or []) if isinstance(x, dict)][:10]:
+        if isinstance(un, dict) and _count(un.get("commits_seen")):
+            lines.append(f"{_count(un.get('commits_seen'))} commits carry the searched address and belong to NO GitHub account. Anyone can write any address in a commit, so they prove nothing about who wrote them." + commits(un))
+        for k in _dicts(ea.get("keys"), 10):
             if k.get("unread"):
                 lines.append("An OpenPGP key is published for the searched address that could not be read (unknown contents).")
                 continue
-            lines.append(f"SITE RECORD: keys.openpgp.org publishes OpenPGP key {_cell(k.get('fingerprint'), 40)} ({_cell(k.get('algorithm'), 60)}{', revoked' if k.get('revoked') else ''}) for the searched address; "
-                         f"it verified by mail: {', '.join(_cell(e, 254) for e in (k.get('verified_addresses') or [])[:6]) or 'this address'}. "
-                         f"SELF-DECLARED in the key: created {_cell(k.get('self_declared_created'), 12) or 'unknown'}; names {', '.join(_cell(n, 100) for n in (k.get('self_declared_names') or [])[:6]) or 'none'}.")
-        down = [_cell(x, 80) for x in (ea.get("not_answered") or [])[:4]]
+            verified = ", ".join(c for c in (_cell(e, 254) for e in _list(k.get("verified_addresses"), 6)) if c)
+            key_names = ", ".join(c for c in (_cell(n, 100) for n in _list(k.get("self_declared_names"), 6)) if c)
+            lines.append(f"SITE RECORD: keys.openpgp.org publishes OpenPGP key {_cell(k.get('fingerprint'), 40)} ({_cell(k.get('algorithm'), 60)}{', revoked' if k.get('revoked') is True else ''}) for the searched address; "
+                         f"it verified by mail: {verified or 'this address'}. "
+                         f"SELF-DECLARED in the key: created {_cell(k.get('self_declared_created'), 12) or 'unknown'}; names {key_names or 'none'}.")
+        down = [c for c in (_cell(x, 80) for x in _list(ea.get("not_answered"), 4)) if c]
         if down:
             lines.append("Address lookups that did NOT answer (unknown, never 'no account' or 'no key'; list under Gaps): " + "; ".join(down))
     ga = req.github_activity if isinstance(req.github_activity, dict) else None
@@ -379,8 +402,11 @@ def _deep_lines(req) -> list[str]:
         if ga.get("state") != "ok":
             lines.append(f"GitHub activity: {_cell(ga.get('note'), 240)}")
         else:
-            lines.append(f"SITE RECORD, GitHub activity: {_cell(ga.get('summary'), 300)} Events per UTC hour 00 to 23: {', '.join(str(int(x)) for x in (ga.get('hours_utc') or [])[:24] if isinstance(x, (int, float)))}. "
-                         f"Most active in: {', '.join(_cell(x, 120) for x in (ga.get('top_repositories') or [])[:5]) or 'none listed'}.")
+            # A count that is not a whole number in range is left out, never written as text.
+            hours = [str(x) for x in _list(ga.get("hours_utc"), 24) if isinstance(x, int) and not isinstance(x, bool) and 0 <= x < _COUNT_MAX]
+            repos = ", ".join(c for c in (_cell(x, 120) for x in _list(ga.get("top_repositories"), 5)) if c)
+            lines.append(f"SITE RECORD, GitHub activity: {_cell(ga.get('summary'), 300)} Events per UTC hour 00 to 23: {', '.join(hours)}. "
+                         f"Most active in: {repos or 'none listed'}.")
             est = ga.get("utc_offset_estimate")
             if isinstance(est, dict):
                 lines.append(f"UTC offset ESTIMATE from those hours: {_cell(est.get('range'), 40)}. {_cell(est.get('basis'), 400)} {_cell(est.get('assumption'), 400)} {_cell(est.get('caveat'), 400)} "

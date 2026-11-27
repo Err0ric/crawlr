@@ -50,6 +50,7 @@ MAX_ITEMS = 10
 MAX_STATS = 8
 
 _BIDI = frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff")
+_NOT_IN_A_LINK = frozenset({"Cc", "Cf", "Cs", "Co"})     # control, format, surrogate, private use
 _IMAGE_PATH_RE = re.compile(r"\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico)$", re.I)
 _URL_IN_TEXT_RE = re.compile(r"https?://[^\s<>\"'()\[\]{}]+", re.I)
 _EMAIL_IN_TEXT_RE = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}")
@@ -71,6 +72,7 @@ class Reply:
     parsed: bool = False      # the body was JSON
     walled: bool = False      # the body was a web page
     location: str = ""        # the Location header of a redirect, never followed here
+    retry_after: int | None = None   # Retry-After in seconds, when the header is a whole number
 
 
 @dataclass
@@ -80,6 +82,10 @@ class Result:
     error: dict | None = None
     note: str = ""
     settled: bool | None = None    # None: decided by the state (see modules/profiles/__init__.py)
+    # Seconds the site asked this server to wait (Retry-After on a 429), when it said. With it,
+    # or with the state rate_limited, the source is not asked again for anyone for a while.
+    retry_after: int | None = None
+    limited: bool = False          # a request of this read was answered 429, whatever the state
 
 
 NOT_FOUND = Result("not_found")
@@ -102,22 +108,28 @@ async def get_json(client: httpx.AsyncClient, url: str, params: dict | None = No
                 raise SourceError("bad_response", "response too large")
             chunks.append(chunk)
         status, location = resp.status_code, resp.headers.get("location", "")
+        wait = resp.headers.get("retry-after", "").strip()
+    retry = int(wait) if wait.isascii() and wait.isdigit() and len(wait) <= 6 else None
     body = b"".join(chunks)
     try:
-        return Reply(status, json.loads(body.decode("utf-8")), parsed=True, location=location)
+        return Reply(status, json.loads(body.decode("utf-8")), parsed=True, location=location, retry_after=retry)
     except ValueError:
-        return Reply(status, walled=body.lstrip()[:1] == b"<", location=location)
+        return Reply(status, walled=body.lstrip()[:1] == b"<", location=location, retry_after=retry)
 
 
 def settle(reply: Reply, not_found: tuple[int, ...] = (404,)) -> Result | None:
-    """What a reply means when it is not a readable 200. None: go on and read `reply.data`."""
+    """What a reply means when it is not a readable 200. None: go on and read `reply.data`.
+
+    `not_found` is the statuses that are this API's own "no such account". A source whose
+    documented absence is a 200 with an empty value (Keybase, Hacker News, GitLab) or a 400
+    passes `()`: a 404 from such a host is an edge or a moved API, which is "unknown"."""
     s = reply.status
     if s in not_found:
         return NOT_FOUND
     if s in (401, 403):
         return BLOCKED
     if s == 429:
-        return failed("rate_limited", "HTTP 429")
+        return Result("rate_limited", error=error_fields(code="rate_limited", detail="HTTP 429"), retry_after=reply.retry_after, limited=True)
     if s >= 500:
         return failed("upstream", f"HTTP {s}")
     if s != 200:
@@ -185,11 +197,13 @@ def html_text(value) -> tuple[str, list[str]]:
 
 
 def safe_link(value) -> str:
-    """An http or https address of a named host, or "". A bare "host/path" gets https."""
+    """An http or https address of a named host, or "". A bare "host/path" gets https. An
+    address that holds a control or format character (a direction override, a zero-width
+    character) is refused whole: it would not show as the address it is."""
     if not isinstance(value, str):
         return ""
     v = value.strip()
-    if not v or len(v) > LINK_MAX or any(ch.isspace() or unicodedata.category(ch) == "Cc" for ch in v):
+    if not v or len(v) > LINK_MAX or any(ch.isspace() or unicodedata.category(ch) in _NOT_IN_A_LINK for ch in v):
         return ""
     if not re.match(r"^https?://", v, re.I):
         if "://" in v or v.startswith(("/", "@", "#", "mailto:")):
@@ -282,6 +296,51 @@ _ACCOUNT_HOSTS = {
     "flickr.com": ("flickr", "photos"),
 }
 _FEDI_RE = re.compile(r"^@([A-Za-z0-9_]{1,30})$")
+_SUBDOMAINS = ("www.", "old.", "m.", "mobile.")
+
+# First path segments that are a page of the site and never an account, per site key. A name
+# here passes the site's handle rule, so without this list "github.com/sponsors" would read
+# as the account "sponsors". Compared in lower case.
+_COMMON_PAGES = frozenset({
+    "about", "account", "accounts", "admin", "api", "blog", "contact", "dashboard", "explore", "help", "home", "login", "logout",
+    "new", "notifications", "privacy", "search", "settings", "signin", "signup", "support", "terms", "tos",
+})
+RESERVED = {
+    "github": frozenset({
+        "apps", "codespaces", "collections", "copilot", "customer-stories", "discussions", "enterprise", "events", "features", "gist",
+        "issues", "join", "marketplace", "mobile", "orgs", "organizations", "pricing", "pulls", "readme", "security", "session",
+        "sessions", "site", "sponsors", "stars", "team", "topics", "trending", "users", "watching"}),
+    "twitter": frozenset({"compose", "download", "hashtag", "i", "intent", "jobs", "messages", "oauth", "share"}),
+    "gitlab": frozenset({
+        "-", "assets", "files", "groups", "health_check", "import", "jwt", "oauth", "profile", "projects", "public", "s", "sitemap",
+        "snippets", "unsubscribes", "uploads", "users", "v2"}),
+    "keybase": frozenset({"docs", "download", "encrypt", "decrypt", "inv", "jobs", "kbfs", "popular", "sign", "team", "verify", "warp"}),
+    "twitch": frozenset({
+        "bits", "broadcast", "directory", "downloads", "drops", "embed", "friends", "inventory", "jobs", "moderator", "p", "payments",
+        "popout", "prime", "store", "subscriptions", "team", "turbo", "u", "videos", "wallet"}),
+    "instagram": frozenset({"challenge", "developer", "direct", "directory", "legal", "p", "reel", "reels", "stories", "tv", "web"}),
+    "facebook": frozenset({
+        "ads", "business", "events", "games", "gaming", "groups", "hashtag", "marketplace", "messages", "pages", "people", "photo",
+        "photos", "policies", "public", "reel", "share", "sharer", "stories", "watch"}),
+    "youtube": frozenset({"c", "channel", "feed", "gaming", "hashtag", "music", "playlist", "results", "shorts", "user", "watch"}),
+    "devto": frozenset({
+        "badges", "challenges", "comments", "connect", "enter", "events", "faq", "feed", "followers", "followings", "latest",
+        "listings", "mod", "organizations", "pod", "podcasts", "reactions", "readinglist", "rss", "series", "shop", "sponsors", "t",
+        "tags", "top", "videos", "welcome"}),
+    "codeberg": frozenset({
+        "assets", "attachments", "avatar", "avatars", "captcha", "commits", "debug", "devtest", "error", "ghost", "issues", "metrics",
+        "milestones", "org", "pulls", "raw", "repo", "repo-avatars", "ssh_info", "user", "v2"}),
+    "reddit": frozenset({"me"}),
+    "flickr": frozenset({"tags"}),
+}
+# A file name is a page, never a handle: "profile.php", "robots.txt", "index.html".
+_PAGE_FILE_RE = re.compile(r"\.(?:php\d?|html?|aspx?|jsp|xml|txt|json|ico)$", re.I)
+
+
+def reserved(key: str, handle: str) -> bool:
+    """True when `handle` is a page of the site `key` (a key of ACCOUNT_SITES), not an account."""
+    h = handle.lower()
+    return h in _COMMON_PAGES or h in RESERVED.get(key, ()) or bool(_PAGE_FILE_RE.search(h))
 
 
 def account(site: str, handle: str, url: str, proof: str, proof_url: str = "") -> dict | None:
@@ -301,22 +360,32 @@ def known_account(key: str, handle, proof: str, proof_url: str = "") -> dict | N
     """An account on a site in ACCOUNT_SITES, with its address built from the checked handle."""
     spec = ACCOUNT_SITES.get(key)
     h = handle.strip().lstrip("@") if isinstance(handle, str) else ""
-    if not spec or not re.fullmatch(spec[1], h):
+    if not spec or not re.fullmatch(spec[1], h) or reserved(key, h):
         return None
     return account(spec[0], h, spec[2].format(h), proof, proof_url)
 
 
 def account_from_url(url, proof: str, proof_url: str = "") -> dict | None:
     """The account a profile address names, when the host is a known site (or the address has
-    the "/@name" shape of a fediverse profile). None for any other address."""
+    the "/@name" shape of a fediverse profile). None for any other address, which then stays an
+    ordinary link: an address with a query ("watch?v=", "profile.php?id=", "search?q="), with
+    more path than the site's profile path, or whose first segment is a page of the site
+    (RESERVED). The one query read is Hacker News's own "user?id=name"."""
     address = safe_link(url)
     if not address:
         return None
     parts = urlsplit(address)
-    host = (parts.hostname or "").lower().removeprefix("www.").removeprefix("old.")
+    host = (parts.hostname or "").lower()
+    for sub in _SUBDOMAINS:
+        host = host.removeprefix(sub)
     segs = [s for s in parts.path.split("/") if s]
-    if host == "news.ycombinator.com" and segs == ["user"]:
-        return known_account("hackernews", (parse_qs(parts.query).get("id") or [""])[0], proof, proof_url)
+    if host == "news.ycombinator.com":
+        query = parse_qs(parts.query, keep_blank_values=True)
+        if segs != ["user"] or set(query) != {"id"} or len(query["id"]) != 1:
+            return None
+        return known_account("hackernews", query["id"][0], proof, proof_url)
+    if parts.query:
+        return None
     if host.endswith(".wordpress.com") and not segs:
         return known_account("wordpress", host[: -len(".wordpress.com")], proof, proof_url)
     spec = _ACCOUNT_HOSTS.get(host)
@@ -325,6 +394,9 @@ def account_from_url(url, proof: str, proof_url: str = "") -> dict | None:
         if lead and len(segs) == 2 and segs[0] in (lead, "u" if lead == "user" else lead):
             return known_account(key, segs[1], proof, proof_url)
         if not lead and len(segs) == 1:
+            if key == "youtube" and not segs[0].startswith("@"):
+                # "youtube.com/name" is an old custom address or a page, not the handle "@name".
+                return None
             return known_account(key, segs[0], proof, proof_url)
         return None
     if len(segs) == 1 and _FEDI_RE.match(segs[0]):

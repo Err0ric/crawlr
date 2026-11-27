@@ -9,6 +9,7 @@ import { readPhone, readRegion } from "./phone.js";
 import { importSimilar } from "./evidence.js";
 import { readBlock } from "./adult.js";
 import { DEEP_READERS } from "./deep.js";
+import { readCasework, CASEWORK_KEYS } from "./casework.js";
 
 export const CASE_VERSION = 1;
 export const MAX_CASE_BYTES = 3 * 1024 * 1024;   // browser storage holds about 5 MB for the whole history
@@ -100,8 +101,15 @@ export function parseCaseFile(text) {
   // a thumbnail passes the same check as any other and a state is a known one. Guard-only text
   // is dropped. A value that cannot be read is dropped; a recorded failure stays a failure.
   for (const [k, read] of Object.entries(DEEP_READERS)) if (k in results) { const v = read(results[k]); if (v) results[k] = v; else delete results[k]; }
+  // The investigator's own work travels with the file and is read like everything else in it:
+  // the pick of the person the case is about (member ids only, and marked as the file's pick, so
+  // the page never says "you picked"), the pivot trail (text, clipped; its case ids mean nothing
+  // in this browser) and the parked and followed steps. Archive answers are among the record
+  // sources above: each snapshot address is rebuilt from its timestamp and the profile address.
+  // A pick that names no cluster of this case simply does not apply: the automatic choice stands.
+  { const cw = readCasework(results, { file: true }); for (const k of ["pick", "trail", "nextSteps"]) { if (k in cw) results[k] = cw[k]; else delete results[k]; } }
   if (Object.keys(results).length > MAX_SOURCES) return fail("The case file holds more sources than CrawlR has.");
-  if (!Object.keys(results).filter((k) => k !== "adultMode" && k !== "adultBlock" && k !== "phoneRegion").length) return fail("The case file holds no results.");
+  if (!Object.keys(results).filter((k) => k !== "adultMode" && k !== "adultBlock" && k !== "phoneRegion" && !CASEWORK_KEYS.includes(k)).length) return fail("The case file holds no results.");
   const ran = Number.isFinite(j.ran) && j.ran > 0 && j.ran <= Date.now() + 86400000 ? j.ran : Date.now();
   const ai = report(j.ai), deep = report(j.deep);
   const entry = {

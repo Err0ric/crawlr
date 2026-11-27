@@ -17,6 +17,7 @@ ID, SITE = "mastodon", "Mastodon"
 HOST = "mastodon.social"
 URL = f"https://{HOST}/api/v1/accounts/lookup"
 HANDLE_RE = re.compile(r"^[A-Za-z0-9_]{1,30}$")
+_WEB_RE = re.compile(r"^https?://", re.I)
 
 
 def field_links(fields) -> tuple[list[str], list[dict]]:
@@ -26,7 +27,10 @@ def field_links(fields) -> tuple[list[str], list[dict]]:
         if not isinstance(f, dict):
             continue
         text, hrefs = base.html_text(f.get("value"))
-        url = base.safe_link(hrefs[0] if hrefs else text if " " not in text else "")
+        # Only a value that is written as a web address is a link. A bare word with a dot in it
+        # ("she.her") is text, so nothing is promoted to "https://she.her".
+        candidate = hrefs[0] if hrefs else text
+        url = base.safe_link(candidate) if _WEB_RE.match(candidate.strip()) else ""
         if not url:
             continue
         links.append(url)

@@ -128,6 +128,56 @@ def is_rate_limit(resp: httpx.Response) -> bool:
     return "rate limit" in message or "abuse" in message
 
 
+# A spent allowance, as GitHub's own headers reported it: resource ("core", "search") -> the time
+# it resets. The allowance is one per server address (or per token), shared by every visitor,
+# so once it is known to be spent no request is made until it resets.
+QUOTA_WAIT_MAX = 3600
+_quota_reset: dict[str, float] = {}
+
+
+def clear_quota_for_tests() -> None:
+    _quota_reset.clear()
+
+
+def note_quota(resp: httpx.Response, resource: str) -> None:
+    """Remember a spent allowance from a response: `x-ratelimit-remaining: 0` with its reset
+    time (on a refusal or on the last request that was still served), or a rate limit answer
+    with a Retry-After. Only what GitHub said in numbers is remembered: a refusal that names
+    no time is reported and the next call asks again. `resource` is used when the response
+    does not name its own."""
+    name = resp.headers.get("x-ratelimit-resource") or resource
+    name = name if name in ("core", "search") else resource
+    now = time.time()
+    until = 0.0
+    reset, wait = resp.headers.get("x-ratelimit-reset", ""), resp.headers.get("retry-after", "")
+    if resp.headers.get("x-ratelimit-remaining") == "0" and reset.isascii() and reset.isdigit() and len(reset) <= 12:
+        until = float(reset)
+    elif wait.isascii() and wait.isdigit() and len(wait) <= 6 and is_rate_limit(resp):
+        until = now + int(wait)
+    if until > now:
+        _quota_reset[name] = max(_quota_reset.get(name, 0.0), min(until, now + QUOTA_WAIT_MAX))
+
+
+def quota_wait(resource: str) -> int:
+    """Seconds until a spent allowance resets, or 0 when a request may be made."""
+    until = _quota_reset.get(resource)
+    if until is None:
+        return 0
+    left = until - time.time()
+    if left <= 0:
+        _quota_reset.pop(resource, None)
+        return 0
+    return max(1, int(left + 0.999))
+
+
+def rate_limited_fields(wait: int, detail: str) -> dict:
+    """The error fields of a rate limited answer, the same words whether GitHub just refused
+    or the allowance is already known to be spent."""
+    mins = max(1, round(wait / 60))
+    return error_fields(code="rate_limited", detail=detail,
+                        message=f"GitHub is rate limiting CrawlR. Try again in about {mins} minute{'s' if mins != 1 else ''}.")
+
+
 async def run_github(username: str, timeout: int = 10) -> dict:
     key = username.lower()
     cached = _cache_get(key)

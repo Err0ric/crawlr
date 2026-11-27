@@ -29,6 +29,13 @@ The request (checked against the live API on 2026-11-26 with an organisation's p
   * no captures: HTTP 200 and the body `[]`.
   * a request the server does not accept: HTTP 400, text/plain, empty body.
   * 429 is the archive's rate limit answer (not provoked here; taken from its documentation).
+  * `filter=statuscode:200` counts captures of the page itself. A profile the archive only
+    ever saw as a redirect or an error answers `none`, and the `none` answer's `note` says
+    exactly that, so it is not read as "never archived".
+  * a URL with `*` in it is refused as `bad_url`: the index reads a trailing `*` as a prefix
+    query over every address that starts the same way, which is not one profile page.
+
+The body is read as a stream and dropped past MAX_BODY, never held whole first.
 
 States:
 
@@ -42,6 +49,7 @@ States:
 A failure is never "none". Nothing from the URL is logged.
 """
 
+import json
 import os
 import re
 import time
@@ -77,7 +85,9 @@ REFUSALS = {
 }
 
 _TS = re.compile(r"^\d{14}$")
-_BAD_CHARS = re.compile(r"[\s<>\"'`\\^{}|]|[\x00-\x1f\x7f]")
+_BAD_CHARS = re.compile(r"[\s<>\"'`\\^{}|*]|[\x00-\x1f\x7f]")
+NONE_NOTE = ("The archive holds no capture of the page itself. Captures that were a redirect or an error are not counted, "
+             "so the address may still appear in the archive.")
 
 
 # --------------------------------------------------------------------------------------
@@ -173,7 +183,7 @@ def _base(url: str, state: str) -> dict:
 def build_answer(url: str, rows: list[tuple[str, str]]) -> dict:
     """The answer for a parsed index reply. Pure."""
     if not rows:
-        return _base(url, "none")
+        return {**_base(url, "none"), "note": NONE_NOTE}
     stamps = [ts for ts, _ in rows]
     digests = {d for _, d in rows if d}
     return {
@@ -207,18 +217,26 @@ async def _ask(url: str) -> dict:
         "url": url, "matchType": "exact", "output": "json", "fl": "timestamp,digest",
         "filter": "statuscode:200", "collapse": "timestamp:8", "limit": str(ROW_LIMIT),
     }
+    body = bytearray()
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, transport=_transport()) as client:
-            resp = await client.get(CDX_URL, params=params)
+            async with client.stream("GET", CDX_URL, params=params) as resp:
+                status = resp.status_code
+                if status == 200:
+                    # Read up to the cap and stop: a larger body is never held in memory.
+                    async for chunk in resp.aiter_bytes():
+                        body += chunk
+                        if len(body) > MAX_BODY:
+                            break
     except Exception as e:  # noqa: BLE001 - every failure becomes a state with a code
         return _problem(url, e)
-    if resp.status_code != 200:
-        return _problem(url, code=classify_status(resp.status_code))
-    if len(resp.content) > MAX_BODY:
+    if status != 200:
+        return _problem(url, code=classify_status(status))
+    if len(body) > MAX_BODY:
         return _problem(url, code="bad_response")
     try:
-        rows = parse_rows(resp.json())
-    except ValueError:
+        rows = parse_rows(json.loads(bytes(body).decode("utf-8")))
+    except (ValueError, RecursionError):
         rows = None
     if rows is None:
         return _problem(url, code="bad_response")

@@ -172,6 +172,10 @@ def _key_facts(body: bytes) -> dict:
         # v3 fingerprints are MD5 over the key numbers, v5 and v6 use SHA-256 with their own
         # framing. None of them is worked out here.
         return {"parsed": False, "version": version, "reason": f"Version {version} key: not read."}
+    if len(body) > 0xFFFF:
+        # The version 4 fingerprint frames the body with a two byte length, so a longer body
+        # has no fingerprint. Reported as unread, never guessed at.
+        return {"parsed": False, "version": 4, "reason": "Version 4 key packet too large to have a fingerprint: not read."}
     fingerprint = hashlib.sha1(b"\x99" + len(body).to_bytes(2, "big") + body).hexdigest().upper()
     created = int.from_bytes(body[1:5], "big")
     algo = body[5]
@@ -235,7 +239,18 @@ def parse_keys(armored: str) -> list[dict]:
 
 
 async def lookup(client: httpx.AsyncClient, email: str) -> dict:
-    """{state, keys} plus the error fields when the keyserver did not answer. Never raises."""
+    """{state, keys} plus the error fields when the keyserver did not answer. Never raises:
+    anything unexpected, in the request or in reading the key, is `failed`."""
+    try:
+        return await _lookup(client, email)
+    except Exception as e:  # noqa: BLE001
+        # The class name only: the request URL carries the address.
+        fields = error_fields(code=classify(e), detail=type(e).__name__)
+        log.warning("openpgp lookup did not answer", extra={"error_code": fields["error_code"]})
+        return {"state": "failed", "keys": [], **fields}
+
+
+async def _lookup(client: httpx.AsyncClient, email: str) -> dict:
     url = f"https://{HOST}/vks/v1/by-email/{quote(email, safe='')}"
     try:
         async with client.stream("GET", url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"},
@@ -273,6 +288,10 @@ async def lookup(client: httpx.AsyncClient, email: str) -> dict:
         keys = parse_keys(bytes(buf).decode("ascii", errors="replace"))
     except _Unreadable as e:
         log.warning("openpgp key unreadable", extra={"reason": str(e)})
+        return {"state": "failed", "keys": [],
+                **error_fields(code="bad_response", detail=f"Unreadable key from {HOST}")}
+    except Exception as e:  # noqa: BLE001  (a key built to break the reader is an unreadable key)
+        log.warning("openpgp key unreadable", extra={"reason": type(e).__name__})
         return {"state": "failed", "keys": [],
                 **error_fields(code="bad_response", detail=f"Unreadable key from {HOST}")}
     return {"state": "ok", "keys": keys}

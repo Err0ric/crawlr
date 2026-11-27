@@ -37,6 +37,18 @@
 //   8. The primary cluster is the one holding the GitHub anchor, else the Gravatar anchor, else the
 //      one with the most members joined by a strong signal. With no anchor and no strong signal
 //      there is no primary: nothing ties any profile to the target, and nobody is picked.
+//   9. The investigator may pick the person the case is about (opts.pick: the member ids of the
+//      cluster they chose). The pick changes which cluster is primary and nothing else: clusters
+//      are evidence and are built the same way with or without it. A pick is matched by members,
+//      so it survives a re-run; it holds only while exactly one cluster carries its members, and
+//      otherwise the automatic choice of rule 8 stands. The result says which of the two it is
+//      (`picked`) and what the automatic choice is (`auto`, `autoWhy`), so the page can say so.
+//  10. A profile outside the primary cluster is compared with the fullest names the primary
+//      carries. A one-word name beside a full one ("Sam" beside "Sam Example") is ignored for
+//      this: it fits almost anything, so it must not rescue a profile whose full name conflicts
+//      with the identity's full name. When the primary carries one-word names only, a profile
+//      with an unrelated full name is neither a match nor a conflict: it stays in "matches" and
+//      is marked `unsettled`, and the row says the name could not be compared.
 
 const fold = (s) => String(s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -294,18 +306,30 @@ export function clusterIdentities(profiles, opts = {}) {
   clusters.sort(cmp);
   const top = clusters[0];
   const tie = top && !top.anchor && clusters[1] && !clusters[1].anchor && clusters[1].strong === top.strong;
-  const primary = top && (top.anchor || (top.strong > 0 && !tie)) ? top : null;
-  if (primary) {
-    primary.primary = true;
-    primary.why = primary.anchor === "github" ? "it holds GitHub's own record for this handle" : primary.anchor === "gravatar" ? "it holds the Gravatar record for this email" : "it is the only group of profiles tied together by a strong signal";
-  }
+  const auto = top && (top.anchor || (top.strong > 0 && !tie)) ? top : null;
+  if (auto) auto.why = auto.anchor === "github" ? "it holds GitHub's own record for this handle" : auto.anchor === "gravatar" ? "it holds the Gravatar record for this email" : "it is the only group of profiles tied together by a strong signal";
+  const autoWhy = auto ? auto.why : "";
+  // 9. the investigator's pick, matched by members. Zero or several clusters: the pick is void.
+  const want = new Set([].concat(opts.pick || []).filter((x) => typeof x === "string"));
+  const hit = want.size ? clusters.filter((c) => c.members.some((id) => want.has(id))) : [];
+  const picked = hit.length === 1;
+  const primary = picked ? hit[0] : auto;
+  if (primary) { primary.primary = true; if (picked) { primary.picked = true; primary.why = PICK_WHY; } }
   const byProfile = {};
   for (const c of clusters) for (const id of c.members) byProfile[id] = c.id;
   for (const c of clusters) delete c.first;
   // Signals between profiles that did not end up together: support, shown but never joining.
   const supports = [];
   for (const [k, signals] of pairs) { const [i, j] = k.split("|").map(Number); if (find(i) !== find(j)) supports.push({ a: ps[i].id, b: ps[j].id, signals }); }
-  return { clusters, primary: primary ? primary.id : null, unassigned, byProfile, supports, handles: keys };
+  return { clusters, primary: primary ? primary.id : null, auto: auto ? auto.id : null, autoWhy, picked, unassigned, byProfile, supports, handles: keys };
+}
+
+export const PICK_WHY = "you picked this person";
+// The member ids a stored pick names: at most 40 account ids, or null. Outside data is read here.
+export function readPick(v) {
+  const m = v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.members) ? [...new Set(v.members.filter((x) => typeof x === "string" && /^acct:[^\u0000-\u001f]{1,80}$/.test(x)))].slice(0, 40) : [];
+  if (!m.length) return null;
+  return { members: m, at: Number.isFinite(v.at) && v.at > 0 ? v.at : 0, ...(v.file === true ? { file: true } : {}) };
 }
 
 // How one profile stands to the primary cluster: "linked" | "matches" | "different".
@@ -314,6 +338,10 @@ export function clusterIdentities(profiles, opts = {}) {
 //   different  its name conflicts with every name the primary identity carries
 // With no primary cluster nothing is tied to the target, so every profile is "matches" and
 // nobody is called a different person.
+// via, tie: the profile is called different because it is grouped with another person (via: that
+// person's name; tie: the signals that group them), not because of a name of its own.
+// unsettled: the profile carries a full name and the primary identity only one-word names that
+// share nothing with it (rule 10). against: the names the profile was compared with.
 export const NO_PRIMARY = "exists, nothing ties it to the target";
 export function standing(profile, result, opts = {}) {
   const primary = result.clusters.find((c) => c.primary);
@@ -326,14 +354,33 @@ export function standing(profile, result, opts = {}) {
     const link = primary.links.find((l) => (l.a === profile.id || l.b === profile.id) && l.signals.some((s) => STRONG.has(s.type)));
     if (link) return { tier: "linked", why: link.signals.filter((s) => STRONG.has(s.type)).map((s) => s.detail).join(", ") };
     const byName = primary.links.find((l) => l.a === profile.id || l.b === profile.id);
-    return { tier: "matches", why: byName ? byName.signals.map((s) => s.detail).join(", ") : "" };
+    return { tier: "matches", why: byName ? byName.signals.map((s) => s.detail).join(", ") : primary.picked ? (primary.members.length > 1 ? "part of the identity you picked" : "the profile you picked; nothing else ties it to the target") : "" };
   }
   const tokens = meaningfulName(profile.name, [profile.handle, ...keys]);
   const extra = support.length ? support.join(", ") : "";
+  // 10. the fullest names decide. One-word names count only when the identity has nothing fuller.
+  const full = primary.tokens.filter(personal);
+  const against = (full.length ? primary.names.filter((n) => personal(meaningfulName(n, keys) || [])) : primary.names).slice(0, 3);
+  const conflicts = (t) => full.length > 0 && full.every((f) => compareNames(f, t, keys) === "conflict");
+  // A profile grouped with another person stands where that person stands: an account with no
+  // name of its own that a proof ties to "Sam Example" is not Petra Novak's because it is silent.
+  const own = result.clusters.find((c) => c.id === result.byProfile[profile.id]) || null;
+  if (own && own !== primary && !(tokens && conflicts(tokens))) {
+    const theirs = own.tokens.filter(personal);
+    if (theirs.length && theirs.every(conflicts)) {
+      const tie = own.links.filter((l) => l.a === profile.id || l.b === profile.id).flatMap((l) => l.signals.map((s) => s.detail));
+      return { tier: "different", why: "", against, via: own.label, tie: [...new Set(tie)].slice(0, 2).join(", ") };
+    }
+  }
   if (!tokens) return { tier: "matches", why: extra || "no name on the profile" };
   if (!primary.tokens.length) return { tier: "matches", why: extra || "the primary record carries no name to compare" };
-  if (primary.tokens.some((t) => compareNames(t, tokens, keys) !== "conflict")) return { tier: "matches", why: extra || "name does not conflict" };
-  return { tier: "different", why: "" };
+  if (full.length) {
+    if (!conflicts(tokens)) return { tier: "matches", why: extra || "name does not conflict" };
+    return { tier: "different", why: "", against };
+  }
+  const related = primary.tokens.some((t) => ["same", "subset"].includes(compareNames(t, tokens, keys)) || t.some((x) => tokens.some((y) => tokenMatch(x, y) || (x.length >= 3 && y.startsWith(x)) || (y.length >= 3 && x.startsWith(y)))));
+  if (personal(tokens) && !related && primary.tokens.every((t) => script(t) === script(tokens))) return { tier: "matches", why: extra, unsettled: true, against };
+  return { tier: "matches", why: extra || "name does not conflict" };
 }
 
 // Old saved runs hold bios the backend had not yet filtered. These are the same tells, kept

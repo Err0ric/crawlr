@@ -14,9 +14,12 @@ Every account row says how it was found in `how`:
 
   commit_author          GitHub attributes commits carrying the address to this account. The
                          account has the address confirmed on GitHub, so this is a strong tie.
-  public_profile_email   the account's public profile shows the address. Strong for a user,
-                         unconfirmed for an organization (see `account_type`).
+  public_profile_email   GitHub's user search matched the address on the account's profile.
+                         The search row carries no address, so the profile was not seen to
+                         show it: `confirmed` is false and `how_note` says so. Unconfirmed in a
+                         second way for an organization (see `account_type`).
 
+`confirmed` is true on a commit_author row (each commit was checked to carry the address).
 An account found both ways is one row: `how` is the stronger one and `hows` lists both. The
 names inside commits and user IDs are self-declared and stay labeled as such; an account that
 carries the address is still not proof of who types on it.
@@ -33,7 +36,7 @@ import httpx
 
 from core.errors import classify, error_fields
 from core.logging import get_logger
-from modules import github_email, openpgp_keys
+from modules import github, github_email, openpgp_keys
 
 log = get_logger(__name__)
 
@@ -48,6 +51,7 @@ SOURCES = ("github_commits", "github_users", "openpgp")
 
 def clear_cache_for_tests() -> None:
     _cache.clear()
+    github.clear_quota_for_tests()
 
 
 def _cache_get(key: str) -> dict | None:
@@ -88,6 +92,7 @@ def merge_accounts(from_commits: list[dict], from_profiles: list[dict]) -> list[
             if "public_profile_email" not in rows[key]["hows"]:
                 rows[key]["hows"].append("public_profile_email")
             rows[key]["account_type"] = rows[key]["account_type"] or a["account_type"]
+            rows[key]["confirmed"] = bool(rows[key].get("confirmed") or a.get("confirmed"))
         else:
             rows[key] = {**a, "hows": list(a["hows"])}
     return list(rows.values())

@@ -129,6 +129,14 @@ export function simWhat(it) {
   const states = s.sources.map((g) => h`<span class="sim-state"><b>${g.word}</b> ${g.sites.join(", ")}</span>`).join("");
   return head + h`<div class="sim-res"><p class="sim-sum">${s.summary}</p>${cards ? raw(h`<ul class="sim-cards" aria-label="Profiles read for the handle ${s.variant}">${raw(cards)}</ul>`) : ""}${states ? raw(`<p class="sim-states">${states}</p>`) : ""}</div>`;
 }
+// Archived copies of a read profile, once the investigator asked (archiveView in deep.js). The
+// sentence says what the archive answered; each snapshot is a link opened by hand, and an
+// archive that could not be asked is said to be unknown, never "no copies".
+export function archHtml(it) {
+  const v = it?.archive?.view;
+  if (!v) return "";
+  return h`<span class="ev-arch ${v.state === "ok" || v.state === "none" ? "" : "unknown"}"><b>Archived copies</b><span>${v.text}</span>${v.snapshots.length ? raw(h`<span class="ev-snaps"><span class="sr-only">Snapshots: </span>${raw(v.snapshots.map((x) => link(x.url, x.label, "ev-link", { kind: x.link_kind })).join(""))}</span>`) : ""}</span>`;
+}
 export function evWhat(it) {
   if (it.sim) return simWhat(it);
   // An adult or dating site row carries the site's initials as its mark. Never an image.
@@ -138,7 +146,7 @@ export function evWhat(it) {
   const state = checkText(it);
   const head = name + (it.card?.handle ? h`<span class="ev-handle">${it.card.handle}</span>` : "") + (it.isNew ? '<span class="tag violet">new</span>' : "") + labelled + more
     + (state ? h`<span class="lk-state ${CHECK_CLS[it.check] || ""}">${state}</span>` : "");
-  const hint = it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "";
+  const hint = (it.hint ? h`<span class="ev-hint"><b>How to check</b> ${it.hint}</span>` : "") + archHtml(it);
   // An evidence card: the title line, then only what a source read (facts, a bio excerpt), or a
   // plain statement of what kind of check found the row, then why it sits in this group.
   if (it.card) {
@@ -147,6 +155,8 @@ export function evWhat(it) {
       + (c.facts?.length ? `<span class="ev-line">${c.facts.map((f) => h`<span class="ev-fact">${f}</span>`).join("")}</span>` : "")
       + (c.bio ? h`<span class="ev-bio">${c.bio}</span>` : "")
       + (c.basis || c.note || c.why ? `<span class="ev-why">${c.why ? h`<span><b>Why here</b>${c.why}</span>` : ""}${c.basis ? h`<span>${c.basis}</span>` : ""}${c.note ? h`<span>${c.note}</span>` : ""}</span>` : "")
+      // Another person's account, or a name that could not be compared: the row stays, and asks.
+      + (c.check ? h`<span class="ev-relate"><span class="tag warn">Check</span><span>${c.check}</span></span>` : "")
       + hint;
   }
   return `<span class="ev-title">${head}${it.meta ? h`<span class="meta">${it.meta}</span>` : ""}</span>` + hint;
@@ -168,8 +178,15 @@ export function evDetail(it, open = false) {
 // While a handle is being checked (it.sim.busy) the button says so and is aria-disabled, in every redraw.
 const simAct = (it) => (it.sim && it.sim.state !== "checked" ? h`<button type="button" class="btn btn-sm ev-act" data-sim-check="${it.sim.variant}" ${it.sim.busy ? raw('aria-disabled="true"') : ""}>${it.sim.busy ? "Checking…" : it.sim.state === "failed" ? "Try again" : it.sim.state === "file" ? "Check here" : "Check"}<span class="sr-only">: ${it.sim.variant}</span></button>` : "")
   + (it.similar ? h`<button type="button" class="btn btn-sm ev-act" data-sim-remove="${it.key}" data-variant="${it.similar.variant}">Remove from this case<span class="sr-only">: ${it.what} ${it.similar.variant}</span></button>` : "");
-export const evSrc = (it) => simAct(it) + (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
-  + (it.action ? h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${it.action.type ? raw(h`data-pivot-type="${it.action.type}"`) : ""} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>` : "")
+// "Archived copies" on a read profile: one lookup, on a click. Once the archive answered, the
+// answer is on the row and the button is gone; an archive that could not be asked can be asked again.
+const archAct = (it) => (it.archive && (!it.archive.view || it.archive.view.retry) ? h`<button type="button" class="btn btn-sm ev-act" data-archive="${it.key}" ${it.archive.busy ? raw('aria-disabled="true"') : ""}>${it.archive.busy ? "Asking…" : it.archive.view ? "Try again" : "Archived copies"}<span class="sr-only">: ${it.archive.view ? "archived copies of " : ""}${it.what}</span></button>` : "");
+// A lead can be parked ("not now"): it stays listed, marked, and is not suggested again.
+const stepAct = (it) => (it.tier === "lead" && it.action ? (it.step ? h`<span class="tag">${it.step}</span>` : "") + (it.step === "followed" ? "" : h`<button type="button" class="btn btn-sm btn-ghost ev-act" data-step-${it.step === "parked" ? "back" : "park"}="${it.key}" data-step-title="${it.action.label === "Open in Recon" ? `Open ${it.action.value} in Recon` : `Investigate ${it.action.value}`}">${it.step === "parked" ? "Bring back" : "Not now"}<span class="sr-only">: ${it.action.value}</span></button>`) : "");
+const viaAttrs = (a, id) => raw([a.type ? h`data-pivot-type="${a.type}"` : "", a.via ? h`data-via="${a.via}"` : "", a.source ? h`data-via-source="${a.source}"` : "", id ? h`data-step="${id}"` : ""].filter(Boolean).join(" "));
+export const evSrc = (it) => simAct(it) + archAct(it) + (it.fetch ? h`<button type="button" class="btn btn-sm ev-act" data-name-profile="${it.fetch.login}">${it.fetch.label}<span class="sr-only">: ${it.fetch.login}</span></button>` : "")
+  + (it.action ? h`<button type="button" class="btn btn-sm ev-act" data-pivot="${it.action.pivot}" data-value="${it.action.value}" ${viaAttrs(it.action, it.tier === "lead" ? it.key : "")} data-confirm-run="1" aria-label="${it.action.label}: ${it.action.value}">${it.action.label}</button>` : "")
+  + stepAct(it)
   + String(it.source ?? "").split(", ").filter(Boolean).map((x) => h`<span class="chip">${x}</span>`).join("");
 // The square mark of an evidence card: the server-made thumbnail, else the site's favicon, else
 // initials. A row on an adult or dating host never asks for an image of any kind.
@@ -336,22 +353,26 @@ export function addedFactsHtml(added) {
 // ---- facts panel -------------------------------------------------------------------
 export function renderFacts(el, facts, emptyText = "No facts extracted yet.") {
   el.innerHTML = facts.length
-    ? `<dl class="facts-list">${facts.map((f) => h`<div class="fact"><dt class="k">${f.k}</dt><dd class="v">${raw(linkOf(f, f.v))}<span class="src">${f.source}</span></dd></div>`).join("")}</dl>`
+    ? `<dl class="facts-list">${facts.map((f) => h`<div class="fact"><dt class="k">${f.k}</dt><dd class="v">${raw(linkOf(f, f.v))}<span class="src">${f.source}</span>${f.how ? raw(h`<span class="how"><span class="ed-prov">${f.how.prov}</span>${f.how.text}</span>`) : ""}</dd></div>`).join("")}</dl>`
     : h`<p class="empty flat">${emptyText}</p>`;
 }
 
 // Why an identity view stands where it does, in one or two sentences. Shared by "What we know"
-// and the identity header, so the two can never disagree.
+// and the identity header, so the two can never disagree. A picked identity is said to be the
+// investigator's judgment, with what the rules would have chosen beside it.
 const noPrimaryText = (views) => { const named = views.filter((v) => v.named).length; return `${named > 1 ? `${named} different names appear under this handle, and none is tied to the target.` : "Profiles were read, and nothing ties them to the target."} There is no record for the target itself and no strong signal between profiles, so no primary identity is chosen.`; };
-const viewWhy = (view, noPrimary) => (view.primary ? `Primary identity because ${view.why}.` : view.id === "unassigned" ? "Profiles that were read but carry no name, so nothing ties them to anyone." : noPrimary ? "One of the names under this handle. Nothing ties these profiles to the target." : "Not the primary identity: the name on these profiles conflicts with it, or nothing ties them to it.")
+export const pickText = (id) => `${id.pickFile ? "The case file you opened picked this person as the one the case is about. That is its author's judgment, not a finding." : "You picked this person as the one this case is about. That is your judgment, not a finding."} Every row is filed against this identity. ${id.autoLabel ? `The automatic choice would be ${id.autoLabel}, because ${id.autoWhy}.` : "Automatically nobody would be chosen: there is no record for the target itself and no strong signal between profiles."}`;
+const viewWhy = (view, id) => (view.primary ? (view.picked ? pickText(id) : `Primary identity, chosen automatically because ${view.why}.`) : view.id === "unassigned" ? "Profiles that were read but carry no name, so nothing ties them to anyone." : id.noPrimary ? "One of the names under this handle. Nothing ties these profiles to the target." : "Not the primary identity: the name on these profiles conflicts with it, or nothing ties them to it.")
   + (view.signals.length ? ` Joined by: ${[...new Set(view.signals.map((s) => `${s.a} and ${s.b} (${s.detail})`))].slice(0, 4).join("; ")}.` : "");
 const pickView = ({ views, primary, noPrimary }, pick) => views.find((v) => v.id === pick) || views.find((v) => v.id === primary) || (noPrimary ? null : views[0]) || null;
 
 // "What we know" for a person case: the facts of one identity cluster at a time, primary first.
-// A labelled select switches to another cluster's facts. `pick` is the view id to show.
-export function renderIdentityFacts(el, { views, primary, noPrimary }, factsOf, pick, emptyText) {
-  const view = pickView({ views, primary, noPrimary }, pick);
-  const label = (v) => `${v.label}${v.primary ? " (primary)" : ""} · ${v.sites.slice(0, 3).join(", ")}${v.sites.length > 3 ? ` +${v.sites.length - 3}` : ""}`;
+// A labelled select switches to another cluster's facts. `pick` is the view id to show. The select
+// only changes what this panel shows: who the case is about is picked in the identity header.
+export function renderIdentityFacts(el, id, factsOf, pick, emptyText) {
+  const { views, noPrimary } = id;
+  const view = pickView(id, pick);
+  const label = (v) => `${v.label}${v.primary ? (v.picked ? " (your pick)" : " (primary)") : ""} · ${v.sites.slice(0, 3).join(", ")}${v.sites.length > 3 ? ` +${v.sites.length - 3}` : ""}`;
   const box = document.createElement("div");
   const select = (first) => h`<div class="who-pick"><label for="${el.id}Pick">Showing</label><select class="input" id="${el.id}Pick" data-cluster-pick>${raw(first)}${raw(views.map((v) => h`<option value="${v.id}" ${view && v.id === view.id ? "selected" : ""}>${label(v)}</option>`).join(""))}</select></div>`;
   // No anchor record and no strong signal: nobody is picked, and no one's facts are shown as the target's.
@@ -363,25 +384,83 @@ export function renderIdentityFacts(el, { views, primary, noPrimary }, factsOf, 
   }
   renderFacts(box, factsOf(view.id), view.id === "unassigned" ? "These profiles carry no facts." : "No facts on these profiles.");
   el.innerHTML = (views.length > 1 || noPrimary ? select(noPrimary ? h`<option value="">No primary identity</option>` : "") : h`<p class="who-one">${label(view)}</p>`)
-    + none + h`<p class="who-why">${viewWhy(view, noPrimary)}</p>` + box.innerHTML;
+    + none + h`<p class="who-why">${viewWhy(view, id)}</p>` + box.innerHTML;
   return view.id;
 }
 
 // The identity cluster header of a username or email case: whose profiles these are, why that
-// identity is primary (or that there is none), its member accounts, and one button per person
-// who shares the handle. A button and the select in "What we know" set the same view.
-export function identityHead({ views, primary, noPrimary }, pick) {
+// identity is primary (chosen automatically, picked by the investigator, or nobody), its member
+// accounts, and one button per person who shares the handle.
+// A button PICKS the person the case is about: the whole case is filed again around them (see
+// rule 9 in identity.js), and one click goes back to the automatic choice. Each is a button with
+// a pressed state. The group of profiles with no name is not a person and has no button; it can
+// be shown with the select in "What we know", which changes that panel only.
+export function identityHead(id, pick) {
+  const { views, noPrimary } = id;
   if (!views.length) return "";
-  const view = pickView({ views, primary, noPrimary }, pick);
+  const view = pickView(id, pick);
   const pill = !view ? '<span class="cp tone-unverified line-dashed">No primary identity</span>'
-    : view.primary ? '<span class="cp tone-linked">Primary identity</span>'
+    : view.primary ? (view.picked ? '<span class="cp">Your pick</span>' : '<span class="cp tone-linked">Primary identity</span>')
       : view.id === "unassigned" ? '<span class="cp tone-unverified line-dashed">No name on these profiles</span>'
         : noPrimary ? '<span class="cp tone-unverified line-dashed">Not tied to the target</span>' : '<span class="cp tone-different">Different person</span>';
   const who = view ? h`<span>${view.label}</span>` : "<span>Nobody is selected</span>";
   const members = view ? h`<div class="id-row"><span class="id-k">${plural(view.sites.length, "account")}</span>${raw(view.sites.slice(0, 12).map((x) => h`<span class="chip">${x}</span>`).join(""))}${view.sites.length > 12 ? raw(h`<span class="id-k">and ${view.sites.length - 12} more</span>`) : ""}</div>` : "";
-  const people = views.length > 1 || noPrimary ? h`<div class="id-row who-switch" role="group" aria-label="People and profile groups under this handle"><span class="id-k">Show</span>${raw(views.map((v) => h`<button type="button" class="who-btn" data-cluster-btn="${v.id}" aria-pressed="${!!view && v.id === view.id}">${v.label}${v.primary ? " (primary)" : ""}<span class="sr-only">, ${plural(v.sites.length, "account")}</span></button>`).join(""))}</div>` : "";
+  const can = views.filter((v) => v.pickable);
+  const people = can.length > 1 || noPrimary || id.picked ? h`<div class="id-row who-switch" role="group" aria-label="The person this case is about">
+      <span class="id-k">This case is about</span>${raw(can.map((v) => h`<button type="button" class="who-btn" data-pick="${v.id}" aria-pressed="${v.primary}">${v.label}${v.auto ? raw('<span class="who-tag">automatic choice</span>') : ""}<span class="sr-only">, ${plural(v.sites.length, "account")}</span></button>`).join(""))}
+      ${id.picked ? raw(h`<button type="button" class="btn btn-sm btn-ghost who-auto" data-pick-auto>${id.autoLabel ? "Back to the automatic choice" : "Clear my pick"}</button>`) : ""}
+      <span class="who-hint">${id.picked ? "" : noPrimary ? "Pick a name to file the case around that person." : "Pick another name to file the whole case around that person. Nothing is removed."}</span>
+    </div>` : "";
   return mark(view ? view.label : "?", { thumb: view?.thumb || "", favicon: false, cls: "id-mark" })
-    + h`<div><p class="id-name">${raw(who)}${raw(pill)}</p><p class="id-why">${view ? viewWhy(view, noPrimary) : noPrimaryText(views)}</p>${raw(members)}${raw(people)}</div>`;
+    + h`<div><p class="id-name">${raw(who)}${raw(pill)}</p><p class="id-why">${view ? viewWhy(view, id) : noPrimaryText(views)}</p>${raw(members)}${raw(people)}</div>`;
+}
+
+// ---- how the case was reached ---------------------------------------------------------------------
+// The pivot trail: the earlier cases, seed first, then the case on screen (trailView in
+// casework.js). An earlier case that is still in History is a button that opens it.
+// has(id): is that case still in History?
+export function trailHtml(view, has = () => false) {
+  if (!view.length) return "";
+  return h`<span class="trail-k">How you got here</span><ol class="trail-list">${raw(view.map((s) => (s.here
+    ? h`<li aria-current="step"><span class="trail-t">${s.target}</span><span class="trail-via">this case</span></li>`
+    : h`<li>${s.id && has(s.id) ? raw(h`<button type="button" class="trail-step" data-open-case="${s.id}">${s.target}<span class="sr-only">, ${s.type_word}: open this earlier case</span></button>`) : raw(h`<span class="trail-t">${s.target}</span>`)}<span class="trail-via">${s.type_word}${s.via ? `, then ${s.via}` : ""}</span></li>`)).join(""))}</ol>`;
+}
+
+// ---- what the evidence says, and what to do next --------------------------------------------------
+// Both come from analysis.js. Rules only: no model wrote any of it.
+const STRENGTH_TAG = { strong: "ok", moderate: "", thin: "warn", none: "warn" };
+export function renderAnalysis(section, body, a) {
+  const show = !!a?.headline;
+  section.hidden = !show;
+  if (!show) { body.innerHTML = ""; return; }
+  const word = a.headline.split(". ")[0], rest = a.headline.slice(word.length + 2);
+  body.innerHTML = h`<p class="an-head"><span class="an-k">How firmly the accounts are tied to one identity</span><span class="tag ${STRENGTH_TAG[a.strength] || ""}">${word}</span><span>${rest}</span></p>`
+    + `<ul class="brief-list">${a.lines.map((r) => h`<li class="${r.level}"><span class="tag ${r.level === "flag" ? "warn" : r.level === "ok" ? "ok" : ""}">${BRIEF_WORD[r.level] || "Note"}</span><span>${r.text}</span></li>`).join("")}</ul>`;
+}
+// One suggestion: what to do, why, the one control that does it, and "Not now".
+// busy: the ids of archive lookups in flight, so their buttons say so in every redraw.
+function nextAct(x, busy) {
+  const a = x.action;
+  if (!a) return "";
+  if (a.kind === "pivot") return h`<button type="button" class="btn btn-sm" data-pivot="${a.pivot}" data-value="${a.value}" ${viaAttrs(a, x.id)} data-confirm-run="1">${a.label}<span class="sr-only">: ${a.value}</span></button>`;
+  if (a.kind === "archive") return h`<button type="button" class="btn btn-sm" data-archive="${a.key}" ${busy.has(a.key) ? raw('aria-disabled="true"') : ""}>${busy.has(a.key) ? "Asking…" : a.label}<span class="sr-only">: ${x.title}</span></button>`;
+  if (a.kind === "open") return link(a.url, a.label, "btn btn-sm", { kind: a.link_kind });
+  if (a.kind === "copy") return h`<button type="button" class="btn btn-sm" data-next-copy="${a.text}">${a.label}</button>`;
+  if (a.kind === "jump") return h`<button type="button" class="btn btn-sm" data-next-jump="${a.tier}">${a.label}</button>`;
+  if (a.kind === "focus") return h`<button type="button" class="btn btn-sm" data-next-focus="${a.where}">${a.label}</button>`;
+  if (a.kind === "rerun") return h`<button type="button" class="btn btn-sm" data-next-rerun>${a.label}</button>`;
+  return "";
+}
+const nextItem = (x, busy) => h`<li class="next" data-next="${x.id}"><div class="next-main"><span class="next-t">${x.title}${x.tag ? raw(h`<span class="tag">${x.tag}</span>`) : ""}</span><span class="next-r">${x.reason}${x.action?.kind === "copy" ? raw(h` <code class="next-q">${x.action.text}</code>`) : ""}</span></div><div class="next-act">${raw(nextAct(x, busy))}<button type="button" class="btn btn-sm btn-ghost" data-step-park="${x.id}" data-step-title="${x.title}">Not now<span class="sr-only">: ${x.title}</span></button></div></li>`;
+export function renderNext(section, body, s, { busy = new Set(), open = false, held = false } = {}) {
+  const any = !!s && (s.top.length || s.more.length || s.parked.length || s.followed.length || s.note);
+  section.hidden = !any;
+  if (!any) { body.innerHTML = ""; return; }
+  const heldRows = [...s.followed.map((x) => ({ ...x, state: "followed" })), ...s.parked.map((x) => ({ ...x, state: "parked" }))];
+  body.innerHTML = (s.note ? h`<p class="next-note">${s.note}</p>` : "")
+    + (s.top.length ? `<ol class="next-list">${s.top.map((x) => nextItem(x, busy)).join("")}</ol>` : s.note ? "" : `<p class="next-note">Nothing more to suggest from what this case holds.</p>`)
+    + (s.more.length ? h`<details class="next-more" ${open ? raw("open") : ""}><summary>${plural(s.more.length, "more suggestion")}</summary><ol class="next-list" start="${s.top.length + 1}">${raw(s.more.map((x) => nextItem(x, busy)).join(""))}</ol></details>` : "")
+    + (heldRows.length ? h`<details class="next-more next-held" ${held ? raw("open") : ""}><summary>${[s.followed.length ? `${s.followed.length} followed` : "", s.parked.length ? `${s.parked.length} parked` : ""].filter(Boolean).join(", ")}</summary><ul class="next-list">${raw(heldRows.map((x) => h`<li class="next held"><div class="next-main"><span class="next-t">${x.title}<span class="tag">${x.state}</span></span><span class="next-r">${x.state === "parked" ? "Parked by you. It is not suggested while it is parked." : "A case was opened from this lead."}</span></div><div class="next-act">${x.state === "parked" ? raw(h`<button type="button" class="btn btn-sm btn-ghost" data-step-back="${x.id}">Bring back<span class="sr-only">: ${x.title}</span></button>`) : ""}</div></li>`).join(""))}</ul></details>` : "");
 }
 
 // ---- verdict strip ----------------------------------------------------------------------------

@@ -8,8 +8,15 @@ limit handling are the ones in modules/github.py; a 403 or 429 is `rate_limited`
 "no activity".
 
 States: `ok` (events came back), `none` (the account exists and has no public events in the
-window), `not_found` (404: no such account), `rate_limited`, `failed`. `found` is True, False
-or None the way run_github reports it.
+window), `not_found` (404: no such account, or a handle GitHub cannot hold, which is answered
+here with a `note` and without a request), `rate_limited`, `failed`. `found` is True, False
+or None the way run_github reports it. run_github_activity never raises: anything unexpected,
+in a request or in the counting, is `failed` with the error fields.
+
+A handle is checked against GitHub's own login rule before anything is requested, so a name
+with a dot or an underscore, or "." and "..", never reaches the API. When GitHub's headers
+have said the allowance is spent (modules.github.note_quota), the answer is `rate_limited`
+without another request until the allowance resets.
 
 What comes back is counted, not interpreted: events per UTC hour and per weekday, event types
 and the repositories touched most.
@@ -28,6 +35,13 @@ sleeps at least six hours inside the quiet stretch with the middle of that sleep
 and 05:00 local time, so a quiet stretch of L hours starting at hour s UTC gives the offsets
 5 - s - L to 2 - s. Shift work, scheduled jobs, bots and shared accounts all break it. An
 offset is never a place: no city, no country and no time zone name is derived from it.
+
+Offsets are written in -11..+12, one name per clock time (UTC+13 and UTC+14 show the same
+clock time as UTC-11 and UTC-10, a day ahead). `utc_offsets` lists them going east. A range
+that crosses the date line is two runs, and the label says so: "UTC+11 to UTC+12 or UTC-11 to
+UTC-9", never "UTC+11 to UTC-9". `utc_offset_from` and `utc_offset_to` are the first and the
+last of `utc_offsets`, the west and east ends going east; `crosses_date_line` is true when
+the first is the larger number, and then the two are not the ends of one run of numbers.
 """
 
 import os
@@ -40,7 +54,8 @@ import httpx
 
 from core.errors import classify, error_fields
 from core.logging import get_logger
-from modules.github import REPO_RE, api_headers, is_rate_limit, retry_after
+from modules import github
+from modules.github import LOGIN_RE, REPO_RE, api_headers, is_rate_limit, note_quota, quota_wait, rate_limited_fields, retry_after
 
 log = get_logger(__name__)
 
@@ -77,8 +92,12 @@ REASONS = {
 }
 
 
+NOT_A_LOGIN = "GitHub cannot hold this handle: a login is 1 to 39 letters, digits or hyphens, so nothing was asked."
+
+
 def clear_cache_for_tests() -> None:
     _cache.clear()
+    github.clear_quota_for_tests()
 
 
 def _cache_get(key: str) -> dict | None:
@@ -105,9 +124,10 @@ def _when(value) -> datetime | None:
         return None
     try:
         d = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        # A date at the edge of the calendar with an offset cannot be moved to UTC.
+        return d.astimezone(timezone.utc) if d.tzinfo is not None else None
+    except (ValueError, OverflowError):
         return None
-    return d.astimezone(timezone.utc) if d.tzinfo is not None else None
 
 
 def _iso(d: datetime) -> str:
@@ -120,6 +140,23 @@ def _hh(hour: int) -> str:
 
 def _utc(offset: int) -> str:
     return "UTC" if offset == 0 else f"UTC{offset:+d}"
+
+
+def _name(offset: int) -> int:
+    """An offset as its one name in -11..+12."""
+    return (offset + 11) % 24 - 11
+
+
+def offsets_label(offsets: list[int]) -> str:
+    """Offsets listed going east, as words. A list that crosses the date line (+12 then -11) is
+    two runs joined by "or", so it cannot be read as one span from the first to the last."""
+    runs: list[list[int]] = []
+    for o in offsets:
+        if runs and o == runs[-1][-1] + 1:
+            runs[-1].append(o)
+        else:
+            runs.append([o])
+    return " or ".join(_utc(r[0]) if len(r) == 1 else f"{_utc(r[0])} to {_utc(r[-1])}" for r in runs)
 
 
 def quiet_runs(hours: list[int]) -> list[tuple[int, int]]:
@@ -168,14 +205,14 @@ def estimate_offset(hours: list[int], events: int, active_days: int, window_days
     # The middle of the assumed sleep can sit anywhere the block still fits in the quiet stretch.
     low = MIDSLEEP_LOCAL[0] - (start + length - SLEEP_HOURS // 2)
     high = MIDSLEEP_LOCAL[1] - (start + SLEEP_HOURS // 2)
-    low_n = (low + 12) % 24 - 12                       # into -12..+11
-    offsets = [((low_n + i) + 12) % 24 - 12 for i in range(high - low + 1)]
+    offsets = [_name(low + i) for i in range(high - low + 1)]     # going east, each in -11..+12
     end = (start + length) % 24
     return {
         "utc_offset_from": offsets[0],
         "utc_offset_to": offsets[-1],
         "utc_offsets": offsets,
-        "label": f"{_utc(offsets[0])} to {_utc(offsets[-1])}",
+        "crosses_date_line": offsets[0] > offsets[-1],
+        "label": offsets_label(offsets),
         "quiet_start_hour": start,
         "quiet_end_hour": end,                         # the first active hour after the stretch
         "quiet_hours": length,
@@ -247,6 +284,7 @@ async def _page(client: httpx.AsyncClient, login: str, page: int) -> tuple[str, 
                                 headers=api_headers(), follow_redirects=False)
     except Exception as e:
         return "failed", error_fields(code=classify(e), detail=type(e).__name__), None
+    note_quota(resp, "core")
     if resp.status_code == 404:
         return "not_found", None, resp
     if is_rate_limit(resp):
@@ -265,30 +303,52 @@ async def _page(client: httpx.AsyncClient, login: str, page: int) -> tuple[str, 
 
 
 async def run_github_activity(username: str) -> dict:
+    """The activity pattern of one account. Never raises: see the module docstring."""
+    try:
+        return await _run(username)
+    except Exception as e:  # noqa: BLE001
+        # The class name only: an exception text can carry the request URL, and the URL carries the login.
+        fields = error_fields(code=classify(e), detail=type(e).__name__)
+        log.warning("github activity did not answer", extra={"error_code": fields["error_code"]})
+        return {"username": username if isinstance(username, str) else "", "found": None, "state": "failed", "cached": False, **fields}
+
+
+def _allowance_spent(username: str, wait: int) -> dict:
+    return {"username": username, "found": None, "state": "rate_limited", "retry_after": wait, "cached": False,
+            **rate_limited_fields(wait, f"The {HOST} allowance is spent")}
+
+
+async def _run(username: str) -> dict:
+    if not LOGIN_RE.fullmatch(username):
+        # Not a name GitHub can hold ("a.b", "x_y", "." or ".."), so no request is made: a dot
+        # segment in the path would ask for another endpoint.
+        return {"username": username, "found": False, "state": "not_found", "cached": False, "note": NOT_A_LOGIN}
     key = username.lower()
     cached = _cache_get(key)
     if cached is not None:
         return {**cached, "username": username, "cached": True}
+    wait = quota_wait("core")
+    if wait:
+        return _allowance_spent(username, wait)
 
     events: list[dict] = []
     pages = 0
     later = "ok"            # what happened to a page after the first
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            for page in range(1, MAX_PAGES + 1):
-                state, payload, resp = await _page(client, username, page)
-                if page == 1 and state != "ok":
-                    return _first_page_failed(username, state, payload, resp)
-                if state != "ok":
-                    later = "ok" if state in ("end", "not_found") else state
-                    break
-                pages += 1
-                events.extend(payload)
-                if len(payload) < PER_PAGE:
-                    break
-    except Exception as e:
-        return {"username": username, "found": None, "state": "failed",
-                **error_fields(code=classify(e), detail=type(e).__name__)}
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        for page in range(1, MAX_PAGES + 1):
+            if page > 1 and quota_wait("core"):
+                later = "rate_limited"      # the page before spent the allowance: do not ask to be refused
+                break
+            state, payload, resp = await _page(client, username, page)
+            if page == 1 and state != "ok":
+                return _first_page_failed(username, state, payload, resp)
+            if state != "ok":
+                later = "ok" if state in ("end", "not_found") else state
+                break
+            pages += 1
+            events.extend(payload)
+            if len(payload) < PER_PAGE:
+                break
 
     summary = summarize(events)
     result = {
@@ -318,14 +378,8 @@ def _first_page_failed(username: str, state: str, payload, resp: httpx.Response 
         return result
     if state == "rate_limited":
         wait = retry_after(resp)
-        mins = max(1, round(wait / 60))
         log.warning("github activity rate limited", extra={"retry_after_s": wait, "authenticated": bool(os.getenv("GITHUB_TOKEN"))})
-        return {
-            "username": username, "found": None, "state": "rate_limited", "retry_after": wait,
-            **error_fields(
-                code="rate_limited",
-                message=f"GitHub is rate limiting CrawlR. Try again in about {mins} minute{'s' if mins != 1 else ''}.",
-                detail=f"HTTP {resp.status_code} from {HOST}"),
-        }
+        return {"username": username, "found": None, "state": "rate_limited", "retry_after": wait,
+                **rate_limited_fields(wait, f"HTTP {resp.status_code} from {HOST}")}
     log.warning("github activity did not answer", extra={"error_code": payload["error_code"]})
     return {"username": username, "found": None, "state": "failed", **payload}

@@ -5,13 +5,15 @@
 //     is a record (the site or the index wrote it) or self-declared (the account holder, a
 //     commit or a key says so, and it can be false);
 //   - only accounts the ledger files as Linked or Exists (matches). A profile the identity rules
-//     call a different person is left out, and one that nothing ties to the target says so;
+//     call a different person is left out, and one that nothing ties to the target says so.
+//     The ledger is filed against the primary identity, so after the investigator picks a person
+//     the timeline is that person's;
 //   - never an adult or dating site, and nothing from a similar handle.
 // Kept free of DOM code so the rules can be tested with plain node.
 
 import { sealLink, evidenceUrl, isDomain } from "./links.js";
 import { buildEvidence, collectProfiles, breachList } from "./evidence.js";
-import { readEmailAccounts, readActivity, dayOf, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE } from "./deep.js";
+import { readEmailAccounts, readActivity, dayOf, EMAIL_ACCOUNTS_SOURCE, ACTIVITY_SOURCE, ARCHIVE_SOURCE } from "./deep.js";
 
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const pad = (n) => String(n).padStart(2, "0");
@@ -124,7 +126,7 @@ export function domainAgeDays(c, today = new Date().toISOString().slice(0, 10)) 
 }
 
 // ---- a person case ------------------------------------------------------------------------------
-export const BASIS_TEXT = { record: "site record", index: "breach index record", self: "self-declared" };
+export const BASIS_TEXT = { record: "site record", index: "breach index record", self: "self-declared", archive: "archive record" };
 // A Unix time in seconds, as some sources give an account's creation.
 const dayFrom = (v) => { const t = String(v ?? "").trim(); return /^\d{9,10}$/.test(t) ? new Date(Number(t) * 1000).toISOString().slice(0, 10) : toDay(v); };
 // Returns { events, today }. Each event:
@@ -149,6 +151,10 @@ export function personTimeline(collected, target, type, today = new Date().toISO
     // record at one remove, and says so.
     add(p.created, `${p.site} account created`, src, "record", [standing(row), p.api ? "" : "Read from the profile page by a tool."].filter(Boolean).join(" "), row.link_kind === "none" ? "" : row.url);
     if (p.lastActive && dayFrom(p.lastActive) !== dayFrom(p.created)) add(p.lastActive, `Last seen active on ${p.site}`, src, "record", standing(row), row.link_kind === "none" ? "" : row.url);
+    // Archived copies, when the investigator asked for them: the day the archive first captured
+    // the page. The archive's record of its own capture, not a date the site or the person gave.
+    const arch = row.archive?.view;
+    if (arch?.state === "ok") add(arch.first, `${p.site} profile first archived`, ARCHIVE_SOURCE, "archive", [`The Internet Archive first captured this page on that day, and holds copies from ${arch.count} ${arch.count === 1 ? "day" : "days"}. The account may be older.`, standing(row)].filter(Boolean).join(" "), arch.snapshots[0]?.url || "");
   }
   if (type === "username") {
     const act = readActivity(collected?.githubActivity);

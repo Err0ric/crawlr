@@ -50,7 +50,8 @@ def proofs(summary) -> list[dict]:
 async def read(client, username: str) -> base.Result:
     name = username.lower()
     reply = await base.get_json(client, URL, {"usernames": name, "fields": FIELDS})
-    stop = base.settle(reply)
+    # Absence is a 200 with `them: [null]` (or the status NOT_FOUND), never a 404.
+    stop = base.settle(reply, not_found=())
     if stop:
         return stop
     data = reply.data if isinstance(reply.data, dict) else {}

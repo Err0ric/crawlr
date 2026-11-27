@@ -2,6 +2,8 @@
 //   Profile sources     POST /api/recon/profiles          a handle's public record on 16 sites
 //   Accounts and keys   POST /api/recon/email-accounts    the GitHub account and OpenPGP keys behind an address
 //   GitHub activity     POST /api/recon/github-activity   when an account's public events happen
+// and one lookup that runs only on a click, for one read profile:
+//   Profile archive     POST /api/recon/profile-archive   which copies of a profile page the Internet Archive holds
 // Pure: no DOM, no network. Every answer is read through one of the readers below before
 // anything is shown, stored or exported. A reader takes outside data (a live answer, a case in
 // History, a case file) and returns a checked, bounded copy: text is clipped, an address is
@@ -293,7 +295,7 @@ export function emailAccountItems(d) {
       card: { handle: a.login, facts, bio: "", why, basis: "", note: strong ? (named ? `Names written in its commits (self-declared): ${named}.` : "") : "The profile was not read here. Investigate the account to read it." },
       detail: strong ? commitDetail(a) : null, emailAccount: { login: a.login, how: a.how, type: a.account_type },
       ...(strong && a.evidence[0] ? { more: { url: a.evidence[0], label: "Evidence commit", link_kind: "evidence" } } : {}),
-      action: { label: "Investigate this", pivot: "investigate", value: a.login, type: "username" },
+      action: { label: "Investigate this", pivot: "investigate", value: a.login, type: "username", via: `the GitHub login ${a.login}`, source: strong ? "GitHub's commit attribution for this address" : "a GitHub profile that shows this address" },
     });
   }
   if (r.unattributed) {
@@ -453,10 +455,71 @@ export function activityMarkdown(d) {
     v.estimate ? `- UTC offset estimate: ${v.estimate.label}. ${v.estimate.basis} ${v.estimate.assumption} ${v.estimate.caveat} This is a range of time offsets, never a place.` : `- No UTC offset estimate: ${v.noEstimate}`, ""];
 }
 
+// ---- archived copies of one profile ---------------------------------------------------------------
+// Asked on a click, for one read profile (POST /api/recon/profile-archive). The answer is kept with
+// the case as collected.archives, keyed by the row it belongs to.
+//   ok            the archive holds copies: first and last capture, and `count`, which is the
+//                 number of DAYS with a capture (never the number of captures)
+//   none          the archive answered and holds no copy. An answer.
+//   rate_limited, failed   the archive could not be asked. Unknown, never "no copies".
+//   refused       no request was made, and `note` says why
+// A snapshot address is rebuilt here from its timestamp and the profile address, so a stored case
+// or a case file cannot point one somewhere else. A profile address that carries a query (Hacker
+// News: see ownProfileQuery in links.js) is never looked up: the snapshot address would carry
+// that query, and with it the handle, on archive.org.
+export const ARCHIVE_SOURCE = "Internet Archive";
+export const ARCHIVE_STATES = ["ok", "none", "rate_limited", "failed", "refused"];
+export const ARCHIVE_REFUSALS = [
+  "CrawlR does not look up archived copies of pages on adult or dating sites.",
+  "This is not a plain http or https web address, so it was not looked up.",
+  "This address is not on a public named host, so it was not looked up.",
+];
+const SNAPSHOT_BASE = "https://web.archive.org/web/";
+const stamp = (iso) => { const t = when(iso); return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(t) ? t.replace(/[-:TZ]/g, "") : ""; };
+// May archived copies of this address be looked up? http(s), no credentials, no port, no query,
+// no fragment, a path of its own, and never an adult or dating site.
+export function archivable(u) {
+  const s = safeLink(u), x = s ? parseUrl(s) : null;
+  return !!x && !x.port && !x.search && !x.hash && x.pathname.replace(/\/+$/, "").length > 0 && s.length <= 600;
+}
+export function readArchive(raw, url) {
+  if (!isObj(raw) || !ARCHIVE_STATES.includes(raw.state) || !archivable(url)) return null;
+  const base = { url, state: raw.state, count: 0, first: "", last: "", snapshots: [], distinct_versions: 0, truncated: false, asked_at: Number.isFinite(raw.asked_at) && raw.asked_at > 0 ? raw.asked_at : 0 };
+  if (raw.state === "refused") return { ...base, note: ARCHIVE_REFUSALS.includes(raw.note) ? raw.note : "This address was not looked up." };
+  if (raw.state === "failed" || raw.state === "rate_limited") return { ...base, ...errorOf(raw) };
+  if (raw.state === "none") return base;
+  const snaps = [], seen = new Set();
+  for (const sn of list(raw.snapshots, 8)) { const ts = isObj(sn) ? stamp(sn.timestamp) : ""; if (ts && !seen.has(ts)) { seen.add(ts); snaps.push({ timestamp: when(sn.timestamp), url: `${SNAPSHOT_BASE}${ts}/${url}` }); } }
+  const first = stamp(raw.first) ? when(raw.first) : "", last = stamp(raw.last) ? when(raw.last) : "";
+  // "ok" with nothing to show for it showed nothing: unknown, not "none".
+  if (!first || !last || !snaps.length || !(int(raw.count) > 0)) return { ...base, state: "failed", error: "The archive's answer could not be read.", error_code: "bad_response", error_detail: "" };
+  return { ...base, count: int(raw.count), first, last, snapshots: snaps, distinct_versions: num(raw.distinct_versions), truncated: raw.truncated === true };
+}
+// collected.archives: { [row key]: answer }. A key is an account row's; at most 40 are kept.
+export const readArchives = memo((raw) => {
+  const out = {};
+  for (const [k, v] of Object.entries(raw).slice(0, 40)) { const a = /^acct:[^\u0000-\u001f]{1,76}$/.test(k) && isObj(v) ? readArchive(v, typeof v.url === "string" ? v.url.trim() : "") : null; if (a) out[k] = a; }
+  return out;
+});
+// What the row says, in words: { state, text, snapshots: [{ label, url, link_kind }], retry }.
+export function archiveView(a) {
+  if (!a) return null;
+  if (a.state === "ok") {
+    const one = a.count === 1;
+    return { state: "ok", retry: false,
+      text: `The Internet Archive holds copies of this page captured on ${plural(a.count, "day")}${a.truncated ? " or more" : ""}${one ? `, on ${dayOf(a.first)}` : `, first on ${dayOf(a.first)} and last on ${dayOf(a.last)}`}${a.distinct_versions > 1 ? `, in ${fmt(a.distinct_versions)} different versions` : ""}. A copy can show a bio or a link that has since been removed. Open one to read it: CrawlR does not fetch them.`,
+      snapshots: a.snapshots.map((sn) => ({ label: dayOf(sn.timestamp), url: sn.url, link_kind: "evidence" })), first: dayOf(a.first), last: dayOf(a.last), count: a.count };
+  }
+  if (a.state === "none") return { state: "none", retry: false, snapshots: [], text: "The Internet Archive answered and holds no copy of this page." };
+  if (a.state === "refused") return { state: "refused", retry: false, snapshots: [], text: `Not looked up. ${a.note}` };
+  return { state: a.state, retry: true, snapshots: [], text: a.state === "rate_limited" ? "The Internet Archive is rate limiting requests, so whether it holds copies is unknown. Try again in a minute." : "The Internet Archive could not be asked, so whether it holds copies is unknown." };
+}
+export const archiveMarkdown = (v) => (v ? [`  - Archived copies: ${v.text}${v.snapshots.length ? ` Snapshots: ${v.snapshots.map((x) => `[${x.label}](${x.url})`).join(", ")}` : ""} _(${ARCHIVE_SOURCE}${v.state === "ok" || v.state === "none" ? " · archive record" : ""})_`] : []);
+
 // ---- case files and history ---------------------------------------------------------------------------
-// The three keys as a case may carry them. A value that is not a readable answer is dropped;
+// The keys as a case may carry them. A value that is not a readable answer is dropped;
 // a failure is kept as a failure, so the source stays "unknown" and never becomes "not found".
-export const DEEP_READERS = { profiles: readProfileSources, emailAccounts: readEmailAccounts, githubActivity: readActivity };
+export const DEEP_READERS = { profiles: readProfileSources, emailAccounts: readEmailAccounts, githubActivity: readActivity, archives: readArchives };
 export function readDeep(results) {
   if (!isObj(results)) return results;
   const out = { ...results };
