@@ -13,6 +13,7 @@ import { adultBriefText } from "./adult.js";
 import { nameBrief } from "./names.js";
 import { phoneBrief } from "./phone.js";
 import { wildcardOf, wildcardText } from "./present.js";
+import { profileCoverage, readProfileSources, readEmailAccounts, emailLookupsDown, activityView, commitNames, PROFILE_STATE_WORD, SELF_DECLARED_NOTE } from "./deep.js";
 import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -83,6 +84,33 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     // A sign-up check that says "taken" read nothing: the handle is in use, by nobody we can name.
     const taken = unverified.filter((i) => i.taken);
     if (taken.length) add("info", `The handle is taken on ${list(taken.map((i) => i.what))} according to the site's sign-up check. Nothing was read there, so who holds it is unknown.`);
+
+    // The profile sources: how many records were read, what ties them, and which sites did not say.
+    const ps = type === "username" ? readProfileSources(c.profiles) : null;
+    if (ps && !ps.error && !ps.error_code) {
+      const cov = profileCoverage(ps);
+      const proven = accounts.filter((i) => /Keybase proof|verified link/.test(i.card?.why || ""));
+      if (cov.read) add("info", `${plural(cov.read, "profile")} ${cov.read === 1 ? "was" : "were"} read from the site's own record (${list(ps.profiles.map((p) => p.site), 6)}). Open a row's "What was read" for the name, links, dates and linked accounts on it.`);
+      if (proven.length) add("ok", `${list(proven.map((i) => i.what))} ${proven.length === 1 ? "is" : "are"} tied to the primary identity by a proof the other side confirmed (a Keybase proof or a verified link), not by a name.`);
+      if (cov.down.length) add("info", `${list(cov.down.map((x) => `${x.site} (${PROFILE_STATE_WORD[x.state]})`), 6)} did not answer the profile lookup, so ${cov.down.length === 1 ? "that site is" : "those sites are"} unknown, not absent.`);
+    }
+    // GitHub activity: the window, and the offset range with its limit said every time.
+    const act = type === "username" ? activityView(c.githubActivity) : null;
+    if (act?.state === "ok") add("info", `GitHub lists ${act.text.replace(/ Times are UTC\./, "")}${act.estimate ? ` The hours they fall on fit a UTC offset of ${act.estimate.label}. That is a hint from ${act.events} events, not a fact, and a range of offsets is never a place.` : ` No UTC offset is estimated: ${act.noEstimate}`} See the Timeline tab.`);
+    // An email case: the account and the keys behind the address.
+    const ea = type === "email" ? readEmailAccounts(c.emailAccounts) : null;
+    if (ea && !ea.error && !ea.error_code) {
+      const authors = ea.accounts.filter((a) => a.how === "commit_author"), shown = ea.accounts.filter((a) => a.how !== "commit_author");
+      for (const a of authors) add("ok", `GitHub attributes commits that carry this address to the account ${a.login} (${plural(a.commits_seen, "commit")} seen), so that account has this address confirmed.${commitNames(a)[0] ? ` The name written in its commits is "${commitNames(a)[0].name}", which is self-declared.` : ""}`, a.evidence[0] ? { url: a.evidence[0], label: "Evidence commit" } : null);
+      if (shown.length) add("info", `${list(shown.map((a) => `${a.login}${a.account_type === "Organization" ? " (an organization, unconfirmed)" : ""}`))} ${shown.length === 1 ? "shows" : "show"} this address on a public GitHub profile. That is weaker than a commit attribution.`);
+      if (ea.unattributed) add("info", `${plural(ea.unattributed.commits_seen, "commit")} ${ea.unattributed.commits_seen === 1 ? "carries" : "carry"} this address and ${ea.unattributed.commits_seen === 1 ? "belongs" : "belong"} to no GitHub account. Anyone can write any address in a commit, so ${ea.unattributed.commits_seen === 1 ? "it proves" : "they prove"} nothing about who wrote ${ea.unattributed.commits_seen === 1 ? "it" : "them"}.`);
+      const keys = ea.keys.filter((k) => k.parsed);
+      if (ea.keys.length) add("info", `${plural(ea.keys.length, "OpenPGP key")} ${ea.keys.length === 1 ? "is" : "are"} published for this address on keys.openpgp.org, which verifies an address by mail before it lists it.${keys.some((k) => k.revoked) ? " At least one is revoked." : ""}`, keys[0] ? { url: keys[0].url, label: "Key" } : null);
+      if (authors.length || ea.unattributed) add("info", SELF_DECLARED_NOTE);
+      const down = emailLookupsDown(ea);
+      if (down.length) add("info", `${list(down.map((x) => `${x.name} (${x.state === "rate_limited" ? "rate limited" : "failed"})`))} could not be asked, so whether an account or a key exists there is unknown.`);
+      for (const a of authors.slice(0, 2)) actions.push({ label: `Investigate ${a.login}`, pivot: "investigate", value: a.login });
+    }
 
     // Adult and dating sites get one neutral line. They are in none of the counts above.
     const adult = items.filter((i) => i.tier === "adult");

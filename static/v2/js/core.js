@@ -175,6 +175,10 @@ export function sourceOutcome(d) {
 // so "nothing found" means the same thing everywhere.
 export function sourceHasResults(d) {
   if (!d || typeof d !== "object" || d.error || d.error_code || d.skipped || d.found === false) return false;
+  // GitHub activity: an account with no public events answered, and has nothing to show.
+  if (Array.isArray(d.hours_utc) && typeof d.events === "number") return d.events > 0;
+  // The accounts and keys behind an address: an account, a key, or commits that carry the address.
+  if (Array.isArray(d.accounts) && Array.isArray(d.keys)) return d.accounts.length > 0 || d.keys.length > 0 || (d.unattributed?.commits_seen || 0) > 0;
   if (d.found === true) return true;
   // A source that answers per site (platform check, adult site check): only a page that was read
   // is a result. Its own "total" may count the sites asked, not the pages found.
@@ -228,13 +232,30 @@ export function sourceCoverage(d) {
     const v = Object.values(d.sources).filter((s) => s && typeof s.state === "string");
     return { answered: v.filter((s) => s.state === "ok" || s.state === "none").length, total: v.length, unit: "directories", failedText: "no directory could be asked" };
   }
+  // The profile sources ask up to 16 sites in one request. Only "found" and "not found" say
+  // whether the account is there (npm's "cannot tell" with its note is the site's own answer).
+  // Blocked, rate limited, failed and unknown did not answer, and a site that was not asked (the
+  // handle cannot exist there) is not part of the count. Unlike the platform check, a site that
+  // did not answer has no row in the ledger, so a partial answer can hide a profile.
+  if (Array.isArray(d.profiles) && d.sources && typeof d.sources === "object" && !Array.isArray(d.sources) && Object.values(d.sources).some((x) => x && typeof x.state === "string")) {
+    const v = Object.values(d.sources).filter((x) => x && typeof x.state === "string" && x.state !== "not_asked");
+    return { answered: v.filter((x) => x.state === "found" || x.state === "not_found" || (x.state === "unknown" && !!x.note && !x.error_code)).length, total: v.length, unit: "profile sites", failedText: "no profile site answered" };
+  }
+  // The accounts and keys behind an address: GitHub commit search, GitHub user search and the key
+  // server. One that failed or was rate limited is unknown, never "no account" or "no key".
+  if (Array.isArray(d.accounts) && Array.isArray(d.keys) && d.sources && typeof d.sources === "object") {
+    const v = Object.values(d.sources).filter((x) => x && typeof x.state === "string");
+    if (v.length) return { answered: v.filter((x) => x.state === "ok" || x.state === "none").length, total: v.length, unit: "lookups", failedText: "no lookup could be made" };
+  }
+  // GitHub activity reads up to three pages of events. A later page that failed leaves a gap.
+  if (Array.isArray(d.hours_utc) && d.complete === false && Number.isInteger(d.pages) && d.pages > 0) return { answered: d.pages, total: d.pages + 1, unit: "pages", failedText: "no page could be read" };
   if (d.sections && typeof d.sections === "object" && Object.keys(d.sections).length) {
     const v = Object.values(d.sections);
     return { answered: v.filter((x) => x === "ok").length, total: v.length, unit: "sections", failedText: "no section could be read" };
   }
   return null;
 }
-export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv.unit} ${cv.unit === "images" || cv.unit === "sections" ? "read" : cv.unit === "links" ? "checked" : "answered"}`;
+export const coverageText = (cv) => `partial: ${cv.answered} of ${cv.total} ${cv.unit} ${cv.unit === "images" || cv.unit === "sections" || cv.unit === "pages" ? "read" : cv.unit === "links" ? "checked" : "answered"}`;
 
 // The one place that counts sources, for the case header, the run log summary and the
 // "By source" tab in both modes. `names` maps a key in `collected` to the source's name.

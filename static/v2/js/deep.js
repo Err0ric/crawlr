@@ -1,0 +1,465 @@
+// The three sources that read a record instead of guessing that one exists:
+//   Profile sources     POST /api/recon/profiles          a handle's public record on 16 sites
+//   Accounts and keys   POST /api/recon/email-accounts    the GitHub account and OpenPGP keys behind an address
+//   GitHub activity     POST /api/recon/github-activity   when an account's public events happen
+// Pure: no DOM, no network. Every answer is read through one of the readers below before
+// anything is shown, stored or exported. A reader takes outside data (a live answer, a case in
+// History, a case file) and returns a checked, bounded copy: text is clipped, an address is
+// rebuilt or held to the site it must be on, a thumbnail passes safeThumb, and a state is one
+// of the known ones. A reader is idempotent, so reading its own output changes nothing.
+//
+// How a value is known is carried with it, in three words used by the page, the exports and the AI:
+//   site record     the site wrote it: a join date, a count, an attribution, a proof it checked
+//   self-declared   the account holder wrote it: a name, a bio, a location, a link, and every
+//                   name, date and time zone written inside a commit or a key
+//   tool report     a tool parsed it from a page (Maigret, the platform check, enrichment)
+
+import { safeThumb } from "./present.js";
+import { parseUrl, classifyLink, hostOf } from "./links.js";
+import { adultHost } from "./adult.js";
+
+const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const line = (v, n) => (typeof v === "string" || typeof v === "number" ? Array.from(String(v).replace(/\s+/g, " ").trim()).slice(0, n).join("") : "");
+const int = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : null);
+const num = (v) => int(v) ?? 0;
+const list = (v, n) => (Array.isArray(v) ? v.slice(0, n) : []);
+const HEX16 = /^[0-9a-f]{16}$/i;
+const EMAIL = /^[^\s@<>"']{1,64}@[A-Za-z0-9.-]{1,180}\.[A-Za-z]{2,24}$/;
+const ISO = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+const when = (v) => (typeof v === "string" && ISO.test(v.trim()) ? v.trim() : "");
+export const dayOf = (v) => when(v).slice(0, 10);
+// An address that may be shown as a link: http(s), no credentials, bounded, never an adult or dating site.
+const safeLink = (u) => { const s = typeof u === "string" ? u.trim() : ""; const x = s && s.length <= 300 ? parseUrl(s) : null; return x && !x.username && !x.password && !adultHost(s) ? s : ""; };
+const email = (v) => (typeof v === "string" && v.length <= 254 && EMAIL.test(v.trim()) ? v.trim().toLowerCase() : "");
+const errorOf = (raw) => ({ error: line(raw.error, 300) || "The source failed.", error_code: line(raw.error_code, 40) || "request_failed", error_detail: line(raw.error_detail, 300) });
+const failed = (d) => !!(d && (d.error || d.error_code));
+// A reader's answer for one raw object is computed once: the ledger is rebuilt often.
+const memo = (fn) => { const seen = new WeakMap(); return (raw) => { if (!isObj(raw)) return null; if (!seen.has(raw)) { const out = fn(raw); seen.set(raw, out); if (isObj(out)) seen.set(out, out); } return seen.get(raw); }; };
+
+export const PROVENANCE = { record: "site record", self: "self-declared", tool: "tool report" };
+
+// ---- profile sources -----------------------------------------------------------------------------
+export const PROFILE_SOURCE = "Profile sources";
+export const PROFILE_SOURCE_DESC = "reads the public record for this handle on 16 sites with an open API: name, bio, links, dates and linked accounts";
+// id -> [site name, the host a profile address must be on]. The names and hosts are CrawlR's own:
+// a stored case or a case file cannot rename a site or point a profile somewhere else.
+export const PROFILE_SITES = {
+  gitlab: ["GitLab", "gitlab.com"], keybase: ["Keybase", "keybase.io"], hackernews: ["Hacker News", "news.ycombinator.com"], mastodon: ["Mastodon", "mastodon.social"],
+  dockerhub: ["Docker Hub", "hub.docker.com"], npm: ["npm", "npmjs.com"], devto: ["dev.to", "dev.to"], lichess: ["Lichess", "lichess.org"], chesscom: ["Chess.com", "chess.com"],
+  codeberg: ["Codeberg", "codeberg.org"], bluesky: ["Bluesky", "bsky.app"], wikipedia: ["Wikipedia", "en.wikipedia.org"], gravatar: ["Gravatar", "gravatar.com"],
+  codeforces: ["Codeforces", "codeforces.com"], lobsters: ["Lobsters", "lobste.rs"], huggingface: ["Hugging Face", "huggingface.co"],
+};
+export const PROFILE_STATES = ["found", "not_found", "blocked", "rate_limited", "unknown", "failed", "not_asked"];
+// Only "found" and "not_found" say whether the account is there. The rest are unknown.
+export const PROFILE_STATE_WORD = { found: "profile read", not_found: "not found", blocked: "blocked by site", rate_limited: "rate limited", unknown: "could not tell", failed: "failed", not_asked: "not asked" };
+export const PROOFS = ["keybase", "verified_link", "listed"];
+export const PROOF_TEXT = { keybase: "proven on Keybase", verified_link: "verified link", listed: "listed on the profile" };
+export const proofStrong = (proof) => proof === "keybase" || proof === "verified_link";
+const ITEM_KINDS = { package: "Packages", organization: "Organizations" };
+const AVATAR_STATES = ["ok", "none", "default", "failed"];
+const onHost = (u, host) => { const x = parseUrl(u); const hn = x ? x.hostname.toLowerCase().replace(/^www\./, "") : ""; return !!x && x.protocol === "https:" && hn === host && x.pathname.replace(/\/+$/, "").length > 0; };
+
+function readProfile(p) {
+  if (!isObj(p) || p.state !== "found" || !Object.hasOwn(PROFILE_SITES, p.source)) return null;
+  const [site, host] = PROFILE_SITES[p.source];
+  const url = safeLink(p.url);
+  if (!url || !onHost(url, host)) return null;
+  const hash = typeof p.avatar_hash === "string" && HEX16.test(p.avatar_hash) ? p.avatar_hash.toLowerCase() : "";
+  const dflt = hash ? p.avatar_default === true : false;
+  const stats = {};
+  if (isObj(p.stats)) for (const [k, v] of Object.entries(p.stats).slice(0, 12)) if (/^[a-z][a-z0-9_]{0,29}$/.test(k) && int(v) !== null) stats[k] = int(v);
+  const seen = new Set();
+  const accounts = list(p.accounts, 20).map((a) => {
+    const u = isObj(a) ? safeLink(a.url) : "";
+    if (!u || seen.has(u.toLowerCase()) || !line(a.site, 60)) return null;
+    seen.add(u.toLowerCase());
+    const proof = PROOFS.includes(a.proof) ? a.proof : "listed";
+    const pu = proof === "keybase" ? safeLink(a.proof_url) : "";
+    return { site: line(a.site, 60), handle: line(a.handle, 64), url: u, proof, ...(pu ? { proof_url: pu } : {}) };
+  }).filter(Boolean);
+  const name = line(p.display_name ?? p.name, 200);
+  return {
+    site, source: p.source, handle: line(p.handle, 80), url, state: "found", display_name: name, name,
+    bio: line(p.bio, 300), location: line(p.location, 100), company: line(p.company, 100), website: safeLink(p.website),
+    links: [...new Set(list(p.links, 12).map(safeLink).filter(Boolean))], emails: [...new Set(list(p.emails, 6).map(email).filter(Boolean))],
+    created: when(p.created), last_active: when(p.last_active), accounts, stats, followers: stats.followers ?? null,
+    items: list(p.items, 20).map((i) => (isObj(i) && Object.hasOwn(ITEM_KINDS, i.kind) && line(i.name, 80) && safeLink(i.url) ? { name: line(i.name, 80), url: safeLink(i.url), kind: i.kind } : null)).filter(Boolean),
+    note: line(p.note, 200), avatar_hash: hash, avatar_default: dflt, thumb: hash && !dflt ? safeThumb(p.thumb) : "",
+    avatar_state: hash ? (dflt ? "default" : "ok") : AVATAR_STATES.includes(p.avatar_state) && p.avatar_state !== "ok" ? p.avatar_state : "none",
+  };
+}
+// The whole answer: { username, cached, profiles, sources } or a failure ({ error, error_code,
+// error_detail }), or null for something that is not an answer at all. `guard` never survives.
+export const readProfileSources = memo((raw) => {
+  if (failed(raw)) return errorOf(raw);
+  if (!Array.isArray(raw.profiles) || !isObj(raw.sources)) return null;
+  const profiles = [], seen = new Set();
+  for (const p of raw.profiles.slice(0, 40)) { const r = readProfile(p); if (r && !seen.has(r.source)) { seen.add(r.source); profiles.push(r); } }
+  const sources = {};
+  for (const id of Object.keys(PROFILE_SITES)) {
+    const s = raw.sources[id];
+    if (!isObj(s) || !PROFILE_STATES.includes(s.state)) continue;
+    // A source that says "found" with no readable profile behind it showed nothing.
+    const state = s.state === "found" && !seen.has(id) ? "unknown" : s.state;
+    sources[id] = { site: PROFILE_SITES[id][0], state, ...(line(s.note, 200) ? { note: line(s.note, 200) } : {}), ...(state === "failed" || state === "rate_limited" ? { error: line(s.error, 200), error_code: line(s.error_code, 40), error_detail: line(s.error_detail, 200) } : {}) };
+  }
+  for (const id of seen) if (!sources[id]) sources[id] = { site: PROFILE_SITES[id][0], state: "found" };
+  return { username: line(raw.username, 64), cached: raw.cached === true, profiles, sources };
+});
+// A site that answered whether the account is there. npm cannot see an account without packages:
+// it answers, and says so in a note, which is still an answer from the site.
+const answeredState = (s) => s.state === "found" || s.state === "not_found" || (s.state === "unknown" && !!s.note && !s.error_code);
+// { read, asked, answered, by: { state: [site] }, down: [{ site, state, note }] }
+// down: the sites that were asked and did not say. Unknown, never "not found".
+export function profileCoverage(d) {
+  const r = readProfileSources(d);
+  const out = { read: 0, asked: 0, answered: 0, by: {}, down: [], notes: [] };
+  if (!r || failed(r)) return out;
+  for (const s of Object.values(r.sources)) {
+    (out.by[s.state] ||= []).push(s.site);
+    if (s.state === "not_asked") continue;
+    out.asked++;
+    if (s.state === "found") out.read++;
+    if (answeredState(s)) out.answered++; else out.down.push({ site: s.site, state: s.state });
+    if (s.note) out.notes.push({ site: s.site, note: s.note });
+  }
+  return out;
+}
+// "5 profiles read · 3 did not answer (Lichess rate limited, Lobsters blocked by site)" for the run log.
+export function profileSourcesText(d) {
+  const c = profileCoverage(d);
+  if (!c.asked) return "";
+  const down = c.down.map((x) => `${x.site} ${PROFILE_STATE_WORD[x.state]}`);
+  return [`${c.read} ${c.read === 1 ? "profile" : "profiles"} read on ${c.asked} sites`, down.length ? `${down.length} did not answer (${down.slice(0, 4).join(", ")}${down.length > 4 ? ` and ${down.length - 4} more` : ""})` : ""].filter(Boolean).join(", ");
+}
+
+// ---- what a read profile shows when its row is opened -----------------------------------------
+const STAT_LABEL = { followers: "Followers", following: "Following", posts: "Posts", karma: "Karma", repos: "Repositories", public_repos: "Repositories", packages: "Packages", games: "Games", stars: "Stars", edits: "Edits", rating: "Rating", max_rating: "Highest rating", contributions: "Contributions", friends: "Friends", models: "Models", datasets: "Datasets", spaces: "Spaces", submissions: "Submissions", comments: "Comments", articles: "Articles" };
+const statLabel = (k) => STAT_LABEL[k] || (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " ");
+const fmt = (n) => Number(n).toLocaleString("en-US");
+const bareUrl = (u) => String(u).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+// One row of a detail: { k, v, url, link_kind, how? }. A link is evidence: where the value can be
+// seen, never a claim about who owns the page. `subjects` and `secrets` are the link rules' own.
+function drow(k, v, url, { subjects = [], secrets = [], how = "" } = {}) {
+  const l = url ? classifyLink({ url, want: "evidence", subjects: [...subjects, v, hostOf(url)], secrets }) : { url: "", link_kind: "none" };
+  return { k, v: String(v), url: l.url, link_kind: l.link_kind, ...(how ? { how } : {}) };
+}
+// p: a profile from collectProfiles. Returns { groups: [{ id, title, prov, rows }], count }.
+// A profile read from a site's own API is split by who wrote each value. A profile a tool parsed
+// from a page is one group, because the tool cannot tell the two apart.
+export function profileDetail(p, { secrets = [] } = {}) {
+  if (!p) return null;
+  const o = { subjects: [p.handle], secrets };
+  const self = [], rec = [];
+  if (p.fullName) self.push(drow("Name", p.fullName));
+  if (p.fullBio) self.push(drow("Bio", p.fullBio));
+  if (p.location) self.push(drow("Location", p.location));
+  if (p.company) self.push(drow("Company", p.company));
+  for (const w of p.websites || []) self.push(drow("Website", bareUrl(w), /^https?:/i.test(w) ? w : `https://${w}`, o));
+  for (const e of p.emails || []) self.push(drow("Public email", e));
+  for (const a of (p.accounts || []).filter((x) => !proofStrong(x.proof))) self.push(drow("Listed account", `${a.site}${a.handle ? ` ${a.handle}` : ""}`, a.url, { ...o, subjects: [p.handle, a.handle], how: PROOF_TEXT.listed }));
+  const shown = new Set([...(p.websites || []), ...(p.accounts || []).map((a) => a.url)].map((u) => String(u).toLowerCase().replace(/\/$/, "")));
+  for (const u of (p.links || []).filter((x) => !shown.has(String(x).toLowerCase().replace(/\/$/, ""))).slice(0, 8)) self.push(drow("Link", bareUrl(u), u, o));
+  for (const a of (p.accounts || []).filter((x) => proofStrong(x.proof))) {
+    const r = drow(a.proof === "keybase" ? "Proven account" : "Verified link", `${a.site}${a.handle ? ` ${a.handle}` : ""}`, a.url, { ...o, subjects: [p.handle, a.handle], how: PROOF_TEXT[a.proof] });
+    if (a.proof_url) { const pl = classifyLink({ url: a.proof_url, want: "evidence", subjects: [p.handle, a.handle], secrets }); if (pl.link_kind === "evidence") r.more = { url: pl.url, label: "Proof", link_kind: "evidence" }; }
+    rec.push(r);
+  }
+  if (dayOf(p.created) || /^\d{4}-\d{2}-\d{2}/.test(String(p.created || ""))) rec.push(drow("Joined", String(p.created).slice(0, 10)));
+  if (dayOf(p.lastActive)) rec.push(drow("Last active", dayOf(p.lastActive)));
+  const stats = { ...(p.stats || {}) };
+  for (const [k, v] of [["repos", p.repos], ["followers", p.followers], ["karma", p.karma]]) if (Number.isFinite(v) && v >= 0 && !(k in stats) && !(k === "repos" && "public_repos" in stats)) stats[k] = v;
+  for (const [k, v] of Object.entries(stats)) rec.push(drow(statLabel(k), fmt(v)));
+  for (const kind of Object.keys(ITEM_KINDS)) { const it = (p.items || []).filter((i) => i.kind === kind); for (const i of it.slice(0, 10)) rec.push(drow(ITEM_KINDS[kind].replace(/s$/, ""), i.name, i.url, { ...o, subjects: [p.handle, i.name] })); if (it.length > 10) rec.push(drow(ITEM_KINDS[kind], `and ${it.length - 10} more`)); }
+  if (p.avatarState === "failed") rec.push(drow("Picture", "could not be read, so it was not compared"));
+  const groups = p.api
+    ? [{ id: "self", title: "Written by the account holder", prov: PROVENANCE.self, rows: self }, { id: "record", title: `${p.site}'s own record`, prov: PROVENANCE.record, rows: rec }]
+    : [{ id: "tool", title: `Read from the page by ${(p.sources || []).join(", ") || "a tool"}`, prov: PROVENANCE.tool, rows: [...self, ...rec] }];
+  const kept = groups.filter((g) => g.rows.length);
+  const count = kept.reduce((n, g) => n + g.rows.length, 0);
+  return count ? { groups: kept, count } : null;
+}
+// The same detail as indented Markdown lines under a row, each marked with how it is known.
+export const detailMarkdown = (detail) => (detail?.groups || []).flatMap((g) => g.rows.map((r) => `  - ${r.k}: ${r.url && r.link_kind !== "none" ? `[${r.v}](${r.url})` : r.v}${r.how ? ` (${r.how})` : ""}${r.more ? ` · [${r.more.label}](${r.more.url})` : ""} _(${g.prov})_`));
+
+// ---- accounts and keys behind an address --------------------------------------------------------
+export const EMAIL_ACCOUNTS_SOURCE = "Accounts and keys";
+export const EMAIL_ACCOUNTS_DESC = "the GitHub account that GitHub ties to this address, and OpenPGP keys published for it";
+const GH_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const COMMIT_URL = /^https:\/\/github\.com\/[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}\/commit\/[0-9a-f]{7,64}$/;
+const HOWS = ["commit_author", "public_profile_email"];
+const LOOKUPS = { github_commits: "GitHub commit search", github_users: "GitHub user search", openpgp: "keys.openpgp.org" };
+const LOOKUP_STATES = ["ok", "none", "rate_limited", "failed"];
+// The words the page uses for each way an account is tied to the address.
+export const HOW_TEXT = {
+  commit_author: "GitHub attributes commits that carry this address to this account, so the account has this address confirmed.",
+  public_profile_email: "The account's public profile shows this address.",
+  organization: "This organization's public profile shows this address. GitHub does not confirm an organization's address.",
+};
+export const SELF_DECLARED_NOTE = "Names, dates and time zones written inside a commit are self-declared: whoever makes a commit can write anything there.";
+export const KEY_NOTE = "The key server verified each address on a key by mail. The names on a key, and its creation date, are self-declared.";
+// What the commits say: counts are GitHub's, everything else was written by the committer.
+function commitPart(v) {
+  const d = isObj(v) ? v : {};
+  return {
+    commits_seen: num(d.commits_seen), own_repo_commits: num(d.own_repo_commits),
+    names: list(d.names, 8).map((n) => (isObj(n) && line(n.name, 100) ? { name: line(n.name, 100), commits: num(n.commits), own_repo: n.own_repo === true } : null)).filter(Boolean),
+    first_commit: when(d.first_commit), last_commit: when(d.last_commit), dates_ignored: num(d.dates_ignored),
+    commit_utc_offsets: list(d.commit_utc_offsets, 8).map((o) => (isObj(o) && /^[+-]\d{2}:\d{2}$/.test(String(o.offset)) ? { offset: String(o.offset), commits: num(o.commits) } : null)).filter(Boolean),
+    evidence: [...new Set(list(d.evidence, 5).filter((u) => typeof u === "string" && COMMIT_URL.test(u)))],
+  };
+}
+function readKey(k) {
+  if (!isObj(k)) return null;
+  const user_ids = list(k.user_ids, 10).map((u) => (isObj(u) ? { name: line(u.name, 100), email: email(u.email), comment: line(u.comment, 100) } : null)).filter((u) => u && (u.name || u.email));
+  const version = int(k.version) ?? 0;
+  const fp = typeof k.fingerprint === "string" && /^[0-9a-f]{40}$/i.test(k.fingerprint) ? k.fingerprint.toUpperCase() : "";
+  if (k.parsed !== true || !fp) return { parsed: false, version, reason: line(k.reason, 200), user_ids };
+  return {
+    parsed: true, version, fingerprint: fp, key_id: fp.slice(-16), created: when(k.created), algorithm: line(k.algorithm, 40), bits: int(k.bits), curve: line(k.curve, 40),
+    // The address is rebuilt from the fingerprint: a stored case cannot point a key somewhere else.
+    url: `https://keys.openpgp.org/vks/v1/by-fingerprint/${fp}`, user_ids, subkeys: num(k.subkeys), revoked: k.revoked === true, how: "keyserver_verified_address",
+  };
+}
+export const readEmailAccounts = memo((raw) => {
+  if (failed(raw)) return errorOf(raw);
+  if (!Array.isArray(raw.accounts) || !Array.isArray(raw.keys) || !isObj(raw.sources)) return null;
+  const seen = new Set();
+  const accounts = raw.accounts.slice(0, 20).map((a) => {
+    const login = isObj(a) && typeof a.login === "string" && GH_LOGIN.test(a.login) ? a.login : "";
+    if (!login || seen.has(login.toLowerCase())) return null;
+    seen.add(login.toLowerCase());
+    const hows = [...new Set([a.how, ...list(a.hows, 4)].filter((x) => HOWS.includes(x)))];
+    if (!hows.length) return null;
+    const how = hows.includes("commit_author") ? "commit_author" : "public_profile_email";
+    return { login, url: `https://github.com/${login}`, how, hows, account_type: ["User", "Organization", "Bot"].includes(a.account_type) ? a.account_type : "", ...(how === "commit_author" ? commitPart(a) : {}) };
+  }).filter(Boolean);
+  const un = commitPart(raw.unattributed);
+  const sources = {};
+  for (const id of Object.keys(LOOKUPS)) {
+    const s = raw.sources[id];
+    if (!isObj(s) || !LOOKUP_STATES.includes(s.state)) continue;
+    const down = s.state === "failed" || s.state === "rate_limited";
+    sources[id] = { state: s.state, ...Object.fromEntries(["total", "seen", "skipped", "count", "retry_after"].filter((k) => int(s[k]) !== null).map((k) => [k, int(s[k])])), ...(s.incomplete === true ? { incomplete: true } : {}), ...(down ? { error: line(s.error, 200), error_code: line(s.error_code, 40), error_detail: line(s.error_detail, 200) } : {}) };
+  }
+  return { email: email(raw.email), cached: raw.cached === true, accounts, unattributed: un.commits_seen ? un : null, keys: raw.keys.slice(0, 10).map(readKey).filter(Boolean), sources };
+});
+export const lookupName = (id) => LOOKUPS[id] || id;
+// The lookups that did not answer: unknown, never "no account" or "no key".
+export const emailLookupsDown = (d) => { const r = readEmailAccounts(d); return r && !failed(r) ? Object.entries(r.sources).filter(([, s]) => s.state === "failed" || s.state === "rate_limited").map(([id, s]) => ({ id, name: LOOKUPS[id], state: s.state })) : []; };
+// The names written in an account's commits, the ones from its own repositories first.
+export const commitNames = (a) => (a?.names || []).slice().sort((x, y) => (y.own_repo ? 1 : 0) - (x.own_repo ? 1 : 0) || y.commits - x.commits);
+const namesText = (a, n = 3) => commitNames(a).slice(0, n).map((x) => `${x.name}${x.own_repo ? " (in a repository the account owns)" : ""}`).join(", ");
+const offsetsText = (a) => (a?.commit_utc_offsets || []).map((o) => `UTC${o.offset} in ${o.commits} ${o.commits === 1 ? "commit" : "commits"}`).join(", ");
+const plural = (n, one, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
+const shortFp = (fp) => fp.replace(/(.{4})/g, "$1 ").trim();
+const keyAlgo = (k) => [k.algorithm, k.curve, k.bits ? `${k.bits} bits` : ""].filter(Boolean).join(" ");
+
+// The detail of one account row: what GitHub says, then what the commits say.
+function commitDetail(a) {
+  const rec = [], self = [];
+  if (a.commits_seen) rec.push({ k: "Commits seen", v: plural(a.commits_seen, "commit"), url: "", link_kind: "none" });
+  if (a.own_repo_commits) rec.push({ k: "In its own repositories", v: plural(a.own_repo_commits, "commit"), url: "", link_kind: "none" });
+  a.evidence.forEach((u, i) => rec.push({ k: i ? "" : "Evidence", v: u.replace(/^https:\/\/github\.com\//, "").replace(/\/commit\/([0-9a-f]{7})[0-9a-f]*$/, " @ $1"), url: u, link_kind: "evidence" }));
+  for (const n of commitNames(a)) self.push({ k: "Name in commits", v: n.name, url: "", link_kind: "none", how: `${plural(n.commits, "commit")}${n.own_repo ? ", in a repository the account owns" : ", in other repositories"}` });
+  if (dayOf(a.first_commit)) self.push({ k: "First commit seen", v: dayOf(a.first_commit), url: "", link_kind: "none" });
+  if (dayOf(a.last_commit)) self.push({ k: "Last commit seen", v: dayOf(a.last_commit), url: "", link_kind: "none" });
+  if (a.dates_ignored) self.push({ k: "Dates left out", v: `${plural(a.dates_ignored, "commit")} with an impossible date`, url: "", link_kind: "none" });
+  for (const o of a.commit_utc_offsets) self.push({ k: "UTC offset in commits", v: `UTC${o.offset}`, url: "", link_kind: "none", how: plural(o.commits, "commit") });
+  const groups = [{ id: "record", title: "GitHub's own record", prov: PROVENANCE.record, rows: rec }, { id: "self", title: "Written inside the commits (anyone can write anything there)", prov: PROVENANCE.self, rows: self }].filter((g) => g.rows.length);
+  const count = groups.reduce((n, g) => n + g.rows.length, 0);
+  return count ? { groups, count } : null;
+}
+
+// The ledger rows of an email case, from the checked answer. Each is complete: tier, link, card,
+// detail and action. Nothing here is a profile, so none of it reaches the identity clusters.
+//   Linked       an account GitHub attributes commits with this address to, and each key the key
+//                server published for the address (it verified the address by mail)
+//   Exists       an account whose public profile shows the address
+//   Unverified   commits that carry the address and that GitHub ties to no account
+export function emailAccountItems(d) {
+  const r = readEmailAccounts(d);
+  if (!r || failed(r)) return [];
+  const out = [];
+  for (const a of r.accounts) {
+    const strong = a.how === "commit_author", org = a.account_type === "Organization";
+    const both = a.hows.includes("public_profile_email") && strong;
+    const why = strong ? HOW_TEXT.commit_author.replace(/\.$/, "") + (both ? ", and its public profile shows it" : "") : (org ? HOW_TEXT.organization : HOW_TEXT.public_profile_email).replace(/\.$/, "");
+    const facts = [org ? "Organization" : a.account_type === "Bot" ? "Bot account" : "", strong && a.commits_seen ? `${plural(a.commits_seen, "commit")} seen` : "", strong && a.own_repo_commits ? `${fmt(a.own_repo_commits)} in its own repositories` : ""].filter(Boolean);
+    const named = strong ? namesText(a, 2) : "";
+    out.push({
+      tier: strong ? "linked" : "matches", what: "GitHub", url: a.url, link_kind: "verified_profile", key: `acct:github~${a.login.toLowerCase()}`, sources: [EMAIL_ACCOUNTS_SOURCE], source: EMAIL_ACCOUNTS_SOURCE,
+      meta: [why, strong && a.commits_seen ? `${plural(a.commits_seen, "commit")} seen` : "", named ? `names written in commits (self-declared): ${named}` : ""].filter(Boolean).join(" · "),
+      card: { handle: a.login, facts, bio: "", why, basis: "", note: strong ? (named ? `Names written in its commits (self-declared): ${named}.` : "") : "The profile was not read here. Investigate the account to read it." },
+      detail: strong ? commitDetail(a) : null, emailAccount: { login: a.login, how: a.how, type: a.account_type },
+      ...(strong && a.evidence[0] ? { more: { url: a.evidence[0], label: "Evidence commit", link_kind: "evidence" } } : {}),
+      action: { label: "Investigate this", pivot: "investigate", value: a.login, type: "username" },
+    });
+  }
+  if (r.unattributed) {
+    const u = r.unattributed, named = namesText(u, 3);
+    out.push({
+      tier: "unverified", what: "Commits GitHub ties to no account", url: u.evidence[0] || "", link_kind: u.evidence[0] ? "evidence" : "none", ...(u.evidence[0] ? { link_label: "Evidence commit" } : {}), key: "commits:unattributed", sources: [EMAIL_ACCOUNTS_SOURCE], source: EMAIL_ACCOUNTS_SOURCE,
+      meta: [`${plural(u.commits_seen, "commit")} carry this address and belong to no GitHub account`, named ? `names written in them (self-declared): ${named}` : "", offsetsText(u) ? `time zones written in them (self-declared): ${offsetsText(u)}` : ""].filter(Boolean).join(" · "),
+      detail: commitDetail(u), nofind: true,
+    });
+  }
+  for (const k of r.keys) {
+    const ids = k.user_ids.map((u) => [u.name, u.email && `<${u.email}>`].filter(Boolean).join(" ")).filter(Boolean);
+    if (!k.parsed) {
+      out.push({ tier: "linked", what: `OpenPGP key (version ${k.version || "unknown"}, not read)`, url: "", link_kind: "none", key: `pgp:unread:${k.version}:${out.length}`, sources: [EMAIL_ACCOUNTS_SOURCE], source: EMAIL_ACCOUNTS_SOURCE,
+        meta: ["published for this address on keys.openpgp.org", k.reason || "CrawlR cannot read this key format", ids.length ? `user IDs: ${ids.join(", ")}` : ""].filter(Boolean).join(" · "), hint: "Search the address at keys.openpgp.org to download the key." });
+      continue;
+    }
+    const rows = [
+      { k: "Fingerprint", v: shortFp(k.fingerprint), url: k.url, link_kind: "evidence" }, { k: "Algorithm", v: keyAlgo(k), url: "", link_kind: "none" },
+      { k: "Subkeys", v: String(k.subkeys), url: "", link_kind: "none" }, ...(k.revoked ? [{ k: "State", v: "revoked", url: "", link_kind: "none" }] : []),
+      ...k.user_ids.filter((u) => u.email).map((u) => ({ k: "Verified address", v: u.email, url: "", link_kind: "none", how: "the key server checked it by mail" })),
+    ].filter((x) => x.v);
+    const self = [...(dayOf(k.created) ? [{ k: "Created", v: dayOf(k.created), url: "", link_kind: "none" }] : []), ...k.user_ids.filter((u) => u.name).map((u) => ({ k: "Name on the key", v: [u.name, u.comment && `(${u.comment})`].filter(Boolean).join(" "), url: "", link_kind: "none" }))];
+    const groups = [{ id: "record", title: "The key server's record", prov: PROVENANCE.record, rows }, { id: "self", title: "Written in the key by whoever made it", prov: PROVENANCE.self, rows: self }].filter((g) => g.rows.length);
+    out.push({
+      tier: "linked", what: `OpenPGP key ${k.key_id.replace(/(.{4})/g, "$1 ").trim()}`, url: k.url, link_kind: "evidence", key: `pgp:${k.fingerprint.toLowerCase()}`, sources: [EMAIL_ACCOUNTS_SOURCE], source: EMAIL_ACCOUNTS_SOURCE,
+      meta: ["published for this address on keys.openpgp.org, which verified the address by mail", keyAlgo(k), dayOf(k.created) ? `created ${dayOf(k.created)} (self-declared)` : "", k.revoked ? "revoked" : "", ids.length ? `user IDs: ${ids.join(", ")}` : ""].filter(Boolean).join(" · "),
+      detail: { groups, count: groups.reduce((n, g) => n + g.rows.length, 0) }, pgp: { fingerprint: k.fingerprint },
+    });
+  }
+  return out;
+}
+// Facts about the address itself. They belong to no person, and each says how it is known.
+export function emailAccountFacts(d) {
+  const r = readEmailAccounts(d);
+  if (!r || failed(r)) return [];
+  const out = [], src = EMAIL_ACCOUNTS_SOURCE;
+  for (const a of r.accounts.filter((x) => x.how === "commit_author")) {
+    out.push({ k: "GitHub account", v: a.login, source: `${src} · site record`, url: a.url });
+    const top = commitNames(a)[0];
+    if (top) out.push({ k: "Name in commits", v: top.name, source: `${src} · self-declared`, url: "" });
+    if (dayOf(a.first_commit) && dayOf(a.last_commit)) out.push({ k: "Commits seen", v: `${dayOf(a.first_commit)} to ${dayOf(a.last_commit)}`, source: `${src} · self-declared dates`, url: "" });
+    if (a.commit_utc_offsets[0]) out.push({ k: "UTC offset in commits", v: a.commit_utc_offsets.slice(0, 3).map((o) => `UTC${o.offset}`).join(", "), source: `${src} · self-declared`, url: "" });
+  }
+  for (const k of r.keys.filter((x) => x.parsed)) out.push({ k: "OpenPGP key", v: shortFp(k.fingerprint), source: `${src} · site record`, url: k.url });
+  return out;
+}
+// Places to look next: the account's login, and every other address a key carries.
+// { kind, value, from, source, tied }
+export function emailAccountLeads(d, target) {
+  const r = readEmailAccounts(d);
+  if (!r || failed(r)) return [];
+  const out = [], me = String(target ?? "").trim().toLowerCase();
+  for (const a of r.accounts) out.push({ kind: "handle", value: a.login, from: a.how === "commit_author" ? "GitHub account that commits with this address (site record)" : a.account_type === "Organization" ? "GitHub organization that shows this address (unconfirmed)" : "GitHub account that shows this address", source: EMAIL_ACCOUNTS_SOURCE, tied: true });
+  for (const k of r.keys) for (const u of k.user_ids) if (u.email && u.email !== me) out.push({ kind: "email", value: u.email, from: "another address on the same OpenPGP key (verified by the key server)", source: EMAIL_ACCOUNTS_SOURCE, tied: true });
+  return out;
+}
+// "1 account, 1 key" for the run log.
+export function emailAccountsText(d) {
+  const r = readEmailAccounts(d);
+  if (!r || failed(r)) return "";
+  const down = emailLookupsDown(r).map((x) => `${x.name} ${x.state === "rate_limited" ? "rate limited" : "failed"}`);
+  return [r.accounts.length ? plural(r.accounts.length, "GitHub account") : "", r.keys.length ? plural(r.keys.length, "OpenPGP key") : "", r.unattributed ? `${plural(r.unattributed.commits_seen, "commit")} tied to no account` : "", down.length ? `unknown: ${down.join(", ")}` : ""].filter(Boolean).join(", ");
+}
+// What the model is told: the same statements, with the provenance in the field names.
+export function emailAccountsForAi(d) {
+  const r = readEmailAccounts(d);
+  if (!r || failed(r)) return null;
+  const git = (a) => ({ commits_seen: a.commits_seen, own_repo_commits: a.own_repo_commits, self_declared_names: commitNames(a).slice(0, 5).map((n) => ({ name: n.name, commits: n.commits, own_repo: n.own_repo })), self_declared_first_commit: dayOf(a.first_commit), self_declared_last_commit: dayOf(a.last_commit), self_declared_utc_offsets: a.commit_utc_offsets.slice(0, 4) });
+  return {
+    accounts: r.accounts.map((a) => ({ login: a.login, url: a.url, tie: a.how, account_type: a.account_type, ...(a.how === "commit_author" ? git(a) : {}) })),
+    unattributed_commits: r.unattributed ? git(r.unattributed) : null,
+    keys: r.keys.map((k) => (k.parsed ? { fingerprint: k.fingerprint, algorithm: keyAlgo(k), self_declared_created: dayOf(k.created), revoked: k.revoked, verified_addresses: k.user_ids.map((u) => u.email).filter(Boolean), self_declared_names: k.user_ids.map((u) => u.name).filter(Boolean) } : { unread: true, version: k.version })),
+    not_answered: emailLookupsDown(r).map((x) => `${x.name}: ${x.state}`),
+  };
+}
+
+// ---- GitHub activity ------------------------------------------------------------------------------
+export const ACTIVITY_SOURCE = "GitHub activity";
+export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
+const ACTIVITY_STATES = ["ok", "none", "not_found"];
+const counts = (v, n) => (Array.isArray(v) && v.length === n && v.every((x) => Number.isFinite(x) && x >= 0) ? v.map((x) => Math.floor(x)) : null);
+const offsetLabel = (a, b) => { const one = (n) => `UTC${n === 0 ? "" : n > 0 ? `+${n}` : n}`; return a === b ? one(a) : `${one(a)} to ${one(b)}`; };
+export const readActivity = memo((raw) => {
+  if (failed(raw)) return errorOf(raw);
+  if (!ACTIVITY_STATES.includes(raw.state)) return null;
+  const username = typeof raw.username === "string" && GH_LOGIN.test(raw.username) ? raw.username : "";
+  if (raw.state === "not_found") return { username, found: false, state: "not_found", events: 0 };
+  const hours = counts(raw.hours_utc, 24), days = counts(raw.weekdays_utc, 7);
+  if (raw.state === "ok" && (!hours || !days)) return null;
+  const w = isObj(raw.window) ? raw.window : {};
+  const e = isObj(raw.estimate) ? raw.estimate : null;
+  const off = (v) => (Number.isInteger(v) && v >= -12 && v <= 14 ? v : null);
+  const est = e && off(e.utc_offset_from) !== null && off(e.utc_offset_to) !== null ? {
+    utc_offset_from: e.utc_offset_from, utc_offset_to: e.utc_offset_to, utc_offsets: list(e.utc_offsets, 27).filter((x) => off(x) !== null),
+    // Only a label that is nothing but offsets is kept; otherwise it is written again from the numbers.
+    label: /^UTC(?:[+-]\d{1,2})?(?: to UTC(?:[+-]\d{1,2})?)?$/.test(line(e.label, 40)) ? line(e.label, 40) : offsetLabel(e.utc_offset_from, e.utc_offset_to),
+    quiet_start_hour: int(e.quiet_start_hour), quiet_end_hour: int(e.quiet_end_hour), quiet_hours: int(e.quiet_hours), quiet_events: int(e.quiet_events),
+    basis: line(e.basis, 400), assumption: line(e.assumption, 400), caveat: line(e.caveat, 400),
+  } : null;
+  const why = isObj(raw.estimate_reason) ? { code: line(raw.estimate_reason.code, 40), text: line(raw.estimate_reason.text, 300) } : null;
+  return {
+    username, found: true, state: raw.state, cached: raw.cached === true, complete: raw.complete !== false, pages: num(raw.pages), events: num(raw.events),
+    ...(["rate_limited", "failed"].includes(raw.later_pages) ? { later_pages: raw.later_pages } : {}),
+    window: { first: when(w.first), last: when(w.last), days: num(w.days), active_days: num(w.active_days) },
+    hours_utc: hours || Array(24).fill(0), weekdays_utc: days || Array(7).fill(0),
+    types: list(raw.types, 12).map((t) => (isObj(t) && /^[A-Za-z]{1,40}$/.test(String(t.type)) ? { type: t.type, count: num(t.count) } : null)).filter(Boolean),
+    repos: list(raw.repos, 10).map((x) => (isObj(x) && REPO.test(String(x.name)) ? { name: x.name, url: `https://github.com/${x.name}`, count: num(x.count) } : null)).filter(Boolean),
+    estimate: est, estimate_reason: est ? null : why || { code: "none", text: "No estimate was made." },
+  };
+});
+const EVENT_WORD = { PushEvent: "pushes", PullRequestEvent: "pull requests", IssuesEvent: "issues", IssueCommentEvent: "issue comments", WatchEvent: "stars", ForkEvent: "forks", CreateEvent: "branches or repositories created", DeleteEvent: "branches deleted", PullRequestReviewEvent: "reviews", PullRequestReviewCommentEvent: "review comments", ReleaseEvent: "releases", PublicEvent: "repositories made public", MemberEvent: "collaborators added", GollumEvent: "wiki edits", CommitCommentEvent: "commit comments" };
+export const eventWord = (t) => EVENT_WORD[t] || String(t).replace(/Event$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+const hh = (n) => `${String(n).padStart(2, "0")}:00`;
+// Everything the page says about the activity, in words, so the two strips always have a text
+// alternative and the exports say the same thing.
+//   { state, text, window, hours: [{ hour, count, pct }], days: [{ day, count, pct }], hoursAlt,
+//     daysAlt, busiest, repos, types, estimate: { label, basis, assumption, caveat } | null, noEstimate }
+export function activityView(d) {
+  const r = readActivity(d);
+  if (!r || failed(r)) return null;
+  if (r.state === "not_found") return { state: "not_found", text: "GitHub has no account with this name.", events: 0 };
+  if (r.state === "none") return { state: "none", text: "The account exists and has no public events in the window GitHub keeps (about 90 days, 300 events at most).", events: 0 };
+  const top = Math.max(1, ...r.hours_utc), topDay = Math.max(1, ...r.weekdays_utc);
+  const hours = r.hours_utc.map((count, hour) => ({ hour, count, pct: Math.round((count / top) * 100) }));
+  const days = r.weekdays_utc.map((count, i) => ({ day: WEEKDAYS[i], count, pct: Math.round((count / topDay) * 100) }));
+  const busiest = hours.filter((x) => x.count > 0).sort((a, b) => b.count - a.count || a.hour - b.hour).slice(0, 3);
+  const win = dayOf(r.window.first) && dayOf(r.window.last) ? `${dayOf(r.window.first)} to ${dayOf(r.window.last)}` : "";
+  const partial = r.complete ? "" : ` GitHub ${r.later_pages === "rate_limited" ? "rate limited" : "failed on"} a later page, so older events are missing.`;
+  return {
+    state: "ok", events: r.events, complete: r.complete, username: r.username,
+    text: `${plural(r.events, "public event")}${win ? ` from ${win}` : ""}${r.window.days ? ` (${plural(r.window.days, "day")}, active on ${r.window.active_days})` : ""}. Times are UTC.${partial}`,
+    window: win, hours, days,
+    hoursAlt: `Events by hour of day, UTC: ${hours.map((x) => `${hh(x.hour)} ${x.count}`).join(", ")}.`,
+    daysAlt: `Events by weekday, UTC: ${days.map((x) => `${x.day} ${x.count}`).join(", ")}.`,
+    busiest: busiest.length ? `Busiest hours (UTC): ${busiest.map((x) => `${hh(x.hour)} (${x.count})`).join(", ")}.` : "",
+    repos: r.repos, types: r.types.map((t) => ({ ...t, word: eventWord(t.type) })),
+    estimate: r.estimate ? { label: r.estimate.label, basis: r.estimate.basis, assumption: r.estimate.assumption, caveat: r.estimate.caveat || "A hint, not a fact.", quiet: r.estimate.quiet_start_hour !== null && r.estimate.quiet_end_hour !== null ? `Quietest stretch: ${hh(r.estimate.quiet_start_hour)} to ${hh(r.estimate.quiet_end_hour)} UTC.` : "" } : null,
+    noEstimate: r.estimate ? "" : r.estimate_reason?.text || "No estimate was made.",
+  };
+}
+export function activityForAi(d) {
+  const v = activityView(d);
+  if (!v) return null;
+  if (v.state !== "ok") return { state: v.state, note: v.text };
+  return { state: "ok", summary: v.text, hours_utc: v.hours.map((x) => x.count), weekdays_utc: Object.fromEntries(v.days.map((x) => [x.day, x.count])), top_repositories: v.repos.slice(0, 5).map((x) => `${x.name} (${x.count})`), event_types: v.types.slice(0, 6).map((t) => `${t.word} (${t.count})`),
+    utc_offset_estimate: v.estimate ? { range: v.estimate.label, basis: v.estimate.basis, assumption: v.estimate.assumption, caveat: v.estimate.caveat } : null, no_estimate_reason: v.noEstimate };
+}
+export function activityMarkdown(d) {
+  const v = activityView(d);
+  if (!v) return [];
+  if (v.state !== "ok") return ["## GitHub activity", `- ${v.text}`, ""];
+  return ["## GitHub activity", `- ${v.text} _(site record)_`, ...(v.busiest ? [`- ${v.busiest}`] : []), `- ${v.daysAlt}`,
+    ...(v.repos.length ? [`- Most active in: ${v.repos.slice(0, 5).map((x) => `[${x.name}](${x.url}) (${x.count})`).join(", ")}`] : []),
+    ...(v.types.length ? [`- Kinds of event: ${v.types.slice(0, 6).map((t) => `${t.word} (${t.count})`).join(", ")}`] : []),
+    v.estimate ? `- UTC offset estimate: ${v.estimate.label}. ${v.estimate.basis} ${v.estimate.assumption} ${v.estimate.caveat} This is a range of time offsets, never a place.` : `- No UTC offset estimate: ${v.noEstimate}`, ""];
+}
+
+// ---- case files and history ---------------------------------------------------------------------------
+// The three keys as a case may carry them. A value that is not a readable answer is dropped;
+// a failure is kept as a failure, so the source stays "unknown" and never becomes "not found".
+export const DEEP_READERS = { profiles: readProfileSources, emailAccounts: readEmailAccounts, githubActivity: readActivity };
+export function readDeep(results) {
+  if (!isObj(results)) return results;
+  const out = { ...results };
+  for (const [k, read] of Object.entries(DEEP_READERS)) if (k in out) { const v = read(out[k]); if (v) out[k] = v; else delete out[k]; }
+  return out;
+}

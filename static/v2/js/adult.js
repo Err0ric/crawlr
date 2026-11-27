@@ -196,7 +196,7 @@ export function stripGuard(collected) {
   if (!isObj(collected)) return collected;
   const out = { ...collected };
   const bare = (r) => { if (!isObj(r)) return r; const { guard, ...rest } = r; return isObj(rest.profile) && "guard" in rest.profile ? { ...rest, profile: bare(rest.profile) } : rest; };
-  for (const [k, list] of [["maigret", "results"], ["platformCheck", "results"], ["enricher", "profiles"]]) if (isObj(out[k]) && Array.isArray(out[k][list])) out[k] = { ...out[k], [list]: out[k][list].map(bare) };
+  for (const [k, list] of [["maigret", "results"], ["platformCheck", "results"], ["enricher", "profiles"], ["profiles", "profiles"]]) if (isObj(out[k]) && Array.isArray(out[k][list])) out[k] = { ...out[k], [list]: out[k][list].map(bare) };
   return out;
 }
 

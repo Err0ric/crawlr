@@ -229,7 +229,7 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
       tile("notable", "Public figure", n("notable"), { ...o, feeds: ["nameResult"], jump: { tier: "notable" }, sub: "exact match in Wikidata" }),
     ];
   }
-  const people = ["github", "githubDeep", "gravatar", "maigret", "enricher", "platformCheck", "holehe", "avatarHash"];
+  const people = ["github", "githubDeep", "gravatar", "maigret", "enricher", "platformCheck", "holehe", "avatarHash", "profiles", "emailAccounts"];
   // A templated URL the link check found is still Unverified (nothing was read about who owns it),
   // and the tile says how many of those pages were checked.
   const pages = items.filter((i) => i.tier === "unverified" && i.check === "verified").length;
@@ -246,7 +246,7 @@ export function investigateTiles({ items = [], collected = {}, type = "", failed
   }
   const diff = n("different");
   return [linked,
-    tile("exists", "Exists", n("matches") + diff, { ...o, tone: "match", feeds: ["sherlock", "maigret", "platformCheck", "enricher", "github"], jump: { tier: n("matches") ? "matches" : "different" }, sub: diff ? `profiles read, ${diff} a different person` : "profiles read" }),
+    tile("exists", "Exists", n("matches") + diff, { ...o, tone: "match", feeds: ["sherlock", "maigret", "platformCheck", "enricher", "github", "profiles"], jump: { tier: n("matches") ? "matches" : "different" }, sub: diff ? `profiles read, ${diff} a different person` : "profiles read" }),
     unverified, leads];
 }
 
