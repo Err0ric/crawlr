@@ -44,7 +44,9 @@ def test_profile_records_keep_their_standing_and_who_wrote_each_value():
     assert DEEP_PROVENANCE in p
     assert "Keybase record (https://keybase.io/samexample) [status: linked] SELF-DECLARED: name: Sam Example" in p
     assert "SITE RECORD: proven accounts: GitHub samexample https://github.com/samexample (proven on Keybase); followers: 41." in p
-    assert "GitLab record (https://gitlab.com/samexample) [status: different] SELF-DECLARED: name: Petra Novak. SITE RECORD: joined: 2020-02-11." in p
+    # Another person's record is named with its status, and none of what was read on it is passed on.
+    assert "GitLab record [status: different]: a record was read and the ledger files it as a different person." in p
+    assert "Petra Novak" not in p and "2020-02-11" not in p
     assert "npm record (https://www.npmjs.com/~samexample) [status: matches] The record carries nothing but the handle." in p
 
 
