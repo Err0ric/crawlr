@@ -16,7 +16,7 @@ from middleware.rate_limit import RateLimitMiddleware
 from middleware.run_session import RunSessionMiddleware
 from modules import phone_lookup
 from modules.ai_provider import AIError
-from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, recon_identity, recon_people
+from routers import recon, analyze, recon_infra, hash_lookup, email_headers, phone, recon_identity, recon_people, recon_domain
 
 configure_logging()
 log = get_logger("crawlr")
@@ -108,6 +108,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(recon.router, prefix="/api/recon", tags=["recon"])
 app.include_router(recon_identity.router, prefix="/api/recon", tags=["recon"])
 app.include_router(recon_people.router, prefix="/api/recon", tags=["recon"])
+app.include_router(recon_domain.router, prefix="/api/recon", tags=["recon"])
 app.include_router(analyze.router, prefix="/api/analyze", tags=["analyze"])
 app.include_router(recon_infra.router, prefix="/api/infra", tags=["infra"])
 app.include_router(hash_lookup.router, prefix="/api/hash", tags=["hash"])
