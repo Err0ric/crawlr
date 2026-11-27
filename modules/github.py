@@ -179,6 +179,10 @@ def rate_limited_fields(wait: int, detail: str) -> dict:
 
 
 async def run_github(username: str, timeout: int = 10) -> dict:
+    if not LOGIN_RE.fullmatch(username):
+        # GitHub cannot hold this name (a dot, an underscore, over 39 characters), so that is
+        # the answer and no request is made.
+        return {"username": username, "found": False, "note": "GitHub cannot hold a name spelled like this."}
     key = username.lower()
     cached = _cache_get(key)
     if cached is not None:
@@ -425,6 +429,10 @@ def _commit_emails(rows: list[dict]) -> list[dict]:
 
 
 async def run_github_deep(username: str, timeout: int = 10) -> dict:
+    if not LOGIN_RE.fullmatch(username):
+        # GitHub cannot hold this name (a dot, an underscore, over 39 characters), so that is
+        # the answer and no request is made.
+        return {"username": username, "found": False, "note": "GitHub cannot hold a name spelled like this."}
     key = username.lower()
     cached = _deep_cache_get(key)
     if cached is not None:
