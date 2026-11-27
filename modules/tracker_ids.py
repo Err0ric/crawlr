@@ -11,6 +11,8 @@ What this module touches:
 
   * one GET to https://<domain>/ through core.netguard.safe_fetch, redirects followed (each hop
     vetted), body capped at MAX_BYTES (core.capfetch), the whole call capped at DEADLINE;
+  * the bytes become text through core.charset (a short list of real charsets, UTF-8 for any
+    other label), and decoding and matching run in a thread so other requests do not wait;
   * nothing else. Scripts the page loads are not fetched, so an ID that only exists inside an
     external script or a tag manager container is not seen.
 
@@ -43,6 +45,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
+from core import charset, inflight
 from core.capfetch import BadEncoding, CappedTransport, TooLarge, was_capped
 from core.errors import classify_status, error_fields
 from core.logging import get_logger
@@ -389,6 +392,13 @@ def _challenge(resp: httpx.Response) -> bool:
     return resp.status_code == 503 and "cloudflare" in resp.headers.get("server", "").lower()
 
 
+def _parse(body: bytes, content_type: str) -> tuple[bool, list[dict]]:
+    """(the start of the body looks like markup, the IDs) from the fetched bytes. Runs in a
+    thread. The page's own charset label never picks the codec: core.charset does."""
+    text = charset.decode(body, content_type)
+    return "<" in text[:2000], extract_ids(text)
+
+
 async def _read(domain: str) -> dict:
     try:
         async with _client() as client:
@@ -408,10 +418,15 @@ async def _read(domain: str) -> dict:
     if not 200 <= resp.status_code < 300:
         return _problem(domain, "failed", code=classify_status(resp.status_code))
     ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
-    body = resp.text
-    if ctype not in ("text/html", "application/xhtml+xml", "") or (not ctype and "<" not in body[:2000]):
+    if ctype not in ("text/html", "application/xhtml+xml", ""):
         return _problem(domain, "failed", code="bad_response", message="The home page is not an HTML page.")
-    ids = extract_ids(body)
+    try:
+        # Off the event loop: 1.5 MB of markup takes a moment to decode and match.
+        markup, ids = await asyncio.to_thread(_parse, resp.content, resp.headers.get("content-type") or "")
+    except Exception as e:  # noqa: BLE001 - a page that cannot be read is a failure with a code, never "none"
+        return _problem(domain, "failed", e, code="bad_response")
+    if not ctype and not markup:
+        return _problem(domain, "failed", code="bad_response", message="The home page is not an HTML page.")
     final_host = (urlsplit(got.url).hostname or "").lower()
     off_site = not same_site(final_host, domain)
     out = _base(domain, "ok" if ids else "none")
@@ -433,10 +448,12 @@ async def _read(domain: str) -> dict:
 # Cache
 # --------------------------------------------------------------------------------------
 _cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_pending: dict = {}           # domains being read right now (core.inflight)
 
 
 def clear_cache_for_tests() -> None:
     _cache.clear()
+    _pending.clear()
 
 
 def _cache_get(key: str) -> dict | None:
@@ -468,8 +485,13 @@ async def run_tracker_ids(domain: str) -> dict:
     cached = _cache_get(domain)
     if cached is not None:
         return {**cached, "cached": True}
-    answer = await _read(domain)
-    _cache_put(domain, answer)
-    # State and a count only: no domain, URL or ID is logged.
-    log.info("tracker ids", extra={"state": answer["state"], "ids": answer["count"]})
+    async def fresh() -> dict:
+        answer = await _read(domain)
+        _cache_put(domain, answer)
+        # State and a count only: no domain, URL or ID is logged.
+        log.info("tracker ids", extra={"state": answer["state"], "ids": answer["count"]})
+        return answer
+
+    # The same domain asked for twice at once is read once; each caller gets its own copy.
+    answer = copy.deepcopy(await inflight.shared(_pending, domain, fresh))
     return {**answer, "cached": False}

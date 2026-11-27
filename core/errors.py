@@ -53,6 +53,8 @@ def classify(exc: BaseException) -> str:
         return "unreachable"
     if isinstance(exc, (socket.gaierror, LookupError)) or type(exc).__name__ in ("NXDOMAIN", "NoAnswer", "NoNameservers"):
         return "dns"
+    if isinstance(exc, httpx.DecodingError):
+        return "bad_response"       # the body came in a coding that could not be read
     if isinstance(exc, (httpx.TransportError, ConnectionError, OSError)):
         return "unreachable"
     if isinstance(exc, (ValueError, KeyError)):

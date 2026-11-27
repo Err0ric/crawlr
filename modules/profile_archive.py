@@ -54,7 +54,7 @@ import os
 import re
 import time
 from collections import OrderedDict
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import httpx
 
@@ -98,7 +98,10 @@ def check_url(url: str) -> tuple[str, str]:
 
     A profile link is a plain web address: http or https, a named public host, no credentials
     and no port. The fragment is dropped (it is never part of an archived address). Path and
-    query keep their case."""
+    query keep their case. The path is taken as written, so one that only means something
+    after it is tidied (a "." or ".." segment, spelled out or percent-encoded, or an empty
+    segment) is not a plain address and is refused: the address that is looked up is exactly
+    the address that was checked."""
     raw = (url or "").strip()
     if not raw or len(raw) > MAX_URL or _BAD_CHARS.search(raw):
         return "", "bad_url"
@@ -114,6 +117,9 @@ def check_url(url: str) -> tuple[str, str]:
     host = parts.hostname.lower().rstrip(".")
     if is_ip(host) or not HOSTNAME_RE.fullmatch(host) or not host.isascii():
         return "", "not_public_host"
+    segments = (parts.path or "/").split("/")[1:]
+    if any(unquote(s) in (".", "..") for s in segments) or "" in segments[:-1]:
+        return "", "bad_url"
     clean = urlunsplit((parts.scheme.lower(), host, parts.path or "/", parts.query, ""))
     if adult_sites.is_adult_site(url=clean):
         return "", "adult_site"

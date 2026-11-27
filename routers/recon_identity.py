@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from core import profile_record, validate
 from modules.archive_diff import guard_texts as archive_guard_texts, run_archive_diff
 from modules.avatar_hash import MAX_IMAGES, run_avatar_hash
-from modules.commit_emails import SITES as COMMIT_EMAIL_SITES, run_commit_emails
+from modules.commit_emails import SITES as COMMIT_EMAIL_SITES, guard_profile as commit_guard_profile, run_commit_emails
 from modules.github import run_github_deep
 from modules.handle_probe import run_handle_probe
 from modules.link_verify import MAX_LINKS, run_link_verify
@@ -66,8 +66,9 @@ class ArchiveDiffRequest(BaseModel):
     # Two capture times the capture list returned ("2019-03-04T05:06:07Z" or 14 digits), in either order.
     from_: str = Field(alias="from", min_length=1, max_length=40)
     to: str = Field(min_length=1, max_length=40)
-    # The handle of the case, when there is one: the text that comes back goes on its minor guard record.
-    username: str = Field(default="", max_length=320)
+    # The handle of the case. Required: the text that comes back always goes on that handle's
+    # minor guard record, so there is no way to read a diff that the guard does not also read.
+    username: str = Field(min_length=1, max_length=320)
 
 
 @router.post("/github-deep")
@@ -76,14 +77,23 @@ async def github_deep(req: GithubDeepRequest):
 
 
 @router.post("/commit-emails")
-async def commit_emails(req: CommitEmailsRequest):
+async def commit_emails(req: CommitEmailsRequest, request: Request):
     """On a click, for one account on GitLab, Codeberg or Gitea.com: the author names and
     addresses on recent commits in that account's own public repositories. Self-declared and
     labeled so. Fixed hosts, at most five requests (modules/commit_emails.py)."""
+    profile_record.bind(getattr(request.state, "run_session", ""))      # the author names go on this visitor's record
     site = req.site.strip().lower()
     if site not in COMMIT_EMAIL_SITES:
         raise HTTPException(status_code=400, detail="Commit emails can be read on gitlab, codeberg or gitea.")
-    return await run_commit_emails(site, validate.username(req.username))
+    username = validate.username(req.username)
+    answer = await run_commit_emails(site, username)
+    # A name on a commit can state an age like any display name, so the minor guard's content
+    # check reads the names (never the addresses). Text to scan only: this is not a profile
+    # reader. Anything but a found account with rows adds nothing and marks nothing as failed.
+    row = commit_guard_profile(answer)
+    if row:
+        profile_record.note(username, "profiles", {"profiles": [row]})
+    return answer
 
 
 @router.post("/handle-probe")
@@ -152,13 +162,14 @@ async def archive_diff(req: ArchiveDiffRequest, request: Request):
     requests, to web.archive.org only; the profile's own host is never contacted. The module
     checks the URL the way /profile-archive does and refuses adult and dating sites."""
     profile_record.bind(getattr(request.state, "run_session", ""))      # the text goes on this visitor's record
-    username = validate.username(req.username) if req.username.strip() else ""
+    username = validate.username(req.username)       # 400 for a handle that is not one, before any request
     answer = await run_archive_diff(req.url, req.from_, req.to)
-    if username:
-        # Removed text can hold an old bio or a name, so the minor guard's content check reads it
-        # like any other profile text. Text to scan only: this is not a profile reader.
-        texts = archive_guard_texts(answer)
-        if texts:
-            profile_record.note(username, "profiles", {"profiles": [
-                {"state": "found", "site": "Internet Archive", "url": answer["from"]["url"], "bio": text} for text in texts]})
+    # Removed text can hold an old bio or a name, and so can a page title, so the minor guard's
+    # content check reads every piece of text the answer carries, whatever its state, like any
+    # other profile text. Text to scan only: this is not a profile reader.
+    texts = archive_guard_texts(answer)
+    if texts:
+        side = answer.get("from") or answer.get("to") or {}
+        profile_record.note(username, "profiles", {"profiles": [
+            {"state": "found", "site": "Internet Archive", "url": side.get("url", ""), "bio": text} for text in texts]})
     return answer

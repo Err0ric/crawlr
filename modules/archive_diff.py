@@ -28,7 +28,9 @@ What the archive answers (checked live on 2026-11-27 with a public figure's prof
   * 429: the archive's rate limit.
 
 Reading a capture: the body is read as a stream up to MAX_BODY (2 MB) and the rest is dropped;
-`truncated` says so. Only an HTML or plain text body is read. Text is pulled out with the
+`truncated` says so. Only an HTML or plain text body is read. The bytes become text through
+core.charset (a short list of real charsets, UTF-8 for any other label) and the page is parsed
+in a thread, so a large capture never holds up other requests. Text is pulled out with the
 standard library's html.parser: script, style, noscript, template, svg and head content is
 left out, block elements end a line, and every line is cleaned to plain text (no control
 characters, no direction overrides) and clipped to LINE_MAX characters. Links are the `href`
@@ -56,20 +58,20 @@ A failure is never "none". Nothing from the URL or the pages is logged.
 """
 
 import asyncio
-import codecs
 import os
 import re
 import time
 from collections import OrderedDict
 from datetime import datetime
 from html.parser import HTMLParser
-from urllib.parse import urldefrag, urljoin, urlsplit
+from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 import httpx
 
-from core import pinned
+from core import charset, inflight, pinned
 from core.errors import classify, error_fields
 from core.logging import get_logger
+from core.netguard import BlockedTarget
 from modules import profile_archive
 from modules.profiles import base
 
@@ -86,6 +88,7 @@ MAX_LINKS_READ = 2000
 MAX_LINES_OUT = 120           # lines returned per side
 MAX_LINKS_OUT = 60
 MAX_TITLE = 200
+MAX_HIDDEN_DEPTH = 64         # nested hidden elements remembered by name; deeper ones are only counted
 
 CACHE_TTL = int(os.getenv("ARCHIVE_DIFF_CACHE_TTL", str(24 * 3600)))    # ok, same, none: a capture does not change
 CACHE_TTL_SOFT = 600                                                     # rate_limited, failed
@@ -106,7 +109,6 @@ _STAMP = re.compile(r"^\d{14}$")
 _ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$")
 _RAW_LOCATION = re.compile(r"^(?:https?://web\.archive\.org)?/web/(\d{14})id_/(https?://.+)$", re.I | re.S)
 _WAYBACK_LINK = re.compile(r"^(?:https?:)?(?://web\.archive\.org)?/web/\d{1,14}(?:[a-z]{2}_)?/(https?://.+)$", re.I | re.S)
-_META_CHARSET = re.compile(rb"<meta[^>]{0,200}?charset\s*=\s*[\"']?\s*([A-Za-z0-9._:-]{2,40})", re.I)
 _PAGE_TYPES = ("text/html", "application/xhtml+xml", "text/plain")
 # Hosts that serve pictures and page assets, by their first label. A picture address is never returned.
 _ASSET_HOST = re.compile(r"^(?:avatars?|images?|imgs?|pbs|media|cdn|static|assets)\d*[.-]", re.I)
@@ -134,6 +136,18 @@ def stamp(value) -> str:
 
 def raw_url(timestamp: str, url: str) -> str:
     return f"{RAW_BASE}{timestamp}id_/{url}"
+
+
+def _unchanged_on_the_wire(timestamp: str, url: str) -> bool:
+    """Will the request path be this capture of this address and nothing else? The HTTP client
+    tidies a path before it sends it, so the tidied path is compared with the one meant
+    (percent-encoding aside: the client may encode a character, which changes no segment)."""
+    meant = f"/web/{timestamp}id_/{url}"
+    try:
+        sent = httpx.URL(raw_url(timestamp, url)).raw_path.decode("ascii")
+    except (httpx.InvalidURL, UnicodeError, ValueError):
+        return False
+    return unquote(sent) == unquote(meant) and sent.count("/") == meant.count("/")
 
 
 def _same_page(a: str, b: str) -> bool:
@@ -165,16 +179,21 @@ class _Page(HTMLParser):
         self.parts: list[str] = []
         self.links: list[str] = []
         self.title: list[str] = []
-        self._hidden: list[str] = []
+        self._hidden: list[str] = []      # open hidden elements, MAX_HIDDEN_DEPTH at most
+        self._deeper = 0                  # hidden elements opened past that depth: counted, not named
         self._in_title = False
 
     def handle_starttag(self, tag, attrs):
         if tag == "title" and self._hidden == ["head"]:
             self._in_title = True
         elif tag in self._HIDDEN:
-            self._hidden.append(tag)
+            if len(self._hidden) < MAX_HIDDEN_DEPTH:
+                self._hidden.append(tag)
+            else:
+                self._deeper += 1
         elif tag == "body":
             self._hidden.clear()          # a head that was never closed ends here
+            self._deeper = 0
         elif tag in self._BREAKS:
             self.parts.append("\n")
         elif tag == "a" and not self._hidden and len(self.links) < MAX_LINKS_READ:
@@ -190,7 +209,9 @@ class _Page(HTMLParser):
         if tag == "title":
             self._in_title = False
         elif tag in self._HIDDEN:
-            if tag in self._hidden:
+            if self._deeper:
+                self._deeper -= 1         # past the depth that is remembered, a close ends the innermost
+            elif tag in self._hidden:
                 while self._hidden.pop() != tag:
                     pass
         elif tag in self._BREAKS:
@@ -201,28 +222,6 @@ class _Page(HTMLParser):
             self.title.append(data)
         elif not self._hidden:
             self.parts.append(data)
-
-
-def _decode(body: bytes, content_type: str) -> str:
-    names = []
-    m = re.search(r"charset\s*=\s*[\"']?([A-Za-z0-9._:-]{2,40})", content_type or "", re.I)
-    if m:
-        names.append(m.group(1))
-    m = _META_CHARSET.search(body[:4096])
-    if m:
-        names.append(m.group(1).decode("ascii", "replace"))
-    for name in names:
-        try:
-            codec = codecs.lookup(name)
-        except LookupError:
-            continue
-        if not getattr(codec, "_is_text_encoding", True):
-            continue                      # "zlib", "base64" and the like are not charsets
-        try:
-            return body.decode(codec.name, "replace")
-        except Exception:  # noqa: BLE001
-            continue
-    return body.decode("utf-8", "replace")
 
 
 def _link(href: str, page_url: str) -> str:
@@ -243,8 +242,8 @@ def _link(href: str, page_url: str) -> str:
 
 def extract(body: bytes, content_type: str, page_url: str) -> dict:
     """{title, lines, links} from one capture's bytes. Pure. Lines and links are unique and in
-    page order."""
-    text = _decode(body, content_type)
+    page order. The page's own charset label never picks the codec: core.charset does."""
+    text = charset.decode(body, content_type)
     kind = (content_type or "").split(";")[0].strip().lower()
     title, hrefs = "", []
     if kind == "text/plain":
@@ -309,11 +308,21 @@ def diff(older: dict, newer: dict, page_url: str) -> dict:
 
 def guard_texts(answer: dict) -> list[str]:
     """The text of an answer in pieces the minor guard's content check can read
-    (core.profile_record keeps 2000 characters of a bio): the removed lines, then the added
-    ones, exactly as returned."""
-    if not isinstance(answer, dict) or answer.get("state") != "ok":
+    (core.profile_record keeps 2000 characters of a bio): the title of the older capture, the
+    title of the newer one when it differs, the removed lines, then the added ones, exactly as
+    returned. Every state that carries text counts: a title comes back with `same`, and with
+    `none` when one of the two captures was read."""
+    if not isinstance(answer, dict):
         return []
-    lines = [*answer["removed"]["text"], *answer["added"]["text"]]
+    lines: list[str] = []
+    for key in ("from", "to"):
+        side = answer.get(key)
+        title = side.get("title") if isinstance(side, dict) else ""
+        if isinstance(title, str) and title and title not in lines:
+            lines.append(title)
+    for key in ("removed", "added"):
+        side = answer.get(key)
+        lines += [t for t in (side.get("text") if isinstance(side, dict) else None) or [] if isinstance(t, str) and t]
     chunks, current = [], ""
     for line in lines:
         if current and len(current) + 1 + len(line) > 2000:
@@ -343,6 +352,8 @@ async def _fetch(client: httpx.AsyncClient, url: str, asked: str) -> dict:
     current = asked
     try:
         for _ in range(MAX_HOPS + 1):
+            if not _unchanged_on_the_wire(current, url):
+                raise BlockedTarget("the request would not be for this capture")
             got = await pinned.get(client, raw_url(current, url), max_bytes=MAX_BODY,
                                    headers={"Accept": "text/html,application/xhtml+xml,text/plain;q=0.8"})
             if got.status in (301, 302, 303, 307, 308):
@@ -400,10 +411,17 @@ def _base(url: str, state: str) -> dict:
     return {"url": url, "state": state, "from": None, "to": None, "removed": _empty_side(), "added": _empty_side(), "complete": False}
 
 
+async def _page(side: dict, url: str) -> dict | None:
+    if side["state"] != "ok":
+        return None
+    return await asyncio.to_thread(extract, side["body"], side["content_type"], url)
+
+
 async def _ask(url: str, older: str, newer: str) -> dict:
     async with httpx.AsyncClient(timeout=TIMEOUT, transport=_transport()) as client:
         a, b = await asyncio.gather(_fetch(client, url, older), _fetch(client, url, newer))
-    pages = [extract(s["body"], s["content_type"], url) if s["state"] == "ok" else None for s in (a, b)]
+    # In threads: decoding and parsing 2 MB takes a moment, and nothing else should wait on it.
+    pages = list(await asyncio.gather(*(_page(s, url) for s in (a, b))))
     out = _base(url, "ok")
     out["from"], out["to"] = _describe(a, url, pages[0]), _describe(b, url, pages[1])
     states = (a["state"], b["state"])
@@ -438,10 +456,12 @@ async def _ask(url: str, older: str, newer: str) -> dict:
 # Cache
 # --------------------------------------------------------------------------------------
 _cache: "OrderedDict[tuple, tuple[float, dict]]" = OrderedDict()
+_pending: dict = {}           # pairs being fetched right now (core.inflight)
 
 
 def clear_cache_for_tests() -> None:
     _cache.clear()
+    _pending.clear()
 
 
 def _copy(answer: dict) -> dict:
@@ -500,11 +520,16 @@ async def run_archive_diff(url: str, from_time: str, to_time: str) -> dict:
         cached = _cache_get(key)
         if cached is not None:
             return {**cached, "swapped": swapped, "cached": True}
-        answer = await _ask(clean, older, newer)
-        _cache_put(key, answer)
-        # States and sizes only: no URL, host, title or line of text is logged.
-        log.info("archive diff", extra={"state": answer["state"], "removed": answer["removed"]["text_total"],
-                                        "added": answer["added"]["text_total"]})
+        async def fresh() -> dict:
+            answer = await _ask(clean, older, newer)
+            _cache_put(key, answer)
+            # States and sizes only: no URL, host, title or line of text is logged.
+            log.info("archive diff", extra={"state": answer["state"], "removed": answer["removed"]["text_total"],
+                                            "added": answer["added"]["text_total"]})
+            return answer
+
+        # The same pair asked for twice at once is fetched once; each caller gets its own copy.
+        answer = _copy(await inflight.shared(_pending, key, fresh))
         return {**answer, "swapped": swapped, "cached": False}
     except Exception as e:  # noqa: BLE001
         fields = error_fields(code=classify(e), detail=type(e).__name__)

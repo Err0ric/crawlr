@@ -111,9 +111,10 @@ def test_gitlab_reads_own_commits_in_the_accounts_own_projects(monkeypatch):
     assert out["repos"] == [
         {"name": "SamExample/maps", "url": "https://gitlab.com/SamExample/maps", "fork": None, "state": "ok", "commits_seen": 9},
         {"name": "SamExample/bread_notes", "url": "https://gitlab.com/SamExample/bread_notes", "fork": None, "state": "ok", "commits_seen": 2},
-        {"name": "SamExample/dot.files", "url": "https://gitlab.com/SamExample/dot.files", "fork": None, "state": "empty", "commits_seen": 0},
+        # GitLab answered 404 for this one: it may be empty or not readable without a key, so it is unknown
+        {"name": "SamExample/dot.files", "url": "https://gitlab.com/SamExample/dot.files", "fork": None, "state": "unknown", "commits_seen": 0},
     ]
-    assert out["sections"] == {"account": "found", "repos": "ok"} and out["complete"] is True and out["emails_state"] == "found"
+    assert out["sections"] == {"account": "found", "repos": "ok"} and out["complete"] is False and out["emails_state"] == "found"
     assert out["counts"] == {"repos_listed": 4, "repos_read": 2, "commits_seen": 11, "own": 8, "noreply": 1, "other_authors": 3}
 
     assert all(set(r) == ROW_KEYS and r["self_declared"] is True and r["how"] == "author_line_match" for r in out["emails"])
@@ -269,7 +270,7 @@ def test_one_repository_that_did_not_answer_keeps_the_others_and_is_incomplete(m
     pages["gitlab.com/api/v4/projects/3000001/repository/commits"] = httpx.Response(403, text="{}")
     world(monkeypatch, pages)
     out = run()
-    assert [r["state"] for r in out["repos"]] == ["blocked", "ok", "empty"] and out["complete"] is False
+    assert [r["state"] for r in out["repos"]] == ["blocked", "ok", "unknown"] and out["complete"] is False
     assert [r["email"] for r in out["emails"]] == ["sam@example.org", "sam.home@example.org"] and out["emails_state"] == "found"
     assert 0 < ttl("gitlab") <= ce.CACHE_TTL_PARTIAL
     # nothing read at all and a part missing: unknown, never none
@@ -299,7 +300,7 @@ def test_the_request_cap_holds_whatever_the_list_says(monkeypatch):
     calls = world(monkeypatch, gitlab_pages() | {"gitlab.com/api/v4/projects/3000006/repository/commits": j(200, fx("gitlab_commits_notes.json"))})
     out = run()
     assert len(calls) == ce.MAX_REQUESTS == out["requests"]
-    assert [r["state"] for r in out["repos"]] == ["ok", "ok", "empty", "unknown"] and out["complete"] is False
+    assert [r["state"] for r in out["repos"]] == ["ok", "ok", "unknown", "unknown"] and out["complete"] is False
 
 
 def test_a_slow_site_ends_as_failed(monkeypatch):
@@ -316,8 +317,10 @@ def test_a_slow_site_ends_as_failed(monkeypatch):
 # ---- the cache and the wait after a 429 --------------------------------------------------------
 
 def test_a_whole_answer_is_kept_for_a_day_whatever_the_capitals(monkeypatch):
-    calls = world(monkeypatch, gitlab_pages())
+    # every repository answers here: one that does not makes the answer partial, kept ten minutes
+    calls = world(monkeypatch, gitlab_pages() | {"gitlab.com/api/v4/projects/3000005/repository/commits": j(200, "[]")})
     first = run()
+    assert first["complete"] is True and [r["state"] for r in first["repos"]] == ["ok", "ok", "ok"]
     n = len(calls)
     second = run("gitlab", "SamExample")
     assert len(calls) == n and second["cached"] is True and first["cached"] is False and second["username"] == "SamExample"
@@ -380,3 +383,99 @@ def test_nothing_about_the_account_is_logged(monkeypatch, caplog):
     for r in caplog.records:
         line = (r.getMessage() + json.dumps({k: str(v) for k, v in r.__dict__.items()})).lower()
         assert H not in line and "sam example" not in line and "example.org" not in line and "example.com" not in line, r.getMessage()
+
+
+# ---- the minor guard's record of the author names ----------------------------------------------
+
+@pytest.fixture()
+def guarded(monkeypatch):
+    """A client whose requests are not rate limited here, with an empty guard record before and after."""
+    from core import profile_record
+    from middleware import rate_limit as rl
+    monkeypatch.setitem(rl.RATE_LIMITS, "/api/recon/commit-emails", (1000, 60))
+    monkeypatch.setitem(rl.RATE_LIMITS, "/api/recon/adult-check", (1000, 60))
+    profile_record.clear()
+    with TestClient(app) as client:
+        yield client
+    profile_record.clear()
+
+
+def on_record(client, handle=H) -> list[dict]:
+    from core import profile_record
+    profile_record.bind(client.cookies.get("crawlr_run"))
+    return profile_record.texts(handle)
+
+
+def test_the_author_names_of_a_found_answer_go_on_the_guard_record(guarded, monkeypatch):
+    from core import profile_record
+    calls = world(monkeypatch, gitlab_pages())
+    out = guarded.post("/api/recon/commit-emails", json={"site": "gitlab", "username": "@SamExample"}).json()
+    assert out["state"] == "found" and out["cached"] is False and len(out["emails"]) == 4
+    # One entry: the site, the profile address, the profile's name, then the other names, each once, in row order.
+    assert on_record(guarded) == [{"source": "GitLab", "url": "https://gitlab.com/SamExample", "name": "Sam Example", "bio": "samexample\nan old nickname", "text": ""}]
+    assert on_record(guarded, "SAMEXAMPLE") == on_record(guarded)       # under the handle of the request, whatever the capitals
+    assert "@" not in json.dumps(on_record(guarded))                     # an address is never recorded
+    # Text to scan only: it never counts as the profiles having been read, so it cannot open the adult pass.
+    assert profile_record.outcomes(H) == {"profiles": "ok"} and not profile_record.ran(H)
+    from core import adult_guard
+    assert adult_guard.gate(H)[0] == 409
+    profile_record.bind("")
+    assert profile_record.texts(H) == []                                 # another visitor has no such record
+
+    # A cached answer is recorded like a fresh one, and a repeat adds nothing.
+    profile_record.clear()
+    n = len(calls)
+    again = guarded.post("/api/recon/commit-emails", json={"site": "gitlab", "username": H}).json()
+    assert again["cached"] is True and len(calls) == n
+    assert on_record(guarded) == [{"source": "GitLab", "url": "https://gitlab.com/SamExample", "name": "Sam Example", "bio": "samexample\nan old nickname", "text": ""}]
+    guarded.post("/api/recon/commit-emails", json={"site": "gitlab", "username": H})
+    assert len(on_record(guarded)) == 1
+
+
+@pytest.mark.parametrize("pages,state", [
+    ({"gitlab.com/api/v4/users": j(200, "[]")}, "not_found"),
+    ({"gitlab.com/api/v4/users": j(500, "{}")}, "failed"),
+    ({"gitlab.com/api/v4/users": j(403, "{}")}, "blocked"),
+    ({"gitlab.com/api/v4/users": j(429, "{}")}, "rate_limited"),
+    ({"gitlab.com/api/v4/users": j(200, fx("gitlab_user.json")), "gitlab.com/api/v4/users/1000001/projects": j(200, "[]")}, "found"),
+])
+def test_an_answer_without_rows_records_nothing_and_marks_nothing_failed(guarded, monkeypatch, pages, state):
+    from core import profile_record
+    world(monkeypatch, pages)
+    out = guarded.post("/api/recon/commit-emails", json={"site": "gitlab", "username": H}).json()
+    assert out["state"] == state and out["emails"] == []
+    assert on_record(guarded) == [] and profile_record.outcomes(H) == {}
+
+
+def test_a_name_on_a_commit_that_states_an_age_under_18_closes_the_adult_pass(guarded, monkeypatch):
+    from core import adult_guard, profile_record
+    pages = gitlab_pages()
+    pages["gitlab.com/api/v4/projects/3000001/repository/commits"] = j(200, fx("gitlab_commits_maps.json").replace("an old nickname", "Sam, 15yo"))
+    world(monkeypatch, pages)
+    # A profile reader answered for this visitor and found nothing that blocks: the pass would be open.
+    guarded.post("/api/recon/commit-emails", json={"site": "gitlab", "username": "nobodyhere"})      # sets the session cookie
+    profile_record.bind(guarded.cookies.get("crawlr_run"))
+    profile_record.note(H, "maigret", {"results": []})
+    assert profile_record.ran(H) and adult_guard.gate(H) is None
+    out = guarded.post("/api/recon/commit-emails", json={"site": "gitlab", "username": H}).json()
+    assert "Sam, 15yo" in [r["name"] for r in out["emails"]]
+    profile_record.bind(guarded.cookies.get("crawlr_run"))
+    status, body = adult_guard.gate(H)
+    assert status == 400 and body["code"] == "minor_guard" and body["source"] == "GitLab" and body["url"] == "https://gitlab.com/SamExample"
+    assert "15" in body["snippet"]
+    # The adult routes refuse on the strength of it, before any request to any site.
+    r = guarded.post("/api/recon/adult-check", json={"username": H})
+    assert r.status_code == 400 and r.json()["code"] == "minor_guard"
+
+
+def test_guard_profile_alone():
+    row = lambda name: {"email": "sam@example.org", "name": name}      # noqa: E731
+    base = {"state": "found", "site_name": "Codeberg", "profile_url": "https://codeberg.org/samexample", "display_name": "Sam Example"}
+    got = ce.guard_profile({**base, "emails": [row("Mara Lind"), row("Sam Example"), row(""), row("Mara Lind"), "x", row(None), row("m" * 300)]})
+    assert got == {"state": "found", "site": "Codeberg", "url": "https://codeberg.org/samexample", "display_name": "Sam Example", "bio": "Mara Lind\n" + "m" * 100}
+    # at most the ten rows an answer holds, and the whole text fits what the record keeps of a bio
+    many = ce.guard_profile({**base, "display_name": "", "emails": [row(f"{i:02d}" + "n" * 200) for i in range(15)]})
+    assert many["bio"].count("\n") == 9 and len(many["bio"]) == 1009 and many["display_name"] == ""
+    for nothing in (None, "x", {}, {**base, "emails": []}, {**base, "emails": "x"}, {**base, "state": "not_found", "emails": [row("Mara Lind")]},
+                    {**base, "state": "failed", "emails": [row("Mara Lind")]}):
+        assert ce.guard_profile(nothing) is None

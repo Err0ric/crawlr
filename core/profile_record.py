@@ -168,7 +168,9 @@ def entries_of(source: str, answer: dict) -> list[dict]:
             if isinstance(p, dict):
                 rows.append(_entry(p.get("platform"), p.get("url"), p.get("display_name"), p.get("bio"), "", guard_fields(p)))
     elif source == "profiles":
-        # The keyless profile APIs (modules/profiles). Text to scan and nothing more: this is
+        # The keyless profile APIs (modules/profiles), and the two lookups on a click whose
+        # text the router hands over as rows of this shape: an archive diff's lines and the
+        # names on commits (routers/recon_identity.py). Text to scan and nothing more: this is
         # not a profile reader, so its answer never opens the adult pass.
         for p in answer.get("profiles") or []:
             if isinstance(p, dict) and p.get("state") == "found":

@@ -295,7 +295,10 @@ def _forgejo_commits(data, login: str) -> list[dict]:
 
 _KINDS = {
     # kind -> (account, repositories, commit rows, statuses that mean "an empty repository")
-    "gitlab": (_gitlab_account, _gitlab_repos, lambda data, login: _gitlab_commits(data), (404,)),
+    # GitLab has none: only projects with a default branch are asked, so a 404 on the commits of
+    # one is a repository that cannot be read without signing in as much as an empty one. That
+    # is "unknown", and the answer is then partial, never a complete "none".
+    "gitlab": (_gitlab_account, _gitlab_repos, lambda data, login: _gitlab_commits(data), ()),
     "forgejo": (_forgejo_account, _forgejo_repos, _forgejo_commits, (404, 409)),
 }
 
@@ -388,6 +391,26 @@ async def _read(client: httpx.AsyncClient, site: str, forge: Forge, username: st
     if ask.retry_after:
         out["retry_after"] = ask.retry_after
     return out
+
+
+def guard_profile(answer: dict) -> dict | None:
+    """The names of a `found` answer with rows, as one profile row the minor guard's content check
+    can read (core.profile_record, source "profiles"): the site name, the profile address, the
+    profile's display name as the name, and the other author names as the bio, one per line, in
+    the order of the rows, each once. Names only: an address is never scanned. None when there is
+    nothing to read. The page builds the same entry (profileTexts in static/v2/js/evidence.js)."""
+    if not isinstance(answer, dict) or answer.get("state") != "found" or not isinstance(answer.get("emails"), list):
+        return None
+    rows = [r for r in answer["emails"] if isinstance(r, dict)][:MAX_EMAILS]
+    if not rows:
+        return None
+    text = lambda v: v[:base.NAME_MAX] if isinstance(v, str) else ""      # noqa: E731
+    shown, names = text(answer.get("display_name")), []
+    for row in rows:
+        name = text(row.get("name"))
+        if name and name != shown and name not in names:
+            names.append(name)
+    return {"state": "found", "site": answer.get("site_name"), "url": answer.get("profile_url"), "display_name": shown, "bio": "\n".join(names)}
 
 
 async def run_commit_emails(site: str, username: str) -> dict:

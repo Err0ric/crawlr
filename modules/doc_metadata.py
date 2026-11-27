@@ -25,8 +25,9 @@ source projects' sites):
 
 Reading. Up to MAX_DOCS documents, newest first, are fetched from the live site: this module
 REQUESTS THE TARGET'S OWN SITE. Each GET goes through core.netguard.safe_fetch one hop at a
-time. A redirect is followed only while it stays on the domain or a subdomain of it, and every
-hop is vetted and pinned again; a redirect anywhere else is not followed. The body is capped
+time. A redirect is followed only while it stays on the domain or a subdomain of it, on the
+port a document may be listed on (80 or 443, no credentials), and every hop is vetted and
+pinned again; a redirect anywhere else is not followed. The body is capped
 at MAX_DOC_BYTES (core.capfetch), each document at DOC_DEADLINE seconds, three at a time. After
 a 429 from the site no further document is requested. The parsing is modules/doc_parse.py.
 
@@ -50,6 +51,11 @@ when the archive could not be asked; otherwise the most common state among the d
 (ties go to blocked, rate_limited, failed, too_large, unparsed, in that order); `refused` for
 an adult or dating site. A failure is never "none".
 
+An answer is kept for a day only when every document in it settled: it was read, or it will
+read the same way tomorrow (too large, unparsed, gone, a web page in its place, moved to
+another site). When a document was blocked, rate limited or did not answer, the whole answer
+is kept for ten minutes, like a failure, so the next look asks again.
+
 Every name is self-declared text from inside a file. Neither the domain nor any name, title
 or address is logged.
 """
@@ -65,11 +71,12 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from core import adult_sites
+from core import adult_sites, inflight
 from core.capfetch import BadEncoding, CappedTransport, TooLarge
 from core.errors import classify_status, error_fields
 from core.logging import get_logger
 from core.netguard import safe_fetch
+from core.validate import HOSTNAME_RE, is_public_suffix
 from modules import doc_parse
 
 log = get_logger(__name__)
@@ -98,6 +105,8 @@ NO_LISTING_NOTE = ("The Internet Archive lists no PDF or Office document under t
                    "are not seen here, so this is not proof the site publishes none.")
 ADULT_NOTE = "CrawlR does not read documents from adult or dating sites."
 PRIORITY = ("blocked", "rate_limited", "failed", "too_large", "unparsed")
+# A failed document whose answer will be the same tomorrow. Every other failure may be passing.
+SETTLED_FAILURES = ("not_found", "off_site", "not_document")
 
 _TS = re.compile(r"^\d{14}$")
 _BAD_CHARS = re.compile(r"[\s<>\"'`\\^{}|]|[\x00-\x1f\x7f]")
@@ -109,7 +118,14 @@ _EXT = re.compile(r"\.(pdf|docx|xlsx|pptx)$", re.I)
 # The list
 # --------------------------------------------------------------------------------------
 def _bare(host: str) -> str:
-    return _WWW.sub("", host.lower().rstrip("."))
+    """A host without its leading "www" label, when what is left is still a site's name. A
+    name whose remainder is a shared suffix ("www.com", "www2.net", "www.co.uk") is a site
+    called "www" and is kept whole: it never stands for everything under that suffix."""
+    name = host.lower().rstrip(".")
+    rest = _WWW.sub("", name)
+    if rest == name or not HOSTNAME_RE.fullmatch(rest) or is_public_suffix(rest):
+        return name
+    return rest
 
 
 def on_target(host: str, domain: str) -> bool:
@@ -244,9 +260,15 @@ async def _fetch(client: httpx.AsyncClient, url: str, domain: str) -> httpx.Resp
         location = resp.headers.get("location", "")
         if not (resp.is_redirect and location):
             return resp
-        nxt = urljoin(current, location)
-        parts = urlsplit(nxt)
-        if parts.scheme not in ("http", "https") or not on_target(parts.hostname or "", domain):
+        # The next hop is held to the rule a listed document is: the target's own hosts, a plain
+        # web address, the usual port and no credentials.
+        try:
+            nxt = urljoin(current, location)
+            parts = urlsplit(nxt)
+            plain = parts.port in (None, 80, 443) and not parts.username and not parts.password
+        except ValueError:
+            plain = False
+        if not plain or parts.scheme not in ("http", "https") or not on_target(parts.hostname or "", domain):
             return _error(code="off_site", message="The document now redirects to another site, so it was not fetched.")
         current = nxt
     return _error(code="upstream", message="The document redirects too many times.")
@@ -406,17 +428,32 @@ async def _run(domain: str) -> dict:
 # Cache
 # --------------------------------------------------------------------------------------
 _cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_pending: dict = {}           # domains being read right now (core.inflight)
 
 
 def clear_cache_for_tests() -> None:
     _cache.clear()
+    _pending.clear()
+
+
+def settled(answer: dict) -> bool:
+    """Is this an answer that will read the same for the rest of the day? Only when the list
+    was read and no document in it was blocked, rate limited or failed in a passing way."""
+    if answer.get("state") not in ("ok", "none"):
+        return False
+    for d in answer.get("documents") or []:
+        if d["state"] in ("blocked", "rate_limited"):
+            return False
+        if d["state"] == "failed" and d.get("error_code") not in SETTLED_FAILURES:
+            return False
+    return True
 
 
 def _cache_get(key: str) -> dict | None:
     hit = _cache.get(key)
     if not hit:
         return None
-    ttl = CACHE_TTL if hit[1]["state"] in ("ok", "none") else min(CACHE_TTL, CACHE_TTL_SOFT)
+    ttl = CACHE_TTL if settled(hit[1]) else min(CACHE_TTL, CACHE_TTL_SOFT)
     if time.time() - hit[0] > ttl:
         _cache.pop(key, None)
         return None
@@ -443,8 +480,13 @@ async def run_doc_metadata(domain: str) -> dict:
     cached = _cache_get(domain)
     if cached is not None:
         return {**cached, "cached": True}
-    answer = await _run(domain)
-    _cache_put(domain, answer)
-    # States and counts only: no domain, address, name or title is logged.
-    log.info("doc metadata", extra={"state": answer["state"], "documents": len(answer["documents"]), "read": answer["counts"].get("ok", 0)})
+    async def fresh() -> dict:
+        answer = await _run(domain)
+        _cache_put(domain, answer)
+        # States and counts only: no domain, address, name or title is logged.
+        log.info("doc metadata", extra={"state": answer["state"], "documents": len(answer["documents"]), "read": answer["counts"].get("ok", 0)})
+        return answer
+
+    # The same domain asked for twice at once is read once; each caller gets its own copy.
+    answer = copy.deepcopy(await inflight.shared(_pending, domain, fresh))
     return {**answer, "cached": False}

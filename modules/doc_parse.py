@@ -43,6 +43,7 @@ Answer: {type, parsed, reason, sources, fields}
 import io
 import re
 import xml.etree.ElementTree as ET
+from collections import deque
 import zipfile
 import zlib
 
@@ -176,6 +177,10 @@ def _member(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
         raise _Refused("encrypted")
     if info.file_size > MAX_MEMBER:
         raise _Refused("zip_bomb")
+    if info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+        # Office writes these two and nothing else. Any other method is not opened at all, so
+        # the bounded read below never depends on how another unpacker handles a size limit.
+        raise _Refused("bad_zip")
     try:
         with zf.open(info) as f:
             data = f.read(MAX_MEMBER + 1)      # the read is bounded whatever the header declared
@@ -426,7 +431,7 @@ def _in_object_stream(data: bytes, num: int) -> tuple[bytes, int] | None:
     budget = INFLATE_BUDGET
     found = None
     # Only the last MAX_MARKERS are looked at: a real file has far fewer, and the last wins.
-    for m in list(_OBJSTM.finditer(data))[-MAX_MARKERS:]:
+    for m in deque(_OBJSTM.finditer(data), maxlen=MAX_MARKERS):     # the matches are never all held at once
         head = None
         for head in _OBJ_HEAD.finditer(data, max(0, m.start() - 2048), m.start()):
             pass
@@ -472,10 +477,12 @@ def _info(data: bytes) -> tuple[dict, str]:
     """(fields, status). status: "read", "absent" (no /Info reference), "hidden" (the
     reference points at an object that is neither in the file as text nor in an object stream
     this module unpacks) or "bad"."""
-    refs = _INFO_REF.findall(data)
-    if not refs:
+    last = None
+    for last in _INFO_REF.finditer(data):       # the last reference wins; the others are not kept
+        pass
+    if last is None:
         return {}, "absent"
-    num, gen = int(refs[-1][0]), int(refs[-1][1])
+    num, gen = int(last.group(1)), int(last.group(2))
     at = _find_object(data, num, gen)
     packed = _in_object_stream(data, num) if at < 0 else None
     if at < 0 and packed is None:
@@ -527,7 +534,7 @@ def _catalog_metadata(data: bytes) -> tuple[bool, int]:
     """(a catalog is readable, the object number its /Metadata points at or -1). The last
     catalog wins."""
     seen, target = False, -1
-    for m in list(_CATALOG.finditer(data))[-MAX_MARKERS:]:
+    for m in deque(_CATALOG.finditer(data), maxlen=MAX_MARKERS):
         start = data.rfind(b"obj", max(0, m.start() - MAX_DICT_SPAN), m.start())
         stop = data.find(b"endobj", m.end(), m.end() + MAX_DICT_SPAN)
         if start < 0:
@@ -619,11 +626,13 @@ def parse_pdf(data: bytes) -> dict:
         fields.update({k: v for k, v in info.items() if v})
         sources.append("info")
     packet, xmp_status = _xmp_packet(data)
+    xmp_refused = ""
     if packet is not None:
         try:
             extra = _xmp_fields(packet)
-        except _Refused:
+        except _Refused as e:
             extra = {}
+            xmp_refused = e.reason if e.reason in REASONS else "bad_xml"
         added = {k: v for k, v in extra.items() if v and not fields.get(k)}
         if added:
             fields.update(added)
@@ -638,6 +647,9 @@ def parse_pdf(data: bytes) -> dict:
         return _answer("pdf", False, "compressed")
     if info_status == "bad":
         return _answer("pdf", False, "bad_pdf")
+    if xmp_refused:
+        # The file has a metadata packet and it could not be read: that is not "declares nothing".
+        return _answer("pdf", False, xmp_refused)
     return _answer("pdf", True, "")                     # read, and it declares nothing
 
 

@@ -273,7 +273,7 @@ def test_lists_are_capped_and_lines_clipped(monkeypatch):
     assert len(out["removed"]["links"]) == ad.MAX_LINKS_OUT and out["removed"]["links_total"] == 300
     assert out["complete"] is False and out["from"]["text_lines"] == 302
     assert max(len(line) for line in ad.extract(many, "text/html", URL)["lines"]) == ad.LINE_MAX
-    chunks = ad.guard_texts(out)
+    chunks = ad.guard_texts(out)        # neither page has a title here: the lines alone
     assert chunks and all(len(c) <= 2000 for c in chunks) and "\n".join(chunks).split("\n") == out["removed"]["text"] + out["added"]["text"]
 
 
@@ -381,14 +381,14 @@ def test_endpoint_and_the_guard_record(c, monkeypatch):
     profile_record.bind(c.cookies.get("crawlr_run"))
     texts = profile_record.texts(HANDLE)
     assert len(texts) == 1 and texts[0]["source"] == "Internet Archive" and texts[0]["url"] == out["from"]["url"]
-    assert texts[0]["bio"].split("\n") == out["removed"]["text"] + out["added"]["text"]
+    assert texts[0]["bio"].split("\n") == [out["from"]["title"], out["to"]["title"]] + out["removed"]["text"] + out["added"]["text"]
     assert not profile_record.ran(HANDLE)             # it never counts as having read the profiles
     profile_record.bind("")
     assert profile_record.texts(HANDLE) == []         # another visitor has no such record
 
-    # Without a handle nothing is recorded, and a cached answer is recorded like a fresh one.
+    # Without a handle there is no diff, and a cached answer is recorded like a fresh one.
     profile_record.clear()
-    assert c.post("/api/recon/archive-diff", json={"url": URL, "from": ISO1, "to": ISO2}).json()["cached"] is True
+    assert c.post("/api/recon/archive-diff", json={"url": URL, "from": ISO1, "to": ISO2}).status_code == 422
     r = c.post("/api/recon/archive-diff", json={"url": URL, "from": T2, "to": T1, "username": "@" + HANDLE})
     assert r.json()["cached"] is True and r.json()["swapped"] is True and len(calls) == 2
     profile_record.bind(c.cookies.get("crawlr_run"))
@@ -408,7 +408,7 @@ def test_endpoint_refusals_and_bad_bodies(c, monkeypatch):
     assert post({"url": URL, "from": ISO1, "to": ISO2, "username": "no/slash"}).status_code == 400
     r = post({"url": f"https://onlyfans.com/{HANDLE}", "from": ISO1, "to": ISO2, "username": HANDLE})
     assert r.status_code == 200 and r.json()["state"] == "refused" and r.json()["reason"] == "adult_site"
-    r = post({"url": URL, "from": "now", "to": ISO2})
+    r = post({"url": URL, "from": "now", "to": ISO2, "username": HANDLE})
     assert r.status_code == 200 and r.json()["reason"] == "bad_timestamp"
     assert calls == []
     profile_record.bind(c.cookies.get("crawlr_run"))
