@@ -1,7 +1,7 @@
 // Identity clusters: which of the profiles found under one handle belong to the same person.
 // Pure functions, no DOM and no network, so the rules can be tested exactly.
 //
-// A profile: { id, site, url, handle, name, location, avatarHash, avatarDefault, links[], websites[], bio, anchor? }
+// A profile: { id, site, url, handle, name, location, avatarHash, avatarDefault, links[], websites[], proven[], bio, anchor? }
 //   anchor: "github" for GitHub's API record of the searched handle, "gravatar" for the Gravatar
 //   record of the searched email. An anchor is the authoritative record for the target itself.
 //   websites: the links that came from a personal-site field (GitHub blog, a profile's website).
@@ -11,6 +11,9 @@
 //        cross-link    each links to the other, or the linking profile is the anchor (or already
 //                      tied to the anchor by a strong signal). The link must be the other's exact
 //                      URL, or have the other's handle as the first path segment on that site.
+//                      A link the other side has confirmed joins by itself: a Keybase proof, or
+//                      a link Mastodon marks as verified (`proven` on the profile). An account a
+//                      profile only lists is an ordinary link and follows the rule above.
 //        same avatar   both have a real picture (not a default, not a near-blank hash) and the
 //                      64-bit dHashes differ by at most 6 bits
 //        shared link   both link to the same page (host and path; on a multi-user site, the same
@@ -102,6 +105,9 @@ export function linkParts(u) {
   let path = url.pathname;
   try { path = decodeURIComponent(path); } catch { /* keep the raw path */ }
   path = path.replace(/\/+$/, "").toLowerCase();
+  // Hacker News has one path for every user and names the user in the query (see ownProfileQuery
+  // in links.js), so the name is part of what the link points at.
+  if (host === "news.ycombinator.com" && path === "/user" && /^[A-Za-z0-9_-]{2,15}$/.test(url.searchParams.get("id") || "")) path = `/user?id=${url.searchParams.get("id").toLowerCase()}`;
   return { host, path, key: host + path, platform: PLATFORM_HOSTS.has(host) || MULTI_USER.test(host) };
 }
 export const isPlatformHost = (host) => { const h = String(host || "").toLowerCase().replace(/^www\./, ""); return PLATFORM_HOSTS.has(HOST_ALIAS[h] || h) || MULTI_USER.test(h); };
@@ -112,14 +118,28 @@ export const urlsIn = (text) => (String(text ?? "").match(/\bhttps?:\/\/[^\s<>"'
 // Does profile a link to profile b? Returns the link that does, or "".
 // The link is b's exact URL, or has b's handle as the FIRST path segment on b's site:
 // github.com/mallory/torvalds is mallory's repository, not a link to torvalds.
-function crossLink(a, b) {
+function crossLink(a, b, links = a._links) {
   const target = linkParts(b.url);
   if (!target) return "";
   const hk = fold(b.handle).replace(/^@/, "");
-  for (const l of a._links) {
+  for (const l of links) {
     if (l.key === target.key && l.path) return l.raw;
     if (hk && l.host === target.host && (l.path.split("/")[1] || "").replace(/^[@~]/, "") === hk && l.path.split("/").length === 2) return l.raw;
   }
+  return "";
+}
+// A link from a to b that the other side has confirmed, so it does not need the anchor to vouch
+// for it. A profile carries these as `proven: [{ url, proof }]` (see collectProfiles):
+//   keybase        the owner of the other account published a signed statement there, and
+//                  Keybase checked it
+//   verified_link  Mastodon found a rel="me" link back on the page it links to
+// An account a profile merely lists is not one of these: it is an ordinary link, and a lead.
+export const PROOF_DETAIL = {
+  keybase: (a, b) => `a Keybase proof ties the ${b} account to the ${a} profile`,
+  verified_link: (a, b) => `${a} shows a verified link to the ${b} profile, which links back`,
+};
+function provenLink(a, b) {
+  for (const proof of Object.keys(PROOF_DETAIL)) if (crossLink(a, b, a._proven.filter((l) => l.proof === proof))) return proof;
   return "";
 }
 // A link both profiles carry. { strong, detail } or null.
@@ -169,7 +189,8 @@ export function clusterIdentities(profiles, opts = {}) {
     const sites = new Set((p.websites || []).map((w) => linkParts(w)?.key).filter(Boolean));
     const links = [...(p.links || []), ...(p.websites || []), ...urlsIn(p.bio)].map((raw0) => { const l = linkParts(raw0); return l ? { ...l, raw: String(raw0), site: sites.has(l.key) } : null; }).filter(Boolean);
     const self = linkParts(p.url);
-    return { ...p, _i: i, _tokens: meaningfulName(p.name, [p.handle, ...searched]), _links: links.filter((l) => !self || l.key !== self.key) };
+    const proven = (Array.isArray(p.proven) ? p.proven : []).map((x) => { const l = x && Object.hasOwn(PROOF_DETAIL, x.proof) ? linkParts(x.url) : null; return l ? { ...l, raw: String(x.url), proof: x.proof } : null; }).filter((l) => l && (!self || l.key !== self.key));
+    return { ...p, _i: i, _tokens: meaningfulName(p.name, [p.handle, ...searched]), _links: links.filter((l) => !self || l.key !== self.key), _proven: proven };
   });
   const keys = [...searched, ...ps.map((p) => p.handle)];
   const rel2 = (a, b) => compareNames(a, b, keys);
@@ -185,6 +206,10 @@ export function clusterIdentities(profiles, opts = {}) {
   const oneWay = [];   // [from, to]
   for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
     const a = ps[i], b = ps[j];
+    // A proof or a verified link is confirmed from the other side already: it joins by itself.
+    const pf = provenLink(a, b), pb = pf ? "" : provenLink(b, a);
+    if (pf) note(i, j, "cross-link", PROOF_DETAIL[pf](a.site, b.site));
+    else if (pb) note(i, j, "cross-link", PROOF_DETAIL[pb](b.site, a.site));
     const fwd = crossLink(a, b), back = crossLink(b, a);
     if (fwd && back) note(i, j, "cross-link", `${a.site} and ${b.site} link to each other`);
     else if (fwd) oneWay.push([i, j]);

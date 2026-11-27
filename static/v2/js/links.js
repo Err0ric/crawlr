@@ -75,6 +75,23 @@ export const GENERIC_HINT = "This link is the site's homepage. Search the handle
 export const REGISTERED_HINT = "Found through the site's sign-up or reset form. There is no public page for an email address.";
 export const BREACH_HINT = "No reference page for this breach. Search the address at xposedornot.com to check it.";
 export const howToCheck = (site) => NO_PUBLIC[siteId(site)] || "";
+// A profile's own address that exists only as a query: Hacker News serves a user's page at
+// news.ycombinator.com/user?id=<handle> and nowhere else. The rule that no third-party URL carries
+// a username or an email in its query is about handing a target to a site that has no record of
+// it (a search engine, a lookup page). This is the profile's own address on the site the profile
+// is on, so it is allowed, for this exact shape and nothing looser: the host, the path, the one
+// parameter, a value that is a Hacker News name, and no fragment. Add a site here only when its
+// profile page has no path form.
+const OWN_QUERY = { "news.ycombinator.com": { path: "/user", param: "id", value: /^[A-Za-z0-9_-]{2,15}$/ } };
+export function ownProfileQuery(u) {
+  const x = typeof u === "string" || u instanceof URL ? parseUrl(String(u)) : null;
+  if (!x || x.username || x.password || x.hash || x.port || x.protocol !== "https:") return "";
+  const rule = OWN_QUERY[x.hostname.toLowerCase()];
+  if (!rule || x.pathname !== rule.path) return "";
+  const keys = [...x.searchParams.keys()];
+  const v = x.searchParams.get(rule.param) || "";
+  return keys.length === 1 && keys[0] === rule.param && rule.value.test(v) ? v : "";
+}
 const isCashtag = (x) => /(^|\.)cash\.app$/i.test(x.hostname) && /^\/\$[\w-]+\/?$/.test(decode(x.pathname));
 
 // The one decision. `want` is what the source supports; this can only lower it to "none".
@@ -95,7 +112,7 @@ export function classifyLink({ url, want = "evidence", site = "", subjects = [],
   if (isBareHome(x.href, subjects)) return none(profile ? howToCheck(site) || GENERIC_HINT : "");
   if (want === "evidence") {
     const q = decode(x.search).toLowerCase();
-    if (q && [].concat(secrets).map(lc).filter(Boolean).some((s) => q.includes(s))) return none();
+    if (q && !ownProfileQuery(x.href) && [].concat(secrets).map(lc).filter(Boolean).some((s) => q.includes(s))) return none();
   }
   return { url: String(url).trim(), link_kind: LINK_KINDS.includes(want) ? want : "evidence" };
 }
