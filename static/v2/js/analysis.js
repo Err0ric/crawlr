@@ -201,7 +201,7 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
   const archivable = accounts.filter((i) => i.archive && !i.archive.view && (i.tier === "linked" || i.inPrimary))
     .sort((a, b) => (a.tier === "linked" ? 0 : 1) - (b.tier === "linked" ? 0 : 1) || (b.detail?.count || 0) - (a.detail?.count || 0) || a.what.localeCompare(b.what));
   archivable.slice(0, 2).forEach((i, n) => put({ id: `archive:${i.key}`, score: 60 - n * 8, title: `See archived copies of the ${i.what} profile`, reason: `${i.tier === "linked" ? "Tied to this identity." : "Part of this identity."} An archived copy can show a bio or a link that was removed since. One request to the Internet Archive, which is sent this profile's address.`, action: { kind: "archive", key: i.key, label: "Archived copies" } }));
-  const retry = accounts.filter((i) => i.archive?.view?.retry);
+  const retry = accounts.filter((i) => i.archive?.view?.retry && (i.tier === "linked" || i.inPrimary));
   if (retry.length) put({ id: `archive:${retry[0].key}`, score: 34, title: `Ask the Internet Archive about ${retry[0].what} again`, reason: "It could not be asked last time, so whether it holds copies is unknown.", action: { kind: "archive", key: retry[0].key, label: "Try again" } });
 
   // 4. unread accounts two tools agree on
