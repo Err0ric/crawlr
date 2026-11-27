@@ -782,8 +782,12 @@ async function runSource(label, url, body, headers, key, opts = {}) {
     if (err.code === "minor_guard" && adultRefused(err)) { log.set(row, `${label} · not run: the server's minor guard refused it`, "skip"); renderLedger(); return GUARDED; }
     if (err.code === "mainstream_first" && adultRefused(err)) { log.set(row, `${label} · not run`, "skip"); renderLedger(); return null; }
     // Keep the failure with the results, so the screen and the AI both know this source is unknown.
-    state.collected[key] = { error: err.detail || err.message, error_code: err.code || "request_failed", error_detail: err.raw || "" };
-    log.set(row, `${label}: ${err.detail || err.message}`, "err", err.raw);
+    // CrawlR's own limit per visitor (a few of these lookups a minute or an hour) is said as that:
+    // rate limited, try again later. It is still unknown, and never a negative result.
+    const limited = err.status === 429;
+    const text = limited ? `Rate limited: CrawlR allows only a few of these lookups in a short time. Try again ${err.retryAfter > 0 ? `in ${err.retryAfter < 90 ? "a minute" : `${Math.ceil(err.retryAfter / 60)} minutes`}` : "later"}.` : err.detail || err.message;
+    state.collected[key] = { error: text, error_code: limited ? "rate_limited" : err.code || "request_failed", error_detail: limited ? "" : err.raw || "" };
+    log.set(row, `${label}: ${text}`, "err", limited ? "" : err.raw);
     renderLedger(); renderSourceCards();
     return null;
   }

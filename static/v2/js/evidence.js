@@ -708,6 +708,12 @@ export function buildEvidence(collected, target, typeArg) {
       // A taken handle: the card says what the sign-up check said, and nothing about a profile.
       if (row.taken) row.card = { handle: String(searchedHandle || ""), facts: [], bio: "", basis: row.meta, why: "", note: "" };
       if (read && p.note === "suspended") row.card.note = "The site marks this account as suspended.";
+      // The site's record came back in part ("bio not read"). What was not read is unknown: the
+      // card says so, and never words it as a profile with no bio.
+      if (read && p.siteNote && !row.similar) {
+        row.card.note = [row.card.note, /not read$/.test(p.siteNote) ? `${p.site} answered in part: ${p.siteNote}. That part is unknown, not empty.` : `${p.site} notes: ${p.siteNote}${/[.!?]$/.test(p.siteNote) ? "" : "."}`].filter(Boolean).join(" ");
+        if (/carries no name, bio or dates/.test(row.card.basis || "")) row.card.basis = `Profile record read by ${row.sources.join(", ")}.`;
+      }
       if (row.similar) row.card.why = "";
       if (read && row.relate && !row.similar) row.card.check = row.relate;
       // What the record carries beyond the one line: opened on the row, with how each value is known.
@@ -913,7 +919,8 @@ export const tierCounts = (items) => Object.fromEntries(ACCOUNT_TIERS.map((t) =>
 //   failed: the names of the sources that failed (from the source tally)
 export function caseAnalysis(ev, { collected, target, type, failed = [] } = {}) {
   const c = withoutAdult(collected);
-  return { assessment: assessCase(ev, { collected: c, type, failed }), suggestions: suggestNext(ev, { collected: c, target, type, failed }), trail: trailView(c.trail, target, type) };
+  return { assessment: assessCase(ev, { collected: c, type, failed }), // The guard's block is read from the case as it is: the adult-free view does not carry it.
+    suggestions: suggestNext(ev, { collected: collected?.adultBlock != null ? { ...c, adultBlock: collected.adultBlock } : c, target, type, failed }), trail: trailView(c.trail, target, type) };
 }
 
 export function aiPayloadFor(collected, target, type, { source_status = {}, active = false } = {}) {

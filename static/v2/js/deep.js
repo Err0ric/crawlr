@@ -103,10 +103,11 @@ export const readProfileSources = memo((raw) => {
     if (!isObj(s) || !PROFILE_STATES.includes(s.state)) continue;
     // A source that says "found" with no readable profile behind it showed nothing.
     const state = s.state === "found" && !seen.has(id) ? "unknown" : s.state;
-    sources[id] = { site: PROFILE_SITES[id][0], state, ...(line(s.note, 200) ? { note: line(s.note, 200) } : {}), ...(state === "failed" || state === "rate_limited" ? { error: line(s.error, 200), error_code: line(s.error_code, 40), error_detail: line(s.error_detail, 200) } : {}) };
+    sources[id] = { site: PROFILE_SITES[id][0], state, ...(line(s.note, 200) ? { note: line(s.note, 200) } : {}), ...(state === "failed" || state === "rate_limited" ? { error: line(s.error, 200), error_code: line(s.error_code, 40), error_detail: line(s.error_detail, 200) } : {}), ...(state === "rate_limited" && int(s.retry_after) ? { retry_after: Math.min(int(s.retry_after), 86400) } : {}) };
   }
   for (const id of seen) if (!sources[id]) sources[id] = { site: PROFILE_SITES[id][0], state: "found" };
-  return { username: line(raw.username, 64), cached: raw.cached === true, profiles, sources };
+  // asked: the sites this call asked. The rest came from the server's cache of an earlier call.
+  return { username: line(raw.username, 64), cached: raw.cached === true, profiles, sources, ...(Array.isArray(raw.asked) ? { asked: [...new Set(raw.asked.filter((x) => Object.hasOwn(PROFILE_SITES, x)))] } : {}) };
 });
 // A site that answered whether the account is there. npm cannot see an account without packages:
 // it answers, and says so in a note, which is still an answer from the site.
@@ -174,6 +175,8 @@ export function profileDetail(p, { secrets = [] } = {}) {
   for (const [k, v] of Object.entries(stats)) rec.push(drow(statLabel(k), fmt(v)));
   for (const kind of Object.keys(ITEM_KINDS)) { const it = (p.items || []).filter((i) => i.kind === kind); for (const i of it.slice(0, 10)) rec.push(drow(ITEM_KINDS[kind].replace(/s$/, ""), i.name, i.url, { ...o, subjects: [p.handle, i.name] })); if (it.length > 10) rec.push(drow(ITEM_KINDS[kind], `and ${it.length - 10} more`)); }
   if (p.avatarState === "failed") rec.push(drow("Picture", "could not be read, so it was not compared"));
+  // The site answered in part ("bio not read"): that part is unknown, and is never shown as empty.
+  if (p.siteNote) rec.push(drow("Not read", `${p.siteNote}${/not read$/.test(p.siteNote) ? ": unknown, not empty" : ""}`));
   const groups = p.api
     ? [{ id: "self", title: "Written by the account holder", prov: PROVENANCE.self, rows: self }, { id: "record", title: `${p.site}'s own record`, prov: PROVENANCE.record, rows: rec }]
     : [{ id: "tool", title: `Read from the page by ${(p.sources || []).join(", ") || "a tool"}`, prov: PROVENANCE.tool, rows: [...self, ...rec] }];
@@ -195,8 +198,8 @@ const LOOKUP_STATES = ["ok", "none", "rate_limited", "failed"];
 // The words the page uses for each way an account is tied to the address.
 export const HOW_TEXT = {
   commit_author: "GitHub attributes commits that carry this address to this account, so the account has this address confirmed.",
-  public_profile_email: "The account's public profile shows this address.",
-  organization: "This organization's public profile shows this address. GitHub does not confirm an organization's address.",
+  public_profile_email: "GitHub's search matched this address on the account's public profile. The profile itself was not read to confirm it.",
+  organization: "GitHub's search matched this address on this organization's public profile. The profile was not read, and GitHub does not confirm an organization's address.",
 };
 export const SELF_DECLARED_NOTE = "Names, dates and time zones written inside a commit are self-declared: whoever makes a commit can write anything there.";
 export const KEY_NOTE = "The key server verified each address on a key by mail. The names on a key, and its creation date, are self-declared.";
@@ -234,7 +237,9 @@ export const readEmailAccounts = memo((raw) => {
     const hows = [...new Set([a.how, ...list(a.hows, 4)].filter((x) => HOWS.includes(x)))];
     if (!hows.length) return null;
     const how = hows.includes("commit_author") ? "commit_author" : "public_profile_email";
-    return { login, url: `https://github.com/${login}`, how, hows, account_type: ["User", "Organization", "Bot"].includes(a.account_type) ? a.account_type : "", ...(how === "commit_author" ? commitPart(a) : {}) };
+    // confirmed: GitHub attributes commits with the address to the account. A search match is
+    // never confirmed, whatever a stored case says. how_note: the server's sentence for a match.
+    return { login, url: `https://github.com/${login}`, how, hows, confirmed: how === "commit_author", ...(how !== "commit_author" && line(a.how_note, 200) ? { how_note: line(a.how_note, 200) } : {}), account_type: ["User", "Organization", "Bot"].includes(a.account_type) ? a.account_type : "", ...(how === "commit_author" ? commitPart(a) : {}) };
   }).filter(Boolean);
   const un = commitPart(raw.unattributed);
   const sources = {};
@@ -242,11 +247,13 @@ export const readEmailAccounts = memo((raw) => {
     const s = raw.sources[id];
     if (!isObj(s) || !LOOKUP_STATES.includes(s.state)) continue;
     const down = s.state === "failed" || s.state === "rate_limited";
-    sources[id] = { state: s.state, ...Object.fromEntries(["total", "seen", "skipped", "count", "retry_after"].filter((k) => int(s[k]) !== null).map((k) => [k, int(s[k])])), ...(s.incomplete === true ? { incomplete: true } : {}), ...(down ? { error: line(s.error, 200), error_code: line(s.error_code, 40), error_detail: line(s.error_detail, 200) } : {}) };
+    sources[id] = { state: s.state, ...Object.fromEntries(["total", "seen", "skipped", "count", "retry_after"].filter((k) => int(s[k]) !== null).map((k) => [k, int(s[k])])), ...(s.incomplete === true ? { incomplete: true } : {}), ...(s.only_skipped === true ? { only_skipped: true } : {}), ...(!down && line(s.note, 300) ? { note: line(s.note, 300) } : {}), ...(down ? { error: line(s.error, 200), error_code: line(s.error_code, 40), error_detail: line(s.error_detail, 200) } : {}) };
   }
   return { email: email(raw.email), cached: raw.cached === true, accounts, unattributed: un.commits_seen ? un : null, keys: raw.keys.slice(0, 10).map(readKey).filter(Boolean), sources };
 });
 export const lookupName = (id) => LOOKUPS[id] || id;
+// GitHub returned commits for the address and none could be counted. That is not "no commits".
+export const commitsNote = (d) => { const r = readEmailAccounts(d); const s = r && !failed(r) ? r.sources.github_commits : null; return s?.only_skipped ? s.note || "GitHub returned commits for this address and none could be counted." : ""; };
 // The lookups that did not answer: unknown, never "no account" or "no key".
 export const emailLookupsDown = (d) => { const r = readEmailAccounts(d); return r && !failed(r) ? Object.entries(r.sources).filter(([, s]) => s.state === "failed" || s.state === "rate_limited").map(([id, s]) => ({ id, name: LOOKUPS[id], state: s.state })) : []; };
 // The names written in an account's commits, the ones from its own repositories first.
@@ -286,7 +293,7 @@ export function emailAccountItems(d) {
   for (const a of r.accounts) {
     const strong = a.how === "commit_author", org = a.account_type === "Organization";
     const both = a.hows.includes("public_profile_email") && strong;
-    const why = strong ? HOW_TEXT.commit_author.replace(/\.$/, "") + (both ? ", and its public profile shows it" : "") : (org ? HOW_TEXT.organization : HOW_TEXT.public_profile_email).replace(/\.$/, "");
+    const why = strong ? HOW_TEXT.commit_author.replace(/\.$/, "") + (both ? ", and GitHub's search matched it on the public profile" : "") : (org ? HOW_TEXT.organization : HOW_TEXT.public_profile_email).replace(/\.$/, "");
     const facts = [org ? "Organization" : a.account_type === "Bot" ? "Bot account" : "", strong && a.commits_seen ? `${plural(a.commits_seen, "commit")} seen` : "", strong && a.own_repo_commits ? `${fmt(a.own_repo_commits)} in its own repositories` : ""].filter(Boolean);
     const named = strong ? namesText(a, 2) : "";
     out.push({
@@ -295,7 +302,7 @@ export function emailAccountItems(d) {
       card: { handle: a.login, facts, bio: "", why, basis: "", note: strong ? (named ? `Names written in its commits (self-declared): ${named}.` : "") : "The profile was not read here. Investigate the account to read it." },
       detail: strong ? commitDetail(a) : null, emailAccount: { login: a.login, how: a.how, type: a.account_type },
       ...(strong && a.evidence[0] ? { more: { url: a.evidence[0], label: "Evidence commit", link_kind: "evidence" } } : {}),
-      action: { label: "Investigate this", pivot: "investigate", value: a.login, type: "username", via: `the GitHub login ${a.login}`, source: strong ? "GitHub's commit attribution for this address" : "a GitHub profile that shows this address" },
+      action: { label: "Investigate this", pivot: "investigate", value: a.login, type: "username", via: `the GitHub login ${a.login}`, source: strong ? "GitHub's commit attribution for this address" : "GitHub's search match for this address" },
     });
   }
   if (r.unattributed) {
@@ -349,7 +356,7 @@ export function emailAccountLeads(d, target) {
   const r = readEmailAccounts(d);
   if (!r || failed(r)) return [];
   const out = [], me = String(target ?? "").trim().toLowerCase();
-  for (const a of r.accounts) out.push({ kind: "handle", value: a.login, from: a.how === "commit_author" ? "GitHub account that commits with this address (site record)" : a.account_type === "Organization" ? "GitHub organization that shows this address (unconfirmed)" : "GitHub account that shows this address", source: EMAIL_ACCOUNTS_SOURCE, tied: true });
+  for (const a of r.accounts) out.push({ kind: "handle", value: a.login, from: a.how === "commit_author" ? "GitHub account that commits with this address (site record)" : a.account_type === "Organization" ? "GitHub organization that GitHub's search matched to this address (unconfirmed)" : "GitHub account that GitHub's search matched to this address (profile not read)", source: EMAIL_ACCOUNTS_SOURCE, tied: true });
   for (const k of r.keys) for (const u of k.user_ids) if (u.email && u.email !== me) out.push({ kind: "email", value: u.email, from: "another address on the same OpenPGP key (verified by the key server)", source: EMAIL_ACCOUNTS_SOURCE, tied: true });
   return out;
 }
@@ -358,7 +365,7 @@ export function emailAccountsText(d) {
   const r = readEmailAccounts(d);
   if (!r || failed(r)) return "";
   const down = emailLookupsDown(r).map((x) => `${x.name} ${x.state === "rate_limited" ? "rate limited" : "failed"}`);
-  return [r.accounts.length ? plural(r.accounts.length, "GitHub account") : "", r.keys.length ? plural(r.keys.length, "OpenPGP key") : "", r.unattributed ? `${plural(r.unattributed.commits_seen, "commit")} tied to no account` : "", down.length ? `unknown: ${down.join(", ")}` : ""].filter(Boolean).join(", ");
+  return [r.accounts.length ? plural(r.accounts.length, "GitHub account") : "", r.keys.length ? plural(r.keys.length, "OpenPGP key") : "", r.unattributed ? `${plural(r.unattributed.commits_seen, "commit")} tied to no account` : "", r.sources.github_commits?.only_skipped ? "commits were returned and none could be counted" : "", down.length ? `unknown: ${down.join(", ")}` : ""].filter(Boolean).join(", ");
 }
 // What the model is told: the same statements, with the provenance in the field names.
 export function emailAccountsForAi(d) {
@@ -370,6 +377,7 @@ export function emailAccountsForAi(d) {
     unattributed_commits: r.unattributed ? git(r.unattributed) : null,
     keys: r.keys.map((k) => (k.parsed ? { fingerprint: k.fingerprint, algorithm: keyAlgo(k), self_declared_created: dayOf(k.created), revoked: k.revoked, verified_addresses: k.user_ids.map((u) => u.email).filter(Boolean), self_declared_names: k.user_ids.map((u) => u.name).filter(Boolean) } : { unread: true, version: k.version })),
     not_answered: emailLookupsDown(r).map((x) => `${x.name}: ${x.state}`),
+    ...(commitsNote(r) ? { commit_search_note: commitsNote(r) } : {}),
   };
 }
 
@@ -379,21 +387,37 @@ export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
 const REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
 const ACTIVITY_STATES = ["ok", "none", "not_found"];
 const counts = (v, n) => (Array.isArray(v) && v.length === n && v.every((x) => Number.isFinite(x) && x >= 0) ? v.map((x) => Math.floor(x)) : null);
-const offsetLabel = (a, b) => { const one = (n) => `UTC${n === 0 ? "" : n > 0 ? `+${n}` : n}`; return a === b ? one(a) : `${one(a)} to ${one(b)}`; };
+// Offsets listed going east, in words. A list that crosses the date line (+12, then -11) is two
+// runs joined by "or", so it is never read as one span from the first to the last.
+const utc = (n) => `UTC${n === 0 ? "" : n > 0 ? `+${n}` : n}`;
+export function offsetsLabel(offsets) {
+  const runs = [];
+  for (const o of offsets) { if (runs.length && o === runs.at(-1).at(-1) + 1) runs.at(-1).push(o); else runs.push([o]); }
+  return runs.map((r) => (r.length === 1 ? utc(r[0]) : `${utc(r[0])} to ${utc(r.at(-1))}`)).join(" or ");
+}
+const RUN = "UTC(?:[+-]\\d{1,2})?(?: to UTC(?:[+-]\\d{1,2})?)?";
+const LABEL = new RegExp(`^${RUN}(?: or ${RUN})?$`);
+// With no usable list, the two ends: one span only when it does not wrap.
+const endsLabel = (a, b) => (a <= b ? (a === b ? utc(a) : `${utc(a)} to ${utc(b)}`) : `${utc(a)} to UTC+12 or UTC-11 to ${utc(b)}`);
 export const readActivity = memo((raw) => {
   if (failed(raw)) return errorOf(raw);
   if (!ACTIVITY_STATES.includes(raw.state)) return null;
   const username = typeof raw.username === "string" && GH_LOGIN.test(raw.username) ? raw.username : "";
-  if (raw.state === "not_found") return { username, found: false, state: "not_found", events: 0 };
+  // A handle GitHub cannot hold was never asked about: the answer says so in `note`.
+  if (raw.state === "not_found") return { username, found: false, state: "not_found", events: 0, ...(line(raw.note, 200) ? { note: line(raw.note, 200) } : {}) };
   const hours = counts(raw.hours_utc, 24), days = counts(raw.weekdays_utc, 7);
   if (raw.state === "ok" && (!hours || !days)) return null;
   const w = isObj(raw.window) ? raw.window : {};
   const e = isObj(raw.estimate) ? raw.estimate : null;
   const off = (v) => (Number.isInteger(v) && v >= -12 && v <= 14 ? v : null);
+  const offs = e ? list(e.utc_offsets, 27).filter((x) => off(x) !== null) : [];
   const est = e && off(e.utc_offset_from) !== null && off(e.utc_offset_to) !== null ? {
-    utc_offset_from: e.utc_offset_from, utc_offset_to: e.utc_offset_to, utc_offsets: list(e.utc_offsets, 27).filter((x) => off(x) !== null),
-    // Only a label that is nothing but offsets is kept; otherwise it is written again from the numbers.
-    label: /^UTC(?:[+-]\d{1,2})?(?: to UTC(?:[+-]\d{1,2})?)?$/.test(line(e.label, 40)) ? line(e.label, 40) : offsetLabel(e.utc_offset_from, e.utc_offset_to),
+    utc_offset_from: e.utc_offset_from, utc_offset_to: e.utc_offset_to, utc_offsets: offs,
+    // A range that runs past the date line is two runs, and is never shown as one span.
+    crosses_date_line: e.crosses_date_line === true || e.utc_offset_from > e.utc_offset_to,
+    // Only a label that is nothing but offsets is kept (one run, or two joined by "or");
+    // otherwise it is written again from the list, or from the two ends.
+    label: LABEL.test(line(e.label, 60)) ? line(e.label, 60) : offs.length && offs[0] === e.utc_offset_from && offs.at(-1) === e.utc_offset_to ? offsetsLabel(offs) : endsLabel(e.utc_offset_from, e.utc_offset_to),
     quiet_start_hour: int(e.quiet_start_hour), quiet_end_hour: int(e.quiet_end_hour), quiet_hours: int(e.quiet_hours), quiet_events: int(e.quiet_events),
     basis: line(e.basis, 400), assumption: line(e.assumption, 400), caveat: line(e.caveat, 400),
   } : null;
@@ -418,7 +442,7 @@ const hh = (n) => `${String(n).padStart(2, "0")}:00`;
 export function activityView(d) {
   const r = readActivity(d);
   if (!r || failed(r)) return null;
-  if (r.state === "not_found") return { state: "not_found", text: "GitHub has no account with this name.", events: 0 };
+  if (r.state === "not_found") return { state: "not_found", text: r.note || "GitHub has no account with this name.", events: 0 };
   if (r.state === "none") return { state: "none", text: "The account exists and has no public events in the window GitHub keeps (about 90 days, 300 events at most).", events: 0 };
   const top = Math.max(1, ...r.hours_utc), topDay = Math.max(1, ...r.weekdays_utc);
   const hours = r.hours_utc.map((count, hour) => ({ hour, count, pct: Math.round((count / top) * 100) }));
@@ -474,20 +498,21 @@ export const ARCHIVE_REFUSALS = [
   "This is not a plain http or https web address, so it was not looked up.",
   "This address is not on a public named host, so it was not looked up.",
 ];
+export const ARCHIVE_NONE_NOTE = "The archive holds no capture of the page itself. Captures that were a redirect or an error are not counted, so the address may still appear in the archive.";
 const SNAPSHOT_BASE = "https://web.archive.org/web/";
 const stamp = (iso) => { const t = when(iso); return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(t) ? t.replace(/[-:TZ]/g, "") : ""; };
 // May archived copies of this address be looked up? http(s), no credentials, no port, no query,
 // no fragment, a path of its own, and never an adult or dating site.
 export function archivable(u) {
   const s = safeLink(u), x = s ? parseUrl(s) : null;
-  return !!x && !x.port && !x.search && !x.hash && x.pathname.replace(/\/+$/, "").length > 0 && s.length <= 600;
+  return !!x && !x.port && !x.search && !x.hash && !s.includes("*") && x.pathname.replace(/\/+$/, "").length > 0 && s.length <= 600;
 }
 export function readArchive(raw, url) {
   if (!isObj(raw) || !ARCHIVE_STATES.includes(raw.state) || !archivable(url)) return null;
   const base = { url, state: raw.state, count: 0, first: "", last: "", snapshots: [], distinct_versions: 0, truncated: false, asked_at: Number.isFinite(raw.asked_at) && raw.asked_at > 0 ? raw.asked_at : 0 };
   if (raw.state === "refused") return { ...base, note: ARCHIVE_REFUSALS.includes(raw.note) ? raw.note : "This address was not looked up." };
   if (raw.state === "failed" || raw.state === "rate_limited") return { ...base, ...errorOf(raw) };
-  if (raw.state === "none") return base;
+  if (raw.state === "none") return { ...base, ...(raw.note === ARCHIVE_NONE_NOTE ? { note: ARCHIVE_NONE_NOTE } : {}) };
   const snaps = [], seen = new Set();
   for (const sn of list(raw.snapshots, 8)) { const ts = isObj(sn) ? stamp(sn.timestamp) : ""; if (ts && !seen.has(ts)) { seen.add(ts); snaps.push({ timestamp: when(sn.timestamp), url: `${SNAPSHOT_BASE}${ts}/${url}` }); } }
   const first = stamp(raw.first) ? when(raw.first) : "", last = stamp(raw.last) ? when(raw.last) : "";
@@ -510,7 +535,7 @@ export function archiveView(a) {
       text: `The Internet Archive holds copies of this page captured on ${plural(a.count, "day")}${a.truncated ? " or more" : ""}${one ? `, on ${dayOf(a.first)}` : `, first on ${dayOf(a.first)} and last on ${dayOf(a.last)}`}${a.distinct_versions > 1 ? `, in ${fmt(a.distinct_versions)} different versions` : ""}. A copy can show a bio or a link that has since been removed. Open one to read it: CrawlR does not fetch them.`,
       snapshots: a.snapshots.map((sn) => ({ label: dayOf(sn.timestamp), url: sn.url, link_kind: "evidence" })), first: dayOf(a.first), last: dayOf(a.last), count: a.count };
   }
-  if (a.state === "none") return { state: "none", retry: false, snapshots: [], text: "The Internet Archive answered and holds no copy of this page." };
+  if (a.state === "none") return { state: "none", retry: false, snapshots: [], text: `The Internet Archive answered and holds no copy of this page.${a.note ? ` ${a.note}` : ""}` };
   if (a.state === "refused") return { state: "refused", retry: false, snapshots: [], text: `Not looked up. ${a.note}` };
   return { state: a.state, retry: true, snapshots: [], text: a.state === "rate_limited" ? "The Internet Archive is rate limiting requests, so whether it holds copies is unknown. Try again in a minute." : "The Internet Archive could not be asked, so whether it holds copies is unknown." };
 }

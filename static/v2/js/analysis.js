@@ -185,13 +185,13 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
     const { kind, value } = l.lead, from = (l.from || []).join(", "), src = l.source || "";
     if (kind === "handle" && (!HANDLE_OK.test(value) || minorGuard(value).blocked)) continue;
     if (kind === "domain" && (adultHost(`https://${value}`) || isPlatformHost(value))) continue;
-    const record = /site record/.test(from), proven = /proven on Keybase|verified link/.test(from), guess = /the part before the @/.test(from), shown = /that shows this address/.test(from);
+    const record = /site record/.test(from), proven = /proven on Keybase|verified link/.test(from), guess = /the part before the @/.test(from), shown = /search matched to this address/.test(from);
     const base = { id: l.key, action: { kind: "pivot", pivot: l.action.pivot, value, ...(kind === "handle" ? { type: "username" } : {}), label: l.action.label, via: `${kind === "handle" ? "the handle" : kind === "email" ? "the address" : "the domain"} ${value}`, source: from || src } };
     if (kind === "handle") put({ ...base, score: record ? 95 : proven ? 90 : guess ? 45 : shown ? (/unconfirmed/.test(from) ? 58 : 72) : l.tied ? 80 : 55, title: `Investigate ${value}`,
       reason: record ? "GitHub attributes commits that carry this address to this account. That is GitHub's own record, and the strongest lead in the case."
         : proven ? `Another handle the other side has confirmed (${from}). It is very likely the same person under another name.`
           : guess ? "The part before the @. It is a guess at a handle, not a finding, and may belong to someone else."
-            : shown ? `A ${from}. That is weaker than a commit attribution: anyone can show an address on a profile.`
+            : shown ? `A ${from}. That is weaker than a commit attribution: the profile was not read to confirm it.`
               : `A handle found here: ${from}.${l.tied ? "" : " That profile is not tied to the target, so this is a weaker lead."} It may be the same person under another name.` });
     else if (kind === "email") put({ ...base, score: l.tied ? 75 : 50, title: `Investigate ${value}`, reason: `An address found here: ${from}.${l.tied ? "" : " That profile is not tied to the target, so this is a weaker lead."} An email case can show the accounts, keys and breaches behind it.` });
     else if (kind === "domain") put({ ...base, score: /the email's domain/.test(from) ? 65 : l.tied ? 70 : 48, title: `Open ${value} in Recon`, reason: /the email's domain/.test(from) ? "The domain of this address. Its DNS, mail setup and certificates describe the organisation behind it." : `A site found here: ${from}.${l.tied ? "" : " That profile is not tied to the target."} Its registration, DNS and certificates can show who runs it.` });
@@ -207,7 +207,7 @@ export function suggestNext(ev, { collected = {}, target = "", type = ev?.type |
   // 4. unread accounts two tools agree on
   const unverified = accounts.filter((i) => i.tier === "unverified" && !i.nofind);
   const two = unverified.filter((i) => !i.taken && (i.tools ?? (i.sources || []).length) > 1 && !i.check);
-  if (two.length) put({ id: "check:two", score: 52, title: `Check the ${plural(two.length, "account")} two tools agree on`, reason: `${list(two.map((i) => i.what), 4)}: reported by two tools, and nothing was read. Opening the group lets the link check ask each page whether it exists.`, action: { kind: "jump", tier: "unverified", label: "Open Unverified" } });
+  if (two.length) put({ id: "check:two", score: 52, title: two.length === 1 ? "Check the account two tools agree on" : `Check the ${two.length} accounts two tools agree on`, reason: `${list(two.map((i) => i.what), 4)}: reported by two tools, and nothing was read. Opening the group lets the link check ask each page whether it exists.`, action: { kind: "jump", tier: "unverified", label: "Open Unverified" } });
 
   // 5. a site that blocked the check, to open by hand
   const blocked = unverified.concat(accounts.filter((i) => i.tier === "unverified" && i.nofind)).filter((i) => /^Blocked by site/.test(i.meta || "") && i.url && i.link_kind !== "none" && !adultHost(i.url));

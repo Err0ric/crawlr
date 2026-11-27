@@ -13,7 +13,7 @@ import { adultBriefText } from "./adult.js";
 import { nameBrief } from "./names.js";
 import { phoneBrief } from "./phone.js";
 import { wildcardOf, wildcardText } from "./present.js";
-import { profileCoverage, readProfileSources, readEmailAccounts, emailLookupsDown, activityView, commitNames, PROFILE_STATE_WORD, SELF_DECLARED_NOTE } from "./deep.js";
+import { profileCoverage, readProfileSources, readEmailAccounts, emailLookupsDown, activityView, commitNames, commitsNote, PROFILE_STATE_WORD, SELF_DECLARED_NOTE } from "./deep.js";
 import { sealLink, evidenceUrl, exposureEvidence, dnsEvidence, certEvidence, rdapEvidence, waybackEvidence, isDomain } from "./links.js";
 
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -104,7 +104,8 @@ export function investigateBrief({ collected: c, items, facts, identity, failed,
     if (ea && !ea.error && !ea.error_code) {
       const authors = ea.accounts.filter((a) => a.how === "commit_author"), shown = ea.accounts.filter((a) => a.how !== "commit_author");
       for (const a of authors) add("ok", `GitHub attributes commits that carry this address to the account ${a.login} (${plural(a.commits_seen, "commit")} seen), so that account has this address confirmed.${commitNames(a)[0] ? ` The name written in its commits is "${commitNames(a)[0].name}", which is self-declared.` : ""}`, a.evidence[0] ? { url: a.evidence[0], label: "Evidence commit" } : null);
-      if (shown.length) add("info", `${list(shown.map((a) => `${a.login}${a.account_type === "Organization" ? " (an organization, unconfirmed)" : ""}`))} ${shown.length === 1 ? "shows" : "show"} this address on a public GitHub profile. That is weaker than a commit attribution.`);
+      if (shown.length) add("info", `${list(shown.map((a) => `${a.login}${a.account_type === "Organization" ? " (an organization, unconfirmed)" : ""}`))} ${shown.length === 1 ? "was" : "were"} matched to this address by GitHub's search of public profiles. The profile was not read to confirm it, so that is weaker than a commit attribution.`);
+      if (commitsNote(ea)) add("info", `${commitsNote(ea)} That is not the same as no commits.`);
       if (ea.unattributed) add("info", `${plural(ea.unattributed.commits_seen, "commit")} ${ea.unattributed.commits_seen === 1 ? "carries" : "carry"} this address and ${ea.unattributed.commits_seen === 1 ? "belongs" : "belong"} to no GitHub account. Anyone can write any address in a commit, so ${ea.unattributed.commits_seen === 1 ? "it proves" : "they prove"} nothing about who wrote ${ea.unattributed.commits_seen === 1 ? "it" : "them"}.`);
       const keys = ea.keys.filter((k) => k.parsed);
       if (ea.keys.length) add("info", `${plural(ea.keys.length, "OpenPGP key")} ${ea.keys.length === 1 ? "is" : "are"} published for this address on keys.openpgp.org, which verifies an address by mail before it lists it.${keys.some((k) => k.revoked) ? " At least one is revoked." : ""}`, keys[0] ? { url: keys[0].url, label: "Key" } : null);
