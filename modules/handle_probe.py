@@ -8,9 +8,10 @@ sources that return profile data, concurrently:
   Platform check  Facebook, Instagram, X, Threads, TikTok, Reddit and Discord
                   (modules/platform_check.py, cached there; LinkedIn is left out because it
                   never answers a server)
-  Bluesky         the public profile lookup for {handle}.bsky.social. It answers without a
-                  key: recorded on 2026-11-14 as tests/fixtures/probe/bluesky_profile.json
-                  (HTTP 200) and bluesky_not_found.json (HTTP 400, "Profile not found").
+  Bluesky         the public profile lookup for {handle}.bsky.social, read by its profile
+                  source (modules/profiles/bluesky.py). It answers without a key: recorded on
+                  2026-11-14 as tests/fixtures/probe/bluesky_profile.json (HTTP 200) and
+                  bluesky_not_found.json (HTTP 400, "Profile not found").
 
 It never runs Sherlock or Maigret and never touches an adult or dating site. Pictures of the
 profiles that were read go through modules/avatar_hash.py in the same request, so the answer
@@ -33,21 +34,17 @@ from collections import OrderedDict
 
 import httpx
 
-from core.boilerplate import clean_bio
-from core.errors import classify, classify_status
+from core.errors import classify
 from core.logging import get_logger
 from modules.avatar_hash import run_avatar_hash
 from modules.github import run_github
 from modules.platform_check import run_platform_check
+from modules.profiles import bluesky
 
 log = get_logger(__name__)
 
 PLATFORMS = ("Facebook", "Instagram", "X", "Threads", "TikTok", "Reddit", "Discord")
 SOURCES = ("GitHub", *PLATFORMS, "Bluesky")
-BLUESKY_URL = "https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile"
-# A bsky.social handle is one DNS label: no underscore and no period.
-BLUESKY_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,16}[a-z0-9])$")
-USER_AGENT = "Mozilla/5.0 (compatible; CrawlR/1.0; +https://crawlr.lol)"
 TIMEOUT = 12
 MAX_LINKS = 6
 
@@ -123,28 +120,16 @@ async def _platforms(username: str) -> tuple[dict, list[dict]]:
 
 
 async def _bluesky(username: str) -> tuple[dict, list[dict]]:
-    label = username.lower()
-    if not BLUESKY_LABEL_RE.fullmatch(label):
+    """Bluesky through its profile source (modules/profiles/bluesky.py), as a probe row."""
+    if not bluesky.HANDLE_RE.fullmatch(username):
         return {"Bluesky": "not_asked"}, []       # not a name bsky.social can hold, so nothing is requested
-    handle = f"{label}.bsky.social"
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.get(BLUESKY_URL, params={"actor": handle}, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    try:
-        data = resp.json()
-    except ValueError:
-        data = None
-    if not isinstance(data, dict):
-        return {"Bluesky": "failed"}, []
-    if resp.status_code == 400 and "profile not found" in str(data.get("message") or "").lower():
-        return {"Bluesky": "not_found"}, []
-    if resp.status_code != 200:
-        return {"Bluesky": "rate_limited" if classify_status(resp.status_code) == "rate_limited" else "unknown"}, []
-    if str(data.get("handle") or "").lower() != handle:
-        return {"Bluesky": "unknown"}, []
-    name = _text(data.get("displayName"), 100)
-    return {"Bluesky": "found"}, [_profile("Bluesky", f"https://bsky.app/profile/{handle}", name=name,
-                                           bio=clean_bio(_text(data.get("description"), 300), "bluesky", handle, name),
-                                           created=data.get("createdAt"), followers=data.get("followersCount"), avatar=data.get("avatar"))]
+        res = await bluesky.read(client, username)
+    if res.state != "found" or not res.profile:
+        return {"Bluesky": res.state if res.state != "found" else "unknown"}, []
+    p = res.profile
+    return {"Bluesky": "found"}, [_profile("Bluesky", p["url"], name=p["display_name"], bio=p["bio"], created=p["created"],
+                                           followers=p["followers"], avatar=p["_avatar"])]
 
 
 async def _guarded(label: str, coro, names: tuple[str, ...]) -> tuple[dict, list[dict]]:

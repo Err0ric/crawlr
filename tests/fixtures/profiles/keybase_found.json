@@ -1,0 +1,162 @@
+{
+ "status": {
+  "code": 0,
+  "name": "OK"
+ },
+ "them": [
+  {
+   "id": "00000000000000000000000000000000",
+   "basics": {
+    "username": "samexample",
+    "ctime": 1391653108,
+    "mtime": 1624468589,
+    "id_version": 12,
+    "track_version": 3,
+    "last_id_change": 1624468589,
+    "username_cased": "samexample",
+    "status": 0,
+    "salt": "00000000000000000000000000000000",
+    "eldest_seqno": 1
+   },
+   "profile": {
+    "mtime": null,
+    "full_name": "Sam Example",
+    "location": "Lisbon",
+    "bio": "Maps and bread. Invented person for a test fixture."
+   },
+   "proofs_summary": {
+    "by_presentation_group": {},
+    "by_sig_id": {},
+    "all": [
+     {
+      "proof_type": "twitter",
+      "nametag": "sam_example",
+      "state": 1,
+      "service_url": "https://twitter.com/sam_example",
+      "proof_url": "https://twitter.com/sam_example/status/100000000000000001",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://twitter.com/sam_example/status/100000000000000001",
+      "presentation_group": "twitter",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "github",
+      "nametag": "samexample",
+      "state": 1,
+      "service_url": "https://github.com/samexample",
+      "proof_url": "https://gist.github.com/00000000000000000001",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://gist.github.com/00000000000000000001",
+      "presentation_group": "github",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "reddit",
+      "nametag": "sam_example",
+      "state": 1,
+      "service_url": "https://reddit.com/user/sam_example",
+      "proof_url": "https://www.reddit.com/r/KeybaseProofs/comments/aaaaaa/my_keybase_proof/",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://www.reddit.com/r/KeybaseProofs/comments/aaaaaa/my_keybase_proof/",
+      "presentation_group": "reddit",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "hackernews",
+      "nametag": "samexample",
+      "state": 1,
+      "service_url": "https://news.ycombinator.com/user?id=samexample",
+      "proof_url": "https://news.ycombinator.com/user?id=samexample",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://news.ycombinator.com/user?id=samexample",
+      "presentation_group": "hackernews",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "generic_web_site",
+      "nametag": "sam.example.org",
+      "state": 1,
+      "service_url": "https://sam.example.org",
+      "proof_url": "https://sam.example.org/keybase.txt",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://sam.example.org/keybase.txt",
+      "presentation_group": "web:sam.example.org",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "dns",
+      "nametag": "sam.example.org",
+      "state": 1,
+      "service_url": "http://sam.example.org",
+      "proof_url": "https://keybase.io/samexample/sigchain#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://keybase.io/samexample/sigchain#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "presentation_group": "web:sam.example.org",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "generic_social",
+      "nametag": "sam_example",
+      "state": 1,
+      "service_url": "https://mastodon.social/@sam_example",
+      "proof_url": "https://mastodon.social/@sam_example/100000000000000001",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://mastodon.social/@sam_example/100000000000000001",
+      "presentation_group": "mastodon.social",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "github",
+      "nametag": "revoked-sam",
+      "state": 2,
+      "service_url": "https://github.com/revoked-sam",
+      "proof_url": "https://gist.github.com/00000000000000000002",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://gist.github.com/00000000000000000002",
+      "presentation_group": "github",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "generic_social",
+      "nametag": "samexample",
+      "state": 1,
+      "service_url": "https://www.pornhub.com/users/samexample",
+      "proof_url": "https://www.pornhub.com/users/samexample",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://www.pornhub.com/users/samexample",
+      "presentation_group": "pornhub.com",
+      "presentation_tag": "x"
+     },
+     {
+      "proof_type": "twitter",
+      "nametag": "not a handle!",
+      "state": 1,
+      "service_url": "https://twitter.com/x",
+      "proof_url": "https://twitter.com/x/status/1",
+      "sig_id": "000000000000000000000000000000000000000000000000000000000000000000",
+      "proof_id": "000000000000000000000000",
+      "human_url": "https://twitter.com/x/status/1",
+      "presentation_group": "twitter",
+      "presentation_tag": "x"
+     }
+    ],
+    "has_web": true
+   },
+   "pictures": {
+    "primary": {
+     "url": "https://s3.amazonaws.com/keybase_processed_uploads/00000000000000000000000000000005_360_360.jpg",
+     "source": null
+    }
+   }
+  }
+ ]
+}

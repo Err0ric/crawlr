@@ -1,0 +1,17 @@
+{
+ "avatar": "https://images.chesscomfiles.com/uploads/v1/user/1000001.00000000.200x200o.000000000000.jpeg",
+ "player_id": 1000001,
+ "@id": "https://api.chess.com/pub/player/samexample",
+ "url": "https://www.chess.com/member/SamExample",
+ "name": "Sam Example",
+ "username": "samexample",
+ "followers": 94,
+ "country": "https://api.chess.com/pub/country/PT",
+ "last_online": 1795738294,
+ "joined": 1178556600,
+ "status": "basic",
+ "is_streamer": false,
+ "verified": false,
+ "league": "Silver",
+ "streaming_platforms": []
+}

@@ -1,0 +1,56 @@
+{
+ "id": "100000000000000001",
+ "username": "SamExample",
+ "acct": "SamExample",
+ "display_name": "Sam Example",
+ "locked": false,
+ "bot": false,
+ "discoverable": true,
+ "indexable": true,
+ "group": false,
+ "created_at": "2016-03-16T00:00:00.000Z",
+ "note": "<p>Maps &amp; bread, with <span class=\"h-card\" translate=\"no\"><a href=\"https://mastodon.social/@Mastodon\" class=\"u-url mention\">@<span>Mastodon</span></a></span>.</p><p>Invented person for a test fixture.</p>",
+ "url": "https://mastodon.social/@SamExample",
+ "uri": "https://mastodon.social/users/SamExample",
+ "avatar": "https://files.mastodon.social/accounts/avatars/000/000/001/original/0000000000000000.png",
+ "avatar_static": "https://files.mastodon.social/accounts/avatars/000/000/001/original/0000000000000000.png",
+ "avatar_description": "",
+ "header": "https://files.mastodon.social/accounts/headers/000/000/001/original/0000000000000000.jpg",
+ "header_static": "https://files.mastodon.social/accounts/headers/000/000/001/original/0000000000000000.jpg",
+ "header_description": "",
+ "followers_count": 120,
+ "following_count": 80,
+ "statuses_count": 450,
+ "last_status_at": "2026-11-20",
+ "hide_collections": false,
+ "noindex": false,
+ "emojis": [],
+ "roles": [],
+ "fields": [
+  {
+   "name": "GitHub",
+   "value": "<a href=\"https://github.com/samexample\" target=\"_blank\" rel=\"nofollow noopener me\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">github.com/samexample</span><span class=\"invisible\"></span></a>",
+   "verified_at": "2023-02-07T23:24:40.347+00:00"
+  },
+  {
+   "name": "Site",
+   "value": "<a href=\"https://sam.example.org\" target=\"_blank\" rel=\"nofollow noopener me\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">sam.example.org</span><span class=\"invisible\"></span></a>",
+   "verified_at": "2024-07-06T01:06:10.801+00:00"
+  },
+  {
+   "name": "Blog",
+   "value": "<a href=\"https://blog.example.net/sam\" target=\"_blank\" rel=\"nofollow noopener me\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">blog.example.net/sam</span></a>",
+   "verified_at": null
+  },
+  {
+   "name": "Pronouns",
+   "value": "they/them",
+   "verified_at": null
+  },
+  {
+   "name": "Trap",
+   "value": "<a href=\"javascript:alert(1)\">click</a>",
+   "verified_at": null
+  }
+ ]
+}

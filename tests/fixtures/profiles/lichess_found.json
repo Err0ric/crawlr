@@ -1,0 +1,65 @@
+{
+ "id": "samexample",
+ "username": "SamExample",
+ "perfs": {
+  "bullet": {
+   "games": 7484,
+   "rating": 1807,
+   "rd": 102,
+   "prog": 22
+  },
+  "blitz": {
+   "games": 11945,
+   "rating": 1772,
+   "rd": 47,
+   "prog": -2
+  },
+  "rapid": {
+   "games": 925,
+   "rating": 1855,
+   "rd": 67,
+   "prog": 66
+  },
+  "classical": {
+   "games": 25,
+   "rating": 1858,
+   "rd": 251,
+   "prog": 48,
+   "prov": true
+  },
+  "puzzle": {
+   "games": 6015,
+   "rating": 1876,
+   "rd": 73,
+   "prog": 0
+  },
+  "storm": {
+   "runs": 44,
+   "score": 33
+  }
+ },
+ "createdAt": 1290415680000,
+ "profile": {
+  "bio": "Maps and bread. See https://sam.example.org/chess.",
+  "realName": "Sam Example",
+  "location": "Lisbon",
+  "links": "github.com/samexample\nmastodon.social/@sam_example\nnot a link at all"
+ },
+ "seenAt": 1795729114701,
+ "playTime": {
+  "total": 6711929,
+  "tv": 18024
+ },
+ "url": "https://lichess.org/@/SamExample",
+ "count": {
+  "all": 23960,
+  "rated": 21560,
+  "draw": 1062,
+  "loss": 11453,
+  "win": 11440,
+  "bookmark": 81,
+  "playing": 0,
+  "import": 74,
+  "me": 0
+ }
+}

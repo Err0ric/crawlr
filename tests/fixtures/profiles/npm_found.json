@@ -1,0 +1,190 @@
+{
+ "objects": [
+  {
+   "downloads": {
+    "monthly": 1200,
+    "weekly": 300
+   },
+   "dependents": "4",
+   "updated": "2026-11-26T18:41:39.541Z",
+   "searchScore": 80.1,
+   "package": {
+    "name": "map-tiles",
+    "keywords": [
+     "maps"
+    ],
+    "version": "1.0.0",
+    "description": "Invented package for a test fixture",
+    "sanitized_name": "map-tiles",
+    "publisher": {
+     "email": "sam@example.org",
+     "username": "samexample"
+    },
+    "maintainers": [
+     {
+      "email": "sam@example.org",
+      "username": "samexample"
+     }
+    ],
+    "license": "MIT",
+    "date": "2026-11-19T07:47:40.570Z",
+    "links": {
+     "homepage": "https://sam.example.org",
+     "npm": "https://www.npmjs.com/package/map-tiles"
+    }
+   },
+   "score": {
+    "final": 80.1,
+    "detail": {
+     "popularity": 1,
+     "quality": 1,
+     "maintenance": 1
+    }
+   },
+   "flags": {
+    "insecure": 0
+   }
+  },
+  {
+   "downloads": {
+    "monthly": 1200,
+    "weekly": 300
+   },
+   "dependents": "4",
+   "updated": "2026-11-26T18:41:39.541Z",
+   "searchScore": 80.1,
+   "package": {
+    "name": "@samexample/bread",
+    "keywords": [
+     "maps"
+    ],
+    "version": "1.0.0",
+    "description": "Invented package for a test fixture",
+    "sanitized_name": "@samexample/bread",
+    "publisher": {
+     "email": "other@example.net",
+     "username": "otherperson"
+    },
+    "maintainers": [
+     {
+      "email": "other@example.net",
+      "username": "otherperson"
+     },
+     {
+      "email": "sam.work@example.com",
+      "username": "SamExample"
+     }
+    ],
+    "license": "MIT",
+    "date": "2021-04-17T15:45:50.334Z",
+    "links": {
+     "homepage": "https://sam.example.org",
+     "npm": "https://www.npmjs.com/package/@samexample/bread"
+    }
+   },
+   "score": {
+    "final": 80.1,
+    "detail": {
+     "popularity": 1,
+     "quality": 1,
+     "maintenance": 1
+    }
+   },
+   "flags": {
+    "insecure": 0
+   }
+  },
+  {
+   "downloads": {
+    "monthly": 1200,
+    "weekly": 300
+   },
+   "dependents": "4",
+   "updated": "2026-11-26T18:41:39.541Z",
+   "searchScore": 80.1,
+   "package": {
+    "name": "someone-elses",
+    "keywords": [
+     "maps"
+    ],
+    "version": "1.0.0",
+    "description": "Invented package for a test fixture",
+    "sanitized_name": "someone-elses",
+    "publisher": {
+     "email": "other@example.net",
+     "username": "otherperson"
+    },
+    "maintainers": [
+     {
+      "email": "other@example.net",
+      "username": "otherperson"
+     }
+    ],
+    "license": "MIT",
+    "date": "2025-01-01T00:00:00.000Z",
+    "links": {
+     "homepage": "https://sam.example.org",
+     "npm": "https://www.npmjs.com/package/someone-elses"
+    }
+   },
+   "score": {
+    "final": 80.1,
+    "detail": {
+     "popularity": 1,
+     "quality": 1,
+     "maintenance": 1
+    }
+   },
+   "flags": {
+    "insecure": 0
+   }
+  },
+  {
+   "downloads": {
+    "monthly": 1200,
+    "weekly": 300
+   },
+   "dependents": "4",
+   "updated": "2026-11-26T18:41:39.541Z",
+   "searchScore": 80.1,
+   "package": {
+    "name": "Bad Name/../x",
+    "keywords": [
+     "maps"
+    ],
+    "version": "1.0.0",
+    "description": "Invented package for a test fixture",
+    "sanitized_name": "Bad Name/../x",
+    "publisher": {
+     "email": "sam@example.org",
+     "username": "samexample"
+    },
+    "maintainers": [
+     {
+      "email": "sam@example.org",
+      "username": "samexample"
+     }
+    ],
+    "license": "MIT",
+    "date": "2025-01-01T00:00:00.000Z",
+    "links": {
+     "homepage": "https://sam.example.org",
+     "npm": "https://www.npmjs.com/package/Bad Name/../x"
+    }
+   },
+   "score": {
+    "final": 80.1,
+    "detail": {
+     "popularity": 1,
+     "quality": 1,
+     "maintenance": 1
+    }
+   },
+   "flags": {
+    "insecure": 0
+   }
+  }
+ ],
+ "total": 3,
+ "time": "2026-11-27T01:06:20.830Z"
+}

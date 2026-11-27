@@ -59,7 +59,7 @@ NAME_MAX = 200
 BIO_MAX = 2000            # the scan reads the whole bio, not the 300 characters a row shows
 TEXT_MAX = 1000
 FIELD_MAX = 40
-SOURCES = ("sherlock", "maigret", "github", "platform_check", "enricher")
+SOURCES = ("sherlock", "maigret", "github", "platform_check", "enricher", "profiles")
 BIRTH_KEYS = ("birthday", "birth_date", "birthdate", "born", "dob", "date_of_birth")
 
 _store: "OrderedDict[str, dict]" = OrderedDict()
@@ -167,6 +167,13 @@ def entries_of(source: str, answer: dict) -> list[dict]:
         for p in answer.get("profiles") or []:
             if isinstance(p, dict):
                 rows.append(_entry(p.get("platform"), p.get("url"), p.get("display_name"), p.get("bio"), "", guard_fields(p)))
+    elif source == "profiles":
+        # The keyless profile APIs (modules/profiles). Text to scan and nothing more: this is
+        # not a profile reader, so its answer never opens the adult pass.
+        for p in answer.get("profiles") or []:
+            if isinstance(p, dict) and p.get("state") == "found":
+                g = guard_fields(p)
+                rows.append(_entry(p.get("site"), p.get("url"), p.get("display_name"), g.get("bio") or p.get("bio"), lines(p.get("company"), p.get("location")), g))
     return [r for r in rows if r]
 
 

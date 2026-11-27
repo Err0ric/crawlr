@@ -1,0 +1,13 @@
+{
+ "batchcomplete": "",
+ "query": {
+  "users": [
+   {
+    "userid": 1000001,
+    "name": "Samexample",
+    "editcount": 1515,
+    "registration": "2009-03-27T20:47:31Z"
+   }
+  ]
+ }
+}

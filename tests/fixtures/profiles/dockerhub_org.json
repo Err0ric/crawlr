@@ -1,0 +1,15 @@
+{
+ "id": "00000000000000000000000000000000",
+ "uuid": "00000000-0000-0000-0000-000000000002",
+ "orgname": "samexample",
+ "full_name": "Example Maps Images",
+ "location": "Lisbon",
+ "company": "Example Maps",
+ "profile_url": "https://maps.example.org",
+ "date_joined": "2015-03-26T23:00:44.207518Z",
+ "gravatar_url": "https://www.gravatar.com/avatar/00000000000000000000000000000002?s=80&r=g&d=mm",
+ "gravatar_email": "",
+ "type": "Organization",
+ "badge": "",
+ "is_active": true
+}

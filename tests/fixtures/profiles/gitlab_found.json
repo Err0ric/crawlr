@@ -1,0 +1,12 @@
+[
+ {
+  "id": 1000001,
+  "username": "SamExample",
+  "public_email": "sam@example.org",
+  "name": "Sam Example",
+  "state": "active",
+  "locked": false,
+  "avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/1000001/avatar.png?v=1",
+  "web_url": "https://gitlab.com/SamExample"
+ }
+]
