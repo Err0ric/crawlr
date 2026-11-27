@@ -58,7 +58,7 @@ Type a username, email, domain, IP, ASN, phone number or hash. CrawlR detects th
 | Hash lookup | CIRCL, AlienVault OTX, and MalwareBazaar and ThreatFox when the server has an abuse.ch key. Recognises the EICAR test file. Community tags are kept apart from malware families | None (optional server `ABUSECH_AUTH_KEY`) |
 | Phone lookup | What a number is, with no key: whether it is valid, how it is written, its country, line type, time offset, and where and to whom its number range was assigned (libphonenumber, offline). For United States and Canadian numbers, the rate centre and first assignee of the block from Local Calling Guide, which is asked for the area code and exchange only. Flags for premium-rate, VoIP, personal, fiction and invalid ranges, short codes and emergency numbers. A number typed without a country code is read as the country picked in the Country select. Search links to search engines and free spam-report sites. It never says who uses a number, and links to no data broker | None. An optional NumLookup key adds the current carrier |
 | Hunter.io | Email addresses and patterns for a domain | Your key |
-| At a glance | A short written brief built from rules, with no AI: what stands out, what is uncertain, what failed | None |
+| At a glance | A short written brief built from rules, with no AI. For a username or an email it says what was found and the one thing to check first; what could not be asked and who else uses the handle are said once, in What the evidence says | None |
 | AI analysis and deep dive | Investigation report: identity, accounts, exposure, next moves. Runs only when you ask, and shows what it costs first | Free tier, your key, or no key at all (copy the prompt into an assistant you already use) |
 
 ### Recon sources
@@ -136,6 +136,7 @@ node tests/js/wildcard.test.mjs
 node tests/js/minorscan.test.mjs
 node tests/js/deep.test.mjs
 node tests/js/casework.test.mjs
+node tests/js/caserules.test.mjs
 ```
 
 ## How it is built
@@ -151,7 +152,7 @@ FastAPI on Python 3.11 serves a vanilla JavaScript frontend (no build step) and 
 - The server keeps no record of what you look up: targets are not written to its logs. When the minor check blocks, one log line names the rule that fired and nothing about the target. Short-lived in-memory caches (AI answers, GitHub profiles, and for 30 minutes the profile text a username run returned, which the minor check reads) are lost on restart.
 - One random session cookie keeps the minor check tied to your own run. It identifies nothing about you and ends with the browser session.
 - What leaves the server for a lookup, and to whom. A username case asks the 16 profile sites' public APIs about the handle (the handle goes to each of those sites, as it does to every site Sherlock and Maigret check). An email case sends the address to GitHub's commit and user search and to keys.openpgp.org, besides the breach and registration checks. "Archived copies" sends one profile's address to the Internet Archive's index, only when you click it. None of these is a paid service or a data broker.
-- Who a case is about (your pick), the pivot trail and parked steps are kept with the case in your browser and in a case file you export. They are never sent to the server, except as part of the text you choose to send for an AI analysis.
+- Who a case is about (your pick), the pivot trail and parked steps are kept with the case in your browser and in a case file you export. They are never sent to the server, except as part of the text you choose to send for an AI analysis. A case file you open brings its pick and its trail, each shown as the file's and never as yours. It does not bring parked or followed steps, so a file cannot hide a suggestion from you.
 - A reverse-confirm search is offered as text to copy. CrawlR builds no search engine link with a username or an email in it.
 - Active techniques that connect to the target's own systems (the port scan, profile scraping for deep dive) are off on every page load, never stored, and labeled.
 
