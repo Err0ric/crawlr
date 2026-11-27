@@ -164,13 +164,13 @@ const ee = buildEvidence(E.collected, E.target, "email");
   const r = D.readEmailAccounts(E.collected.emailAccounts);
   ok(r.accounts.length === 2 && r.keys.length === 2 && r.unattributed.commits_seen === 3 && D.readEmailAccounts(r) === r, "the answer is read whole, and reading it again changes nothing");
   const gh = row(ee, "acct:github~mara-lind"), org = row(ee, "acct:github~tidepool-lab"), un = row(ee, "commits:unattributed");
-  ok(gh.tier === "linked" && gh.url === "https://github.com/mara-lind" && /GitHub attributes commits that carry this address to this account, so the account has this address confirmed, and its public profile shows it/.test(gh.card.why), "an account GitHub attributes the commits to is Linked, in the contract's words");
+  ok(gh.tier === "linked" && gh.url === "https://github.com/mara-lind" && /GitHub attributes commits that carry this address to this account, so the account has this address confirmed, and GitHub's search matched it on the public profile/.test(gh.card.why) && D.readEmailAccounts(E.collected.emailAccounts).accounts[0].confirmed === true, "an account GitHub attributes the commits to is Linked, in the contract's words");
   ok(gh.more.label === "Evidence commit" && /^https:\/\/github\.com\/mara-lind\/tidepool\/commit\/[0-9a-f]{40}$/.test(gh.more.url) && gh.action.label === "Investigate this" && gh.action.value === "mara-lind" && gh.action.type === "username", "it carries the evidence commit and one click to investigate the login as a handle");
   ok(/Names written in its commits \(self-declared\): Mara Lindqvist \(in a repository the account owns\), mara\./.test(gh.card.note), "names in commits are labeled self-declared, the one from its own repository first");
   const self = gh.detail.groups.find((g) => g.id === "self"), rec = gh.detail.groups.find((g) => g.id === "record");
   ok(self.prov === "self-declared" && /anyone can write anything there/.test(self.title) && self.rows.some((x) => x.k === "UTC offset in commits" && x.v === "UTC+01:00") && self.rows.some((x) => x.k === "First commit seen" && x.v === "2021-06-14") && self.rows.some((x) => x.k === "Dates left out"), "commit names, dates and UTC offsets sit under self-declared");
   ok(rec.prov === "site record" && rec.rows.some((x) => x.k === "Commits seen" && x.v === "5 commits") && rec.rows.filter((x) => x.link_kind === "evidence").length === 2, "the counts and the evidence commits are GitHub's record");
-  ok(org.tier === "matches" && org.card.facts.includes("Organization") && /This organization's public profile shows this address\. GitHub does not confirm an organization's address/.test(org.card.why + ".") && !org.detail, "an organization that shows the address is weaker, labeled as one, and said to be unconfirmed");
+  ok(org.tier === "matches" && org.card.facts.includes("Organization") && /GitHub's search matched this address on this organization's public profile\. The profile was not read, and GitHub does not confirm an organization's address/.test(org.card.why + ".") && !org.detail && D.readEmailAccounts(E.collected.emailAccounts).accounts[1].confirmed === false, "an organization GitHub's search matched is weaker, labeled as one, said to be unconfirmed, and never worded as a profile that was read");
   ok(un.tier === "unverified" && un.nofind === true && /belong to no GitHub account/.test(un.meta) && /names written in them \(self-declared\): M\. Lindqvist, build-bot/.test(un.meta) && un.link_label === "Evidence commit", "commits GitHub ties to no account are apart, unverified, and not a finding");
   const key = ee.items.find((i) => i.key.startsWith("pgp:a1b2")), unread = ee.items.find((i) => i.key.startsWith("pgp:unread"));
   ok(key.tier === "linked" && key.url === "https://keys.openpgp.org/vks/v1/by-fingerprint/A1B2C3D4E5F60718293A4B5C6D7E8F9012345678" && /verified the address by mail/.test(key.meta) && /created 2022-05-17 \(self-declared\)/.test(key.meta) && /EdDSA Ed25519/.test(key.meta), "a key is Linked to the address the key server verified, with its algorithm, and its date marked self-declared");
@@ -305,6 +305,43 @@ const ee = buildEvidence(E.collected, E.target, "email");
   ok(aiSignature(U.collected, H, "username") !== aiSignature({ ...U.collected, githubActivity: null }, H, "username") && !("profile_sources" in aiPayloadFor(base, H, "username")) && aiSignature(base, H, "username") === aiSignature(clone(base), H, "username"), "a report is reused only when the record sources say the same, and an older case gains no field");
   const failAi = aiPayloadFor({ ...U.collected, profiles: { error: "x", error_code: "timeout" } }, H, "username");
   ok(!("profile_sources" in failAi), "a failed source sends no data: its status line says it is unknown");
+}
+
+// ---- 15. answer shapes that changed after the backend review ------------------------------------------
+{
+  // GitHub activity: a range across the date line is two runs, never one span.
+  const act = clone(U.collected.githubActivity);
+  act.estimate = { ...act.estimate, utc_offset_from: 10, utc_offset_to: -9, utc_offsets: [10, 11, 12, -11, -10, -9], label: "UTC+10 to UTC+12 or UTC-11 to UTC-9", crosses_date_line: true };
+  const r = D.readActivity(act);
+  ok(r.estimate.label === "UTC+10 to UTC+12 or UTC-11 to UTC-9" && r.estimate.crosses_date_line === true && D.activityView(act).estimate.label === r.estimate.label, "a two-run label across the date line is kept as two runs");
+  const bad1 = clone(act); bad1.estimate.label = "Tokyo or Auckland";
+  ok(D.readActivity(bad1).estimate.label === "UTC+10 to UTC+12 or UTC-11 to UTC-9", "a label that is not offsets is written again from the list, still as two runs");
+  const bad2 = clone(bad1); bad2.estimate.utc_offsets = [];
+  ok(D.readActivity(bad2).estimate.label === "UTC+10 to UTC+12 or UTC-11 to UTC-9" && !/UTC\+10 to UTC-9/.test(D.readActivity(bad2).estimate.label) && D.readActivity(bad2).estimate.crosses_date_line === true, "with no list the two ends are never joined into one wrapped span");
+  ok(D.offsetsLabel([-1, 0, 1, 2]) === "UTC-1 to UTC+2" && D.offsetsLabel([0]) === "UTC" && D.offsetsLabel([12, -11]) === "UTC+12 or UTC-11", "runs are listed going east");
+  const nf = { username: "", found: false, state: "not_found", cached: false, note: "GitHub cannot hold this handle: a login is 1 to 39 letters, digits or hyphens, so nothing was asked." };
+  ok(D.activityView(nf).text === nf.note && D.activityView({ username: "x", found: false, state: "not_found" }).text === "GitHub has no account with this name.", "a handle GitHub cannot hold says so, in place of no account with this name");
+  ok(D.readActivity({ state: "rate_limited", cached: false, error: "x", error_code: "rate_limited" }).error_code === "rate_limited", "a rate limited answer stays a failure");
+  // Profiles: asked, retry_after, and a record that came back in part.
+  const ps = clone(U.collected.profiles); ps.asked = ["gitlab", "keybase", "nonsense", "gitlab"]; ps.sources.chesscom.retry_after = 540;
+  ps.profiles.find((p) => p.source === "hackernews").bio = ""; ps.profiles.find((p) => p.source === "hackernews").note = "bio not read";
+  const pr = D.readProfileSources(ps);
+  ok(pr.asked.join() === "gitlab,keybase" && pr.sources.chesscom.retry_after === 540 && !("retry_after" in pr.sources.lobsters) && JSON.stringify(D.readProfileSources(clone(pr))) === JSON.stringify(pr), "the sites asked in this call and a wait are kept, and reading again changes nothing");
+  const hn = row(buildEvidence({ ...U.collected, profiles: ps }, H, "username"), "acct:hackernews");
+  ok(/Hacker News answered in part: bio not read\. That part is unknown, not empty\./.test(hn.card.note) && !/no name, bio or dates/.test(hn.card.basis || "") && hn.detail.groups.flatMap((g) => g.rows).some((x) => x.k === "Not read" && x.v === "bio not read: unknown, not empty"), "a bio that was not read is unknown, and is never worded as no bio");
+  const bare = clone(ps); Object.assign(bare.profiles.find((p) => p.source === "hackernews"), { created: "", stats: {}, links: [], note: "bio and karma not read" });
+  const hb = row(buildEvidence({ profiles: bare }, H, "username"), "acct:hackernews");
+  ok(!/carries no name, bio or dates/.test(hb.card.basis || "") && /bio and karma not read/.test(hb.card.note), "even when nothing else was read");
+  // Email accounts: confirmed, how_note, and commits that were returned and could not be counted.
+  const ea = clone(E.collected.emailAccounts);
+  ea.accounts[0].confirmed = true; ea.accounts[1].confirmed = true; ea.accounts[1].how_note = "GitHub's search matched this address on the profile. The profile itself was not read to confirm it.";
+  ea.sources.github_commits = { state: "none", total: 4, seen: 0, skipped: 4, only_skipped: true, note: "GitHub returned 4 commits for this address and none could be counted: each was made by an app account, or its row was malformed or did not carry the address." };
+  const er = D.readEmailAccounts(ea);
+  ok(er.accounts[0].confirmed === true && er.accounts[1].confirmed === false && /was not read to confirm it/.test(er.accounts[1].how_note) && !("how_note" in er.accounts[0]), "confirmed is true for a commit attribution only, whatever the answer says, and the search note is kept");
+  ok(er.sources.github_commits.only_skipped === true && /none could be counted/.test(D.commitsNote(ea)) && /commits were returned and none could be counted/.test(D.emailAccountsText(ea)) && D.commitsNote(E.collected.emailAccounts) === "", "commits that were returned and could not be counted are not the same as no commits");
+  const eb = investigateBrief({ collected: { ...E.collected, emailAccounts: ea }, items: buildEvidence({ ...E.collected, emailAccounts: ea }, E.target, "email").items, facts: [], identity: null, failed: [], type: "email", target: E.target });
+  ok(eb.rows.some((x) => /none could be counted.* That is not the same as no commits\./.test(x.text)) && eb.rows.some((x) => /matched to this address by GitHub's search of public profiles\. The profile was not read to confirm it/.test(x.text)) && !eb.rows.some((x) => /shows? this address/.test(x.text)), "the brief says both, and never that a profile shows the address");
+  ok(/GitHub's search matched this address/.test(D.HOW_TEXT.public_profile_email) && /was not read/.test(D.HOW_TEXT.public_profile_email) && !/shows this address/.test(JSON.stringify(D.HOW_TEXT)) && D.emailAccountsForAi(ea).commit_search_note.includes("none could be counted"), "the wording for a search match says the profile was not read, on the page and to the model");
 }
 
 if (bad) { console.log(`${bad} of ${n} record source checks failed`); process.exit(1); }

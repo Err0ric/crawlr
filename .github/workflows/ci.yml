@@ -42,3 +42,4 @@ jobs:
           node tests/js/similar.test.mjs
           node tests/js/wildcard.test.mjs
           node tests/js/deep.test.mjs
+          node tests/js/casework.test.mjs
