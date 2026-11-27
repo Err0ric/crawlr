@@ -8,7 +8,7 @@ globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document = { addEventListener() {} };
 const J = "../../static/v2/js/";
 const D = await import(J + "deep.js");
-const { buildEvidence, collectProfiles, profileTexts, avatarImages, aiPayloadFor, aiSignature, caseMarkdown, sourcePlan, canonSite } = await import(J + "evidence.js");
+const { buildEvidence, collectProfiles, profileTexts, avatarImages, aiPayloadFor, aiSignature, caseMarkdown, caseAnalysis, sourcePlan, canonSite } = await import(J + "evidence.js");
 const { clusterIdentities, linkParts } = await import(J + "identity.js");
 const { personTimeline } = await import(J + "timeline.js");
 const { sourceTally, sourceCoverage, sourceHasResults, partialGaps } = await import(J + "core.js");
@@ -155,7 +155,9 @@ const NOENR = (({ enricher, ...rest }) => rest)(U.collected), evD = buildEvidenc
   const tiles = investigateTiles({ items: ev.items, collected: U.collected, type: "username", partialKeys: ["profiles"] });
   ok(tiles.find((x) => x.id === "linked").atLeast === true, "the Linked tile reads 'at least' while a profile site is silent");
   const b = investigateBrief({ collected: U.collected, items: ev.items, facts: ev.facts, identity: ev.identity, failed: [], incomplete: ["Profile sources"], type: "username", target: H }).rows.map((r) => r.text).join("\n");
-  ok(/Chess\.com \(rate limited\), Codeforces \(failed\), Lobsters \(blocked by site\) did not answer the profile lookup, so those sites are unknown, not absent/.test(b) && /tied to the primary identity by a proof the other side confirmed/.test(b), "the brief names the silent sites as unknown and says what a proof ties");
+  // The silent sites and the proofs are said in "What the evidence says", once; the brief keeps the count line's "at least".
+  const says = caseAnalysis(ev, { collected: U.collected, target: H, type: "username" }).assessment.lines.map((l) => l.text).join("\n");
+  ok(/Could not be asked: Chess\.com \(rate limited\), Codeforces \(failed\), Lobsters \(blocked by site\)/.test(says) && /confirmed from the other side/.test(says) && !/did not answer the profile lookup|a proof the other side confirmed/.test(b) && /^At least .*Profile sources did not fully answer/m.test(b), "the assessment names the silent sites as unknown and says what a proof ties; the brief does not repeat it");
 }
 
 // ---- 8. the accounts and keys behind an address ---------------------------------------------------
@@ -170,7 +172,7 @@ const ee = buildEvidence(E.collected, E.target, "email");
   const self = gh.detail.groups.find((g) => g.id === "self"), rec = gh.detail.groups.find((g) => g.id === "record");
   ok(self.prov === "self-declared" && /anyone can write anything there/.test(self.title) && self.rows.some((x) => x.k === "UTC offset in commits" && x.v === "UTC+01:00") && self.rows.some((x) => x.k === "First commit seen" && x.v === "2021-06-14") && self.rows.some((x) => x.k === "Dates left out"), "commit names, dates and UTC offsets sit under self-declared");
   ok(rec.prov === "site record" && rec.rows.some((x) => x.k === "Commits seen" && x.v === "5 commits") && rec.rows.filter((x) => x.link_kind === "evidence").length === 2, "the counts and the evidence commits are GitHub's record");
-  ok(org.tier === "matches" && org.card.facts.includes("Organization") && /GitHub's search matched this address on this organization's public profile\. The profile was not read, and GitHub does not confirm an organization's address/.test(org.card.why + ".") && !org.detail && D.readEmailAccounts(E.collected.emailAccounts).accounts[1].confirmed === false, "an organization GitHub's search matched is weaker, labeled as one, said to be unconfirmed, and never worded as a profile that was read");
+  ok(org.tier === "unverified" && org.what === "GitHub (tidepool-lab)" && gh.what === "GitHub (mara-lind)" && org.link_kind === "evidence" && /Nothing was read/.test(org.card.basis) && org.card.facts.includes("Organization") && /GitHub's search matched this address on this organization's public profile\. The profile was not read, and GitHub does not confirm an organization's address/.test(org.card.why + ".") && !org.detail && D.readEmailAccounts(E.collected.emailAccounts).accounts[1].confirmed === false, "an organization GitHub's search matched is weaker, labeled as one, said to be unconfirmed, and never worded as a profile that was read");
   ok(un.tier === "unverified" && un.nofind === true && /belong to no GitHub account/.test(un.meta) && /names written in them \(self-declared\): M\. Lindqvist, build-bot/.test(un.meta) && un.link_label === "Evidence commit", "commits GitHub ties to no account are apart, unverified, and not a finding");
   const key = ee.items.find((i) => i.key.startsWith("pgp:a1b2")), unread = ee.items.find((i) => i.key.startsWith("pgp:unread"));
   ok(key.tier === "linked" && key.url === "https://keys.openpgp.org/vks/v1/by-fingerprint/A1B2C3D4E5F60718293A4B5C6D7E8F9012345678" && /verified the address by mail/.test(key.meta) && /created 2022-05-17 \(self-declared\)/.test(key.meta) && /EdDSA Ed25519/.test(key.meta), "a key is Linked to the address the key server verified, with its algorithm, and its date marked self-declared");
@@ -186,7 +188,7 @@ const ee = buildEvidence(E.collected, E.target, "email");
   ok(sourceCoverage(D.readEmailAccounts(lim)).answered === 2 && sourceTally({ emailAccounts: lim }, { emailAccounts: "Accounts and keys" }).rows[0].state === "partial" && D.emailLookupsDown(lim)[0].name === "GitHub commit search", "a rate limited lookup makes the source partial, and it is named");
   ok(/unknown: rate limited/.test(sourceCards.emailAccounts(lim)) && /never means "no account" or "no key"/.test(sourceCards.emailAccounts(lim)), "the card says unknown, never 'no account'");
   const bl = investigateBrief({ collected: { ...E.collected, emailAccounts: lim }, items: buildEvidence({ ...E.collected, emailAccounts: lim }, E.target, "email").items, facts: [], identity: ee.identity, failed: [], type: "email", target: E.target }).rows.map((x) => x.text).join("\n");
-  ok(/GitHub commit search \(rate limited\) could not be asked, so whether an account or a key exists there is unknown/.test(bl), "and so does the brief");
+  ok(/Could not be asked: GitHub commit search \(rate limited\)/.test(caseAnalysis(buildEvidence({ ...E.collected, emailAccounts: lim }, E.target, "email"), { collected: { ...E.collected, emailAccounts: lim }, target: E.target, type: "email" }).assessment.lines.map((l) => l.text).join("\n")) && !/could not be asked/.test(bl), "and the assessment names it as what could not be asked");
   const br = investigateBrief({ collected: E.collected, items: ee.items, facts: ee.facts, identity: ee.identity, failed: [], type: "email", target: E.target });
   ok(br.rows.some((x) => x.level === "ok" && /GitHub attributes commits that carry this address to the account mara-lind/.test(x.text) && /self-declared/.test(x.text) && x.link_kind === "evidence") && br.actions.some((a) => a.label === "Investigate mara-lind" && a.pivot === "investigate"), "the brief states the attribution with its evidence and offers the one hop");
   // hostile input
@@ -208,9 +210,9 @@ const ee = buildEvidence(E.collected, E.target, "email");
   ok(v.estimate.label === "UTC-1 to UTC+2" && v.estimate.basis && v.estimate.assumption && /A hint, not a fact/.test(v.estimate.caveat), "the estimate travels with its basis, its assumption and its caveat");
   const html = activityHtml(U.collected.githubActivity);
   ok((html.match(/role="img" aria-label="Events by/g) || []).length === 2 && (html.match(/class="act-col/g) || []).length === 31 && /a hint, not a fact/.test(html) && /A range of time offsets is not a place/.test(html) && !/<img|<script|<svg(?! class="ext")/.test(html), "the page draws two strips of plain elements, each an image with its words, and the estimate is never a place");
-  ok(/Based on 137 public events/.test(html) && /It assumes the quiet stretch is the night/.test(html), "basis and assumption are shown with the estimate");
-  const noest = clone(U.collected.githubActivity); noest.estimate = null; noest.estimate_reason = { code: "no_quiet_stretch", text: "Events are spread across the whole day, so no quiet stretch stands out." };
-  ok(D.activityView(noest).estimate === null && /none made/.test(activityHtml(noest)) && /Events are spread across the whole day/.test(activityHtml(noest)), "no estimate shows the reason");
+  ok(/Based on 137 public events over 85 days \(61 with activity\)\. The longest quiet stretch is/.test(html) && /Assumes one person who sleeps at least 6 hours inside the quiet stretch/.test(html), "basis and assumption are shown with the estimate, written from the numbers");
+  const noest = clone(U.collected.githubActivity); noest.estimate = null; noest.estimate_reason = { code: "no_quiet_window", text: "Lives in Berlin." };
+  ok(D.activityView(noest).estimate === null && /none made/.test(activityHtml(noest)) && /No quiet stretch long enough to be a night: the account is active around the clock\./.test(activityHtml(noest)) && !/Berlin/.test(activityHtml(noest)), "no estimate shows the reason, in the page's own words for the server's code");
   const place = clone(U.collected.githubActivity); place.estimate.label = "Central European Time (Berlin)"; place.estimate.utc_offset_from = 1; place.estimate.utc_offset_to = 2;
   ok(D.activityView(place).estimate.label === "UTC+1 to UTC+2", "a label that names a place is written again from the numbers");
   ok(D.readActivity({ ...clone(U.collected.githubActivity), hours_utc: [1, 2, 3] }) === null && D.readActivity({ state: "fine" }) === null, "an answer without 24 hours is not an answer");

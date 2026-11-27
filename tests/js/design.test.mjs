@@ -311,7 +311,7 @@ const THUMB = extra.avatarHash.results.find((r) => r.thumb).thumb;
   ok(v.rows.find((r) => r.key === "platformCheck").state === "partial" && v.rows.find((r) => r.key === "platformCheck").listed === true && partialGaps(v.rows).length === 0, "some sites blocking the platform check is still partial in the tally, and is not a gap in any count");
   ok(v.tiles.length === 4 && v.tiles.every((t) => !t.atLeast && t.state !== "unknown" && !/at least|not zero/.test(t.sub)), "production shape: every tile is a plain count, none says 'at least' or 'unknown'");
   ok(!/At least/.test(v.text) && /linked account/.test(v.text), "and the brief's count line is not prefixed with 'At least'");
-  ok(/Facebook, LinkedIn, Reddit blocked the check, so those accounts are unknown, not absent\./.test(v.text) && /The handle is taken on Discord/.test(v.text), "the lines that name the blocked sites and the taken handle stay as they are");
+  ok(!/blocked the check/.test(v.text) && /The handle is taken on Discord/.test(v.text), "the taken handle keeps its line; the blocked sites are named once, in the assessment, and not in the brief");
   // The adult site check is the same kind of source.
   const adult = { adultCheck: { results: [{ site: "A", state: "blocked" }, { site: "B", state: "not_found" }] } };
   ok(sourceTally(adult, names).rows[0].state === "partial" && partialGaps(sourceTally(adult, names).rows).length === 0, "the adult site check with a blocked site is not a gap either");

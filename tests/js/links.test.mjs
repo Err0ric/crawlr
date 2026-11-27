@@ -48,6 +48,18 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
 const cases = [];
 for (const f of files) { const got = casesOf(f.replace(/\.json$/, ""), fx(f.replace(/\.json$/, ""))); ok(got.length > 0, `fixture ${f} is covered by the link check`); cases.push(...got); }
 ok(files.length >= 7 && cases.length >= 12, "every fixture file is read");
+// A record whose accounts, packages and organizations carry nothing but a platform's homepage (a
+// Keybase proof for Twitter that names no page, a package with the registry's front page). It goes
+// through every invariant below like any other case, so "no finding links to a bare homepage"
+// holds for the rows behind a row's disclosure too.
+const BARE = (() => {
+  const d = JSON.parse(JSON.stringify(fx("deep").cases[0]));
+  const kb = d.collected.profiles.profiles.find((p) => p.source === "keybase"), npm = d.collected.profiles.profiles.find((p) => p.source === "npm");
+  kb.accounts.push({ site: "Twitter", handle: "samexample", url: "https://twitter.com/", proof: "keybase" }, { site: "Reddit", handle: "samexample", url: "https://www.reddit.com", proof: "listed" }, { site: "Bluesky", handle: "sam.example", url: "https://bsky.app/?ref=home", proof: "verified_link" });
+  npm.items.push({ name: "left-pad", url: "https://www.npmjs.com/", kind: "package" }, { name: "tidepool", url: "https://www.npmjs.com", kind: "organization" });
+  return { name: "deep: a record that names bare homepages", target: d.target, type: d.type, collected: d.collected };
+})();
+cases.push(BARE);
 // The adult and dating site fixture goes through every invariant below like any other case: its
 // rows carry a link kind, never link to a homepage, and mark an unchecked URL as unverified.
 ok(cases.some((c) => c.name === "adult" && buildEvidence(c.collected, c.target, c.type).items.filter((i) => i.tier === "adult").length >= 12), "the adult and dating site rows are among the rows checked");
@@ -111,9 +123,12 @@ for (const c of cases) {
       const subjects = it.key.startsWith("acct:") ? [handleOf(c)] : it.tier === "lead" ? [it.lead.value] : it.tier === "hosts" ? [it.what] : [handleOf(c)];
       checkLink(t, c, `row ${it.key}`, it, evWhat(it), subjects);
       // What a record carries, behind the row's disclosure: each value is held to the same rules.
-      // A value may link to the site it names (a website, a listed account), and to nothing barer.
+      // Only a value that IS a site (a website, a link, or an account row whose site name is the
+      // host itself) may link to that bare site. An account, a package or an organization on a
+      // platform is a page there: its row never links to the platform's homepage.
       for (const g of it.detail?.groups || []) for (const r of g.rows) {
-        details++; checkLink(t, c, `detail ${it.key} ${r.k}`, r, link(r.url, r.v, "", { kind: r.link_kind }), [handleOf(c), r.v, L.hostOf(r.url)]);
+        const isSite = r.k === "Website" || r.k === "Link" || L.hostOf(r.url) === String(r.v).trim().split(" ")[0].toLowerCase();
+        details++; checkLink(t, c, `detail ${it.key} ${r.k}`, r, link(r.url, r.v, "", { kind: r.link_kind }), [handleOf(c), ...(isSite ? [L.hostOf(r.url)] : [])]);
         t.note("a detail link is evidence or nothing", r.link_kind === "evidence" || r.link_kind === "none", `${it.key} ${r.k}`);
         if (r.more) checkLink(t, c, `detail ${it.key} ${r.k} proof`, r.more, link(r.more.url, r.more.label, "", { kind: r.more.link_kind }), [handleOf(c)]);
       }
@@ -541,6 +556,25 @@ ok(L.classifyLink({ url: "https://example.org/find?q=jdoe@example.org", want: "e
   f = fakeLedger(["acct:a"]); f.doc.activeElement = null;
   patchRow(f.el, item("acct:a", { link_kind: "verified_profile", check: "verified" }), f.doc);
   ok(f.doc.activeElement === null && patchRow(f.el, item("acct:zzz"), f.doc) === false, "and nothing is focused when nothing was");
+}
+
+// ---- a detail row never links to a platform's homepage -------------------------------------------
+{
+  const ev = buildEvidence(BARE.collected, BARE.target, BARE.type);
+  const rowsOf = (key) => (ev.items.find((i) => i.key === key)?.detail?.groups || []).flatMap((g) => g.rows);
+  const kb = rowsOf("acct:keybase"), npm = rowsOf("acct:npm");
+  const tw = kb.find((r) => r.k === "Proven account" && /^Twitter/.test(r.v)), rd = kb.find((r) => r.k === "Listed account" && /^Reddit/.test(r.v)), bs = kb.find((r) => /^Bluesky/.test(r.v));
+  ok(tw && tw.link_kind === "none" && tw.url === "" && rd && rd.link_kind === "none" && bs && bs.link_kind === "none", "a proven, a listed and a verified account whose address is the platform's homepage are text, not a link");
+  ok(npm.filter((r) => /^(Package|Organization)$/.test(r.k) && /^(left-pad|tidepool)$/.test(r.v)).length === 2 && npm.filter((r) => /^(left-pad|tidepool)$/.test(r.v)).every((r) => r.link_kind === "none" && !r.url) && npm.some((r) => r.v === "tilecut" && r.link_kind === "evidence"), "a package and an organization with only the registry's front page are text, not a link");
+  ok(kb.some((r) => r.k === "Proven account" && r.v === "tidepool.example" && r.link_kind === "evidence") && kb.some((r) => r.k === "Proven account" && /^GitHub/.test(r.v) && r.url === "https://github.com/samexample"), "an account that is a site of its own, and an account with a page, keep their links");
+  const site = rowsOf("acct:mastodon.social").find((r) => r.k === "Website");
+  ok(site && site.link_kind === "evidence" && /^https:\/\/samexample\.example\/?$/.test(site.url), "a website row may link to the bare site it names");
+}
+
+// A platform's front page found on a profile is not a lead: there is nowhere to look.
+{
+  const leads = buildEvidence(BARE.collected, BARE.target, BARE.type).items.filter((i) => i.tier === "lead");
+  ok(!leads.some((l) => /^(twitter\.com|x\.com|reddit\.com|www\.reddit\.com|bsky\.app)\/?(\?.*)?$/.test(l.what)) && leads.some((l) => l.lead.kind === "domain"), "a bare platform homepage is never a lead; a personal domain still is");
 }
 
 console.log(bad ? `${bad} of ${n} link checks failed` : `${n}/${n} link checks passed`);

@@ -1,7 +1,7 @@
 // The "At a glance" brief is built from rules, so its statements can be checked exactly.
 import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import { investigateBrief, reconBrief } from "../../static/v2/js/brief.js";
-import { buildEvidence } from "../../static/v2/js/evidence.js";
+import { buildEvidence, caseAnalysis } from "../../static/v2/js/evidence.js";
 
 let bad = 0, n = 0;
 const ok = (cond, name) => { n++; if (!cond) { bad++; console.log("FAIL", name); } };
@@ -11,22 +11,28 @@ const acct = (site, tier, sources = ["Maigret"]) => ({ key: `acct:${site.toLower
 // ---- investigate ------------------------------------------------------------
 // The brief reads the ledger and the identity clusters that buildEvidence produced.
 const run = (collected, target, type, failed = []) => { const ev = buildEvidence(collected, target, type); return investigateBrief({ collected, items: ev.items, facts: ev.facts, identity: ev.identity, failed, type, target }); };
+// A person case says three things in "What the evidence says" and "Suggested next steps", once,
+// and not again in the brief: who else uses the handle, what could not be asked, and what to check.
+const panel = (collected, target, type, failed = []) => { const a = caseAnalysis(buildEvidence(collected, target, type), { collected, target, type, failed: failed.map((f) => f.name) }); return { says: [a.assessment.headline, ...a.assessment.lines.map((l) => `${l.level}: ${l.text}`)].join("\n"), next: [...a.suggestions.top, ...a.suggestions.more] }; };
 {
-  const b = run({ sherlock: { results: [{ site: "Facebook", url: "https://facebook.com/jdoe" }, { site: "Paypal", url: "https://paypal.me/jdoe" }] }, github: { found: true, name: "J Doe", email: "j@example.org", blog: "https://jdoe.dev", profile_url: "https://github.com/jdoe" },
-    maigret: { results: [{ site: "Bluesky", url: "https://bsky.app/profile/jdoe", verified: true, profile: { name: "J Doe" } }, { site: "Medium", url: "https://medium.com/@jdoe", verified: true, profile: { name: "Someone Else" } }, { site: "Facebook", url: "https://facebook.com/jdoe", verified: false }, { site: "Paypal", url: "https://paypal.me/jdoe", verified: false, profile: { name: "Ignored" } }] } }, "jdoe", "username", [{ name: "Holehe" }]);
+  const col = { sherlock: { results: [{ site: "Facebook", url: "https://facebook.com/jdoe" }, { site: "Paypal", url: "https://paypal.me/jdoe" }] }, github: { found: true, name: "J Doe", email: "j@example.org", blog: "https://jdoe.dev", profile_url: "https://github.com/jdoe" },
+    maigret: { results: [{ site: "Bluesky", url: "https://bsky.app/profile/jdoe", verified: true, profile: { name: "J Doe" } }, { site: "Medium", url: "https://medium.com/@jdoe", verified: true, profile: { name: "Someone Else" } }, { site: "Facebook", url: "https://facebook.com/jdoe", verified: false }, { site: "Paypal", url: "https://paypal.me/jdoe", verified: false, profile: { name: "Ignored" } }] } };
+  const b = run(col, "jdoe", "username", [{ name: "Holehe" }]), p = panel(col, "jdoe", "username", [{ name: "Holehe" }]);
   const t = text(b);
   ok(/1 linked account, 1 that exist and match, 1 that belong to a different person, and 2 unverified/.test(t), "counts accounts by tier");
-  ok(/flag: 2 different people use this handle: J Doe on GitHub, Bluesky, Someone Else on Medium/.test(t) && /Only the first is treated as the target/.test(t), "warns when different people share the handle");
+  ok(/flag: 1 account belongs to another person whose name conflicts with J Doe: Someone Else \(Medium\)\. Nothing is removed\./.test(p.says) && !/different (person|people)s? use this handle|Someone Else/.test(t), "another person under the handle is said in the assessment, once, and not again in the brief");
   ok(!/Ignored/.test(t), "ignores names from unverified hits");
-  ok(/2 unverified accounts were reported by two tools/.test(t), "notes two-tool agreement without calling it verified");
-  ok(/flag: 1 source failed \(Holehe\)/.test(t), "lists failed sources");
+  ok(p.next.some((x) => x.id === "check:two" && /^Check the 2 accounts two tools agree on$/.test(x.title) && /nothing was read/.test(x.reason)) && !/reported by two tools/.test(t), "two-tool agreement is a suggested step, not called verified, and not repeated in the brief");
+  ok(/info: Could not be asked: Holehe \(failed\)\. Each is unknown, not absent\./.test(p.says) && !/source failed/.test(t), "a failed source is named in the assessment, once, and not again in the brief");
+  ok(b.rows.length <= 4 && /^ok: 1 linked account/.test(t), "the brief of a person case is short: what was found");
   // The platform check asking Reddit or Discord itself is not a second tool: a blocked Reddit row
   // or a taken Discord handle that one tool also listed is not "reported by two tools".
   const pc = { results: [{ platform: "Reddit", url: "https://www.reddit.com/user/jdoe", state: "blocked", found: null, evidence: "Reddit refuses requests from servers, so this could not be checked automatically." }, { platform: "Discord", url: "", state: "taken", found: null }] };
-  const one = text(run({ sherlock: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe" }, { site: "Discord", url: "https://discord.com" }] }, platformCheck: pc }, "jdoe", "username"));
-  ok(!/reported by two tools/.test(one), "a blocked Reddit row or a taken Discord row plus one tool is not two-tool agreement");
-  const two = text(run({ sherlock: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe" }, { site: "Discord", url: "https://discord.com" }] }, maigret: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe", verified: false }, { site: "Discord", url: "https://discord.com", verified: false }] }, platformCheck: pc }, "jdoe", "username"));
-  ok(/1 unverified account was reported by two tools/.test(two), "two tools that both list Reddit are two tools; a taken handle never is");
+  const one = panel({ sherlock: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe" }, { site: "Discord", url: "https://discord.com" }] }, platformCheck: pc }, "jdoe", "username");
+  ok(!one.next.some((x) => x.id === "check:two"), "a blocked Reddit row or a taken Discord row plus one tool is not two-tool agreement");
+  const two = panel({ sherlock: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe" }, { site: "Discord", url: "https://discord.com" }] }, maigret: { results: [{ site: "Reddit", url: "https://www.reddit.com/user/jdoe", verified: false }, { site: "Discord", url: "https://discord.com", verified: false }] }, platformCheck: pc }, "jdoe", "username");
+  ok(two.next.some((x) => x.id === "check:two" && x.title === "Check the account two tools agree on"), "two tools that both list Reddit are two tools; a taken handle never is");
+  ok(/Reddit \(blocked the check\)/.test(two.says), "and the site that blocked the check is among what could not be asked");
   ok(b.actions.some((a) => a.pivot === "investigate" && a.value === "j@example.org") && b.actions.some((a) => a.pivot === "recon" && a.value === "jdoe.dev"), "offers pivots from extracted facts");
 }
 {
@@ -38,11 +44,12 @@ const run = (collected, target, type, failed = []) => { const ev = buildEvidence
   const t = text(run({ ...c, github: { found: true, name: "err0ric", profile_url: "https://github.com/err0ric" } }, "err0ric", "username"));
   ok(!/different (name|person|people)s? (appear|use)/.test(t) && /One name appears on other profiles \(Eric Henderson on Threads, YouTube\)/.test(t), "a first name and a full name are one person, not a conflict");
   // no anchor record and no strong signal: nobody is picked
-  const none = text(run({ maigret: { results: [{ site: "Medium", verified: true, profile: { name: "Bob Arnold" } }, { site: "Steam", verified: true, profile: { name: "Carol Baker" } }, { site: "Paypal", verified: false }] } }, "jdoe", "username"));
-  ok(/flag: 2 different names appear under this handle \(Bob Arnold on Medium, Carol Baker on Steam\), and none is tied to the target/.test(none), "with no anchor the brief says nobody is tied to the target");
+  const nc = { maigret: { results: [{ site: "Medium", verified: true, profile: { name: "Bob Arnold" } }, { site: "Steam", verified: true, profile: { name: "Carol Baker" } }, { site: "Paypal", verified: false }] } };
+  const none = text(run(nc, "jdoe", "username")), np = panel(nc, "jdoe", "username");
+  ok(/^None\. No identity is established: profiles were read, and nothing ties any of them to the target\./.test(np.says) && np.next.some((x) => x.id === "pick:none" && /2 names appear under this handle \(Bob Arnold, Carol Baker\) and nothing ties any of them to the target, so nobody was chosen/.test(x.reason)), "with no anchor the assessment says nobody is tied to the target, and the first step is to choose");
   ok(/info: 2 profiles were read and 1 account is unverified. Each read profile exists, and nothing ties it to the target/.test(none) && !/belong to a different person|linked account|Only the first is treated/.test(none), "and it issues no linked or different-person counts");
-  const one = text(run(c, "err0ric", "username"));
-  ok(/info: One name appears under this handle \(Eric Henderson on Threads, YouTube\)\. Nothing ties it to the target/.test(one), "one unanchored name is reported without picking it");
+  const one = panel(c, "err0ric", "username");
+  ok(one.next.some((x) => x.id === "pick:none" && /One name appears under this handle \(Eric Henderson\) and nothing ties it to the target, so nobody was chosen/.test(x.reason)) && !/Eric Henderson/.test(text(run(c, "err0ric", "username")).split("\n").filter((l) => /^(ok|flag)/.test(l)).join()), "one unanchored name is reported without picking it");
 }
 {
   const b = run({ github: { found: true, name: "J Doe", error: "rate limited" }, sherlock: { results: [] } }, "jdoe", "username");

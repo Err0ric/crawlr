@@ -8,7 +8,7 @@ globalThis.location = { origin: "https://crawlr.lol" };
 globalThis.document ??= { addEventListener() {} };
 const S = await import("../../static/v2/js/similar.js");
 const { handleVariants, nameVariants, similarHandles, similarBase, readProbe, readSimilar, asProfile, lineUp, evaluateSimilar, addedProfiles, variantOutcome, variantSummary, sourceStates, similarBrief, similarItems, similarBlurb, profileId, MAX_VARIANTS, MAX_STORED, SIMILAR_BLURB } = S;
-const { buildEvidence, accountsFor, aiPayloadFor, aiSignature, collectProfiles, isFinding, ledgerTiers, tierCounts, caseMarkdown, deepDiveUrls, avatarImages } = await import("../../static/v2/js/evidence.js");
+const { caseAnalysis, buildEvidence, accountsFor, aiPayloadFor, aiSignature, collectProfiles, isFinding, ledgerTiers, tierCounts, caseMarkdown, deepDiveUrls, avatarImages } = await import("../../static/v2/js/evidence.js");
 const { handlePatterns, parseName } = await import("../../static/v2/js/names.js");
 const { investigateBrief } = await import("../../static/v2/js/brief.js");
 const { investigateTiles, rowCertainty, withoutThumbs, safeThumb } = await import("../../static/v2/js/present.js");
@@ -322,7 +322,7 @@ const erroric = (added = []) => ({ erroric: entry("erroric", [prof("GitHub", { n
   const tw = investigateTiles({ items: without.items, collected: c, type: "username" });
   ok(tiles.find((t) => t.id === "linked").value === tw.find((t) => t.id === "linked").value && tiles.find((t) => t.id === "exists").value === tw.find((t) => t.id === "exists").value && tiles.find((t) => t.id === "unverified").value === tw.find((t) => t.id === "unverified").value + 1, "on the tiles it counts as Unverified, never as Linked or Exists");
   const brief = investigateBrief({ collected: c, items: ev.items, facts: ev.facts, identity: ev.identity, failed: [], type: "username", target: T });
-  ok(brief.rows.some((x) => x.text === "The handle is taken on Discord according to the site's sign-up check. Nothing was read there, so who holds it is unknown.") && brief.rows.some((x) => /Reddit blocked the check|LinkedIn, Reddit blocked the check/.test(x.text)), "the brief says the handle is taken and nothing was read, and that Reddit blocked the check");
+  ok(brief.rows.some((x) => x.text === "The handle is taken on Discord according to the site's sign-up check. Nothing was read there, so who holds it is unknown.") && /Reddit \(blocked the check\)/.test(caseAnalysis(ev, { collected: c, target: T, type: "username" }).assessment.lines.map((l) => l.text).join("\n")), "the brief says the handle is taken and nothing was read, and the assessment that Reddit blocked the check");
   ok(deepDiveUrls({ platformCheck: PC }).every((u) => !/discord/i.test(u.site)) && avatarImages(c, T, "username").every((i) => !/discord/.test(i.id)), "the taken row gives a Deep Dive nothing to read and has no picture");
   // the source as a whole
   const cv = sourceCoverage(PC);

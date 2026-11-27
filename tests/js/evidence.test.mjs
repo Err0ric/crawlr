@@ -3,7 +3,7 @@
 import "./rules.mjs";   // the minor guard refuses everything until its rules are loaded
 import fs from "node:fs";
 globalThis.location = { origin: "https://crawlr.lol" };
-const { buildEvidence, accountsFor, breachList, breachMeta, hashView, hashCoverage, collectProfiles, sourcePlan, isFreeMail, ledgerTiers, TIERS, isFinding, factsFor, avatarImages, tierCounts } = await import("../../static/v2/js/evidence.js");
+const { caseAnalysis, buildEvidence, accountsFor, breachList, breachMeta, hashView, hashCoverage, collectProfiles, sourcePlan, isFreeMail, ledgerTiers, TIERS, isFinding, factsFor, avatarImages, tierCounts } = await import("../../static/v2/js/evidence.js");
 const { investigateBrief, reconBrief, resolvedHosts, mailState, noMailOpen } = await import("../../static/v2/js/brief.js");
 const { buildFindings, takeoverForAi, TIERS: RECON_TIERS } = await import("../../static/v2/js/reconfindings.js");
 const { sourceTally, tallyText, sourceCoverage, statusForAi } = await import("../../static/v2/js/core.js");
@@ -40,8 +40,10 @@ const tv = fx("torvalds"), er = fx("err0ric"), em = fx("email"), hs = fx("hash")
   ok(ev.identity.views[0].primary && /GitHub's own record/.test(ev.identity.views[0].why), "the primary view says why it is primary");
   // brief
   const b = text(investigateBrief({ collected: tv.collected, items: ev.items, facts: ev.facts, identity: ev.identity, failed: [], type: "username", target: tv.target }));
-  ok(/flag: \d+ different people use this handle: Linus Torvalds on GitHub, Snapchat/.test(b), "the brief counts people, not names");
-  ok(Number(b.match(/flag: (\d+) different people/)[1]) === 1 + ev.identity.views.filter((v) => v.different).length && ev.identity.views.filter((v) => v.different).length === new Set(tier(ev, "different").map((i) => i.person)).size, "it counts exactly the people the ledger calls different, plus the primary");
+  // Other people under the handle are said once, in the assessment, and counted as people.
+  const says = caseAnalysis(ev, { collected: tv.collected, target: tv.target, type: "username" }).assessment.lines.map((l) => `${l.level}: ${l.text}`).join("\n");
+  ok(/flag: \d+ accounts belong to \d+ other people whose name conflicts with Linus Torvalds/.test(says) && !/different people use this handle/.test(b), "the assessment counts people, not names, and the brief does not repeat it");
+  ok(Number(says.match(/belong to (\d+) other people/)[1]) === ev.identity.views.filter((v) => v.different).length && ev.identity.views.filter((v) => v.different).length === new Set(tier(ev, "different").map((i) => i.person)).size, "it counts exactly the people the ledger calls different");
   ok(row(ev, "acct:steam").tier === "matches" && /name does not conflict/.test(row(ev, "acct:steam").meta) && !/GamerNine/.test(b), "a single nickname is not counted as another person");
   ok(/1 linked account, \d+ that exist and match, \d+ that belong to a different person, and \d+ unverified/.test(b), "the brief uses the tier vocabulary");
   ok(/2 profiles carry the name "Linus Torvalds"/.test(b), "the brief says which profiles support the primary identity");
@@ -93,7 +95,7 @@ const tv = fx("torvalds"), er = fx("err0ric"), em = fx("email"), hs = fx("hash")
   const v2a = buildEvidence({ ...er.collected, platformCheck: er.platformCheckV2, adultMode: true }, er.target, er.type);
   ok(v2a.items.filter((i) => /onlyfans/i.test(i.key + i.what)).map((i) => `${i.key}:${i.tier}`).join() === "adult:onlyfans:adult" && /could not be checked/.test(row(v2a, "adult:onlyfans").meta), "with the mode on it is an adult row that could not be checked");
   const b2 = text(investigateBrief({ collected: { ...er.collected, platformCheck: er.platformCheckV2 }, items: v2.items, facts: v2.facts, identity: v2.identity, failed: [], type: "username", target: er.target }));
-  ok(/LinkedIn blocked the check, so that account is unknown, not absent/.test(b2), "the brief says a blocked site is unknown");
+  ok(/Could not be asked: .*LinkedIn \(blocked the check\).* Each is unknown, not absent\./.test(caseAnalysis(v2, { collected: { ...er.collected, platformCheck: er.platformCheckV2 }, target: er.target, type: "username" }).assessment.lines.map((l) => l.text).join("\n")) && !/blocked the check/.test(b2), "the assessment says a blocked site is unknown, once");
   const dead = buildEvidence({ ...er.collected, maigret: { error: "timeout", error_code: "timeout", results: er.collected.maigret.results } }, er.target, er.type);
   ok(!dead.identity.views.some((v) => v.label === "Eric Henderson") && row(dead, "acct:threads").tier === "unverified", "a failed source contributes nothing, even if it carries rows");
 }
@@ -121,7 +123,7 @@ ok(sourcePlan("username", "jdoe").join() === "sherlock,maigret,github,platform,p
   ok(row(v2, "breach:linkedin").meta === "2012 · Email addresses, Passwords" && row(v2, "breach:linkedin").url.includes("xposedornot.com"), "new breach shape: year and data classes in the row");
   ok(tier(v2, "flag").map((i) => i.what).join("|") === "Breach: LinkedInScrape-2021|Breach: LinkedIn|Breach: AntiPublicCombo", "breach rows are newest first, undated last");
   const b = text(investigateBrief({ collected: { ...em.collected, hibp: em.hibpV2 }, items: v2.items, facts: v2.facts, identity: v2.identity, failed: [], type: "email", target: em.target }));
-  ok(/3 known breaches \(LinkedInScrape-2021 2021, LinkedIn 2012, AntiPublicCombo\)/.test(b) && /Username tools were not run on "torvalds"/.test(b) && /8 hosts on linux-foundation.org/.test(b), "the email brief names breaches with years, the unsearched handle and the host inventory");
+  ok(/3 known breaches \(LinkedInScrape-2021 2021, LinkedIn 2012, AntiPublicCombo\)/.test(b) && /8 hosts on linux-foundation.org/.test(b) && !/Username tools were not run/.test(b) && caseAnalysis(v2, { collected: { ...em.collected, hibp: em.hibpV2 }, target: em.target, type: "email" }).suggestions.top.concat(caseAnalysis(v2, { collected: { ...em.collected, hibp: em.hibpV2 }, target: em.target, type: "email" }).suggestions.more).some((x) => x.id === "lead:handle:torvalds" && /It is a guess at a handle, not a finding/.test(x.reason)), "the email brief names breaches with years and the host inventory; the unsearched handle is a suggested step that says it is a guess");
 }
 {
   const l = breachList({ breaches: ["B", { name: "A", date: "2019-01-01", data_classes: ["Email addresses", "Passwords", "Names", "Phones", "IPs", "DOB"], records: 5 }, { name: "" }, null, { name: "C", year: 2021 }] });
@@ -242,7 +244,7 @@ for (const [name, d] of [["old shape", hs.eicarOld], ["new shape", hs.eicarNew]]
   const acc = accountsFor(ev.items);
   ok(acc.filter((a) => a.status === "matches").every((a) => /nothing ties it to the target/.test(a.note)) && !acc.some((a) => a.status === "different" || a.status === "linked"), "the AI payload carries the same statuses and the same words");
   const b = text(investigateBrief({ collected: c, items: ev.items, facts: ev.facts, identity: ev.identity, failed: [], type: "username", target: "jdoe" }));
-  ok(/2 different names appear under this handle .* none is tied to the target/.test(b) && !/different person|Only the first/.test(b), "the brief says the same");
+  ok(/Each read profile exists, and nothing ties it to the target/.test(b) && !/different person|Only the first/.test(b) && /^None\. No identity is established/.test(caseAnalysis(ev, { collected: c, target: "jdoe", type: "username" }).assessment.headline), "the brief and the assessment say the same");
 }
 {
   // 7 + 11. a source whose parts did not answer is failed or partial, never "nothing found"
